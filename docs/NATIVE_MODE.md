@@ -38,7 +38,7 @@ Use `Start-Compatibility-Audio.cmd` or `--compatibility-audio` for the complete 
 in versioned `.aion` files beside the app. Loop SAVE exports stereo float32 WAV.
 Closing still discards unsaved changes. Existing `.alp` projects open through
 compatibility mode; their import into the native engine remains pending.
-Synths, effects, MIDI mapping, musical quantization, waveform editing, global undo
+Synths, effects, MIDI mapping, musical quantization, waveform editing, live playback undo
 and the original recording latency/seam/DC finalization behavior still require
 migration. See [NATIVE_PARITY.md](NATIVE_PARITY.md) for the comparison. Controls
 apply at native callback boundaries, not browser timestamps. Audio ownership follows the native window, not UI polling. Minimizing or pausing
@@ -137,8 +137,8 @@ punching, or the take exceeds the history budget, the punch still starts without
 undo: the original interface reports the reason and clears stale target history.
 Finish all captures before starting an undoable pass. Pending controls drain
 before the snapshot; a stalled callback rejects the request after 100 ms. Projects save
-the resulting PCM, without history. Global undo and the original
-reverse-on-next-play toggle still await migration.
+the resulting PCM, without history. The original reverse-on-next-play toggle
+still awaits migration.
 
 Editing verification: Windows and Ubuntu each pass 41 native GUI checks, plus
 131 Windows / 132 Ubuntu compatibility GUI checks. Rust tests cover exact normalize/undo/redo PCM, mix
@@ -159,4 +159,23 @@ concurrent-capture continuation and the visible history-unavailable notice.
 Compatibility checks pass (131 Windows / 132 Ubuntu). A silent 30-second TOPPING
 ASIO regression at 48 kHz / 128 frames passes 35 checks, with zero underruns or
 dropped input frames and no saved microphone recordings. History remains bounded,
-worker-owned and session-only; global undo and live playback undo remain pending.
+worker-owned and session-only; live playback undo remains pending.
+
+## Global undo and redo
+
+The original master UNDO / REDO buttons now use Rust history. Their labels name
+the next loop, such as UNDO L2. Each action restores the latest eligible edit or
+punch pass across all loops, using the same PCM snapshots as per-loop history.
+Stop the named loop and finish recording/punches first; other loops may keep playing.
+Ctrl/Cmd+Z undoes and Ctrl/Cmd+Shift+Z redoes while audio is open. Text fields keep
+their normal text-editing undo. A new edit clears the global redo timeline while
+other loops retain their own per-loop redo, matching Ascii-Looper. No additional
+PCM history copies or project-format changes are needed for global history.
+
+Global-history verification: 44 desktop Rust tests and strict Clippy pass on
+Windows and Ubuntu, alongside the audio/core regressions. Both native webviews
+pass 55 checks, including master labels/buttons, keyboard undo/redo, text-field
+isolation, stopped-target gating and session reset. Compatibility checks pass
+(131 Windows / 132 Ubuntu). The silent 30-second TOPPING ASIO regression at
+48 kHz / 128 frames passes 36 checks with zero underruns or dropped input frames;
+no microphone recordings are saved. Source PCM and history remain owned by Rust.

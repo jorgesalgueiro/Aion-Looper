@@ -24,7 +24,7 @@
     for(let i=0;i<10;i++)model.loops.push({id:i,state:'empty',name:'',volume:1,pan:5,startDelay:0,duration:0,playbackRate:1,feedback:.8,muted:false,audioBuffer:null,effects:{},signalChain:'QCATFODBVKZG',undoStack:[],redoStack:[]});
     const escapeHTML=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const renderer=window.AionOriginalRenderer(model,{t:key=>key},{escapeHTML},{});
-    let token=0,info=null,monitor=false,polling=false,pollEnabled=true,generation=0,lastTracks=[],opening=false,fileBusy=false;
+    let token=0,info=null,monitor=false,polling=false,pollEnabled=true,generation=0,lastTracks=[],lastHistory={},opening=false,fileBusy=false;
     const busy=new Set(),trackControls=[];
     document.querySelector('.project-file-section').insertAdjacentHTML('beforeend','<label>Native projects <select id="native-projects" aria-label="Saved native projects"></select></label><button id="projects-refresh" class="std-btn">REFRESH PROJECTS</button><p id="project-status" role="status"></p>');
     document.querySelector('.project-format-badge').textContent='.AION';
@@ -99,6 +99,12 @@
         fileBusy=true;draw(lastTracks);
         try{const result=await request("engine_edit",{token,track,command});get("error").textContent="";await status();return result;}finally{fileBusy=false;draw(lastTracks);}
     }
+    async function editGlobal(command){
+        if(!token||fileBusy||busy.size)throw new Error("Start audio and wait for the current operation.");
+        fileBusy=true;draw(lastTracks);
+        try{const result=await request("engine_edit",{token,command:`global_${command}`});get("error").textContent="";await status();return result;}finally{fileBusy=false;draw(lastTracks);}
+    }
+    for(const name of ["undo","redo"])get(name==="undo"?"btnGlobalUndo":"btnGlobalRedo").onclick=()=>editGlobal(name).catch(error);
     async function dropFile(paths,x,y){
         if(paths.length!==1)throw new Error('Drop one WAV file onto one stopped loop.');
         const card=document.elementFromPoint(x,y)?.closest('.loop');if(!card)throw new Error('Drop the WAV onto an empty or stopped loop track.');
@@ -146,7 +152,14 @@
     async function command(command,track=0,value=0){if(!token)throw new Error('Start native audio first.');const result=await request('engine_control',{token,command,track,value});if(result.history_notice)get('error').textContent=result.history_notice;else if(result.undo_recorded===true)get('error').textContent='';return result;}
     async function close(){const old=token;token=0;generation++;try{if(old)await request('engine_close',{token:old});}finally{monitor=false;controls(false);get('monitor').textContent='MON OFF';get('monitor').setAttribute('aria-pressed','false');get('input-meter').value=0;get('output-meter').value=0;get('status').textContent='Audio closed. Unsaved native loops have been released.';draw([]);get('startOverlay').style.display='flex';}}
     function draw(tracks){
-        lastTracks=tracks;
+        lastTracks=tracks;if(!tracks.length)lastHistory={};
+        const capturing=tracks.some(t=>["recording","overdubbing","substituting"].includes(t.state));
+        for(const name of ["undo","redo"]){
+            const button=get(name==="undo"?"btnGlobalUndo":"btnGlobalRedo"),target=lastHistory[`${name}_track`];
+            button.textContent=name.toUpperCase()+(target!=null?` L${target+1}`:"");
+            button.disabled=!token||fileBusy||busy.size>0||capturing||target==null||tracks[target]?.state!=="stopped";
+            button.title=target==null?`No global ${name} history`:`${name.toUpperCase()} loop ${target+1}; stop that loop and finish all captures first`;
+        }
         const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)'};
         for(let i=0;i<10;i++){
             const t=tracks[i]||{state:'empty',length:0,position:0,muted:false},card=get(`loop-${i}`),c=trackControls[i],available=Boolean(token&&i<tracks.length&&!busy.has(i)&&!fileBusy);
@@ -171,7 +184,7 @@
         else if(state==='playing')await command(get('action-mode').value==='normal'?'stop':get('action-mode').value,i);
     });}
     async function status(){if(!token)return null;const current=token,epoch=generation;const value=await request('engine_status',{token:current});if(current!==token||epoch!==generation)return null;
-        draw(value.tracks);get('input-meter').value=value.input_peak;get('output-meter').value=value.output_peak;
+        lastHistory=value.history||{};draw(value.tracks);get('input-meter').value=value.input_peak;get('output-meter').value=value.output_peak;
         get('timeDisplay').textContent=`${(value.frames/value.info.sample_rate).toFixed(1)}s`;
         get('master-ascii-vu').textContent=`MASTER ${value.output_peak>0?(20*Math.log10(value.output_peak)).toFixed(1):'-inf'} dBFS`;
         get('status').textContent=`${value.info.host} / ${value.info.device} | ${value.info.sample_rate} Hz | ${value.callback_frames} frames/callback\nInput underrun frames ${value.underruns} | dropped ${value.capture.dropped_frames} | stream errors ${value.stream_errors+value.capture.errors} | command errors ${value.command_errors}`;
@@ -187,11 +200,12 @@
         const clear=button.textContent==='DEL ALL';if(!clear&&button.textContent!=='STOP ALL')continue;
         enable(button,clear?'Discard all native takes':'Stop all native loops');button.onclick=async()=>{for(let i=0;i<lastTracks.length;i++){const state=lastTracks[i].state;if(state==='empty'||(!clear&&state==='stopped'))continue;await runTrack(i,()=>command(clear?'clear':['recording','overdubbing','substituting'].includes(state)?'finish':'stop',i));}};
     }
+    document.addEventListener('keydown',event=>{if(event.repeat||event.altKey||!(event.ctrlKey||event.metaKey)||event.key.toLowerCase()!=="z"||event.target.closest('input,select,textarea,[contenteditable]')||!token||get('startOverlay').style.display!=='none')return;event.preventDefault();const button=get(event.shiftKey?"btnGlobalRedo":"btnGlobalUndo");if(!button.disabled)button.click();});
     document.addEventListener('keydown',event=>{if(event.repeat||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||event.target.closest('input,select,textarea,[contenteditable]')||!token||get('startOverlay').style.display!=='none')return;if(/^[0-9]$/.test(event.key)){event.preventDefault();perform(event.key==='0'?9:Number(event.key)-1);}});
     function fitLogos(){for(const pre of document.querySelectorAll('#header pre,#startOverlay pre')){pre.style.fontSize='10px';if(pre.scrollWidth>pre.clientWidth)pre.style.fontSize=`${Math.max(2,10*pre.clientWidth/pre.scrollWidth)}px`;}}
     window.addEventListener('resize',fitLogos);fitLogos();
     setInterval(async()=>{if(!pollEnabled||polling||!token)return;polling=true;try{await status();}catch(reason){error(reason);}finally{polling=false;}},100);
     window.addEventListener('pagehide',()=>{if(token)request('engine_close',{token}).catch(()=>{});});
-    window.AionNative={open,close,command,status,devices,request,projects,saveProject,loadProject,exportWave,importWave,editTake,dropFile,onDrop(paths,x,y){dropFile(paths,x,y).catch(error);},setPolling(enabled){pollEnabled=enabled;}};
+    window.AionNative={open,close,command,status,devices,request,projects,saveProject,loadProject,exportWave,importWave,editTake,editGlobal,dropFile,onDrop(paths,x,y){dropFile(paths,x,y).catch(error);},setPolling(enabled){pollEnabled=enabled;}};
     controls(false);draw([]);projects().catch(error);devices().catch(error);window.dispatchEvent(new Event('aion-native-ready'));
 })();

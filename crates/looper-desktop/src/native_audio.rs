@@ -14,32 +14,51 @@ use std::time::{Duration, Instant};
 const HISTORY_FRAMES: usize = 8_000_000;
 #[derive(Default)]
 struct EditHistory {
-    undo: VecDeque<(usize, Vec<looper_core::Frame>)>,
-    redo: VecDeque<(usize, Vec<looper_core::Frame>)>,
+    undo: VecDeque<(usize, Vec<looper_core::Frame>, bool)>,
+    redo: VecDeque<(usize, Vec<looper_core::Frame>, bool)>,
 }
 impl EditHistory {
     fn clear_track(&mut self, track: usize) {
-        self.undo.retain(|(t, _)| *t != track);
-        self.redo.retain(|(t, _)| *t != track);
+        self.undo.retain(|(t, _, _)| *t != track);
+        self.redo.retain(|(t, _, _)| *t != track);
+    }
+    fn target(&self, redo: bool) -> Option<usize> {
+        if redo {
+            self.redo
+                .iter()
+                .rev()
+                .find(|entry| entry.2)
+                .map(|entry| entry.0)
+        } else {
+            self.undo.back().map(|entry| entry.0)
+        }
+    }
+    fn new_edit(&mut self, track: usize) {
+        self.redo.retain(|entry| entry.0 != track);
+        // Match the reference: a new edit clears global redo while other loops'
+        // per-loop redo buffers remain available through their own controls.
+        for entry in &mut self.redo {
+            entry.2 = false;
+        }
     }
     fn count(&self, track: usize, redo: bool) -> usize {
         (if redo { &self.redo } else { &self.undo })
             .iter()
-            .filter(|(t, _)| *t == track)
+            .filter(|(t, _, _)| *t == track)
             .count()
     }
     fn push(&mut self, track: usize, audio: Vec<looper_core::Frame>, redo: bool) {
         let stack = if redo { &mut self.redo } else { &mut self.undo };
-        stack.push_back((track, audio));
-        while stack.iter().filter(|(t, _)| *t == track).count() > 5 {
-            let index = stack.iter().position(|(t, _)| *t == track).unwrap();
+        stack.push_back((track, audio, true));
+        while stack.iter().filter(|(t, _, _)| *t == track).count() > 5 {
+            let index = stack.iter().position(|(t, _, _)| *t == track).unwrap();
             stack.remove(index);
         }
         while self
             .undo
             .iter()
             .chain(&self.redo)
-            .map(|(_, a)| a.len())
+            .map(|(_, a, _)| a.len())
             .sum::<usize>()
             > HISTORY_FRAMES
         {
@@ -420,25 +439,36 @@ impl Service {
             .ok_or("Native audio session is closed or replaced.")?;
         match r.operation.as_str() {
             "engine_edit" => {
-                if r.track >= h.tracks
-                    || !matches!(r.command.as_str(), "normalize" | "undo" | "redo")
-                {
+                if !matches!(
+                    r.command.as_str(),
+                    "normalize" | "undo" | "redo" | "global_undo" | "global_redo"
+                ) {
                     return Err("Invalid native edit.".into());
                 }
-                if h.source.controller().status().tracks[r.track].state
-                    != looper_core::State::Stopped
+                let redo = matches!(r.command.as_str(), "redo" | "global_redo");
+                let track = if r.command.starts_with("global_") {
+                    h.history
+                        .target(redo)
+                        .ok_or("No global native edit or punch pass to restore.")?
+                } else {
+                    r.track
+                };
+                if track >= h.tracks {
+                    return Err("Invalid native track.".into());
+                }
+                if h.source.controller().status().tracks[track].state != looper_core::State::Stopped
                 {
                     return Err(
                         "Stop the target loop before editing; other loops can keep playing.".into(),
                     );
                 }
                 let mut takes = h.source.controller().snapshot(project::MAX_FRAMES)?;
-                let current = std::mem::take(&mut takes[r.track].audio);
+                let current = std::mem::take(&mut takes[track].audio);
                 drop(takes);
                 if current.is_empty() || current.len() > HISTORY_FRAMES {
                     return Err("Take is empty or exceeds the native editing history limit (8 million frames).".into());
                 }
-                let redo = r.command == "redo";
+
                 let mut normalized = Vec::new();
                 let index;
                 let audio = if r.command == "normalize" {
@@ -456,12 +486,12 @@ impl Service {
                     };
                     let i = stack
                         .iter()
-                        .rposition(|(t, _)| *t == r.track)
+                        .rposition(|(t, _, _)| *t == track)
                         .ok_or("No native edit or punch pass to restore.")?;
                     index = Some(i);
                     &stack[i].1
                 };
-                h.source.controller().begin_edit(r.track, audio)?;
+                h.source.controller().begin_edit(track, audio)?;
                 finish_replacement(&mut h.source)?;
                 if let Some(i) = index {
                     let stack = if redo {
@@ -470,12 +500,12 @@ impl Service {
                         &mut h.history.undo
                     };
                     stack.remove(i);
-                    h.history.push(r.track, current, !redo);
+                    h.history.push(track, current, !redo);
                 } else {
-                    h.history.redo.retain(|(t, _)| *t != r.track);
-                    h.history.push(r.track, current, false);
+                    h.history.new_edit(track);
+                    h.history.push(track, current, false);
                 }
-                Ok(json!({"changed":true}))
+                Ok(json!({"changed":true,"track":track}))
             }
             "engine_project_import" => {
                 if r.track >= h.tracks {
@@ -579,7 +609,7 @@ impl Service {
             "engine_status" => {
                 let s = h.source.controller().status();
                 Ok(
-                    json!({"transport":"native-duplex","web_audio":false,"info":h.info,"frames":s.frames,"underruns":s.underruns,
+                    json!({"transport":"native-duplex","web_audio":false,"history":{"undo_track":h.history.target(false),"redo_track":h.history.target(true)},"info":h.info,"frames":s.frames,"underruns":s.underruns,
                 "discontinuities":s.discontinuities,"command_errors":s.command_errors,"stream_errors":s.stream_errors,"malformed_blocks":s.malformed,
                 "input_peak":s.input_peak,"output_peak":s.output_peak,"callback_frames":s.callback_frames,
                 "capture":{"frames":s.capture.frames,"dropped_frames":s.capture.dropped_frames,"errors":s.capture.stream_errors,"nonfinite_samples":s.capture.nonfinite_samples,"malformed_blocks":s.capture.malformed_blocks},
@@ -678,8 +708,11 @@ impl Service {
                 {
                     h.history.clear_track(r.track);
                 }
+                if punch && before_punch.is_none() {
+                    h.history.new_edit(r.track);
+                }
                 if let Some(audio) = before_punch {
-                    h.history.redo.retain(|(track, _)| *track != r.track);
+                    h.history.new_edit(r.track);
                     h.history.push(r.track, audio, false);
                 }
                 match control {
@@ -1083,6 +1116,137 @@ mod tests {
         assert_eq!(edit(&mut s, token, "undo")["ok"], false);
         s.shutdown();
     }
+    fn edit_track(service: &mut Service, token: u64, track: usize, command: &str) -> Value {
+        let mut r = request("engine_edit", token);
+        r.track = track;
+        r.command = command.into();
+        service.execute(r)
+    }
+    #[test]
+    fn global_history_uses_rust_order_and_keeps_local_and_global_redo_consistent() {
+        let mut s = Service::new(true);
+        let token = s.execute(request("engine_open", 0))["value"]["token"]
+            .as_u64()
+            .unwrap();
+        blocks(&mut s, 1);
+        for track in 0..2 {
+            s.handle
+                .as_mut()
+                .unwrap()
+                .source
+                .controller()
+                .begin_import(track, &[[0.125, -0.25]; 256])
+                .unwrap();
+            blocks(&mut s, 1);
+            s.handle
+                .as_mut()
+                .unwrap()
+                .source
+                .controller()
+                .finish_import()
+                .unwrap()
+                .unwrap();
+        }
+        assert_eq!(edit(&mut s, token, "global_undo")["ok"], false);
+        let original = pcm(&mut s);
+        for track in 0..2 {
+            assert_eq!(edit_track(&mut s, token, track, "normalize")["ok"], true);
+        }
+        let normalized = pcm(&mut s);
+        let status = s.execute(request("engine_status", token));
+        assert_eq!(status["value"]["history"]["undo_track"], 1);
+        // Global commands ignore a caller's track: the worker chooses the latest entry.
+        let undone = edit_track(&mut s, token, usize::MAX, "global_undo");
+        assert_eq!(undone["ok"], true);
+        assert_eq!(undone["value"]["track"], 1);
+        assert_eq!(pcm(&mut s)[1], original[1]);
+        assert_eq!(edit_track(&mut s, token, 0, "undo")["ok"], true);
+        let status = s.execute(request("engine_status", token));
+        assert!(status["value"]["history"]["undo_track"].is_null());
+        assert_eq!(status["value"]["history"]["redo_track"], 0);
+        for track in 0..2 {
+            assert_eq!(edit(&mut s, token, "global_redo")["value"]["track"], track);
+        }
+        assert_eq!(pcm(&mut s), normalized);
+        assert_eq!(edit(&mut s, token, "global_undo")["value"]["track"], 1);
+        assert_eq!(edit_track(&mut s, token, 0, "undo")["ok"], true);
+        assert_eq!(edit_track(&mut s, token, 0, "normalize")["ok"], true);
+        assert_eq!(
+            edit(&mut s, token, "global_redo")["ok"],
+            false,
+            "new edit clears the global redo timeline"
+        );
+        assert_eq!(
+            s.handle.as_ref().unwrap().history.count(1, true),
+            1,
+            "other loop keeps its local redo like the original UI"
+        );
+        assert_eq!(edit_track(&mut s, token, 1, "redo")["ok"], true);
+        assert_eq!(pcm(&mut s), normalized);
+        let mut clear = request("engine_control", token);
+        clear.track = 1;
+        clear.command = "clear".into();
+        s.execute(clear);
+        blocks(&mut s, 1);
+        assert_eq!(
+            s.execute(request("engine_status", token))["value"]["history"]["undo_track"],
+            0,
+            "removed loop cannot remain the global target"
+        );
+        control(&mut s, token, "play", 0.0);
+        assert_eq!(
+            edit(&mut s, token, "global_undo")["ok"],
+            false,
+            "playing target rejected without consuming history"
+        );
+        assert_eq!(s.handle.as_ref().unwrap().history.target(false), Some(0));
+        control(&mut s, token, "stop", 0.0);
+        let mut capture = request("engine_control", token);
+        capture.track = 1;
+        capture.command = "record".into();
+        s.execute(capture);
+        blocks(&mut s, 1);
+        assert_eq!(
+            edit(&mut s, token, "global_undo")["ok"],
+            false,
+            "active capture prevents snapshots without consuming history"
+        );
+        let mut finish = request("engine_control", token);
+        finish.track = 1;
+        finish.command = "finish".into();
+        s.execute(finish);
+        blocks(&mut s, 1);
+        assert_eq!(edit(&mut s, token, "global_undo")["value"]["track"], 0);
+        assert_eq!(pcm(&mut s)[0], original[0]);
+        s.shutdown();
+        let fresh = s.execute(request("engine_open", 0))["value"]["token"]
+            .as_u64()
+            .unwrap();
+        assert_eq!(
+            edit(&mut s, fresh, "global_redo")["ok"],
+            false,
+            "session history is never resurrected"
+        );
+    }
+    #[test]
+    fn global_targets_follow_step_and_pcm_budget_eviction() {
+        let mut history = EditHistory::default();
+        for track in [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0] {
+            history.push(track, vec![[0.0; 2]; 1], false);
+        }
+        assert_eq!(history.count(0, false), 5);
+        assert_eq!(history.target(false), Some(0));
+        history.clear_track(0);
+        assert_eq!(history.target(false), Some(1));
+        history.push(2, vec![[0.0; 2]; HISTORY_FRAMES], true);
+        assert_eq!(history.target(false), None);
+        assert_eq!(history.target(true), Some(2));
+        history.new_edit(3);
+        assert_eq!(history.target(true), None);
+        assert_eq!(history.count(2, true), 1);
+        history.clear_track(2);
+        assert_eq!(history.target(true), None);
+    }
     #[test]
     fn history_caps_steps_and_total_pcm_across_both_stacks() {
         let mut history = EditHistory::default();
@@ -1098,7 +1262,7 @@ mod tests {
                 .undo
                 .iter()
                 .chain(&history.redo)
-                .map(|(_, a)| a.len())
+                .map(|(_, a, _)| a.len())
                 .sum::<usize>(),
             HISTORY_FRAMES
         );

@@ -115,6 +115,20 @@ window.addEventListener('aion-native-ready',async()=>{
             await editButton('UNDO').onclick();await until(s=>s.tracks[1].redo===1&&s.tracks[1].undo===0);
             await editButton('REDO').onclick();await until(s=>s.tracks[1].undo===1&&s.tracks[1].redo===0);
             checks.push('Original NORM, UNDO and REDO controls edit native PCM without WebAudio');
+            const globalUndo=document.getElementById('btnGlobalUndo'),globalRedo=document.getElementById('btnGlobalRedo');
+            assert(!globalUndo.disabled&&globalUndo.textContent==='UNDO L2','Original master UNDO names the latest native loop');
+            const localCount=(await api.status()).tracks[1].undo;
+            await globalUndo.onclick();await until(s=>s.tracks[1].undo===localCount-1&&s.history.redo_track===1);
+            assert(globalRedo.textContent==='REDO L2'&&!globalRedo.disabled,'Global undo updates the original REDO target');
+            await globalRedo.onclick();await until(s=>s.tracks[1].undo===localCount&&s.history.undo_track===1);
+            document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true}));await until(s=>s.tracks[1].undo===localCount-1&&!globalRedo.disabled);
+            document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'z',metaKey:true,shiftKey:true,bubbles:true,cancelable:true}));await until(s=>s.tracks[1].undo===localCount&&!globalUndo.disabled);
+            checks.push('Ctrl/Cmd+Z and Shift+Z share Rust global undo and redo');
+            const textUndo=new KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});document.getElementById('projectName').dispatchEvent(textUndo);
+            assert(!textUndo.defaultPrevented&&(await api.status()).tracks[1].undo===localCount,'Text-field undo stays in the text field');
+            await api.command('play',1);await until(s=>s.tracks[1].state==='playing');assert(globalUndo.disabled&&globalUndo.textContent==='UNDO L2','Playing global target is identified but disabled until stopped');
+            await api.command('stop',1);await until(s=>s.tracks[1].state==='stopped'&&!globalUndo.disabled);
+
             savedProject=await api.saveProject();assert(savedProject.saved&&savedProject.project.endsWith('.aion'),'Original project save writes a native Rust project');
             const list=await api.projects();assert(list.projects.includes(savedProject.project),'Native saved project is listed for reopening');
         }
@@ -122,6 +136,7 @@ window.addEventListener('aion-native-ready',async()=>{
         await api.close();checks.push('Native close releases both streams');
         const reopened=await api.open(configuration);assert(reopened.token!==opened.token,'Reopened native audio uses a fresh owner token');
         const fresh=await until(s=>s.frames>0);assert(fresh.tracks.every(track=>track.length===0),'Both streams reopen with a fresh native session');
+        assert(document.getElementById('btnGlobalUndo').disabled&&document.getElementById('btnGlobalRedo').disabled,'Closing audio clears both original global history controls');
         await api.close();
         if(savedProject){
             await api.loadProject(savedProject.project);const loaded=await api.open(configuration);const restored=await until(s=>s.frames>0);
