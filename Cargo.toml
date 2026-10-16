@@ -11,3 +11,6 @@ repository = "https://github.com/jorgesalgueiro/Aion-Looper"
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+[patch.crates-io]
+asio-sys = { path = "vendor/asio-sys" }

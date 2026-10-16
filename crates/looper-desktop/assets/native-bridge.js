@@ -19,10 +19,24 @@
             if (response.session != null && response.session !== session) return;
             if (response.kind === 'native_input') { if(response.session===session)window.RustLooper.onInputEvent?.(response); return; }
             if (response.kind === 'native_midi') { window.RustLooper.onMidiEvent?.(response); return; }
+            if(response.kind==='native_pcm_chunk') {
+                const request=pending.get(response.id);
+                if(!request||response.session!==session)return;
+                if(!Number.isInteger(response.total)||response.total<1||response.total>326
+                    ||response.index!==(request.parts?.length||0)||typeof response.pcm!=='string'||response.pcm.length>32768
+                    ||(request.partTotal!==undefined&&request.partTotal!==response.total)) {
+                    pending.delete(response.id);clearTimeout(request.timer);request.reject(new Error('Invalid native PCM chunks.'));return;
+                }
+                request.partTotal=response.total;(request.parts ||= []).push(response.pcm);return;
+            }
             const request = pending.get(response.id);
             if (!request) return;
             pending.delete(response.id);
             clearTimeout(request.timer);
+            if(response.value?.pcm_parts!==undefined) {
+                if(response.value.pcm_parts!==request.partTotal||request.parts?.length!==request.partTotal){request.reject(new Error('Incomplete native PCM chunks.'));return;}
+                response.value.pcm=request.parts.join('');delete response.value.pcm_parts;
+            }
             if (response.ok) request.resolve(response.value);
             else request.reject(new Error(response.error));
         }
@@ -51,6 +65,23 @@
         }
         return new Promise(resolve=>{yielding.push(resolve);yieldChannel.port2.postMessage(0);});
     }
+    window.RustLooper.yieldInput = yieldInput;
+    window.RustLooper.waveformPeaks = async function(buffer,width=720) {
+        if(!buffer)return null;
+        const channels=Array.from({length:buffer.numberOfChannels||1},(_,c)=>buffer.getChannelData(c));
+        const length=channels[0].length,step=Math.ceil(length/width),peaks=new Float32Array(width);
+        let work=0;
+        for(let i=0;i<width;i++) {
+            let max=0;
+            for(let j=0;j<step;j++) {
+                const index=i*step+j;
+                if(index<length)for(const channel of channels){const value=Math.abs(channel[index]);if(value>max)max=value;}
+                if(++work%8192===0)await yieldInput();
+            }
+            peaks[i]=max;
+        }
+        return peaks;
+    };
     async function packResponsive(buffer) {
         const left=buffer.getChannelData(0),right=buffer.getChannelData(buffer.numberOfChannels===1?0:1);
         const bytes=new Uint8Array(buffer.length*8),data=new DataView(bytes.buffer);
@@ -562,6 +593,7 @@
             }
             // The generated fallback is the original DSP region, with frozen
             // settings and private captured PCM. Device/session state stays live.
+            await yieldInput();
             return fallback(take, buffer => {
                 if (latency<.0001) return buffer;
                 const next=context.createBuffer(buffer.numberOfChannels,buffer.length,buffer.sampleRate);

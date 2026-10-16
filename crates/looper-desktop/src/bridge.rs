@@ -86,6 +86,32 @@ pub(crate) fn encode_pcm(frames: &[Frame]) -> String {
     }
     STANDARD.encode(bytes)
 }
+/// Serialize bulk DSP responses off the UI thread and bound each script payload.
+pub fn encode_replies(mut response: Value) -> Vec<String> {
+    let mut replies = Vec::new();
+    if let Some(pcm) = response["value"]
+        .as_object_mut()
+        .and_then(|value| value.remove("pcm"))
+    {
+        if let Some(encoded) = pcm.as_str().filter(|pcm| pcm.len() > 65536) {
+            let total = encoded.len().div_ceil(32768);
+            for (index, chunk) in encoded.as_bytes().chunks(32768).enumerate() {
+                replies.push(
+                    serde_json::to_string(&json!({"kind":"native_pcm_chunk",
+                    "id":response["id"],"session":response["session"],"index":index,"total":total,
+                    "pcm":std::str::from_utf8(chunk).expect("encoded PCM is ASCII")}))
+                    .unwrap(),
+                );
+            }
+            response["value"]["pcm_parts"] = json!(total);
+        } else {
+            response["value"]["pcm"] = pcm;
+        }
+    }
+    replies.push(serde_json::to_string(&response).unwrap());
+    replies
+}
+
 pub fn execute(mut request: Request) -> Value {
     let binary = request.pcm.is_some();
     let result = (|| -> Result<Value, String> {
@@ -681,4 +707,32 @@ fn captured_append_preserves_original_prefix_and_rejects_invalid_payloads() {
     let mut invalid = request();
     invalid.take_pcm = Some(encode_pcm(&vec![[0.0; 2]; MAX_FRAMES]));
     assert_eq!(execute(invalid)["ok"], false);
+}
+
+#[test]
+fn bulk_dsp_replies_preserve_identity_and_bound_script_payloads() {
+    let pcm = "ABCD".repeat(25000);
+    let encoded = encode_replies(
+        json!({"id":7,"session":"document","ok":true,"value":{"pcm":pcm,"length":12500}}),
+    );
+    assert_eq!(encoded.len(), 5);
+    let mut restored = String::new();
+    for (index, text) in encoded[..4].iter().enumerate() {
+        assert!(text.len() < 33000);
+        let part: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(part["index"], index);
+        assert_eq!(part["total"], 4);
+        assert_eq!(part["id"], 7);
+        assert_eq!(part["session"], "document");
+        restored.push_str(part["pcm"].as_str().unwrap());
+    }
+    assert_eq!(restored, pcm);
+    let end: Value = serde_json::from_str(encoded.last().unwrap()).unwrap();
+    assert_eq!(end["value"]["pcm_parts"], 4);
+    assert!(end["value"]["pcm"].is_null());
+    let small = json!({"id":8,"ok":true,"value":{"pcm":"AAAA"}});
+    assert_eq!(
+        serde_json::from_str::<Value>(&encode_replies(small.clone())[0]).unwrap(),
+        small
+    );
 }

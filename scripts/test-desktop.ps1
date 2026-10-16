@@ -1,4 +1,4 @@
-param([switch]$PhysicalInput)
+param([switch]$PhysicalInput,[string]$AsioDriver,[ValidateRange(1,60)][double]$Seconds=1.5)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $packagePath = Join-Path $projectRoot 'dist\Aion-Looper-Windows'
@@ -9,11 +9,18 @@ $reportName = if ($PhysicalInput) { 'physical-input-standalone' } else { 'deskto
 $reportPath = Join-Path $reportDirectory ($reportName + '.json')
 if (Test-Path -LiteralPath $reportPath) { Remove-Item -LiteralPath $reportPath }
 if ($PhysicalInput) { Write-Output 'Testing physical microphone briefly: output muted, captured audio discarded.' }
+$testArguments = @($testMode,('"' + $reportPath + '"'))
+if ($AsioDriver) {
+    if (!$PhysicalInput) { throw '-AsioDriver requires -PhysicalInput.' }
+    $testArguments += @('--input-host','ASIO','--input-device',('"'+$AsioDriver+'"'))
+}
+$testArguments += @('--input-test-seconds',$Seconds.ToString([Globalization.CultureInfo]::InvariantCulture))
 $desktopProcess = Start-Process -FilePath (Join-Path $packagePath 'Aion-Looper.exe') `
-    -ArgumentList @($testMode,('"' + $reportPath + '"')) `
+    -ArgumentList $testArguments `
     -WorkingDirectory $packagePath -WindowStyle Hidden -Wait -PassThru `
     -RedirectStandardOutput (Join-Path $reportDirectory ($reportName + '-stdout.log')) `
     -RedirectStandardError (Join-Path $reportDirectory ($reportName + '-stderr.log'))
 if (!(Test-Path -LiteralPath $reportPath)) { throw 'Desktop exited without a test report. Inspect its stderr log.' }
 Get-Content -LiteralPath $reportPath
 if ($desktopProcess.ExitCode -ne 0) { throw "Desktop test failed; inspect $reportPath and its stderr log." }
+exit 0

@@ -18,6 +18,7 @@ use wry::{PermissionKind, PermissionResponse};
 use wry::{WebContext, WebViewBuilder};
 enum UiEvent {
     Reply(Value),
+    EncodedReply(String),
     Report(Value),
 }
 pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
@@ -29,6 +30,20 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let argument = |name: &str| {
+        args.windows(2)
+            .find(|pair| pair[0] == name)
+            .map(|pair| pair[1].clone())
+    };
+    let input_selection =
+        json!({"host":argument("--input-host"),"device":argument("--input-device")});
+    let input_test_seconds: f64 = argument("--input-test-seconds")
+        .unwrap_or_else(|| "1.5".into())
+        .parse()
+        .map_err(|_| "Invalid input test duration.")?;
+    if !input_test_seconds.is_finite() || !(1.0..=60.0).contains(&input_test_seconds) {
+        return Err("Input test duration must be between 1 and 60 seconds.".into());
+    }
     let profile = if let Some(path) = &test_report {
         path.parent()
             .unwrap_or(std::path::Path::new("."))
@@ -127,11 +142,13 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     let reply_proxy = proxy.clone();
     std::thread::spawn(move || {
         while let Ok(request) = receiver.recv() {
-            if reply_proxy
-                .send_event(UiEvent::Reply(bridge::execute(request)))
-                .is_err()
-            {
-                break;
+            for reply in bridge::encode_replies(bridge::execute(request)) {
+                if reply_proxy
+                    .send_event(UiEvent::EncodedReply(reply))
+                    .is_err()
+                {
+                    return;
+                }
             }
         }
     });
@@ -240,6 +257,9 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 builder.with_additional_browser_args("--autoplay-policy=no-user-gesture-required");
         }
     }
+    builder = builder.with_initialization_script(format!(
+        "window.AionNativeInputSelection={input_selection};window.AionInputTestSeconds={input_test_seconds};"
+    ));
     if test_report.is_some() {
         builder = builder.with_initialization_script(if input_smoke {
             include_str!("../assets/input-smoke-test.js")
@@ -259,7 +279,13 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 .ok_or("Missing GTK content container.")?,
         )?
     };
-    let deadline = Instant::now() + Duration::from_secs(45);
+    let deadline = Instant::now()
+        + Duration::from_secs(45)
+        + if input_smoke {
+            Duration::from_secs_f64(input_test_seconds)
+        } else {
+            Duration::ZERO
+        };
     event_loop.run(move |event, _, flow| {
         *flow = if test_report.is_some() {
             ControlFlow::WaitUntil(deadline)
@@ -271,6 +297,9 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 event: WindowEvent::CloseRequested,
                 ..
             } => *flow = ControlFlow::Exit,
+            Event::UserEvent(UiEvent::EncodedReply(value)) => {
+                let _ = webview.evaluate_script(&format!("window.RustLooper?.receive({value});"));
+            }
             Event::UserEvent(UiEvent::Reply(value)) => {
                 let _ = webview.evaluate_script(&format!("window.RustLooper?.receive({value});"));
             }

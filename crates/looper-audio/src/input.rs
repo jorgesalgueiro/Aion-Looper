@@ -53,18 +53,28 @@ pub fn open(sample_rate: u32, options: &Options, ring_frames: usize) -> Result<L
     let (writer, reader) = capture::connect(ring_frames)?;
     let host = host(options.host.as_deref())?;
     let device = if let Some(selection) = &options.device {
-        let matches: Vec<_> = host
-            .input_devices()
-            .map_err(|e| format!("Enumerate input: {e}"))?
-            .filter(|device| {
-                device.to_string() == *selection
-                    || device.id().is_ok_and(|id| id.to_string() == *selection)
-            })
-            .collect();
-        if matches.len() != 1 {
-            return Err("Input device must match one unique name or device ID.".into());
+        if host.id().name().eq_ignore_ascii_case("ASIO") {
+            // ASIO names are registry keys. Stop at the selected driver instead
+            // of loading every following driver before creating its stream.
+            host.input_devices()
+                .map_err(|e| format!("Enumerate ASIO input: {e}"))?
+                .find(|device| device.to_string() == *selection
+                    || device.id().is_ok_and(|id| id.to_string() == *selection))
+                .ok_or("Selected ASIO input driver could not be opened. Check its control panel, connected interface and other applications using it.")?
+        } else {
+            let matches: Vec<_> = host
+                .input_devices()
+                .map_err(|e| format!("Enumerate input: {e}"))?
+                .filter(|device| {
+                    device.to_string() == *selection
+                        || device.id().is_ok_and(|id| id.to_string() == *selection)
+                })
+                .collect();
+            if matches.len() != 1 {
+                return Err("Input device must match one unique name or device ID.".into());
+            }
+            matches.into_iter().next().unwrap()
         }
-        matches.into_iter().next().unwrap()
     } else {
         host.default_input_device()
             .ok_or("No default input device.")?

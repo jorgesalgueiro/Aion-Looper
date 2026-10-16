@@ -242,3 +242,17 @@ test('failed push handshake rejects opening and releases its native stream',asyn
     assert.equal(h.input.status().length,0);
     assert.equal(h.calls.at(-1).operation,'input_close');
 });
+
+
+test('explicit device selection overrides the launch ASIO driver and default input uses it',async()=>{
+    const h=transport();
+    h.window.AionNativeInputSelection={host:'ASIO',device:'TOPPING Pro USB Audio Device'};
+    const stream=await h.input.getStream({audio:{}});
+    assert.equal(h.calls[0].host,'ASIO');
+    assert.equal(h.calls[0].device,'TOPPING Pro USB Audio Device');
+    stream.getTracks()[0].stop();
+    await h.input.getStream({audio:{deviceId:{exact:'native:{"host":"WASAPI","device":"other"}'}}});
+    const opens=h.calls.filter(call=>call.operation==='input_open');
+    assert.equal(opens[1].host,'WASAPI');
+    assert.equal(opens[1].device,'other');
+});

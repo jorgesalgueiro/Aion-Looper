@@ -107,3 +107,9 @@ These short trials supersede the earlier failing physical runs for this input
 transport. They do not establish long-session stability or latency. Audio was
 not saved and output remained muted. Direct Linux devices, ASIO/JACK hardware,
 macOS/iOS execution and fully native playback still require verification.
+
+## ASIO follow-up
+
+TOPPING Pro USB Audio Device (E2x2) now opens through ASIO at 48 kHz with 128-frame callbacks. After responsive recorder/finalization/waveform changes, 15- and 30-second physical recordings passed with zero reported underruns/overruns, maximum observed packet gaps 23 and 34 ms respectively. Output was muted and captured audio discarded. The Windows graphical suite passed 131 checks. See ASIO.md for setup, launch, local-package licensing and remaining ASIO output/long-session limits.
+
+The shorter Rust-finalization path initially reproduced additional gaps. Moving bulk DSP reply serialization off the UI thread and splitting replies into 32 KiB PCM parts fixed the reproduced test: a 3-second ASIO recording then passed with zero reported gaps (34 ms maximum packet gap). All 97 desktop JavaScript tests passed, including exact chunk reassembly, stale-session/order rejection, responsive long fallback and waveform parity.

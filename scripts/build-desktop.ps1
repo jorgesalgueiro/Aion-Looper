@@ -45,5 +45,6 @@ try {
     Copy-Item -LiteralPath $midiLicense.FullName -Destination (Join-Path $packagePath 'midir-LICENSE.txt')
     Copy-Item -LiteralPath 'crates\looper-desktop\assets\vendor\SoundTouch-LICENSE.txt' -Destination $packagePath
     Copy-Item -LiteralPath 'docs\DESKTOP_PREVIEW.txt' -Destination (Join-Path $packagePath 'README.txt')
+    @("ASIO=$($Asio.IsPresent)","JACK=$($Jack.IsPresent)") | Set-Content -LiteralPath (Join-Path $packagePath 'BUILD_FEATURES.txt') -Encoding utf8NoBOM
     Write-Output "Desktop app built at $packagePath\Aion-Looper.exe"
 } finally { Pop-Location }

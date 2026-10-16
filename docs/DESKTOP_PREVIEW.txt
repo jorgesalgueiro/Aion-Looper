@@ -89,3 +89,5 @@ loop and press STOP. MON connects input to the recording bus and speakers;
 headphones avoid feedback. The original gain, pan and L/R/ST controls remain.
 Audible monitoring, transport latency, MIDI controllers, project dialogs, every DSP
 setting, JACK/ASIO and long live sessions still need further device testing.
+
+ASIO update: an ASIO-enabled local build has now captured physical TOPPING/E2x2 input at 48 kHz with 128-frame callbacks. Corrected short native-finalization and 15/30-second long-take tests pass without reported transport gaps. See ASIO.md in the ASIO local package for driver selection and limits. The public preview through 20261016.3 remains WASAPI-only. Playback still uses Web Audio.

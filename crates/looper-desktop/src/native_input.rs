@@ -184,6 +184,15 @@ impl Service {
                 }
                 let mut devices = Vec::new();
                 for host in device::available_hosts() {
+                    #[cfg(all(target_os = "windows", feature = "asio"))]
+                    if host.eq_ignore_ascii_case("ASIO") {
+                        for name in device::asio_input_names() {
+                            devices.push(
+                                json!({"host":host,"device":format!("asio:{name}"),"label":name}),
+                            );
+                        }
+                        continue;
+                    }
                     if let Ok(entries) = device::devices(Some(&host)) {
                         for entry in entries
                             .into_iter()

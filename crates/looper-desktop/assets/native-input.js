@@ -7,7 +7,7 @@
         const context = state.audioContext;
         if (!context || context.state === 'closed') throw new Error('Audio context is not available.');
         const selected = constraints.audio?.deviceId?.exact;
-        let selection = {};
+        let selection = {...window.AionNativeInputSelection};
         if (selected && selected !== 'default') {
             if (!selected.startsWith('native:')) throw new Error('Select a native input device from the device list.');
             selection = JSON.parse(selected.slice(7));

@@ -6,6 +6,9 @@ First-recording finalization now yields during PCM transfer; short physical test
 pass without new reported gaps. See [verification and limits](docs/RECORDING_TRANSFER.md).
 Build a verified ZIP with `scripts/package-windows.ps1`.
 
+ASIO capture is now tested locally with the TOPPING/E2x2 driver. The public
+preview above still uses WASAPI; see [ASIO build and launch instructions](docs/ASIO.md).
+
 Native Rust migration of Jorge Salgueiro's Ascii-Looper. Targets: Linux,
 Windows, macOS and iOS, with JACK and ASIO support on appropriate desktop hosts.
 Plugin targets are VST3 instrument and CLAP on desktop, plus LV2 on Linux, with

@@ -1054,3 +1054,49 @@ test('input push events require the exact document session and bypass RPC replie
     assert.equal(events.length,1);
     assert.equal(events[0].session,sent.session);
 });
+
+test('long recording fallback yields during DC removal and matches original sample arithmetic',async()=>{
+    const reference=harness(true);actualRecording(reference,false,{latency:0});
+    const original=buffer(2,500001,1000);reference.context.actualLoops.createBufferFromChunks=()=>original;
+    await reference.context.actualLoops.processRecordedData([{}],0,0);
+    const h=harness(true);actualRecording(h,true,{latency:0});
+    const raw=buffer(2,500001,1000);h.context.actualLoops.createBufferFromChunks=()=>raw;
+    let ticks=0;const timer=setInterval(()=>ticks++,1);
+    try {
+        await h.context.actualLoops.processRecordedData([{}],0,0);
+        assert.ok(ticks>5,'input tasks ran during long fallback processing');
+        assert.equal(h.messages.length,0,'oversized transfer retains the bounded native limit');
+        for(let c=0;c<2;c++)assert.deepEqual(h.loop.audioBuffer.getChannelData(c),reference.loop.audioBuffer.getChannelData(c));
+    }finally{clearInterval(timer);}
+});
+
+test('responsive waveform peaks match the original generator for wide and partial buckets',async()=>{
+    const source=fs.readFileSync(path.join(__dirname,'../../../ui/Modules/loopTracks.js'),'utf8');
+    const start=source.indexOf('    static generateWaveformPeaks('),end=source.indexOf('\n    /**',start);
+    const original=vm.runInNewContext('('+source.slice(start,end).trim().replace('static generateWaveformPeaks','function')+')');
+    const h=harness();let ticks=0;const timer=setInterval(()=>ticks++,1);
+    try {
+        for(const channels of [1,2,4]){
+            const raw=buffer(channels,25001);
+            for(let c=0;c<channels;c++)for(let i=0;i<raw.length;i++)raw.getChannelData(c)[i]=Math.sin(i*.13+c)*(.5+c);
+            const expected=original(raw,137),actual=await h.bridge.waveformPeaks(raw,137);
+            assert.deepEqual(Array.from(actual),Array.from(expected));
+        }
+        assert.ok(ticks>0,'waveform scans yield to input tasks');
+    }finally{clearInterval(timer);}
+});
+
+test('chunked native PCM replies require ordered document-scoped parts and reassemble exactly',async()=>{
+    const h=harness();const pending=h.bridge.request('normalize',{}),sent=h.messages[0];
+    const parts=['AAAA','BBBB','CCCC'];
+    h.bridge.receive({kind:'native_pcm_chunk',id:sent.id,session:'old-document',index:0,total:3,pcm:'wrong'});
+    parts.forEach((pcm,index)=>h.bridge.receive({kind:'native_pcm_chunk',id:sent.id,session:sent.session,index,total:3,pcm}));
+    h.bridge.receive({id:sent.id,session:sent.session,ok:true,value:{pcm_parts:3}});
+    assert.equal((await pending).pcm,parts.join(''));
+});
+for(const invalid of ['order','size','incomplete'])test(`chunked reply rejects ${invalid} without resolving partial PCM`,async()=>{
+    const h=harness();const pending=h.bridge.request('normalize',{}),sent=h.messages[0];
+    h.bridge.receive({kind:'native_pcm_chunk',id:sent.id,session:sent.session,index:invalid==='order'?1:0,total:2,pcm:invalid==='size'?'A'.repeat(32769):'AAAA'});
+    if(invalid==='incomplete')h.bridge.receive({id:sent.id,session:sent.session,ok:true,value:{pcm_parts:2}});
+    await assert.rejects(pending,/native PCM chunks/);
+});

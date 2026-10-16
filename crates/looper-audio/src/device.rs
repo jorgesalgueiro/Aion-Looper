@@ -46,6 +46,12 @@ pub fn available_hosts() -> Vec<String> {
         .collect()
 }
 
+/// Registered ASIO names without loading drivers or interrupting active capture.
+#[cfg(all(target_os = "windows", feature = "asio"))]
+pub fn asio_input_names() -> Vec<String> {
+    asio_sys::Asio::new().driver_names()
+}
+
 pub fn devices(host_name: Option<&str>) -> Result<Vec<DeviceInfo>, String> {
     let host = host(host_name)?;
     let host_name = host.id().name().to_owned();

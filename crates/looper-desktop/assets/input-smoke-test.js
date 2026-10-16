@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
         const input = state.inputs[0], track = input?.stream?.getAudioTracks()[0];
         assert(track?.readyState === 'live',`Physical microphone opened: ${InputManager.lastInputError || ''}`);
         assert(!input.monitor,'MON starts off');
+        if(window.AionNativeInputSelection?.host) assert(input.stream.nativeStatus.host===window.AionNativeInputSelection.host,'Requested native host is active');
         assert(input.stream.nativeStatus.delivery==='acknowledged-push','Native input uses acknowledged push delivery');
         const settings = track.getSettings();
         diagnostics.settings = settings;
@@ -33,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
         diagnostics.beforeRecording = beforeRecording;
         assert(track.readyState === 'live' && beforeRecording.frames > 0 && !beforeRecording.error,'Native capture is flowing before recording');
         await LoopManager.startRecording(0);
-        await wait(1500);
+        await wait((window.AionInputTestSeconds || 1.5)*1000);
         diagnostics.recordingEnd = {...input.stream.nativeStatus};
         diagnostics.stopTime = state.audioContext.currentTime;
         diagnostics.beforeStopUiGap = maxUiGap;
@@ -42,9 +43,10 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
         const buffer = state.loops[0].audioBuffer;
         assert(buffer?.length > 0,'Physical input recorded through original loop controls');
         let peak = 0;
-        for (let c=0;c<buffer.numberOfChannels;c++) for (const sample of buffer.getChannelData(c)) {
+        for (let c=0;c<buffer.numberOfChannels;c++) for (const [index,sample] of buffer.getChannelData(c).entries()) {
             if (!Number.isFinite(sample)) throw new Error('Non-finite captured audio');
             peak = Math.max(peak,Math.abs(sample));
+            if((index+1)%8192===0)await window.RustLooper.yieldInput();
         }
         assert(true,'Captured PCM is finite');
         await wait(550); // Include the final worklet counter report.

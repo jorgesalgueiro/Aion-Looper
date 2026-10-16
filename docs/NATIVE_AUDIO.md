@@ -141,7 +141,8 @@ Diagnostics are available through `window.RustLooper.input.status()`.
 Build desktop JACK support with `scripts/build-desktop.ps1 -Jack`, or ASIO with
 `-Asio` once its SDK/toolchain requirements are installed. Those hosts appear in
 the existing device selector when available. Desktop JACK compilation is checked;
-ASIO compilation/driver use is not yet verified. The normal package uses WASAPI.
+ASIO capture now builds and has passed local TOPPING/E2x2 recording checks.
+The public preview still uses WASAPI; see ASIO.md for the local build and limits.
 No host output driver is connected to the graphical playback engine yet.
 
 The real WebView2 integration test uses a Rust synthetic source that is enabled
@@ -160,7 +161,7 @@ still require hardware testing.
 | --- | --- | --- |
 | WASAPI | Default Windows build | Enumeration and silent output passed; standalone physical input setup fails on this PC |
 | JACK | `cargo build -p looper-cli --features jack`, then `--host JACK` | Windows GNU compilation checked; server/hardware pending |
-| ASIO | `cargo build -p looper-cli --features asio`, then `--host ASIO` | Feature wiring only; SDK/toolchain build and driver checks pending |
+| ASIO | `cargo build -p looper-cli --features asio`, then `--host ASIO` | Local TOPPING/E2x2 ASIO capture verified; output remains unverified |
 | ALSA/Core Audio | Default Linux/macOS/iOS CPAL builds | CI definitions updated; execution pending |
 
 JACK on Linux needs development files such as `libjack-jackd2-dev`. ASIO needs
