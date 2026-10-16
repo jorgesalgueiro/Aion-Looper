@@ -1,9 +1,10 @@
 Aion Looper graphical migration preview (Windows x64)
 
 Launch Aion-Looper.exe. Keep all supplied DLLs beside it.
-ASIO builds now start the Rust native audio interface by default. See NATIVE_MODE.md.
+ASIO builds now start Rust native audio with the original HTML/CSS and loop controls.
+See NATIVE_MODE.md for supported actions and disabled features.
 Native takes cannot be saved yet and are discarded on close.
-Use Start-Compatibility-Audio.cmd for the original interface described below.
+Use Start-Compatibility-Audio.cmd for the complete legacy behavior described below.
 The executable and window use the original Ascii-Looper favicon.
 Temporary launchers and PowerShell hosting have been removed.
 Physical input opens and records on the tested E2x2/WASAPI interface.

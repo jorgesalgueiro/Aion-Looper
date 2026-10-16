@@ -26,7 +26,9 @@ Build it with `scripts/build-clap.ps1`.
 The [native audio mode](docs/NATIVE_MODE.md) runs ASIO input/output,
 loop recording/playback, monitoring and punch operations entirely in Rust. Launch
 `Start-Native-Audio.cmd` from the local Windows package. Windows ASIO builds also open this mode by default; `Start-Compatibility-Audio.cmd` selects the original interface. This mode has no Web Audio
-engine, but session saving, synths/effects and full interface parity are pending.
+engine. It now reuses the original HTML, stylesheet, ASCII logos and loop controls,
+with supported controls connected to Rust and pending controls disabled. Session
+saving, synths/effects and complete behavior parity are pending.
 
 Run `dist/Aion-Looper-Windows/Aion-Looper.exe`; keep all packaged DLLs beside it.
 Temporary launchers and PowerShell hosting have been removed.

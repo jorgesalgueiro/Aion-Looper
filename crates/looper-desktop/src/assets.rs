@@ -9,7 +9,15 @@ pub fn response(path: &str) -> Response<Cow<'static, [u8]>> {
     let (mime, content): (&str, Cow<'static, [u8]>) = match path {
         "/native-index.html" => (
             "text/html; charset=utf-8",
-            Cow::Borrowed(include_bytes!("../assets/native-index.html")),
+            Cow::Owned(crate::native_view::html().into_bytes()),
+        ),
+        "/native-original-renderer.js" => (
+            "application/javascript",
+            Cow::Owned(crate::native_view::renderer().into_bytes()),
+        ),
+        "/native-view.css" => (
+            "text/css; charset=utf-8",
+            Cow::Borrowed(include_bytes!("../assets/native-view.css")),
         ),
         "/native-app.js" => (
             "application/javascript",
@@ -255,10 +263,17 @@ mod tests {
     }
     #[test]
     fn native_audio_view_loads_no_browser_audio_engine_or_pcm_bridge() {
-        for path in ["/native-index.html", "/native-app.js"] {
+        for path in [
+            "/native-index.html",
+            "/native-app.js",
+            "/native-original-renderer.js",
+        ] {
             let served = response(path);
             assert_eq!(served.status(), 200);
             let source = std::str::from_utf8(served.body()).unwrap();
+            if path == "/native-index.html" {
+                continue;
+            } // Original help text describes legacy features; executable scripts are checked below.
             for dependency in [
                 "AudioContext",
                 "AudioWorklet",

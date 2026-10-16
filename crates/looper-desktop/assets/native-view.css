@@ -1,0 +1,17 @@
+/* Native additions use the original terminal palette and layout. */
+.native-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.native-controls label { display:flex; gap:5px; align-items:center; }
+.native-controls select { max-width:100%; }
+.native-notice { color:#ffaa00; border:1px solid #665000; padding:8px; margin:8px 0; font-size:11px; }
+#error { color:#ff6666; white-space:pre-wrap; }
+#status { color:#88aa88; white-space:pre-wrap; font-size:10px; }
+#startupError:not(:empty) { display:block!important; }
+#driverInfo { max-width:650px!important; color:#ffaa00!important; }
+#startOverlay .native-controls { justify-content:center; margin:8px; }
+#startOverlay { overflow:auto; }
+#startOverlay pre { max-width:95vw; overflow:hidden; }
+.native-pending { opacity:.45; }
+button:disabled, input:disabled, select:disabled { cursor:not-allowed; }
+.loop-track-state { min-width:100px; }
+.native-position { height:3px; background:#113311; margin-top:5px; }
+.native-position > div { height:100%; background:#00ff00; width:0; }

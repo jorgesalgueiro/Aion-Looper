@@ -4,6 +4,7 @@ mod bridge;
 mod native_audio;
 mod native_input;
 mod native_midi;
+mod native_view;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::mpsc::sync_channel;

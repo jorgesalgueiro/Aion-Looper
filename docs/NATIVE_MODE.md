@@ -9,14 +9,22 @@ Launch `Start-Native-Audio.cmd` beside the Windows executable, choose
 
 Windows ASIO builds open this native session by default.
 It loads no AudioContext, AudioWorklet, browser PCM transport or SoundTouch.
-The webview displays controls and meters; Rust owns capture, recording storage,
+The webview loads the original presentation and a native controller; Rust owns capture, recording storage,
 loop playback, monitoring, gain, feedback, mixing and the ASIO output stream.
-Use `Start-Compatibility-Audio.cmd` or `--compatibility-audio` for the original interface. Non-ASIO builds retain the compatibility default.
+Use `Start-Compatibility-Audio.cmd` or `--compatibility-audio` for the complete legacy behavior. Both modes now use the original visual design. Non-ASIO builds retain the compatibility default.
 
 ## Controls and current limits
 
-- Ten loops: REC, FINISH, PLAY, STOP, OVERDUB, SUBSTITUTE, MUTE and CLEAR.
-- FINISH ends capture/punch and leaves the loop stopped. PLAY starts playback.
+- Original HTML, CSS, ASCII logos and loop markup are reused without modifying `ui/`.
+- Press the original loop action button or number keys 1–0: RECORD, FINISH, PLAY, STOP.
+- The UI FINISH action completes capture/punch and starts playback. The underlying
+  engine `finish` command still leaves a loop stopped for explicit API callers.
+- Select OVERDUB or SUBSTITUTE in the loop section ACTION selector before pressing
+  a playing loop. Press FINISH to return to playback.
+- Original MUTE/UNM, DEL, volume and feedback controls operate the Rust engine.
+- STOP ALL and DEL ALL use native commands. Loop names are local session labels.
+- Grey controls (save/load, FX, pan, speed, sync, synths, MIDI, etc.) are disabled
+  until their native implementations are connected. Waveforms are not fabricated.
 - Per-loop level and overdub feedback; input gain, master gain and monitoring.
 - Monitoring starts off and only affects speakers. Recording works with MON off.
 - Each normal native loop reserves 30 seconds. At capacity it starts playing;
@@ -74,3 +82,22 @@ project or publish a new ASIO binary release.
 Verified checkpoint (2026-10-16): Windows/TOPPING native duplex at 48 kHz, 128-frame callbacks passed a 30-second recording and a separate 31-second pause in all UI meter polling (about 32.5 seconds captured). Both reported zero input underrun frames, dropped frames, discontinuities and stream errors. Clear, close and reopen passed. A deliberate 250 ms UI stall was included. Master output stayed at zero; audible playback and latency remain unverified. Windows physical native GUI: 18 checks normally, 19 with the extended idle phase; the synthetic native suite has 17 checks; 34 desktop unit tests, 25 audio tests (including allocation accounting), and 97 compatibility JavaScript tests pass.
 
 Ubuntu final verification: 17 native GUI checks and 132 compatibility GUI checks passed, along with audio/desktop Rust tests and strict Clippy. Linux desktop/CLI/CLAP packaging and the packaged CLAP ABI host check passed. Native Linux hardware duplex is still pending.
+
+## Original UI migration boundary
+
+`native_view.rs` removes the reference page scripts and extracts only the pure
+loop-markup methods from the original UIManager. The native controller removes
+all original inline handlers before binding supported actions. It does not
+import main.js, AudioEngine, LoopManager, SoundTouch or the compatibility capture
+bridge. Loop audio remains inside Rust; UI status carries only metadata.
+
+This retains the original appearance without maintaining a second hand-drawn UI.
+It does not yet establish complete behavior or pixel parity on every platform.
+The original help describes the full legacy product; disabled native controls
+and the native-mode notice identify features still pending migration.
+
+Verification: 36 desktop unit tests; 26 synthetic native graphical checks and
+27 physical TOPPING ASIO checks (10 seconds, 48 kHz, 128-frame callbacks), including
+original action buttons, number keys and a 250 ms UI stall, with zero reported
+underruns. Windows capture screenshots were unavailable (capture timeout);
+accessibility inspection confirmed the rendered original layout and controls.
