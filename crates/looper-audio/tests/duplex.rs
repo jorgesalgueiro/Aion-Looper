@@ -127,3 +127,76 @@ fn native_monitor_starts_off_and_master_zero_is_silent_without_browser_nodes() {
     assert!(output.last().unwrap() > &0.24);
     assert!(output.iter().all(|v| v.is_finite() && v.abs() <= 0.5));
 }
+
+#[test]
+fn checkpoint_snapshots_remain_coherent_during_concurrent_playback_and_reject_capture() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    use std::time::{Duration, Instant};
+    let (mut engine, checkpoint) =
+        looper_core::checkpoint::Checkpoint::prepare(std::array::from_fn(|i| {
+            if i < 2 {
+                100_000
+            } else {
+                0
+            }
+        }))
+        .unwrap();
+    let take = vec![[0.125, -0.25]; 80_000];
+    engine.load_stopped(0, &take).unwrap();
+    checkpoint.publish(&engine);
+    let (mut writer, reader) = capture::connect(1024).unwrap();
+    let (mut controller, mut renderer) =
+        duplex::connect_checkpoint(engine, reader, writer.metrics(), 0.0, Some(checkpoint))
+            .unwrap();
+    control(&mut controller, Command::Play);
+    let done = Arc::new(AtomicBool::new(false));
+    let stop = Arc::clone(&done);
+    let audio = std::thread::spawn(move || {
+        let mut output = [0.0; 256];
+        for _ in 0..2000 {
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+            writer.capture(&[0.125; 256], 2);
+            renderer.render(&mut output, 2);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while controller.status().frames == 0 && Instant::now() < deadline {
+        std::thread::yield_now();
+    }
+    let before = controller.status().frames;
+    let mut coherent = 0;
+    for _ in 0..10 {
+        if let Ok(snapshot) = controller.snapshot(200_000) {
+            assert_eq!(snapshot[0].audio, take);
+            coherent += 1;
+        }
+    }
+    controller
+        .send(Control::Track {
+            track: 1,
+            command: Command::Record,
+        })
+        .unwrap();
+    while controller.status().tracks[1].state != State::Recording && Instant::now() < deadline {
+        std::thread::yield_now();
+    }
+    let rejected = controller.snapshot(200_000).is_err();
+    let after = controller.status().frames;
+    done.store(true, Ordering::Relaxed);
+    audio.join().unwrap();
+    assert!(coherent > 0);
+    assert!(
+        after > before,
+        "Audio must advance while snapshotting on the worker"
+    );
+    assert!(
+        rejected,
+        "Active capture cannot be saved as a completed take"
+    );
+}

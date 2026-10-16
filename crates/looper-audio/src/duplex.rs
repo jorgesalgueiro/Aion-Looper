@@ -2,6 +2,7 @@
 use crate::{capture, device};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, StreamConfig};
+use looper_core::checkpoint::{Checkpoint, Take};
 use looper_core::{Command, Engine, State, TrackStatus, MAX_TRACKS};
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -55,8 +56,18 @@ pub struct Controller {
     producer: Producer<Control>,
     metrics: Arc<Metrics>,
     capture_metrics: Arc<capture::Metrics>,
+    checkpoint: Option<Arc<Checkpoint>>,
 }
 impl Controller {
+    pub fn snapshot(&self, max_frames: usize) -> Result<Vec<Take>, String> {
+        if self.producer.slots() != QUEUE {
+            return Err("Controls are pending. Try saving again.".into());
+        }
+        self.checkpoint.as_ref().ok_or("Snapshots are unavailable")?
+            .snapshot(max_frames, || ()).map(|(takes, ())| takes)
+            .map_err(|_| "Finish recording or punch operations before saving; retry if controls are changing.".into())
+    }
+
     pub fn send(&mut self, control: Control) -> Result<(), String> {
         let valid = match control {
             Control::Track { track, command } => {
@@ -127,6 +138,7 @@ pub struct Renderer {
     input_target: f32,
     next_input: u64,
     input_started: bool,
+    checkpoint: Option<Arc<Checkpoint>>,
 }
 /// Allocate all loop storage and queues before either device stream starts.
 pub fn connect(
@@ -134,6 +146,15 @@ pub fn connect(
     reader: capture::InputReader,
     capture_metrics: Arc<capture::Metrics>,
     gain: f32,
+) -> Result<(Controller, Renderer), String> {
+    connect_checkpoint(engine, reader, capture_metrics, gain, None)
+}
+pub fn connect_checkpoint(
+    engine: Engine,
+    reader: capture::InputReader,
+    capture_metrics: Arc<capture::Metrics>,
+    gain: f32,
+    checkpoint: Option<Arc<Checkpoint>>,
 ) -> Result<(Controller, Renderer), String> {
     if !gain.is_finite() || !(0.0..=4.0).contains(&gain) {
         return Err("Invalid master gain.".into());
@@ -145,6 +166,7 @@ pub fn connect(
             producer,
             metrics: Arc::clone(&metrics),
             capture_metrics,
+            checkpoint: checkpoint.clone(),
         },
         Renderer {
             engine,
@@ -159,6 +181,7 @@ pub fn connect(
             input_target: 1.0,
             next_input: 0,
             input_started: false,
+            checkpoint,
         },
     ))
 }
@@ -169,10 +192,25 @@ impl Renderer {
             self.metrics.malformed.fetch_add(1, Ordering::Relaxed);
             return;
         }
+        // Playback changes phase only, which is deliberately not persisted. Keep
+        // the checkpoint epoch stable during read-only playback so long snapshots
+        // can finish without stopping the device or copying PCM in the callback.
+        let checkpoint = self.checkpoint.clone();
+        let changing = !self.consumer.is_empty()
+            || (0..MAX_TRACKS).any(|i| {
+                matches!(
+                    self.engine.status(i).unwrap().state,
+                    State::Recording | State::Overdubbing | State::Substituting
+                )
+            });
+        let mut transaction = checkpoint.as_ref().filter(|_| changing).map(|c| c.begin());
         for _ in 0..64 {
             let Ok(control) = self.consumer.pop() else {
                 break;
             };
+            if transaction.is_none() {
+                transaction = checkpoint.as_ref().map(|c| c.begin());
+            }
             let result = match control {
                 Control::Track { track, command } => self.engine.command(track, command),
                 Control::FinishStopped { track } => self
@@ -265,6 +303,10 @@ impl Renderer {
         self.metrics
             .frames
             .store(self.engine.clock_frames(), Ordering::Release);
+        if transaction.is_some() {
+            checkpoint.as_ref().unwrap().publish(&self.engine);
+        }
+        drop(transaction);
     }
 }
 #[derive(Debug)]
@@ -311,6 +353,7 @@ fn output<T: SizedSample + FromSample<f32>>(
 }
 pub fn open(
     engine: Engine,
+    checkpoint: Option<Arc<Checkpoint>>,
     rate: u32,
     options: &device::Options,
     gain: f32,
@@ -342,7 +385,8 @@ pub fn open(
     )?;
     let (writer, reader) = capture::connect((rate / 2) as usize)?;
     let capture_metrics = writer.metrics();
-    let (controller, renderer) = connect(engine, reader, capture_metrics, gain)?;
+    let (controller, renderer) =
+        connect_checkpoint(engine, reader, capture_metrics, gain, checkpoint)?;
     let input = match input_format {
         SampleFormat::F32 => crate::input::build::<f32>(&device, input_config, writer),
         SampleFormat::F64 => crate::input::build::<f64>(&device, input_config, writer),

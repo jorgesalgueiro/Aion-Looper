@@ -117,7 +117,7 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Ok(native_audio::Message::Request(request)) => {
                     if engine_proxy
-                        .send_event(UiEvent::Reply(service.execute(request)))
+                        .send_event(UiEvent::Reply(service.execute(*request)))
                         .is_err()
                     {
                         break;
@@ -253,7 +253,7 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 let error=if !native_mode {Some("Restart with --native-audio to use the native engine.")}
                 else if value["operation"]=="engine_open" && authorized.load(Ordering::Acquire)&1==0 {Some("Start audio before opening the native engine.")}
                 else {match serde_json::from_value::<native_audio::Request>(value){
-                    Ok(request)=>if engine_sender.try_send(native_audio::Message::Request(request)).is_ok(){None}else{Some("Native engine queue full.")},
+                    Ok(request)=>if engine_sender.try_send(native_audio::Message::Request(Box::new(request))).is_ok(){None}else{Some("Native engine queue full.")},
                     Err(_)=>Some("Invalid native engine request."),
                 }};
                 if let Some(error)=error{let _=proxy.send_event(UiEvent::Reply(json!({"id":id,"session":session,"ok":false,"error":error})));}

@@ -3,7 +3,8 @@ Aion Looper graphical migration preview (Windows x64)
 Launch Aion-Looper.exe. Keep all supplied DLLs beside it.
 ASIO builds now start Rust native audio with the original HTML/CSS and loop controls.
 See NATIVE_MODE.md for supported actions and disabled features.
-Native takes cannot be saved yet and are discarded on close.
+SAVE PROJ now saves native .aion projects; loop SAVE exports WAV. See NATIVE_PROJECTS.md.
+Save before closing: unsaved native changes are discarded.
 Use Start-Compatibility-Audio.cmd for the complete legacy behavior described below.
 The executable and window use the original Ascii-Looper favicon.
 Temporary launchers and PowerShell hosting have been removed.

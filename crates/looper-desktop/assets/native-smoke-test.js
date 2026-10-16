@@ -17,7 +17,7 @@ window.addEventListener('aion-native-ready',async()=>{
         assert(getComputedStyle(document.body).fontFamily.includes('Courier New'),'Original terminal stylesheet is active');
         assert(!window.AudioEngine&&!window.LoopManager,'Original browser audio runtime is absent');
         assert(![...document.querySelectorAll('*')].some(el=>[...el.attributes].some(a=>a.name.startsWith('on'))),'Original inline audio handlers are removed');
-        assert(document.getElementById('btnSaveProj').disabled&&document.getElementById('loop-pan-slider-0').disabled,'Unmigrated project save and pan controls are disabled');
+        assert(!document.getElementById('btnSaveProj').disabled&&document.getElementById('loop-pan-slider-0').disabled,'Native save is enabled while unmigrated pan remains disabled');
         await until(s=>s.tracks.length===2);
         const action=document.getElementById('loop-action-1');
         action.click();await until(s=>s.tracks[1].state==='recording'&&!action.disabled);await wait(100);
@@ -60,12 +60,26 @@ window.addEventListener('aion-native-ready',async()=>{
         assert(finalStatus.tracks[0].length===captured.tracks[0].length,'Punch operations retain the loop length');
         assert(finalStatus.output_peak===0,'Test master output stays muted');
         assert(!finalStatus.underruns&&!finalStatus.discontinuities&&!finalStatus.stream_errors&&!finalStatus.command_errors&&!finalStatus.capture.dropped_frames&&!finalStatus.capture.errors&&!finalStatus.capture.nonfinite_samples&&!finalStatus.capture.malformed_blocks,'Native duplex reports no input gaps or stream errors');
+        let savedProject=null;
+        if(!window.AionNativeTestPhysical){
+            document.getElementById('projectName').value='AionTest';document.querySelector('#loop-0 .track-name').value='Synthetic voice';document.querySelector('#loop-0 .track-name').dispatchEvent(new Event('input'));
+            const wave=await api.exportWave(0);assert(wave.exported&&wave.file.endsWith('.wav'),'Original loop SAVE exports a native stereo WAV');
+            savedProject=await api.saveProject();assert(savedProject.saved&&savedProject.project.endsWith('.aion'),'Original project save writes a native Rust project');
+            const list=await api.projects();assert(list.projects.includes(savedProject.project),'Native saved project is listed for reopening');
+        }
         await api.command('clear',0);await until(s=>s.tracks[0].state==='empty');checks.push('Native clear releases the take');
         await api.close();checks.push('Native close releases both streams');
         const reopened=await api.open(configuration);assert(reopened.token!==opened.token,'Reopened native audio uses a fresh owner token');
         const fresh=await until(s=>s.frames>0);assert(fresh.tracks.every(track=>track.length===0),'Both streams reopen with a fresh native session');
         await api.close();
-        result={kind:'self_test',ok:true,checks,opened,status:finalStatus,audioSaved:false,uiBlockMs:250,idleSeconds};
+        if(savedProject){
+            await api.loadProject(savedProject.project);const loaded=await api.open(configuration);const restored=await until(s=>s.frames>0);
+            assert(loaded.names[0]==='Synthetic voice'&&document.querySelector('#loop-0 .track-name').value==='Synthetic voice','Native project restores original loop names');
+            assert(restored.tracks[0].length===captured.tracks[0].length&&restored.tracks[0].state==='stopped'&&restored.tracks[0].muted,'Native project restores takes stopped with saved mute');
+            assert(document.getElementById('loop-vol-slider-0').value==='0.5'&&document.getElementById('loop-fbk-slider-0').value==='0.6','Native project restores gain and feedback controls');
+            assert(document.getElementById('monitor').textContent==='MON OFF','Restored project starts with monitoring off');await api.close();
+        }
+        result={kind:'self_test',ok:true,checks,opened,status:finalStatus,audioSaved:false,syntheticProjectSaved:Boolean(savedProject),uiBlockMs:250,idleSeconds};
     }catch(error){result={kind:'self_test',ok:false,checks,error:String(error),stack:error.stack,status:finalStatus};}
     finally{window.AionNative.setPolling(true);try{await window.AionNative.close();}catch(_){}window.ipc.postMessage(JSON.stringify(result));}
 });

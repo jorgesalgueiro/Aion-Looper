@@ -19,7 +19,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $sdkRoot 'LICENSE.txt') -Destination (Join-Path $packagePath 'ASIO-SDK-LICENSE.txt')
         Copy-Item -LiteralPath 'docs/ASIO.md' -Destination $packagePath
     }
-    Copy-Item -LiteralPath 'docs/NATIVE_MODE.md' -Destination $packagePath
+    Copy-Item -LiteralPath 'docs/NATIVE_MODE.md','docs/NATIVE_PROJECTS.md','docs/NATIVE_PARITY.md' -Destination $packagePath
     Copy-Item -LiteralPath 'docs\INPUT_TESTING.md' -Destination $packagePath
     Copy-Item -LiteralPath 'docs\RECORDING_TRANSFER.md' -Destination $packagePath
     $revision = & git rev-parse HEAD

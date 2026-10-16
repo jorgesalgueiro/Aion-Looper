@@ -3,10 +3,16 @@ use looper_audio::{
     capture, device,
     duplex::{self, Control},
 };
-use looper_core::{Command, Engine, MAX_TRACKS};
+use looper_core::{checkpoint::Checkpoint, Command, MAX_TRACKS};
+use looper_files::project::{self, Project};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
+use std::{
+    fs,
+    io::{BufReader, BufWriter, Write},
+    path::PathBuf,
+};
 #[derive(Default, Deserialize)]
 pub struct Request {
     pub id: u64,
@@ -34,9 +40,13 @@ pub struct Request {
     pub command: String,
     #[serde(default)]
     pub synthetic: bool,
+    #[serde(default)]
+    pub project: String,
+    #[serde(default)]
+    pub names: Vec<String>,
 }
 pub enum Message {
-    Request(Request),
+    Request(Box<Request>),
     Shutdown,
 }
 struct Synthetic {
@@ -93,11 +103,16 @@ struct Handle {
     source: Source,
     info: Value,
     tracks: usize,
+    capacity: usize,
+    master: f32,
+    input_gain: f32,
 }
 pub struct Service {
     handle: Option<Handle>,
     sequence: u64,
     allow_synthetic: bool,
+    project_dir: PathBuf,
+    pending: Option<Project>,
 }
 impl Service {
     pub fn new(allow_synthetic: bool) -> Self {
@@ -105,6 +120,16 @@ impl Service {
             handle: None,
             sequence: 0,
             allow_synthetic,
+            project_dir: std::env::current_exe()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .join(if allow_synthetic {
+                    "NativeTestProjects"
+                } else {
+                    "AionProjects"
+                }),
+            pending: None,
         }
     }
     pub fn wait_duration(&self) -> Duration {
@@ -138,6 +163,50 @@ impl Service {
         if r.session.is_empty() || r.session.len() > 128 {
             return Err("Invalid native audio session.".into());
         }
+        if r.operation == "engine_projects" {
+            let mut projects = Vec::new();
+            if self.project_dir.is_dir() {
+                for entry in fs::read_dir(&self.project_dir).map_err(|e| e.to_string())? {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    if entry.file_type().map_err(|e| e.to_string())?.is_file()
+                        && entry.path().extension().is_some_and(|e| e == "aion")
+                    {
+                        if let Some(name) = entry.file_name().to_str() {
+                            projects.push(name.to_owned());
+                        }
+                    }
+                }
+            }
+            projects.sort();
+            projects.reverse();
+            return Ok(json!({"projects":projects,"directory":self.project_dir}));
+        }
+        if r.operation == "engine_project_load" {
+            if self.handle.is_some() {
+                return Err(
+                    "Save your current project and close audio before loading another project."
+                        .into(),
+                );
+            }
+            let path = self.project_dir.join(safe_name(&r.project)?);
+            if path.extension().is_none_or(|ext| ext != "aion") {
+                return Err("Choose a native .aion project.".into());
+            }
+            let file = fs::File::open(path).map_err(|e| format!("Open project: {e}"))?;
+            if file.metadata().map_err(|e| e.to_string())?.len() > 256_016_384 {
+                return Err("Project is too large.".into());
+            }
+            let project =
+                project::decode(BufReader::new(file)).map_err(|e| format!("Load project: {e}"))?;
+            if project.takes.len() > 10 {
+                return Err(
+                    "The native desktop interface currently supports ten loop tracks.".into(),
+                );
+            }
+            let value = json!({"sample_rate":project.rate,"tracks":project.takes.len(),"names":project.names,"master":project.master,"input_gain":project.input_gain});
+            self.pending = Some(project);
+            return Ok(value);
+        }
         if r.operation == "engine_devices" {
             let devices: Vec<Value> = {
                 #[cfg(all(target_os = "windows", feature = "asio"))]
@@ -166,9 +235,10 @@ impl Service {
             let frames = (r.sample_rate as usize)
                 .checked_mul(r.seconds as usize)
                 .ok_or("Native audio capacity overflow.")?;
-            if frames
-                .checked_mul(r.tracks)
-                .is_none_or(|total| total > 32_000_000)
+            if self.pending.is_none()
+                && frames
+                    .checked_mul(r.tracks)
+                    .is_none_or(|total| total > 32_000_000)
             {
                 return Err(
                     "Native audio storage exceeds 256 MB. Reduce loop count or duration.".into(),
@@ -183,15 +253,58 @@ impl Service {
                 .filter(|n| *n < (1_u64 << 53))
                 .ok_or("Native audio token exhausted.")?;
             self.handle = None;
-            let engine =
-                Engine::with_capacities(std::array::from_fn(
-                    |i| if i < r.tracks { frames } else { 0 },
+            let (rate, tracks, capacity, gain, input_gain, names) = if let Some(p) = &self.pending {
+                (
+                    p.rate,
+                    p.takes.len(),
+                    p.capacity,
+                    p.master,
+                    p.input_gain,
+                    p.names.clone(),
+                )
+            } else {
+                (
+                    r.sample_rate,
+                    r.tracks,
+                    frames,
+                    r.gain,
+                    1.0,
+                    vec![String::new(); r.tracks],
+                )
+            };
+            let (mut engine, checkpoint) =
+                Checkpoint::prepare(std::array::from_fn(
+                    |i| if i < tracks { capacity } else { 0 },
                 ))
                 .map_err(|e| format!("Prepare native loops: {e:?}"))?;
+            if let Some(project) = &self.pending {
+                for (i, take) in project.takes.iter().enumerate() {
+                    if !take.audio.is_empty() {
+                        engine
+                            .load_stopped(i, &take.audio)
+                            .map_err(|e| format!("Restore take: {e:?}"))?;
+                    }
+                    for command in [
+                        Command::Gain(take.gain),
+                        Command::Feedback(take.feedback),
+                        Command::Mute(take.muted),
+                    ] {
+                        engine
+                            .command(i, command)
+                            .map_err(|e| format!("Restore setting: {e:?}"))?;
+                    }
+                }
+            }
+            checkpoint.publish(&engine);
             let (source, info) = if r.synthetic {
-                let (writer, reader) = capture::connect((r.sample_rate / 2) as usize)?;
-                let (controller, renderer) =
-                    duplex::connect(engine, reader, writer.metrics(), r.gain)?;
+                let (writer, reader) = capture::connect((rate / 2) as usize)?;
+                let (controller, renderer) = duplex::connect_checkpoint(
+                    engine,
+                    reader,
+                    writer.metrics(),
+                    gain,
+                    Some(checkpoint),
+                )?;
                 (
                     Source::Synthetic(Box::new(Synthetic {
                         writer,
@@ -199,20 +312,21 @@ impl Service {
                         controller,
                         started: Instant::now(),
                         frames: 0,
-                        rate: r.sample_rate,
+                        rate,
                     })),
-                    json!({"host":"SelfTest","device":"Synthetic duplex","sample_rate":r.sample_rate,"input_channels":2,"output_channels":2}),
+                    json!({"host":"SelfTest","device":"Synthetic duplex","sample_rate":rate,"input_channels":2,"output_channels":2}),
                 )
             } else {
                 let live = duplex::open(
                     engine,
-                    r.sample_rate,
+                    Some(checkpoint),
+                    rate,
                     &device::Options {
                         host: r.host.clone(),
                         device: r.device.clone(),
                         buffer_frames: None,
                     },
-                    r.gain,
+                    gain,
                 )?;
                 let info = json!({"host":live.info.host,"device":live.info.device,"sample_rate":live.info.sample_rate,"input_channels":live.info.input_channels,"output_channels":live.info.output_channels});
                 live.start()?;
@@ -224,10 +338,34 @@ impl Service {
                 session: r.session.clone(),
                 source,
                 info: info.clone(),
-                tracks: r.tracks,
+                tracks,
+                capacity,
+                master: gain,
+                input_gain,
             });
+            self.handle
+                .as_mut()
+                .unwrap()
+                .source
+                .controller()
+                .send(Control::InputGain(input_gain))?;
+            let settings: Vec<Value> = self
+                .pending
+                .as_ref()
+                .map(|p| {
+                    p.takes
+                        .iter()
+                        .map(|t| json!({"gain":t.gain,"feedback":t.feedback}))
+                        .collect()
+                })
+                .unwrap_or_else(|| {
+                    (0..tracks)
+                        .map(|_| json!({"gain":1.0,"feedback":0.8}))
+                        .collect()
+                });
+            self.pending = None;
             return Ok(
-                json!({"token":token,"info":info,"capacity_frames":frames,"tracks":r.tracks,"transport":"native-duplex","web_audio":false}),
+                json!({"token":token,"info":info,"capacity_frames":capacity,"tracks":tracks,"names":names,"master":gain,"input_gain":input_gain,"settings":settings,"restored_stopped":true,"transport":"native-duplex","web_audio":false}),
             );
         }
         let h = self
@@ -236,6 +374,54 @@ impl Service {
             .filter(|h| h.token == r.token && h.session == r.session)
             .ok_or("Native audio session is closed or replaced.")?;
         match r.operation.as_str() {
+            "engine_project_export" => {
+                if r.track >= h.tracks {
+                    return Err("Invalid native track.".into());
+                }
+                let takes = h.source.controller().snapshot(project::MAX_FRAMES)?;
+                if takes[r.track].audio.is_empty() {
+                    return Err("Record a take before exporting.".into());
+                }
+                let bytes = looper_files::encode(
+                    &takes[r.track].audio,
+                    h.info["sample_rate"].as_u64().unwrap() as u32,
+                    2,
+                    looper_files::Format::Float32,
+                )
+                .map_err(|e| format!("Export WAV: {e:?}"))?;
+                let name = write_version(
+                    &self.project_dir,
+                    &format!("Loop-{}", r.track + 1),
+                    "wav",
+                    |writer| writer.write_all(&bytes).map_err(|e| e.to_string()),
+                )?;
+                Ok(json!({"file":name,"directory":self.project_dir,"exported":true}))
+            }
+            "engine_project_save" => {
+                let base = safe_name(&r.project)?;
+                if base.len() > 80 {
+                    return Err("Project names must fit 80 UTF-8 bytes.".into());
+                }
+                if r.names.len() != h.tracks
+                    || r.names.iter().any(|n| n.len() > 256 || n.contains('\0'))
+                {
+                    return Err("Invalid loop names.".into());
+                }
+                let mut takes = h.source.controller().snapshot(project::MAX_FRAMES)?;
+                takes.truncate(h.tracks);
+                let project = Project {
+                    rate: h.info["sample_rate"].as_u64().unwrap() as u32,
+                    capacity: h.capacity,
+                    master: h.master,
+                    input_gain: h.input_gain,
+                    names: r.names.clone(),
+                    takes,
+                };
+                let name = write_version(&self.project_dir, base, "aion", |writer| {
+                    project::encode(&project, writer).map_err(|e| e.to_string())
+                })?;
+                Ok(json!({"project":name,"directory":self.project_dir,"saved":true}))
+            }
             "engine_close" => {
                 self.handle = None;
                 Ok(json!({}))
@@ -300,11 +486,72 @@ impl Service {
                     _ => return Err("Invalid native track or control.".into()),
                 };
                 h.source.controller().send(control)?;
+                match control {
+                    Control::Master(value) => h.master = value,
+                    Control::InputGain(value) => h.input_gain = value,
+                    _ => {}
+                }
                 Ok(json!({"queued":true}))
             }
             _ => Err("Unknown native audio request.".into()),
         }
     }
+}
+
+fn write_version(
+    dir: &std::path::Path,
+    base: &str,
+    extension: &str,
+    write: impl FnOnce(&mut BufWriter<fs::File>) -> Result<(), String>,
+) -> Result<String, String> {
+    fs::create_dir_all(dir).map_err(|e| format!("Create project folder: {e}"))?;
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let name = format!("{base}-{unique}.{extension}");
+    let path = dir.join(&name);
+    let temp = dir.join(format!("{name}.partial"));
+    let mut created = false;
+    let result = (|| -> Result<(), String> {
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+            .map_err(|e| e.to_string())?;
+        created = true;
+        let mut writer = BufWriter::new(file);
+        write(&mut writer)?;
+        writer.flush().map_err(|e| e.to_string())?;
+        writer.get_ref().sync_all().map_err(|e| e.to_string())?;
+        drop(writer);
+        if path.exists() {
+            return Err("Filename already exists; retry saving.".into());
+        }
+        fs::rename(&temp, &path).map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    if result.is_err() && created {
+        let _ = fs::remove_file(&temp);
+    }
+    result?;
+    Ok(name)
+}
+fn safe_name(name: &str) -> Result<&str, String> {
+    if name.is_empty()
+        || name.len() > 240
+        || name.starts_with('.')
+        || name.ends_with('.')
+        || name.contains("..")
+        || !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || " _-.".contains(c))
+    {
+        return Err(
+            "Use a project name with letters, numbers, spaces, underscores or hyphens.".into(),
+        );
+    }
+    Ok(name)
 }
 
 #[cfg(test)]
@@ -330,6 +577,123 @@ mod tests {
         } else {
             panic!("expected synthetic")
         }
+    }
+
+    #[test]
+    fn projects_preserve_pcm_and_settings_without_replacing_existing_takes_on_error() {
+        let mut service = Service::new(true);
+        service.project_dir = std::env::temp_dir().join(format!(
+            "aion-project-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let token = service.execute(request("engine_open", 0))["value"]["token"]
+            .as_u64()
+            .unwrap();
+        let mut r = request("engine_control", token);
+        r.command = "record".into();
+        service.execute(r);
+        blocks(&mut service, 4);
+        let mut save = request("engine_project_save", token);
+        save.project = "Voz".into();
+        save.names = vec!["Voice".into(), "Bass".into()];
+        assert_eq!(
+            service.execute(save)["ok"],
+            false,
+            "Active capture must not produce a partial project"
+        );
+        for (command, value) in [
+            ("finish", 0.0),
+            ("play", 0.0),
+            ("gain", 0.5),
+            ("feedback", 0.6),
+            ("mute", 1.0),
+            ("master", 0.0),
+            ("input_gain", 1.25),
+        ] {
+            let mut r = request("engine_control", token);
+            r.command = command.into();
+            r.value = value;
+            assert_eq!(service.execute(r)["ok"], true);
+        }
+        blocks(&mut service, 2);
+        let original = service
+            .handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .snapshot(32000000)
+            .unwrap();
+        let exported = service.execute(request("engine_project_export", token));
+        assert_eq!(exported["ok"], true, "{exported}");
+        let wave_path = service
+            .project_dir
+            .join(exported["value"]["file"].as_str().unwrap());
+        let wave = looper_files::decode(&fs::read(&wave_path).unwrap()).unwrap();
+        assert_eq!(wave.frames, original[0].audio);
+        fs::remove_file(wave_path).unwrap();
+        let mut saved_names = Vec::new();
+        for _ in 0..2 {
+            let mut save = request("engine_project_save", token);
+            save.project = "Voz".into();
+            save.names = vec!["Voice".into(), "Bass".into()];
+            let saved = service.execute(save);
+            assert_eq!(saved["ok"], true, "{saved}");
+            saved_names.push(saved["value"]["project"].as_str().unwrap().to_owned());
+        }
+        assert_ne!(saved_names[0], saved_names[1]);
+        let mut load = request("engine_project_load", 0);
+        load.project = saved_names[0].clone();
+        assert_eq!(
+            service.execute(load)["ok"],
+            false,
+            "Loading must not discard an open session"
+        );
+        assert_eq!(
+            service
+                .handle
+                .as_mut()
+                .unwrap()
+                .source
+                .controller()
+                .snapshot(32000000)
+                .unwrap(),
+            original
+        );
+        service.execute(request("engine_close", token));
+        let mut bad = request("engine_project_load", 0);
+        bad.project = "../outside.aion".into();
+        assert_eq!(service.execute(bad)["ok"], false);
+        let mut load = request("engine_project_load", 0);
+        load.project = saved_names[0].clone();
+        assert_eq!(service.execute(load)["ok"], true);
+        let opened = service.execute(request("engine_open", 0));
+        assert_eq!(opened["ok"], true, "{opened}");
+        assert_eq!(opened["value"]["names"][0], "Voice");
+        assert_eq!(opened["value"]["input_gain"], 1.25);
+        blocks(&mut service, 1);
+        let restored = service
+            .handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .snapshot(32000000)
+            .unwrap();
+        assert_eq!(restored[0].audio, original[0].audio);
+        assert_eq!(restored[0].gain, 0.5);
+        assert_eq!(restored[0].feedback, 0.6);
+        assert!(restored[0].muted);
+        assert!(!restored[0].playing);
+        service.shutdown();
+        for name in saved_names {
+            fs::remove_file(service.project_dir.join(name)).unwrap();
+        }
+        fs::remove_dir(&service.project_dir).unwrap();
     }
     #[test]
     fn native_session_controls_use_only_metadata_and_reject_stale_owners() {

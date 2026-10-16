@@ -27,8 +27,9 @@ The [native audio mode](docs/NATIVE_MODE.md) runs ASIO input/output,
 loop recording/playback, monitoring and punch operations entirely in Rust. Launch
 `Start-Native-Audio.cmd` from the local Windows package. Windows ASIO builds also open this mode by default; `Start-Compatibility-Audio.cmd` selects the original interface. This mode has no Web Audio
 engine. It now reuses the original HTML, stylesheet, ASCII logos and loop controls,
-with supported controls connected to Rust and pending controls disabled. Session
-saving, synths/effects and complete behavior parity are pending.
+with supported controls connected to Rust and pending controls disabled. Native `.aion` project save/reopen and WAV export are available. Existing `.alp`
+import, synths/effects and complete behavior parity are pending. See
+[native projects](docs/NATIVE_PROJECTS.md) and [feature parity](docs/NATIVE_PARITY.md).
 
 Run `dist/Aion-Looper-Windows/Aion-Looper.exe`; keep all packaged DLLs beside it.
 Temporary launchers and PowerShell hosting have been removed.

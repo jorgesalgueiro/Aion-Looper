@@ -4,14 +4,14 @@
     function request(operation,args={}) {
         const id=++sequence;
         return new Promise((resolve,reject)=>{
-            const timer=setTimeout(()=>{pending.delete(id);reject(new Error('Native audio request timed out.'));},15000);
+            const timer=setTimeout(()=>{pending.delete(id);reject(new Error('Native audio request timed out.'));},operation.startsWith('engine_project_')?120000:15000);
             pending.set(id,{resolve,reject,timer});
             try{window.ipc.postMessage(JSON.stringify({...args,id,session,operation}));}catch(reason){clearTimeout(timer);pending.delete(id);reject(reason);}
         });
     }
     window.RustLooper={receive(reply){if(reply.session!==session)return;const job=pending.get(reply.id);if(!job)return;pending.delete(reply.id);clearTimeout(job.timer);if(reply.ok)job.resolve(reply.value);else job.reject(new Error(reply.error));}};
     const get=id=>document.getElementById(id==='start'?'btn-start':id==='rate'?'sampleRateSelect':id);
-    const notice='NATIVE AUDIO | Takes cannot be saved yet; closing audio or the window discards them. Grey controls await migration. Each loop holds 30 seconds.';
+    const notice='NATIVE AUDIO | SAVE PROJ keeps your takes in AionProjects. Save before closing; unsaved changes are discarded. Grey controls await migration. Each loop holds 30 seconds.';
     function stripAndDisable(root){
         for(const el of [root,...root.querySelectorAll('*')]){
             for(const attr of [...el.attributes])if(attr.name.startsWith('on'))el.removeAttribute(attr.name);
@@ -24,8 +24,13 @@
     for(let i=0;i<10;i++)model.loops.push({id:i,state:'empty',name:'',volume:1,pan:5,startDelay:0,duration:0,playbackRate:1,feedback:.8,muted:false,audioBuffer:null,effects:{},signalChain:'QCATFODBVKZG',undoStack:[],redoStack:[]});
     const escapeHTML=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const renderer=window.AionOriginalRenderer(model,{t:key=>key},{escapeHTML},{});
-    let token=0,info=null,monitor=false,polling=false,pollEnabled=true,generation=0,lastTracks=[],opening=false;
+    let token=0,info=null,monitor=false,polling=false,pollEnabled=true,generation=0,lastTracks=[],opening=false,fileBusy=false;
     const busy=new Set(),trackControls=[];
+    document.querySelector('.project-file-section').insertAdjacentHTML('beforeend','<label>Native projects <select id="native-projects" aria-label="Saved native projects"></select></label><button id="projects-refresh" class="std-btn">REFRESH PROJECTS</button><p id="project-status" role="status"></p>');
+    document.querySelector('.project-format-badge').textContent='.AION';
+    enableProjectFieldsLater();
+    function enableProjectFieldsLater(){get('projectName').disabled=false;get('projectName').title='Native project name';get('projectName').maxLength=80;}
+
     const error=reason=>{const text=reason?.message||String(reason);get('error').textContent=text;get('startupError').textContent=text;};
     function enable(el,title){el.disabled=false;el.title=title;return el;}
     const input=get('inputTracksContainer');
@@ -34,6 +39,8 @@
     master.insertAdjacentHTML('beforeend','<div class="native-controls"><label>MASTER <input id="master" type="range" min="0" max="1" step="0.01" value="0.25"></label><meter id="output-meter" min="0" max="1" aria-label="Native output peak"></meter></div><p class="native-notice"></p>');
     master.querySelector('.native-notice').textContent=notice;
     get('driverSelection').insertAdjacentHTML('afterbegin','<div class="native-controls"><label>ASIO INTERFACE <select id="device" aria-label="ASIO interface"></select></label><button id="refresh" class="std-btn">REFRESH</button></div>');
+    get('driverSelection').insertAdjacentHTML('beforeend','<div class="native-controls"><label>Saved project <select id="startup-projects" aria-label="Native project to reopen"></select></label><button id="project-load" class="std-btn">LOAD PROJECT</button></div><p id="startup-project-status" role="status"></p>');
+
     get('rate').innerHTML='<option value="48000">48000 Hz</option><option value="44100">44100 Hz</option>';
     get('start').textContent='[ START AION LOOPER ]';get('driverInfo').textContent=notice+' Rust owns ASIO input and output. Monitoring starts off.';
     get('overlayMobile').hidden=true;get('overlayMobile').style.display='none';
@@ -48,9 +55,10 @@
         const buttons=[...card.querySelectorAll('button')],mute=buttons.find(b=>b.textContent==='MUTE'),clear=card.querySelector('.loop-track-delete');
         const gain=get(`loop-vol-slider-${i}`),feedback=get(`loop-fbk-slider-${i}`),action=get(`loop-action-${i}`)||card.querySelector('.loop-track-action');
         // IDs are resolved within the detached card until it is attached.
-        const controls={action,mute,clear,gain:gain||card.querySelector(`[id="loop-vol-slider-${i}"]`),feedback:feedback||card.querySelector(`[id="loop-fbk-slider-${i}"]`)};
+        const controls={action,mute,clear,exportWav:buttons.find(b=>b.textContent==='SAVE'),gain:gain||card.querySelector(`[id="loop-vol-slider-${i}"]`),feedback:feedback||card.querySelector(`[id="loop-fbk-slider-${i}"]`)};
         trackControls.push(controls);
         controls.action.onclick=()=>perform(i);
+        controls.exportWav.onclick=()=>exportWave(i).catch(error);
         mute.onclick=()=>runTrack(i,()=>command('mute',i,Number(!lastTracks[i]?.muted)));
         clear.onclick=()=>runTrack(i,()=>command('clear',i));
         controls.gain.oninput=()=>{const value=Number(controls.gain.value);model.loops[i].volume=value;get(`loop-vol-display-${i}`).textContent=value>0?`${(20*Math.log10(value)).toFixed(1)}dB`:'-inf dB';};
@@ -63,8 +71,33 @@
         wrapper.appendChild(card);get('loopContainer').appendChild(wrapper);
     }
     function controls(running){
+        get('btnSaveProj').disabled=!running||fileBusy;get('btnSaveProj').title='Save native takes and settings (.aion)';get('btnLoadProj').disabled=running||fileBusy;get('btnLoadProj').title='Load the selected native project after closing audio';get('project-load').disabled=running||fileBusy;
         for(const id of ['device','rate','refresh','start']){get(id).disabled=running||opening;get(id).title=running?'Close audio before changing the interface':'Native ASIO audio';}
         for(const id of ['close','monitor','input-gain','master']){get(id).disabled=!running;get(id).title='Native audio control';}
+    }
+
+    async function projects(){
+        const result=await request('engine_projects');
+        for(const id of ['native-projects','startup-projects']){const select=get(id),selected=select.value;select.replaceChildren();select.add(new Option('Choose a saved .aion project',''));for(const name of result.projects)select.add(new Option(name,name));if(result.projects.includes(selected))select.value=selected;}
+        get('project-status').textContent=`Projects: ${result.directory}`;return result;
+    }
+
+    async function exportWave(track){
+        if(fileBusy)throw new Error('A project operation is already running.');fileBusy=true;draw(lastTracks);
+        try{const result=await request('engine_project_export',{token,track});get('project-status').textContent=`Exported ${result.file} in ${result.directory}`;return result;}
+        finally{fileBusy=false;draw(lastTracks);}
+    }
+    async function saveProject(){
+        if(!token)throw new Error('Start audio before saving.');if(fileBusy)throw new Error('A project operation is already running.');
+        fileBusy=true;get('btnSaveProj').disabled=true;draw(lastTracks);
+        try{const result=await request('engine_project_save',{token,project:get('projectName').value.trim()||'Project',names:model.loops.slice(0,lastTracks.length).map(loop=>loop.name)});await projects();get('native-projects').value=result.project;get('startup-projects').value=result.project;get('project-status').textContent=`Saved ${result.project} in ${result.directory}`;return result;}
+        finally{fileBusy=false;get('btnSaveProj').disabled=!token;draw(lastTracks);}
+    }
+    async function loadProject(name){
+        if(token||opening)throw new Error('Save your current project and CLOSE & CLEAR audio before loading another project.');if(fileBusy)throw new Error('A project operation is already running.');
+        fileBusy=true;get('project-load').disabled=true;
+        try{const result=await request('engine_project_load',{project:name});if(![...get('rate').options].some(o=>o.value===String(result.sample_rate)))get('rate').add(new Option(`${result.sample_rate} Hz`,String(result.sample_rate)));get('rate').value=String(result.sample_rate);get('master').value=String(result.master);get('projectName').value=name.replace(/-\d+\.aion$/,'');get('startup-project-status').textContent=`Loaded ${name}. Press START to open your interface. Takes reopen stopped; monitoring is off.`;return result;}
+        finally{fileBusy=false;get('project-load').disabled=false;}
     }
     async function devices(){
         const result=await request('engine_devices');get('device').replaceChildren();
@@ -82,7 +115,8 @@
             await request('authorize_audio');
             const result=await request('engine_open',{...selection,sample_rate:Number(get('rate').value),tracks:10,seconds:30,gain:Number(get('master').value),...options});
             token=result.token;info=result.info;monitor=false;generation++;get('error').textContent='';get('startupError').textContent='';get('input-gain').value='1';
-            model.loops.forEach((loop,i)=>{loop.volume=1;loop.feedback=.8;trackControls[i].gain.value='1';trackControls[i].feedback.value='.8';get(`loop-vol-display-${i}`).textContent='0.0dB';get(`loop-fbk-display-${i}`).textContent='80%';});
+            get('master').max=String(Math.max(1,result.master));get('input-gain').max=String(Math.max(2,result.input_gain));get('master').value=String(result.master);get('input-gain').value=String(result.input_gain);
+            model.loops.forEach((loop,i)=>{const settings=result.settings[i]||{gain:1,feedback:.8};loop.volume=settings.gain;loop.feedback=settings.feedback;loop.name=result.names[i]||'';trackControls[i].gain.max=String(Math.max(2,loop.volume));trackControls[i].gain.value=String(loop.volume);trackControls[i].feedback.value=String(loop.feedback);get(`loop-vol-display-${i}`).textContent=loop.volume>0?`${(20*Math.log10(loop.volume)).toFixed(1)}dB`:'-inf dB';get(`loop-fbk-display-${i}`).textContent=`${Math.round(loop.feedback*100)}%`;get(`loop-${i}`).querySelector('.track-name').value=loop.name;});
             get('monitor').textContent='MON OFF';get('monitor').setAttribute('aria-pressed','false');get('startOverlay').style.display='none';
             return result;
         }finally{opening=false;controls(Boolean(token));}
@@ -93,12 +127,12 @@
         lastTracks=tracks;
         const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)'};
         for(let i=0;i<10;i++){
-            const t=tracks[i]||{state:'empty',length:0,position:0,muted:false},card=get(`loop-${i}`),c=trackControls[i],available=Boolean(token&&i<tracks.length&&!busy.has(i));
+            const t=tracks[i]||{state:'empty',length:0,position:0,muted:false},card=get(`loop-${i}`),c=trackControls[i],available=Boolean(token&&i<tracks.length&&!busy.has(i)&&!fileBusy);
             Object.assign(model.loops[i],{state:t.state,muted:t.muted,duration:t.length/(info?.sample_rate||48000)});
             card.className=`loop ${t.state}`;c.action.textContent=renderer.getLoopAction(model.loops[i]);c.action.setAttribute('aria-label',`Loop ${i+1}: ${c.action.textContent}`);
             get(`loop-state-symbol-${i}`).textContent=symbols[t.state]||'( )';get(`loop-state-text-${i}`).textContent=t.state.toUpperCase();get(`loop-extra-info-${i}`).textContent=`${t.muted?'[MUTED] ':''}${t.length?`${model.loops[i].duration.toFixed(1)}s`:''}`;
             for(const el of [c.action,c.gain,c.feedback]){el.disabled=!available;el.title=el===c.action?`Loop ${i+1}: ${c.action.textContent}`:'Native audio control';}
-            c.mute.disabled=!available||!t.length;c.clear.disabled=!available||t.state==='empty';c.clear.title='Discard this native take';c.mute.title='Native loop mute';c.mute.textContent=t.muted?'UNM':'MUTE';c.mute.setAttribute('aria-pressed',String(t.muted));c.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
+            c.exportWav.disabled=!available||!t.length;c.exportWav.title='Export dry stereo float32 WAV to AionProjects';c.mute.disabled=!available||!t.length;c.clear.disabled=!available||t.state==='empty';c.clear.title='Discard this native take';c.mute.title='Native loop mute';c.mute.textContent=t.muted?'UNM':'MUTE';c.mute.setAttribute('aria-pressed',String(t.muted));c.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
             const position=t.length?100*t.position/t.length:0,progress=card.querySelector('.native-position');progress.setAttribute('aria-valuenow',position.toFixed(1));progress.firstElementChild.style.width=`${position}%`;
         }
         for(const state of ['recording','overdubbing','substituting'])document.body.classList.toggle(`is-${state}`,tracks.some(t=>t.state===state));
@@ -119,6 +153,7 @@
         if(value.underruns||value.capture.dropped_frames||value.stream_errors||value.capture.errors||value.discontinuities)error('Native audio reported a gap or device error. Close audio and check the interface settings.');
         return value;
     }
+    get('btnSaveProj').onclick=()=>saveProject().catch(error);get('btnLoadProj').onclick=()=>loadProject(get('native-projects').value).catch(error);get('project-load').onclick=()=>loadProject(get('startup-projects').value).catch(error);get('projects-refresh').onclick=()=>projects().catch(error);
     get('start').onclick=()=>open().then(status).catch(error);get('close').onclick=()=>close().catch(error);get('refresh').onclick=()=>devices().catch(error);
     get('monitor').onclick=()=>{const next=!monitor;command('monitor',0,Number(next)).then(()=>{monitor=next;get('monitor').textContent=next?'MON ON':'MON OFF';get('monitor').setAttribute('aria-pressed',String(next));}).catch(error);};
     get('master').onchange=()=>{if(token)command('master',0,Number(get('master').value)).catch(error);};get('input-gain').onchange=()=>{if(token)command('input_gain',0,Number(get('input-gain').value)).catch(error);};
@@ -131,6 +166,6 @@
     window.addEventListener('resize',fitLogos);fitLogos();
     setInterval(async()=>{if(!pollEnabled||polling||!token)return;polling=true;try{await status();}catch(reason){error(reason);}finally{polling=false;}},100);
     window.addEventListener('pagehide',()=>{if(token)request('engine_close',{token}).catch(()=>{});});
-    window.AionNative={open,close,command,status,devices,request,setPolling(enabled){pollEnabled=enabled;}};
-    controls(false);draw([]);devices().catch(error);window.dispatchEvent(new Event('aion-native-ready'));
+    window.AionNative={open,close,command,status,devices,request,projects,saveProject,loadProject,exportWave,setPolling(enabled){pollEnabled=enabled;}};
+    controls(false);draw([]);projects().catch(error);devices().catch(error);window.dispatchEvent(new Event('aion-native-ready'));
 })();

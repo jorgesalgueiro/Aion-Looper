@@ -87,13 +87,20 @@ fn native_callback_and_control_queue_have_no_heap_operations() {
 
     // Native duplex capture, mixing, monitoring and controls share the same
     // no-allocation requirement, including malformed/error paths.
-    let mut engine = Engine::new(128).unwrap();
+    let (mut engine, checkpoint) =
+        looper_core::checkpoint::Checkpoint::prepare([128; MAX_TRACKS]).unwrap();
     for track in 0..MAX_TRACKS {
         engine.load_stopped(track, &[[0.01; 2]; 64]).unwrap();
     }
     let (mut writer, reader) = looper_audio::capture::connect(128).unwrap();
-    let (mut control, mut duplex) =
-        looper_audio::duplex::connect(engine, reader, writer.metrics(), 0.5).unwrap();
+    let (mut control, mut duplex) = looper_audio::duplex::connect_checkpoint(
+        engine,
+        reader,
+        writer.metrics(),
+        0.5,
+        Some(checkpoint),
+    )
+    .unwrap();
     let mut data = [0.0_f32; 128];
     OPERATIONS.store(0, Ordering::SeqCst);
     ENABLED.store(true, Ordering::SeqCst);

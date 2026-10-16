@@ -23,7 +23,7 @@ Use `Start-Compatibility-Audio.cmd` or `--compatibility-audio` for the complete 
   a playing loop. Press FINISH to return to playback.
 - Original MUTE/UNM, DEL, volume and feedback controls operate the Rust engine.
 - STOP ALL and DEL ALL use native commands. Loop names are local session labels.
-- Grey controls (save/load, FX, pan, speed, sync, synths, MIDI, etc.) are disabled
+- Grey controls (FX, pan, speed, sync, synths, MIDI, etc.) are disabled
   until their native implementations are connected. Waveforms are not fabricated.
 - Per-loop level and overdub feedback; input gain, master gain and monitoring.
 - Monitoring starts off and only affects speakers. Recording works with MON off.
@@ -31,11 +31,14 @@ Use `Start-Compatibility-Audio.cmd` or `--compatibility-audio` for the complete 
   capture never grows storage on the audio thread.
 - CLOSE & CLEAR releases both streams and discards all native takes.
 
-**There is no session save/import/export in native mode yet.** Use it to test the
-native audio path; closing the window or audio session loses its takes. Existing
-compatibility projects are not loaded or modified by this mode. Synths, effects,
-MIDI mapping, musical quantization, waveform editing, undo/redo and the original
-recording latency/seam/DC finalization behavior still require migration. Controls
+**Native project save/reopen and dry WAV export are now available.** See
+[NATIVE_PROJECTS.md](NATIVE_PROJECTS.md). SAVE PROJ keeps takes and native settings
+in versioned `.aion` files beside the app. Loop SAVE exports stereo float32 WAV.
+Closing still discards unsaved changes. Existing `.alp` projects open through
+compatibility mode; their import into the native engine remains pending.
+Synths, effects, MIDI mapping, musical quantization, waveform editing, undo/redo
+and the original recording latency/seam/DC finalization behavior still require
+migration. See [NATIVE_PARITY.md](NATIVE_PARITY.md) for the comparison. Controls
 apply at native callback boundaries, not browser timestamps. Audio ownership follows the native window, not UI polling. Minimizing or pausing
 the webview does not stop transport; explicit close, document replacement and
 window shutdown release the streams.
@@ -52,7 +55,7 @@ desktop platforms. iOS app integration remains pending.
 and renders directly into the device output buffer. All loop buffers are
 allocated before opening streams. Commands use a 256-slot SPSC queue with at most
 64 controls processed per callback. Status/meter reads use atomics. The UI sends
-no PCM and receives no take buffers. Master/input/monitor levels ramp on the
+no PCM and receives no take buffers. Project/WAV encoding uses Rust-owned checkpoint data on the service worker. Master/input/monitor levels ramp on the
 native sample clock, with finite output protection.
 
 The native service checks document/session tokens, bounds total loop storage to
@@ -101,3 +104,12 @@ Verification: 36 desktop unit tests; 26 synthetic native graphical checks and
 original action buttons, number keys and a 250 ms UI stall, with zero reported
 underruns. Windows capture screenshots were unavailable (capture timeout);
 accessibility inspection confirmed the rendered original layout and controls.
+
+## Native persistence checkpoint
+
+Native project save/reopen and dry float32 WAV export pass the Windows and Ubuntu
+graphical suites (33 checks), with 131 compatibility GUI checks still passing on
+Windows. There are 37 desktop unit tests, 26 audio tests including callback heap
+accounting and concurrent snapshot/playback, and 13 file tests. A 30-second
+physical TOPPING/ASIO test at 48 kHz and 128-frame callbacks reports zero underrun
+or dropped frames, with output muted and no saved microphone recordings.
