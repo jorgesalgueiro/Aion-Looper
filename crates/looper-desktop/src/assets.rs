@@ -7,6 +7,14 @@ macro_rules! ui {
 }
 pub fn response(path: &str) -> Response<Cow<'static, [u8]>> {
     let (mime, content): (&str, Cow<'static, [u8]>) = match path {
+        "/native-index.html" => (
+            "text/html; charset=utf-8",
+            Cow::Borrowed(include_bytes!("../assets/native-index.html")),
+        ),
+        "/native-app.js" => (
+            "application/javascript",
+            Cow::Borrowed(include_bytes!("../assets/native-app.js")),
+        ),
         "/" | "/index.html" => {
             let html = std::str::from_utf8(ui!("index.html"))
                 .unwrap()
@@ -243,6 +251,25 @@ mod tests {
             "/tests/module-smoke.test.cjs",
         ] {
             assert_eq!(response(path).status(), 404);
+        }
+    }
+    #[test]
+    fn native_audio_view_loads_no_browser_audio_engine_or_pcm_bridge() {
+        for path in ["/native-index.html", "/native-app.js"] {
+            let served = response(path);
+            assert_eq!(served.status(), 200);
+            let source = std::str::from_utf8(served.body()).unwrap();
+            for dependency in [
+                "AudioContext",
+                "AudioWorklet",
+                "native-input.js",
+                "soundtouch",
+            ] {
+                assert!(
+                    !source.contains(dependency),
+                    "native view imports {dependency}"
+                );
+            }
         }
     }
 }

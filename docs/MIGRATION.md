@@ -237,3 +237,5 @@ Concurrent attempts still share one load. Input replies recheck context ownershi
 after native IPC completes; replacement/closed contexts close capture before PCM
 can reach the retired graph. The original UI assets remain unchanged. These
 recovery fixes do not resolve the physical Windows device initialization failure.
+
+Native-audio checkpoint: --native-audio now uses looper-audio::duplex and looper-core for the full ASIO capture/record/play/monitor loop, with no AudioContext, AudioWorklet or PCM IPC bridge. The original compatibility interface remains available. Native effects/synths, persistence/import/export, musical sync, MIDI mapping and non-ASIO duplex adapters are the next integration work. See NATIVE_MODE.md.

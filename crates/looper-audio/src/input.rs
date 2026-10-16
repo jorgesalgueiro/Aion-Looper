@@ -28,7 +28,7 @@ impl LiveInput {
         self.reader
     }
 }
-fn build<T: SizedSample>(
+pub(crate) fn build<T: SizedSample>(
     device: &cpal::Device,
     config: StreamConfig,
     mut writer: InputWriter,

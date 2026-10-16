@@ -19,7 +19,8 @@ For direct launch with this driver:
 These launch options choose the default native input. An explicit selection in
 the input selector takes precedence. Monitoring still starts off; enable MON to
 hear input. Playback currently uses Web Audio and its Windows output device;
-this is ASIO capture, not native ASIO duplex output.
+this describes the compatibility interface. The new optional native mode also
+owns ASIO output and loop transport; see NATIVE_MODE.md.
 
 ## Build and test
 

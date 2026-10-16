@@ -30,7 +30,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libjack-jackd2-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y libasound2-dev libjack-jackd2-dev libgtk-3-dev libwebkit2gtk-4.1-dev xvfb
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -53,6 +53,9 @@ jobs:
       - name: Package Linux desktop, CLI and CLAP; validate packaged ABI
         if: runner.os == 'Linux'
         run: bash scripts/build-linux.sh
+      - name: Native audio GUI without browser audio or hardware devices
+        if: runner.os == 'Linux'
+        run: xvfb-run -a bash scripts/test-native-audio-linux.sh
   ios-core:
     runs-on: macos-latest
     steps:

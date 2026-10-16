@@ -84,4 +84,46 @@ fn native_callback_and_control_queue_have_no_heap_operations() {
     assert_eq!(input_reader.status().frames, 6656);
     assert_eq!(input_reader.status().dropped_frames, 128);
     assert_eq!(input_reader.status().malformed_blocks, 1);
+
+    // Native duplex capture, mixing, monitoring and controls share the same
+    // no-allocation requirement, including malformed/error paths.
+    let mut engine = Engine::new(128).unwrap();
+    for track in 0..MAX_TRACKS {
+        engine.load_stopped(track, &[[0.01; 2]; 64]).unwrap();
+    }
+    let (mut writer, reader) = looper_audio::capture::connect(128).unwrap();
+    let (mut control, mut duplex) =
+        looper_audio::duplex::connect(engine, reader, writer.metrics(), 0.5).unwrap();
+    let mut data = [0.0_f32; 128];
+    OPERATIONS.store(0, Ordering::SeqCst);
+    ENABLED.store(true, Ordering::SeqCst);
+    for track in 0..MAX_TRACKS {
+        control
+            .send(looper_audio::duplex::Control::Track {
+                track,
+                command: Command::Play,
+            })
+            .unwrap();
+    }
+    control
+        .send(looper_audio::duplex::Control::Monitor(true))
+        .unwrap();
+    for _ in 0..100 {
+        writer.capture(&[0.125_f32; 128], 2);
+        duplex.render(&mut data, 2);
+    }
+    control
+        .send(looper_audio::duplex::Control::Track {
+            track: 0,
+            command: Command::Record,
+        })
+        .unwrap();
+    writer.capture(&[0.125_f32; 128], 2);
+    duplex.render(&mut data, 2);
+    duplex.render(&mut data[..3], 2);
+    ENABLED.store(false, Ordering::SeqCst);
+    assert_eq!(OPERATIONS.load(Ordering::SeqCst), 0);
+    assert_eq!(control.status().underruns, 0);
+    assert_eq!(control.status().command_errors, 1);
+    assert_eq!(control.status().malformed, 1);
 }

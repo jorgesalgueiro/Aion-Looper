@@ -9,6 +9,8 @@ try {
     }
     & (Join-Path $PSScriptRoot 'test-desktop.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Windows graphical verification failed.' }
+    & (Join-Path $PSScriptRoot 'test-native-audio.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Native audio graphical verification failed.' }
     $packagePath = Join-Path $projectRoot 'dist\Aion-Looper-Windows'
     if ($Asio) {
         if (!(Select-String -LiteralPath (Join-Path $packagePath 'BUILD_FEATURES.txt') -SimpleMatch 'ASIO=True' -Quiet)) { throw 'Rebuild with -Asio before packaging an ASIO archive.' }
@@ -17,6 +19,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $sdkRoot 'LICENSE.txt') -Destination (Join-Path $packagePath 'ASIO-SDK-LICENSE.txt')
         Copy-Item -LiteralPath 'docs/ASIO.md' -Destination $packagePath
     }
+    Copy-Item -LiteralPath 'docs/NATIVE_MODE.md' -Destination $packagePath
     Copy-Item -LiteralPath 'docs\INPUT_TESTING.md' -Destination $packagePath
     Copy-Item -LiteralPath 'docs\RECORDING_TRANSFER.md' -Destination $packagePath
     $revision = & git rev-parse HEAD

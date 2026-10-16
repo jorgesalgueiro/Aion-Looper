@@ -187,3 +187,7 @@ APIs were checked against [CPAL 0.18.2](https://docs.rs/cpal/0.18.2/cpal/) and
 [rtrb 0.4.0](https://docs.rs/rtrb/0.4.0/rtrb/). A counting allocator independently
 checks the rendering/control path with 20 playing tracks and input capture,
 including overflow and malformed input paths.
+
+## Native duplex checkpoint
+
+The opt-in native audio mode now owns TOPPING ASIO input and output, recording, loop playback, overdub/substitute, mixing and monitoring entirely in Rust. Only controls and meters cross the webview boundary. See NATIVE_MODE.md for launch instructions, muted hardware verification, unsaved-session limits and remaining parity work. Compatibility playback remains Web Audio; the statement above about no graphical native output applies to that compatibility path.

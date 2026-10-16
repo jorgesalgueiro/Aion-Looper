@@ -23,6 +23,11 @@ Build it with `scripts/build-clap.ps1`.
 
 **Status: a working Windows desktop UI is available; native audio/DSP parity is in progress.**
 
+A new opt-in [native audio mode](docs/NATIVE_MODE.md) runs ASIO input/output,
+loop recording/playback, monitoring and punch operations entirely in Rust. Launch
+`Start-Native-Audio.cmd` from the local Windows package. This mode has no Web Audio
+engine, but session saving, synths/effects and full interface parity are pending.
+
 Run `dist/Aion-Looper-Windows/Aion-Looper.exe`; keep all packaged DLLs beside it.
 Temporary launchers and PowerShell hosting have been removed.
 Physical input now opens on E2x2/WASAPI and Ubuntu WSLg. Device enumeration

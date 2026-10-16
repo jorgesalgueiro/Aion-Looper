@@ -3,5 +3,6 @@
 
 pub mod capture;
 pub mod device;
+pub mod duplex;
 pub mod input;
 pub mod realtime;

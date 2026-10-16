@@ -91,3 +91,5 @@ Audible monitoring, transport latency, MIDI controllers, project dialogs, every 
 setting, JACK/ASIO and long live sessions still need further device testing.
 
 ASIO update: an ASIO-enabled local build has now captured physical TOPPING/E2x2 input at 48 kHz with 128-frame callbacks. Corrected short native-finalization and 15/30-second long-take tests pass without reported transport gaps. See ASIO.md in the ASIO local package for driver selection and limits. The public preview through 20261016.3 remains WASAPI-only. Playback still uses Web Audio.
+
+Native audio preview: Start-Native-Audio.cmd opens a separate Rust-owned ASIO session with native input/output, recording/playback, monitoring, overdub/substitute and levels. It loads no Web Audio engine. Native takes are not saved yet and CLOSE & CLEAR discards them. See NATIVE_MODE.md; the ordinary launch retains the compatibility interface.

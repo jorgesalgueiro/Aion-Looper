@@ -192,7 +192,7 @@ impl Renderer {
 
 /// Zero-lookahead safety curve from the original master waveshaper. Oversampling
 /// and the complete master processing chain have not been ported yet.
-fn protect(sample: f64) -> f32 {
+pub(crate) fn protect(sample: f64) -> f32 {
     if !sample.is_finite() {
         return 0.0;
     }

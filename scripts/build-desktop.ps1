@@ -46,5 +46,6 @@ try {
     Copy-Item -LiteralPath 'crates\looper-desktop\assets\vendor\SoundTouch-LICENSE.txt' -Destination $packagePath
     Copy-Item -LiteralPath 'docs\DESKTOP_PREVIEW.txt' -Destination (Join-Path $packagePath 'README.txt')
     @("ASIO=$($Asio.IsPresent)","JACK=$($Jack.IsPresent)") | Set-Content -LiteralPath (Join-Path $packagePath 'BUILD_FEATURES.txt') -Encoding utf8NoBOM
+    @('@echo off','start "" "%~dp0Aion-Looper.exe" --native-audio') | Set-Content -LiteralPath (Join-Path $packagePath 'Start-Native-Audio.cmd') -Encoding ascii
     Write-Output "Desktop app built at $packagePath\Aion-Looper.exe"
 } finally { Pop-Location }
