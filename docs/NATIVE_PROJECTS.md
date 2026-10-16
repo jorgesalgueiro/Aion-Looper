@@ -1,5 +1,7 @@
 # Native projects and WAV export
 
+WAV imports can now be brought into stopped loops; see NATIVE_IMPORT.md.
+
 Use SAVE PROJ in the original Project Menu to save the current native session.
 Finish recording, overdubbing or substituting first. Saving is supported while
 completed takes play: capture/output callbacks continue, and PCM is read through

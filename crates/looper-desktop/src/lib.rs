@@ -22,6 +22,10 @@ enum UiEvent {
     Reply(Value),
     EncodedReply(String),
     Report(Value),
+    Drop {
+        paths: Vec<PathBuf>,
+        position: (i32, i32),
+    },
 }
 fn native_launch(args: &[String], native_default: bool) -> bool {
     match args.first().map(String::as_str) {
@@ -319,6 +323,15 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 || url.starts_with("rustlooper://localhost/")
         })
         .with_url("rustlooper://localhost/index.html");
+    if native_mode {
+        let drop_proxy = event_loop.create_proxy();
+        builder = builder.with_drag_drop_handler(move |event| {
+            if let wry::DragDropEvent::Drop { paths, position } = event {
+                let _ = drop_proxy.send_event(UiEvent::Drop { paths, position });
+            }
+            true
+        });
+    }
     #[cfg(target_os = "windows")]
     {
         use wry::WebViewBuilderExtWindows;
@@ -328,8 +341,13 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 builder.with_additional_browser_args("--autoplay-policy=no-user-gesture-required");
         }
     }
+    let native_import_fixture = if native_test {
+        json!(argument("--native-import-test-file"))
+    } else {
+        Value::Null
+    };
     builder = builder.with_initialization_script(format!(
-        "window.AionNativeInputSelection={input_selection};window.AionInputTestSeconds={input_test_seconds};window.AionNativeTestPhysical={native_test_physical};window.AionNativeIdleSeconds={native_idle_seconds};"
+        "window.AionNativeInputSelection={input_selection};window.AionInputTestSeconds={input_test_seconds};window.AionNativeTestPhysical={native_test_physical};window.AionNativeIdleSeconds={native_idle_seconds};window.AionNativeImportFile={native_import_fixture};"
     ));
     if test_report.is_some() {
         builder = builder.with_initialization_script(if native_test {
@@ -385,6 +403,18 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
             }
             Event::UserEvent(UiEvent::Reply(value)) => {
                 let _ = webview.evaluate_script(&format!("window.RustLooper?.receive({value});"));
+            }
+            Event::UserEvent(UiEvent::Drop { paths, position }) => {
+                #[cfg(target_os = "windows")]
+                let scale = window.scale_factor();
+                #[cfg(not(target_os = "windows"))]
+                let scale = 1.0_f64;
+                let paths = json!(paths);
+                let _ = webview.evaluate_script(&format!(
+                    "window.AionNative?.onDrop({paths},{},{});",
+                    f64::from(position.0) / scale,
+                    f64::from(position.1) / scale
+                ));
             }
             Event::UserEvent(UiEvent::Report(value)) => {
                 if let Some(path) = &test_report {

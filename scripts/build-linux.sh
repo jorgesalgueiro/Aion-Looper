@@ -28,6 +28,6 @@ for name, filename in [("clap-sys", "LICENSE-MIT"), ("midir", "LICENSE")]:
 PY
 cp docs/LINUX.md "$package/README.md"
 cp docs/PLUGIN_STATE.md "$package/"
-cp docs/NATIVE_MODE.md docs/NATIVE_PROJECTS.md docs/NATIVE_PARITY.md "$package/"
+cp docs/NATIVE_MODE.md docs/NATIVE_PROJECTS.md docs/NATIVE_PARITY.md docs/NATIVE_IMPORT.md "$package/"
 cargo run --locked -p looper-clap --example host -- "$package/Aion-Looper-Prototype.clap"
 sha256sum "$package/Aion-Looper" "$package/rust-looper" "$package/Aion-Looper-Prototype.clap"

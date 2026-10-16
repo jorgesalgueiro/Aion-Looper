@@ -56,6 +56,12 @@ window.addEventListener('aion-native-ready',async()=>{
         await api.command('gain',0,.5);await api.command('feedback',0,.6);
         await api.command('overdub',0);await until(s=>s.tracks[0].state==='overdubbing');await wait(60);await api.command('finish',0);await until(s=>s.tracks[0].state==='stopped');checks.push('Native overdub completes');
         await api.command('play',0);await until(s=>s.tracks[0].state==='playing');await api.command('substitute',0);await until(s=>s.tracks[0].state==='substituting');await wait(60);await api.command('finish',0);await until(s=>s.tracks[0].state==='stopped');checks.push('Native substitute completes');
+        if(window.AionNativeImportFile){
+            await api.command('play',0);const before=await until(s=>s.tracks[0].state==='playing');
+            const imported=await api.importWave(1,window.AionNativeImportFile);const after=await until(s=>s.tracks[1].state==='stopped'&&s.tracks[1].length===imported.frames);
+            assert(after.tracks[0].state==='playing'&&after.frames>before.frames,'Prepared WAV commits while the requested audio device continues playback');
+            await api.command('stop',0);await until(s=>s.tracks[0].state==='stopped');
+        }
         finalStatus=await api.status();
         assert(finalStatus.tracks[0].length===captured.tracks[0].length,'Punch operations retain the loop length');
         assert(finalStatus.output_peak===0,'Test master output stays muted');
@@ -64,6 +70,24 @@ window.addEventListener('aion-native-ready',async()=>{
         if(!window.AionNativeTestPhysical){
             document.getElementById('projectName').value='AionTest';document.querySelector('#loop-0 .track-name').value='Synthetic voice';document.querySelector('#loop-0 .track-name').dispatchEvent(new Event('input'));
             const wave=await api.exportWave(0);assert(wave.exported&&wave.file.endsWith('.wav'),'Original loop SAVE exports a native stereo WAV');
+            const wavePath=`${wave.directory}/${wave.file}`;
+            await api.command('play',0);const beforeImport=await until(s=>s.tracks[0].state==='playing');
+            let imported;
+            if(innerWidth>0&&innerHeight>0){
+                const importCard=document.getElementById('loop-1');importCard.scrollIntoView({block:'center',behavior:'instant'});await wait(50);const rect=importCard.getBoundingClientRect();
+                let dropPoint=null;for(let y=Math.max(1,rect.top+2);y<Math.min(innerHeight-1,rect.bottom);y+=8){for(let x=Math.max(1,rect.left+2);x<Math.min(innerWidth-1,rect.right);x+=32){if(document.elementFromPoint(x,y)?.closest('.loop')===importCard){dropPoint={x,y};break;}}if(dropPoint)break;}
+                if(!dropPoint)throw new Error(`No visible loop drop target: ${JSON.stringify({rect:rect.toJSON(),width:innerWidth,height:innerHeight})}`);
+                imported=await api.dropFile([wavePath],dropPoint.x,dropPoint.y);checks.push('Visible original loop drop target routes the WAV to Rust');
+            }else{
+                // Hidden WebKitGTK has a zero-sized viewport. Exercise its actual
+                // path controls rather than pretending to hit an invisible card.
+                document.getElementById('import-path').value=wavePath;document.getElementById('import-track').value='1';imported=await document.getElementById('import-wave').onclick();checks.push('Native WAV path controls import without browser audio decoding');
+            }
+            const afterImport=await until(s=>s.tracks[1].state==='stopped'&&s.tracks[1].length===captured.tracks[0].length);
+            assert(imported.imported&&afterImport.tracks[0].state==='playing'&&afterImport.frames>beforeImport.frames,'WAV import runs through Rust while another loop keeps playing');
+            assert(document.getElementById('loop-action-1').textContent==='PLAY','Original imported loop action shows PLAY');
+            let rejected=false;try{await api.request('engine_project_import',{token:opened.token,track:0,path:wavePath});}catch(_){rejected=true;}assert(rejected,'Import into a playing loop is rejected');
+            await api.command('stop',0);await until(s=>s.tracks[0].state==='stopped');
             savedProject=await api.saveProject();assert(savedProject.saved&&savedProject.project.endsWith('.aion'),'Original project save writes a native Rust project');
             const list=await api.projects();assert(list.projects.includes(savedProject.project),'Native saved project is listed for reopening');
         }
@@ -77,6 +101,7 @@ window.addEventListener('aion-native-ready',async()=>{
             assert(loaded.names[0]==='Synthetic voice'&&document.querySelector('#loop-0 .track-name').value==='Synthetic voice','Native project restores original loop names');
             assert(restored.tracks[0].length===captured.tracks[0].length&&restored.tracks[0].state==='stopped'&&restored.tracks[0].muted,'Native project restores takes stopped with saved mute');
             assert(document.getElementById('loop-vol-slider-0').value==='0.5'&&document.getElementById('loop-fbk-slider-0').value==='0.6','Native project restores gain and feedback controls');
+            assert(restored.tracks[1].length===captured.tracks[0].length&&restored.tracks[1].state==='stopped','Imported WAV persists in native project save/reopen');
             assert(document.getElementById('monitor').textContent==='MON OFF','Restored project starts with monitoring off');await api.close();
         }
         result={kind:'self_test',ok:true,checks,opened,status:finalStatus,audioSaved:false,syntheticProjectSaved:Boolean(savedProject),uiBlockMs:250,idleSeconds};

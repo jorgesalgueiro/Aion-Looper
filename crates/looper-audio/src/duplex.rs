@@ -2,7 +2,7 @@
 use crate::{capture, device};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, StreamConfig};
-use looper_core::checkpoint::{Checkpoint, Take};
+use looper_core::checkpoint::{Checkpoint, Replacement, Take};
 use looper_core::{Command, Engine, State, TrackStatus, MAX_TRACKS};
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -52,15 +52,73 @@ pub struct Status {
     pub capture: capture::Status,
     pub tracks: [TrackStatus; MAX_TRACKS],
 }
+struct ImportJob {
+    prepared: Replacement,
+    previous: Option<Arc<Checkpoint>>,
+    result: Result<(), looper_core::Error>,
+    ticket: Arc<AtomicU32>,
+}
 pub struct Controller {
     producer: Producer<Control>,
     metrics: Arc<Metrics>,
     capture_metrics: Arc<capture::Metrics>,
     checkpoint: Option<Arc<Checkpoint>>,
+    imports: Producer<Box<ImportJob>>,
+    retired: Consumer<Box<ImportJob>>,
+    import_ticket: Option<Arc<AtomicU32>>,
 }
 impl Controller {
+    pub fn begin_import(
+        &mut self,
+        track: usize,
+        audio: &[looper_core::Frame],
+    ) -> Result<(), String> {
+        let _ = self.finish_import();
+        if self.import_ticket.is_some() || self.producer.slots() != QUEUE {
+            return Err("Native controls or an import are pending. Retry when they finish.".into());
+        }
+        let prepared = self
+            .checkpoint
+            .as_ref()
+            .ok_or("Imports require checkpoint storage")?
+            .prepare_replacement(track, audio)
+            .map_err(|e| format!("Prepare import: {e:?}"))?;
+        let ticket = Arc::new(AtomicU32::new(0));
+        let job = Box::new(ImportJob {
+            prepared,
+            previous: None,
+            result: Err(looper_core::Error::InvalidState),
+            ticket: Arc::clone(&ticket),
+        });
+        self.imports
+            .push(job)
+            .map_err(|_| "An import is already queued.".to_owned())?;
+        self.import_ticket = Some(ticket);
+        Ok(())
+    }
+    /// Reclaims both replaced and rejected PCM on this worker, not the callback.
+    pub fn finish_import(&mut self) -> Option<Result<(), String>> {
+        let job = self.retired.pop().ok()?;
+        self.import_ticket = None;
+        if job.result.is_ok() {
+            self.checkpoint = Some(job.prepared.checkpoint());
+        }
+        let result = job
+            .result
+            .map_err(|e| format!("Import rejected: {e:?}. Stop the target loop first."));
+        drop(job);
+        Some(result)
+    }
+    /// A queued import can be cancelled before the callback starts its commit.
+    pub fn cancel_import(&self) -> bool {
+        self.import_ticket.as_ref().is_some_and(|t| {
+            t.compare_exchange(0, 3, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        })
+    }
+
     pub fn snapshot(&self, max_frames: usize) -> Result<Vec<Take>, String> {
-        if self.producer.slots() != QUEUE {
+        if self.import_ticket.is_some() || self.producer.slots() != QUEUE {
             return Err("Controls are pending. Try saving again.".into());
         }
         self.checkpoint.as_ref().ok_or("Snapshots are unavailable")?
@@ -139,6 +197,8 @@ pub struct Renderer {
     next_input: u64,
     input_started: bool,
     checkpoint: Option<Arc<Checkpoint>>,
+    imports: Consumer<Box<ImportJob>>,
+    retired: Producer<Box<ImportJob>>,
 }
 /// Allocate all loop storage and queues before either device stream starts.
 pub fn connect(
@@ -160,6 +220,8 @@ pub fn connect_checkpoint(
         return Err("Invalid master gain.".into());
     }
     let (producer, consumer) = RingBuffer::new(QUEUE);
+    let (import_tx, import_rx) = RingBuffer::new(1);
+    let (retire_tx, retire_rx) = RingBuffer::new(1);
     let metrics = Arc::new(Metrics::default());
     Ok((
         Controller {
@@ -167,6 +229,9 @@ pub fn connect_checkpoint(
             metrics: Arc::clone(&metrics),
             capture_metrics,
             checkpoint: checkpoint.clone(),
+            imports: import_tx,
+            retired: retire_rx,
+            import_ticket: None,
         },
         Renderer {
             engine,
@@ -182,6 +247,8 @@ pub fn connect_checkpoint(
             next_input: 0,
             input_started: false,
             checkpoint,
+            imports: import_rx,
+            retired: retire_tx,
         },
     ))
 }
@@ -191,6 +258,27 @@ impl Renderer {
             output.fill(T::EQUILIBRIUM);
             self.metrics.malformed.fetch_add(1, Ordering::Relaxed);
             return;
+        }
+        // A prepared take commits at a callback boundary. Neither PCM copying
+        // nor destruction happens here; the worker reclaims the boxed job.
+        if self.retired.slots() > 0 {
+            if let Ok(mut job) = self.imports.pop() {
+                if job
+                    .ticket
+                    .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+                {
+                    job.result = job.prepared.apply(&mut self.engine);
+                    if job.result.is_ok() {
+                        job.previous = self.checkpoint.replace(job.prepared.checkpoint());
+                        self.checkpoint.as_ref().unwrap().publish(&self.engine);
+                    }
+                }
+                // There is one producer and we checked the slot before popping.
+                // Keep the job queued for worker-side destruction.
+                let pushed = self.retired.push(job);
+                debug_assert!(pushed.is_ok());
+            }
         }
         // Playback changes phase only, which is deliberately not persisted. Keep
         // the checkpoint epoch stable during read-only playback so long snapshots

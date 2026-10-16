@@ -22,6 +22,8 @@ Use `Start-Compatibility-Audio.cmd` or `--compatibility-audio` for the complete 
 - Select OVERDUB or SUBSTITUTE in the loop section ACTION selector before pressing
   a playing loop. Press FINISH to return to playback.
 - Original MUTE/UNM, DEL, volume and feedback controls operate the Rust engine.
+- Drop matching-rate mono/stereo WAV onto a stopped loop, or use the native WAV
+  path controls. Rust prepares and commits it while other loops play. See NATIVE_IMPORT.md.
 - STOP ALL and DEL ALL use native commands. Loop names are local session labels.
 - Grey controls (FX, pan, speed, sync, synths, MIDI, etc.) are disabled
   until their native implementations are connected. Waveforms are not fabricated.

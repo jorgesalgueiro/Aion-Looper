@@ -28,6 +28,9 @@
     const busy=new Set(),trackControls=[];
     document.querySelector('.project-file-section').insertAdjacentHTML('beforeend','<label>Native projects <select id="native-projects" aria-label="Saved native projects"></select></label><button id="projects-refresh" class="std-btn">REFRESH PROJECTS</button><p id="project-status" role="status"></p>');
     document.querySelector('.project-format-badge').textContent='.AION';
+    document.querySelector('.project-file-section').insertAdjacentHTML('beforeend','<label>WAV path <input id="import-path" type="text" placeholder="Drop a WAV onto a stopped loop, or paste its full path" aria-label="Native WAV path"></label><div class="native-controls"><label>Loop <select id="import-track" aria-label="WAV target loop"></select></label><button id="import-wave" class="std-btn btn-orange" disabled>IMPORT WAV</button></div>');
+    for(let i=0;i<10;i++)get('import-track').add(new Option(String(i+1),String(i)));
+
     enableProjectFieldsLater();
     function enableProjectFieldsLater(){get('projectName').disabled=false;get('projectName').title='Native project name';get('projectName').maxLength=80;}
 
@@ -71,6 +74,7 @@
         wrapper.appendChild(card);get('loopContainer').appendChild(wrapper);
     }
     function controls(running){
+        get('import-wave').disabled=!running||fileBusy;get('import-wave').title='Import WAV into an empty/stopped native loop';
         get('btnSaveProj').disabled=!running||fileBusy;get('btnSaveProj').title='Save native takes and settings (.aion)';get('btnLoadProj').disabled=running||fileBusy;get('btnLoadProj').title='Load the selected native project after closing audio';get('project-load').disabled=running||fileBusy;
         for(const id of ['device','rate','refresh','start']){get(id).disabled=running||opening;get(id).title=running?'Close audio before changing the interface':'Native ASIO audio';}
         for(const id of ['close','monitor','input-gain','master']){get(id).disabled=!running;get(id).title='Native audio control';}
@@ -82,6 +86,18 @@
         get('project-status').textContent=`Projects: ${result.directory}`;return result;
     }
 
+    async function importWave(track,path){
+        if(!token)throw new Error('Start native audio before importing.');if(fileBusy)throw new Error('A project operation is already running.');
+        if(!lastTracks[track]||!['empty','stopped'].includes(lastTracks[track].state))throw new Error('Stop the target loop before importing. Other loops can keep playing.');
+        fileBusy=true;get('import-wave').disabled=true;draw(lastTracks);
+        try{const result=await request('engine_project_import',{token,track,path});const c=trackControls[track];model.loops[track].name='';model.loops[track].volume=1;model.loops[track].feedback=.8;get(`loop-${track}`).querySelector('.track-name').value='';c.gain.value='1';c.feedback.value='.8';get(`loop-vol-display-${track}`).textContent='0.0dB';get(`loop-fbk-display-${track}`).textContent='80%';get('project-status').textContent=`Imported WAV into loop ${track+1}: ${(result.frames/result.sample_rate).toFixed(2)}s. Save the project to keep it.`;get('error').textContent='';await status();return result;}
+        finally{fileBusy=false;get('import-wave').disabled=!token;draw(lastTracks);}
+    }
+    async function dropFile(paths,x,y){
+        if(paths.length!==1)throw new Error('Drop one WAV file onto one stopped loop.');
+        const card=document.elementFromPoint(x,y)?.closest('.loop');if(!card)throw new Error('Drop the WAV onto an empty or stopped loop track.');
+        const track=Number(card.id.slice(5));get('import-path').value=paths[0];get('import-track').value=String(track);return importWave(track,paths[0]);
+    }
     async function exportWave(track){
         if(fileBusy)throw new Error('A project operation is already running.');fileBusy=true;draw(lastTracks);
         try{const result=await request('engine_project_export',{token,track});get('project-status').textContent=`Exported ${result.file} in ${result.directory}`;return result;}
@@ -153,6 +169,7 @@
         if(value.underruns||value.capture.dropped_frames||value.stream_errors||value.capture.errors||value.discontinuities)error('Native audio reported a gap or device error. Close audio and check the interface settings.');
         return value;
     }
+    get('import-wave').onclick=()=>importWave(Number(get('import-track').value),get('import-path').value.trim()).catch(error);
     get('btnSaveProj').onclick=()=>saveProject().catch(error);get('btnLoadProj').onclick=()=>loadProject(get('native-projects').value).catch(error);get('project-load').onclick=()=>loadProject(get('startup-projects').value).catch(error);get('projects-refresh').onclick=()=>projects().catch(error);
     get('start').onclick=()=>open().then(status).catch(error);get('close').onclick=()=>close().catch(error);get('refresh').onclick=()=>devices().catch(error);
     get('monitor').onclick=()=>{const next=!monitor;command('monitor',0,Number(next)).then(()=>{monitor=next;get('monitor').textContent=next?'MON ON':'MON OFF';get('monitor').setAttribute('aria-pressed',String(next));}).catch(error);};
@@ -166,6 +183,6 @@
     window.addEventListener('resize',fitLogos);fitLogos();
     setInterval(async()=>{if(!pollEnabled||polling||!token)return;polling=true;try{await status();}catch(reason){error(reason);}finally{polling=false;}},100);
     window.addEventListener('pagehide',()=>{if(token)request('engine_close',{token}).catch(()=>{});});
-    window.AionNative={open,close,command,status,devices,request,projects,saveProject,loadProject,exportWave,setPolling(enabled){pollEnabled=enabled;}};
+    window.AionNative={open,close,command,status,devices,request,projects,saveProject,loadProject,exportWave,importWave,dropFile,onDrop(paths,x,y){dropFile(paths,x,y).catch(error);},setPolling(enabled){pollEnabled=enabled;}};
     controls(false);draw([]);projects().catch(error);devices().catch(error);window.dispatchEvent(new Event('aion-native-ready'));
 })();

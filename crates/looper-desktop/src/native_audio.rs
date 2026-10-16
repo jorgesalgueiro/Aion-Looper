@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 use std::{
     fs,
-    io::{BufReader, BufWriter, Write},
+    io::{BufReader, BufWriter, Read, Write},
     path::PathBuf,
 };
 #[derive(Default, Deserialize)]
@@ -44,6 +44,8 @@ pub struct Request {
     pub project: String,
     #[serde(default)]
     pub names: Vec<String>,
+    #[serde(default)]
+    pub path: String,
 }
 pub enum Message {
     Request(Box<Request>),
@@ -374,6 +376,66 @@ impl Service {
             .filter(|h| h.token == r.token && h.session == r.session)
             .ok_or("Native audio session is closed or replaced.")?;
         match r.operation.as_str() {
+            "engine_project_import" => {
+                if r.track >= h.tracks {
+                    return Err("Invalid native track.".into());
+                }
+                if !matches!(
+                    h.source.controller().status().tracks[r.track].state,
+                    looper_core::State::Empty | looper_core::State::Stopped
+                ) {
+                    return Err(
+                        "Stop the target loop before importing. Other loops can keep playing."
+                            .into(),
+                    );
+                }
+                let path = std::path::Path::new(&r.path);
+                if r.path.len() > 4096
+                    || !path.is_absolute()
+                    || path
+                        .extension()
+                        .is_none_or(|e| !e.eq_ignore_ascii_case("wav"))
+                {
+                    return Err("Choose an absolute path to a WAV file.".into());
+                }
+                const MAX_BYTES: u64 = 256_016_384;
+                let metadata = fs::metadata(path).map_err(|e| format!("Read WAV: {e}"))?;
+                if !metadata.is_file() || metadata.len() > MAX_BYTES {
+                    return Err("Choose a regular WAV file smaller than 256 MB.".into());
+                }
+                let mut bytes = Vec::new();
+                fs::File::open(path)
+                    .map_err(|e| e.to_string())?
+                    .take(MAX_BYTES + 1)
+                    .read_to_end(&mut bytes)
+                    .map_err(|e| e.to_string())?;
+                if bytes.len() as u64 > MAX_BYTES {
+                    return Err("WAV file is too large.".into());
+                }
+                let mut wave=looper_files::decode_with_limit(&bytes,h.capacity).map_err(|e|format!("Decode WAV: {e:?}. Supported: mono/stereo PCM16, PCM24 or float32 within the loop capacity."))?;
+                let rate = h.info["sample_rate"].as_u64().unwrap() as u32;
+                if wave.sample_rate != rate {
+                    return Err(format!("WAV is {} Hz; native audio is {rate} Hz. Use a matching-rate WAV or reopen audio at the file rate. Native resampling is pending.",wave.sample_rate));
+                }
+                looper_core::buffer::seam_fade(&mut wave.frames, rate, 0.015)
+                    .map_err(|e| format!("Import seam: {e:?}"))?;
+                h.source.controller().begin_import(r.track, &wave.frames)?;
+                let deadline = Instant::now() + Duration::from_secs(5);
+                loop {
+                    h.source.pump();
+                    if let Some(result) = h.source.controller().finish_import() {
+                        result?;
+                        break;
+                    }
+                    if Instant::now() > deadline && h.source.controller().cancel_import() {
+                        return Err("Audio callback did not accept the import in time; the existing take was kept. Close audio if the device has stopped.".into());
+                    }
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Ok(
+                    json!({"imported":true,"track":r.track,"frames":wave.frames.len(),"sample_rate":rate,"channels":wave.channels,"gain":1.0,"feedback":0.8,"seam_seconds":0.015}),
+                )
+            }
             "engine_project_export" => {
                 if r.track >= h.tracks {
                     return Err("Invalid native track.".into());
@@ -579,6 +641,100 @@ mod tests {
         }
     }
 
+    #[test]
+    fn wav_import_decodes_on_worker_applies_reference_seam_and_keeps_other_playback() {
+        let mut service = Service::new(true);
+        let dir = std::env::temp_dir().join(format!(
+            "aion-import-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&dir).unwrap();
+        let token = service.execute(request("engine_open", 0))["value"]["token"]
+            .as_u64()
+            .unwrap();
+        for cmd in ["record", "finish", "play"] {
+            let mut r = request("engine_control", token);
+            r.command = cmd.into();
+            assert_eq!(service.execute(r)["ok"], true);
+            blocks(&mut service, 4);
+        }
+        let original = service
+            .handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .snapshot(32000000)
+            .unwrap()[0]
+            .audio
+            .clone();
+        let path = dir.join("fixture.wav");
+        let mut expected = Vec::new();
+        for format in [
+            looper_files::Format::Pcm16,
+            looper_files::Format::Pcm24,
+            looper_files::Format::Float32,
+        ] {
+            for channels in [1, 2] {
+                let input = vec![[0.125, -0.375]; 2000];
+                let bytes = looper_files::encode(&input, 48000, channels, format).unwrap();
+                fs::write(&path, &bytes).unwrap();
+                expected = looper_files::decode(&bytes).unwrap().frames;
+                looper_core::buffer::seam_fade(&mut expected, 48000, 0.015).unwrap();
+                let mut r = request("engine_project_import", token);
+                r.track = 1;
+                r.path = path.to_string_lossy().into_owned();
+                let imported = service.execute(r);
+                assert_eq!(imported["ok"], true, "{imported}");
+                let takes = service
+                    .handle
+                    .as_mut()
+                    .unwrap()
+                    .source
+                    .controller()
+                    .snapshot(32000000)
+                    .unwrap();
+                assert_eq!(takes[0].audio, original);
+                assert!(takes[0].playing);
+                assert_eq!(takes[1].audio, expected);
+                assert!(!takes[1].playing);
+            }
+        }
+        for bytes in [
+            b"broken WAV".to_vec(),
+            looper_files::encode(&[[0.2; 2]; 20], 44100, 2, looper_files::Format::Float32).unwrap(),
+            looper_files::encode(&[[0.2; 2]; 48001], 48000, 2, looper_files::Format::Float32)
+                .unwrap(),
+        ] {
+            fs::write(&path, bytes).unwrap();
+            let mut r = request("engine_project_import", token);
+            r.track = 1;
+            r.path = path.to_string_lossy().into_owned();
+            assert_eq!(service.execute(r)["ok"], false);
+            assert_eq!(
+                service
+                    .handle
+                    .as_mut()
+                    .unwrap()
+                    .source
+                    .controller()
+                    .snapshot(32000000)
+                    .unwrap()[1]
+                    .audio,
+                expected
+            );
+        }
+        let mut playing = request("engine_project_import", token);
+        playing.path = path.to_string_lossy().into_owned();
+        assert_eq!(service.execute(playing)["ok"], false);
+        service.shutdown();
+        fs::remove_file(path).unwrap();
+        fs::remove_dir(dir).unwrap();
+    }
     #[test]
     fn projects_preserve_pcm_and_settings_without_replacing_existing_takes_on_error() {
         let mut service = Service::new(true);

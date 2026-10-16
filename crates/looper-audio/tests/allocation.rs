@@ -133,4 +133,31 @@ fn native_callback_and_control_queue_have_no_heap_operations() {
     assert_eq!(control.status().underruns, 0);
     assert_eq!(control.status().command_errors, 1);
     assert_eq!(control.status().malformed, 1);
+    // Prepared imports swap ownership only. Success, rejection and cancellation
+    // must all return their large buffers for worker-side destruction.
+    control
+        .send(looper_audio::duplex::Control::Track {
+            track: 1,
+            command: Command::Stop,
+        })
+        .unwrap();
+    writer.capture(&[0.0; 128], 2);
+    duplex.render(&mut data, 2);
+    for (track, cancel, success) in [(1, false, true), (0, false, false), (1, true, false)] {
+        control.begin_import(track, &[[0.2, -0.1]; 64]).unwrap();
+        if cancel {
+            assert!(control.cancel_import());
+        }
+        OPERATIONS.store(0, Ordering::SeqCst);
+        ENABLED.store(true, Ordering::SeqCst);
+        writer.capture(&[0.0; 128], 2);
+        duplex.render(&mut data, 2);
+        ENABLED.store(false, Ordering::SeqCst);
+        assert_eq!(
+            OPERATIONS.load(Ordering::SeqCst),
+            0,
+            "Import commit/rejection/cancellation must not allocate or free"
+        );
+        assert_eq!(control.finish_import().unwrap().is_ok(), success);
+    }
 }

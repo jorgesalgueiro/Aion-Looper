@@ -90,6 +90,48 @@ impl Drop for Transaction<'_> {
         self.0.epoch.fetch_add(1, SeqCst);
     }
 }
+/// Worker-prepared PCM and checkpoint references. Applying swaps ownership only;
+/// the caller must retire this object on the worker, never drop it in a callback.
+pub struct Replacement {
+    track: usize,
+    audio: Storage,
+    length: usize,
+    parent: Arc<Checkpoint>,
+    next: Arc<Checkpoint>,
+    applied: bool,
+}
+impl Replacement {
+    pub fn checkpoint(&self) -> Arc<Checkpoint> {
+        Arc::clone(&self.next)
+    }
+    pub fn apply(&mut self, engine: &mut Engine) -> Result<(), Error> {
+        if self.applied
+            || !engine
+                .tracks
+                .iter()
+                .zip(&self.parent.pcm)
+                .all(|(t, p)| matches!(&t.audio,Storage::Shared(a) if Arc::ptr_eq(a,p)))
+        {
+            return Err(Error::InvalidState);
+        }
+        let track = &mut engine.tracks[self.track];
+        if !matches!(track.state, State::Empty | State::Stopped) {
+            return Err(Error::InvalidState);
+        }
+        // Retire the previous view before shared PCM can change under a new epoch.
+        self.parent.poisoned.store(true, SeqCst);
+        self.parent.epoch.fetch_add(2, SeqCst);
+        std::mem::swap(&mut track.audio, &mut self.audio);
+        track.length = self.length;
+        track.gain = 1.0;
+        track.feedback = 0.8;
+        track.position = 0;
+        track.state = State::Stopped;
+        engine.schedule.cancel(self.track);
+        self.applied = true;
+        Ok(())
+    }
+}
 impl Checkpoint {
     /// Control-thread allocation; atomic PCM occupies the same eight bytes/frame.
     pub fn prepare(capacities: [usize; MAX_TRACKS]) -> Result<(Engine, Arc<Self>), Error> {
@@ -135,6 +177,50 @@ impl Checkpoint {
             },
             checkpoint,
         ))
+    }
+    /// Allocate/decode on the worker before committing to an empty/stopped track.
+    pub fn prepare_replacement(
+        self: &Arc<Self>,
+        track: usize,
+        audio: &[Frame],
+    ) -> Result<Replacement, Error> {
+        let old = self.pcm.get(track).ok_or(Error::InvalidTrack)?;
+        if audio.is_empty() || audio.len() > old.0.len() {
+            return Err(Error::InvalidCapacity);
+        }
+        if audio.iter().flatten().any(|v| !v.is_finite()) {
+            return Err(Error::InvalidParameter);
+        }
+        let pcm = Arc::new(AtomicPcm::new(old.0.len())?);
+        for (i, frame) in audio.iter().enumerate() {
+            pcm.write(i, *frame);
+        }
+        let next = Arc::new(Self {
+            pcm: std::array::from_fn(|i| {
+                if i == track {
+                    Arc::clone(&pcm)
+                } else {
+                    Arc::clone(&self.pcm[i])
+                }
+            }),
+            metadata: std::array::from_fn(|_| Metadata {
+                length: AtomicUsize::new(0),
+                state: AtomicU32::new(0),
+                gain: AtomicU32::new(1f32.to_bits()),
+                feedback: AtomicU32::new(0.8f32.to_bits()),
+                muted: AtomicU32::new(0),
+            }),
+            epoch: AtomicU64::new(0),
+            poisoned: AtomicBool::new(false),
+        });
+        Ok(Replacement {
+            track,
+            audio: Storage::Shared(pcm),
+            length: audio.len(),
+            parent: Arc::clone(self),
+            next,
+            applied: false,
+        })
     }
     /// Single audio/control owner only; transactions must not nest.
     pub fn begin(&self) -> Transaction<'_> {

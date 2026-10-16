@@ -200,3 +200,74 @@ fn checkpoint_snapshots_remain_coherent_during_concurrent_playback_and_reject_ca
         "Active capture cannot be saved as a completed take"
     );
 }
+
+#[test]
+fn imported_take_commits_without_restarting_other_loops_and_failed_imports_keep_them() {
+    let (mut engine, checkpoint) =
+        looper_core::checkpoint::Checkpoint::prepare([128; MAX_TRACKS]).unwrap();
+    engine.load_stopped(0, &[[0.25, -0.25]; 100]).unwrap();
+    checkpoint.publish(&engine);
+    let old = std::sync::Arc::clone(&checkpoint);
+    let (mut writer, reader) = capture::connect(1024).unwrap();
+    let (mut controller, mut renderer) =
+        duplex::connect_checkpoint(engine, reader, writer.metrics(), 1.0, Some(checkpoint))
+            .unwrap();
+    control(&mut controller, Command::Play);
+    render(&mut writer, &mut renderer, &[0.0; 14]);
+    let position = controller.status().tracks[0].position_frames;
+    let clock = controller.status().frames;
+    let take = [[0.125, -0.375]; 20];
+    controller.begin_import(1, &take).unwrap();
+    assert!(
+        controller.snapshot(2560).is_err(),
+        "No stale checkpoint can be saved during a pending import"
+    );
+    render(&mut writer, &mut renderer, &[0.0; 10]);
+    assert!(controller.finish_import().unwrap().is_ok());
+    assert_eq!(controller.status().frames, clock + 5);
+    assert_eq!(controller.status().tracks[0].position_frames, position + 5);
+    assert_eq!(controller.status().tracks[0].state, State::Playing);
+    assert_eq!(controller.status().tracks[1].state, State::Stopped);
+    assert_eq!(controller.snapshot(2560).unwrap()[1].audio, take);
+    assert!(
+        old.snapshot(2560, || ()).is_err(),
+        "The retired checkpoint must reject reads"
+    );
+    controller.begin_import(0, &take).unwrap();
+    render(&mut writer, &mut renderer, &[0.0; 2]);
+    assert!(controller.finish_import().unwrap().is_err());
+    assert_eq!(
+        controller.snapshot(2560).unwrap()[0].audio,
+        [[0.25, -0.25]; 100]
+    );
+    controller.begin_import(1, &[[0.9; 2]; 10]).unwrap();
+    assert!(controller.cancel_import());
+    render(&mut writer, &mut renderer, &[0.0; 2]);
+    assert!(controller.finish_import().unwrap().is_err());
+    assert_eq!(controller.snapshot(2560).unwrap()[1].audio, take);
+    controller
+        .send(Control::Track {
+            track: 2,
+            command: Command::Record,
+        })
+        .unwrap();
+    render(&mut writer, &mut renderer, &[0.1, 0.2, 0.3, 0.4]);
+    controller.begin_import(1, &take).unwrap();
+    render(&mut writer, &mut renderer, &[0.5, 0.6]);
+    assert!(controller.finish_import().unwrap().is_ok());
+    assert!(
+        controller.snapshot(2560).is_err(),
+        "The new checkpoint must still reject an active recording on another track"
+    );
+    controller
+        .send(Control::FinishStopped { track: 2 })
+        .unwrap();
+    render(&mut writer, &mut renderer, &[0.0; 2]);
+    assert_eq!(
+        controller.snapshot(2560).unwrap()[2].audio,
+        [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]],
+        "Import must preserve another track's captured samples across checkpoint replacement"
+    );
+    assert!(controller.begin_import(1, &[[f32::NAN, 0.0]]).is_err());
+    assert!(controller.begin_import(1, &[[0.0; 2]; 129]).is_err());
+}
