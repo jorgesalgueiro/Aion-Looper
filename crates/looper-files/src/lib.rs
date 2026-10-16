@@ -208,6 +208,36 @@ pub fn decode_with_integer_scaling(
     max_frames: usize,
     scaling: IntegerScaling,
 ) -> Result<Wave, Error> {
+    decode_inner(bytes, max_frames, scaling, None)
+}
+
+/// Native worker import: validate source/destination capacities before PCM allocation,
+/// decode with standard integer scaling and convert to the session sample rate.
+/// Returns the converted wave and original file sample rate. Source PCM is capped
+/// at 32 million stereo frames independently of the destination budget.
+pub fn decode_resampled_with_limit(
+    bytes: &[u8],
+    target_rate: u32,
+    max_frames: usize,
+) -> Result<(Wave, u32), Error> {
+    let mut wave = decode_inner(
+        bytes,
+        32_000_000,
+        IntegerScaling::Symmetric,
+        Some((target_rate, max_frames)),
+    )?;
+    let source_rate = wave.sample_rate;
+    wave.frames = resample::convert(wave.frames, source_rate, target_rate, max_frames)?;
+    wave.sample_rate = target_rate;
+    Ok((wave, source_rate))
+}
+
+fn decode_inner(
+    bytes: &[u8],
+    max_frames: usize,
+    scaling: IntegerScaling,
+    output: Option<(u32, usize)>,
+) -> Result<Wave, Error> {
     if bytes.len() < 12 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
         return Err(Error::InvalidHeader);
     }
@@ -304,6 +334,11 @@ pub fn decode_with_integer_scaling(
     if data.len() / align > max_frames {
         return Err(Error::InvalidSize);
     }
+    if let Some((target_rate, max_output)) = output {
+        if resample::output_frames(data.len() / align, sample_rate, target_rate)? > max_output {
+            return Err(Error::InvalidSize);
+        }
+    }
     let mut frames = Vec::new();
     frames
         .try_reserve_exact(data.len() / align)
@@ -348,3 +383,4 @@ pub fn decode_with_integer_scaling(
 }
 
 pub mod project;
+pub mod resample;

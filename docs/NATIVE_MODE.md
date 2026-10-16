@@ -137,3 +137,8 @@ settings, unrelated playback, rejected edits, history invalidation and memory bo
 The allocation test checks zero callback heap operations for import and edit success,
 rejection and cancellation. A silent 30-second TOPPING ASIO regression at 48 kHz /
 128 frames reports zero underruns/dropped input frames; microphone audio was not saved.
+
+Native WAV import now converts 8–192 kHz source audio to the session rate in Rust.
+Drop a WAV onto a stopped loop, or use the Project Menu path controls. Duration
+and pitch are retained and the panel reports rate conversion. The converted take
+must fit the track duration; see [NATIVE_IMPORT.md](NATIVE_IMPORT.md).

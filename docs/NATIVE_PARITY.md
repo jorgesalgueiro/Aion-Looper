@@ -12,7 +12,7 @@ workflows while individual native workflows are completed and verified.
 | Project save/reopen | Versioned `.aion`, current native takes/settings | Original `.alp` workflow |
 | Individual WAV export | Dry stereo float32, Rust worker | Existing dry/wet exports |
 | Existing `.alp` import and project interchange | Pending | Existing workflow |
-| WAV/audio import | Matching-rate mono/stereo WAV into stopped tracks; Rust decode/seam; other tracks continue | Existing workflow, with Rust WAV decoding where supported |
+| WAV/audio import | 8–192 kHz mono/stereo WAV converted to the session rate in Rust; stopped target; other tracks continue | Existing workflow, with Rust WAV decoding where supported |
 | Normalize and its per-loop undo/redo | Rust worker; original NORM/UNDO/REDO controls for stopped takes; bounded session history | Existing workflow |
 | Punch/global undo, reverse, multiply, merge | Pending in native transport/UI | Existing workflow; several offline operations already use Rust |
 | Pan, speed, start offsets, retrigger/stutter, solo | Pending UI/engine integration | Existing workflow |
@@ -22,7 +22,7 @@ workflows while individual native workflows are completed and verified.
 | JACK/CoreAudio native duplex, macOS/iOS applications | Pending | Not established by Windows/WSLg checks |
 | CLAP | Separate native prototype, not full app parity | Not the standalone browser UI |
 
-Next functional priorities: existing project interchange and resampling, undo/redo and editing,
+Next functional priorities: existing project interchange, punch undo/redo and editing,
 transport timing and sync, then effects/synths and their complete saved state.
 Finish and verify each workflow against the reference before enabling its UI.
 The compatibility interface must remain available until those workflows reach

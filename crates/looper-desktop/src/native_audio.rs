@@ -513,18 +513,15 @@ impl Service {
                 if bytes.len() as u64 > MAX_BYTES {
                     return Err("WAV file is too large.".into());
                 }
-                let mut wave=looper_files::decode_with_limit(&bytes,h.capacity).map_err(|e|format!("Decode WAV: {e:?}. Supported: mono/stereo PCM16, PCM24 or float32 within the loop capacity."))?;
                 let rate = h.info["sample_rate"].as_u64().unwrap() as u32;
-                if wave.sample_rate != rate {
-                    return Err(format!("WAV is {} Hz; native audio is {rate} Hz. Use a matching-rate WAV or reopen audio at the file rate. Native resampling is pending.",wave.sample_rate));
-                }
+                let (mut wave,source_rate)=looper_files::decode_resampled_with_limit(&bytes,rate,h.capacity).map_err(|e|format!("Decode/convert WAV: {e:?}. Supported: 8–192 kHz mono/stereo PCM16, PCM24 or float32 within the loop duration capacity."))?;
                 looper_core::buffer::seam_fade(&mut wave.frames, rate, 0.015)
                     .map_err(|e| format!("Import seam: {e:?}"))?;
                 h.source.controller().begin_import(r.track, &wave.frames)?;
                 finish_replacement(&mut h.source)?;
                 h.history.clear_track(r.track);
                 Ok(
-                    json!({"imported":true,"track":r.track,"frames":wave.frames.len(),"sample_rate":rate,"channels":wave.channels,"gain":1.0,"feedback":0.8,"seam_seconds":0.015}),
+                    json!({"imported":true,"track":r.track,"frames":wave.frames.len(),"sample_rate":rate,"source_sample_rate":source_rate,"resampled":source_rate!=rate,"channels":wave.channels,"gain":1.0,"feedback":0.8,"seam_seconds":0.015}),
                 )
             }
             "engine_project_export" => {
@@ -931,17 +928,29 @@ mod tests {
             looper_files::Format::Pcm24,
             looper_files::Format::Float32,
         ] {
-            for channels in [1, 2] {
+            for (source_rate, channels) in [
+                (48000, 1),
+                (48000, 2),
+                (44100, 1),
+                (44100, 2),
+                (96000, 1),
+                (96000, 2),
+            ] {
                 let input = vec![[0.125, -0.375]; 2000];
-                let bytes = looper_files::encode(&input, 48000, channels, format).unwrap();
+                let bytes = looper_files::encode(&input, source_rate, channels, format).unwrap();
                 fs::write(&path, &bytes).unwrap();
-                expected = looper_files::decode(&bytes).unwrap().frames;
+                expected = looper_files::decode_resampled_with_limit(&bytes, 48000, 48000)
+                    .unwrap()
+                    .0
+                    .frames;
                 looper_core::buffer::seam_fade(&mut expected, 48000, 0.015).unwrap();
                 let mut r = request("engine_project_import", token);
                 r.track = 1;
                 r.path = path.to_string_lossy().into_owned();
                 let imported = service.execute(r);
                 assert_eq!(imported["ok"], true, "{imported}");
+                assert_eq!(imported["value"]["source_sample_rate"], source_rate);
+                assert_eq!(imported["value"]["resampled"], source_rate != 48000);
                 let takes = service
                     .handle
                     .as_mut()
@@ -958,7 +967,8 @@ mod tests {
         }
         for bytes in [
             b"broken WAV".to_vec(),
-            looper_files::encode(&[[0.2; 2]; 20], 44100, 2, looper_files::Format::Float32).unwrap(),
+            looper_files::encode(&[[0.2; 2]; 44101], 44100, 2, looper_files::Format::Float32)
+                .unwrap(),
             looper_files::encode(&[[0.2; 2]; 48001], 48000, 2, looper_files::Format::Float32)
                 .unwrap(),
         ] {
