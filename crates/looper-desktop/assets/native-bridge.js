@@ -37,6 +37,59 @@
         }
         return packBytes(bytes);
     }
+    // Keep capture IPC moving while transferring a stopped recording. The take
+    // is already private; yielding cannot change the submitted PCM or settings.
+    let yieldChannel;
+    const yielding=[];
+    function yieldInput() {
+        // Message tasks yield to IPC without hidden WebViews' timer clamping.
+        if(typeof MessageChannel!=='function') return new Promise(resolve=>setTimeout(resolve,0));
+        if(!yieldChannel) {
+            yieldChannel=new MessageChannel();
+            yieldChannel.port1.onmessage=()=>yielding.shift()?.();
+        }
+        return new Promise(resolve=>{yielding.push(resolve);yieldChannel.port2.postMessage(0);});
+    }
+    async function packResponsive(buffer) {
+        const left=buffer.getChannelData(0),right=buffer.getChannelData(buffer.numberOfChannels===1?0:1);
+        const bytes=new Uint8Array(buffer.length*8),data=new DataView(bytes.buffer);
+        for(let start=0;start<buffer.length;start+=4096) {
+            const end=Math.min(start+4096,buffer.length);
+            for(let i=start;i<end;i++) { data.setFloat32(i*8,left[i],true);data.setFloat32(i*8+4,right[i],true); }
+            await yieldInput();
+        }
+        const parts=[];
+        for(let offset=0;offset<bytes.length;offset+=32768) {
+            parts.push(String.fromCharCode(...bytes.subarray(offset,offset+32768)));
+            await yieldInput();
+        }
+        return btoa(parts.join(''));
+    }
+    async function copyResponsive(result,buffer) {
+        if(result.pcm===undefined) { copyResult(result,buffer);return; }
+        if(typeof result.pcm!=='string'||result.pcm.length>Math.ceil(buffer.length*8/3)*4) throw new Error('Native PCM length mismatch.');
+        const text=atob(result.pcm);
+        if(text.length!==buffer.length*8) throw new Error('Native PCM length mismatch.');
+        const bytes=new Uint8Array(text.length);
+        for(let start=0;start<bytes.length;start+=32768) {
+            const end=Math.min(start+32768,bytes.length);
+            for(let i=start;i<end;i++) bytes[i]=text.charCodeAt(i);
+            await yieldInput();
+        }
+        const data=new DataView(bytes.buffer);
+        // Finish validation before writing any sample, as in the synchronous path.
+        for(let start=0;start<buffer.length*2;start+=8192) {
+            const end=Math.min(start+8192,buffer.length*2);
+            for(let i=start;i<end;i++) if(!Number.isFinite(data.getFloat32(i*4,true))) throw new Error('Invalid native PCM.');
+            await yieldInput();
+        }
+        const left=buffer.getChannelData(0),right=buffer.numberOfChannels===2?buffer.getChannelData(1):null;
+        for(let start=0;start<buffer.length;start+=4096) {
+            const end=Math.min(start+4096,buffer.length);
+            for(let i=start;i<end;i++) { left[i]=data.getFloat32(i*8,true);if(right)right[i]=data.getFloat32(i*8+4,true); }
+            await yieldInput();
+        }
+    }
     function packBytes(bytes) {
         const parts = [];
         for (let offset = 0; offset < bytes.length; offset += 32768) {
@@ -497,10 +550,11 @@
                 && [target,start,destinationOffset,length].every(n=>Number.isSafeInteger(n)&&n>=0) && length>0
                 && Number.isFinite(latency)) {
                 try {
-                    const result=await window.RustLooper.request('finalize_recording',{pcm:pack(take),sample_rate:rate,
+                    const pcm=take.length>4096 ? await packResponsive(take) : pack(take);
+                    const result=await window.RustLooper.request('finalize_recording',{pcm,sample_rate:rate,
                         latency_seconds:latency,record_mode:mode,target_frames:target,start_sample:start,destination_offset:destinationOffset});
                     const next=context.createBuffer(raw.numberOfChannels,length,rate);
-                    copyResult(result,next);
+                    if(next.length>4096) await copyResponsive(result,next); else copyResult(result,next);
                     window.RustLooper.lastNativeOperation='finalize_recording';
                     return next;
                 } catch(error) { console.error('Native recording finalization fallback:',error); }

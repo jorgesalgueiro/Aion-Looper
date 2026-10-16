@@ -11,6 +11,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Windows graphical verification failed.' }
     $packagePath = Join-Path $projectRoot 'dist\Aion-Looper-Windows'
     Copy-Item -LiteralPath 'docs\INPUT_TESTING.md' -Destination $packagePath
+    Copy-Item -LiteralPath 'docs\RECORDING_TRANSFER.md' -Destination $packagePath
     $revision = & git rev-parse HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Commit the source before packaging.' }
     @("Source: https://github.com/jorgesalgueiro/Aion-Looper/tree/$revision", "Revision: $revision", 'License: GPL-2.0-only', 'Windows x64 preview. Extract the entire ZIP and run Aion-Looper.exe.', 'Microsoft Edge WebView2 Runtime is required. See README.txt and INPUT_TESTING.md.') |

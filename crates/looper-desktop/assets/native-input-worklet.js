@@ -13,12 +13,13 @@ class NativeInputProcessor extends AudioWorkletProcessor {
         this.started = false;
         this.active = true;
         this.underruns = 0;
+        this.lastUnderrunTime = null;
         this.overruns = 0;
         this.port.onmessage = ({data}) => {
             if (data.type === 'stop') { this.active = false; return; }
             if (data.type === 'flush') { this.read = 0; this.write = 0; this.started = false; this.step = 1; return; }
             if (data.type === 'status') {
-                this.port.postMessage({underruns:this.underruns,overruns:this.overruns,bufferedFrames:this.write-this.read,clockRatio:this.step});
+                this.port.postMessage({underruns:this.underruns,overruns:this.overruns,bufferedFrames:this.write-this.read,clockRatio:this.step,lastUnderrunTime:this.lastUnderrunTime,started:this.started});
                 return;
             }
             if (data.type !== 'pcm' || !this.active) return;
@@ -48,6 +49,7 @@ class NativeInputProcessor extends AudioWorkletProcessor {
             if (index + 2 >= this.write) {
                 for (const channel of output) channel.fill(0,frame);
                 this.underruns++; this.started = false;
+                this.lastUnderrunTime = typeof currentTime === 'number' ? currentTime : null;
                 return true;
             }
             for (let channel = 0; channel < this.channels; channel++) {

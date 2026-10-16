@@ -168,6 +168,10 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
         const oldInputTrack = state.inputs[0].stream.getAudioTracks()[0];
         await InputManager.changeDevice(0,nativeDevices[0].deviceId);
         assert(oldInputTrack.readyState === 'ended' && window.RustLooper.input.status().length === 1, 'Native device changes release the previous stream');
+        // Device switching creates a fresh transport with its own prefill. Do
+        // not compare a partially silent startup take against a warmed source.
+        for(let i=0;i<300 && !state.inputs[0].stream.nativeStatus.started;i++) await new Promise(resolve=>setTimeout(resolve,10));
+        assert(state.inputs[0].stream.nativeStatus.started && !state.inputs[0].stream.nativeStatus.error,'Replacement native input is delivering buffered audio');
         const channelRms = [];
         for (const mode of ['left','right']) {
             InputManager.setChannelMode(0,mode);
@@ -178,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
             channelRms.push(rms(state.loops[2].audioBuffer,0));
             state.loops[2].clear();
         }
-        assert(channelRms[0] > .01 && Math.abs(channelRms[1]/channelRms[0]-.5) < .1, 'Existing L/R selectors route the native stereo channels');
+        assert(channelRms[0] > .01 && Math.abs(channelRms[1]/channelRms[0]-.5) < .1, `Existing L/R selectors route the native stereo channels${channelRms[0] > .01 && Math.abs(channelRms[1]/channelRms[0]-.5) < .1 ? '' : ' RMS=' + channelRms.join(',')}`);
         const extended = state.loops[1], beforeAppend = snapshot(extended.audioBuffer), appendLength=extended.audioBuffer.length;
         window.RustLooper.lastNativeOperation = null;
         document.querySelector('#loop-1 button[onclick*=".multiply()"] ').click();

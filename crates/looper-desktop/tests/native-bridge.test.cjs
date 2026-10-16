@@ -979,3 +979,67 @@ test('sampler errors and unsupported layouts retain original transform behavior'
     assert.equal(h.state.samplers[0].fallbacks, 2);
     assert.equal(h.messages.length, 1);
 });
+
+test('large recording transfers yield to input tasks and preserve the submitted snapshot and PCM bits',async()=>{
+    const h=harness(),context=h.state.audioContext,raw=buffer(2,8193,context.sampleRate);
+    const settings={audioContext:{baseLatency:0,outputLatency:0},inputLatencyMs:0,syncMode:'none',syncEnabled:false};
+    let ticks=0,atReply=0;
+    const timer=setInterval(()=>ticks++,1);
+    const frames=Array.from({length:raw.length},(_,i)=>[i===0?-0:.125,-.25]);
+    h.bridge.request=async(operation,args)=>{
+        assert.equal(operation,'finalize_recording');
+        assert.ok(ticks>0,'input tasks ran while encoding the take');
+        assert.equal(Buffer.from(args.pcm,'base64').readFloatLE(0),.25);
+        assert.equal(Buffer.from(args.pcm,'base64').readFloatLE(8),-.5);
+        atReply=ticks;
+        return {pcm:pcm(frames)};
+    };
+    try {
+        const pending=h.bridge.finalizeRecording(context,raw,settings,{},0,{},()=>{throw new Error('Unexpected fallback');});
+        raw.getChannelData(0).fill(99);
+        const next=await pending;
+        assert.ok(ticks>atReply,'input tasks ran while decoding the reply');
+        assert.ok(Object.is(next.getChannelData(0)[0],-0));
+        assert.equal(next.getChannelData(0)[8192],.125);
+        assert.equal(next.getChannelData(1)[8192],-.25);
+        assert.equal(h.bridge.lastNativeOperation,'finalize_recording');
+    } finally {clearInterval(timer);}
+});
+
+test('malformed large recording replies retain private fallback PCM after yielding',async()=>{
+    const h=harness(),context=h.state.audioContext,raw=buffer(2,8193,context.sampleRate);
+    const frames=Array.from({length:raw.length},()=>[.125,-.25]);frames.at(-1)[1]=NaN;
+    h.bridge.request=async()=>({pcm:pcm(frames)});
+    let fallbackCalls=0;
+    const pending=h.bridge.finalizeRecording(context,raw,{audioContext:{},syncMode:'none',syncEnabled:false},{},0,{},take=>{
+        fallbackCalls++;
+        assert.equal(take.getChannelData(0)[0],.25);
+        assert.equal(take.getChannelData(0)[8192],.25);
+        return take;
+    });
+    raw.getChannelData(0).fill(99);
+    const next=await pending;
+    assert.equal(fallbackCalls,1);
+    assert.equal(next.getChannelData(1)[8192],.25);
+    assert.notEqual(h.bridge.lastNativeOperation,'finalize_recording');
+});
+
+test('message-task transfers finish without depending on background timers',async()=>{
+    const h=harness(),context=h.state.audioContext,raw=buffer(2,8193,context.sampleRate);
+    let delivered=0,atReply=0;const channels=[];
+    h.context.MessageChannel=class extends MessageChannel {
+        constructor(){super();channels.push(this);this.port1.addEventListener('message',()=>delivered++);}
+    };
+    h.context.setTimeout=()=>{throw new Error('Background timers are clamped');};
+    h.bridge.request=async()=>{
+        assert.ok(delivered>0);
+        atReply=delivered;
+        return {pcm:pcm(Array.from({length:raw.length},()=>[.25,-.5]))};
+    };
+    const guard=setTimeout(()=>{},5000);
+    try {
+        const next=await h.bridge.finalizeRecording(context,raw,{audioContext:{},syncMode:'none',syncEnabled:false},{},0,{},()=>{throw new Error('Unexpected fallback');});
+        assert.ok(delivered>atReply);
+        assert.equal(next.getChannelData(1)[8192],-.5);
+    } finally {clearTimeout(guard);for(const channel of channels){channel.port1.close();channel.port2.close();}}
+});

@@ -261,3 +261,9 @@ Input follow-up: native input lifecycle, device enumeration and physical capture
 were tested on Windows/E2x2 and Ubuntu/WSLg. See [input testing](INPUT_TESTING.md)
 for fixes, passing checks and the remaining Windows post-recording underrun.
 
+
+Responsive first-recording PCM transfer: 81 desktop JS regressions pass and
+Windows physical capture no longer reproduces the earlier finalization gap
+in short local trials. See [transfer verification](RECORDING_TRANSFER.md);
+WSLg still reports a gap and long-session testing remains pending.
+

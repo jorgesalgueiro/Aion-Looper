@@ -3,9 +3,9 @@ Aion Looper graphical migration preview (Windows x64)
 Launch Aion-Looper.exe. Keep all supplied DLLs beside it.
 Temporary launchers and PowerShell hosting have been removed.
 Physical input opens and records on the tested E2x2/WASAPI interface.
-Known issue: intermittent native-to-WebAudio underruns around recording
-finalization on Windows and WSLg. This preview is not verified for gap-free
-live performance. See INPUT_TESTING.md for passing checks and limitations.
+First-recording finalization now yields during large PCM transfers. Three short
+E2x2/WASAPI trials passed without newly reported gaps. This preview is not
+verified for long gap-free live performance. See RECORDING_TRANSFER.md.
 The original Ascii-Looper interface, graphics and controls are embedded in the
 program. Click START and choose/allow the audio input as you normally would.
 The program does not need a browser tab or a development server.

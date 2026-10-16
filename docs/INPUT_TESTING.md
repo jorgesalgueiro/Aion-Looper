@@ -1,5 +1,9 @@
 # Input migration checkpoint — 2026-10-16
 
+Follow-up: [responsive recording transfer](RECORDING_TRANSFER.md) fixes the
+reproduced first-recording finalization stall. The original failure measurements
+below are retained as history; use the follow-up for current validation.
+
 The current Windows and Linux packages include native input lifecycle fixes.
 The original `ui/` source remains unchanged.
 

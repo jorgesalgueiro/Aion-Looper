@@ -11,6 +11,10 @@ fn main() {
         .file("vendor/rubberband-4.0.0/single/RubberBandSingle.cpp")
         .file("native/stretch.cpp");
     let target = std::env::var("TARGET").unwrap();
+    if target.ends_with("windows-msvc") {
+        // Match the upstream MSVC project: Windows min/max macros break std::min.
+        build.define("NOMINMAX", None);
+    }
     if target.ends_with("windows-gnu") {
         build.cpp_link_stdlib(None);
         {

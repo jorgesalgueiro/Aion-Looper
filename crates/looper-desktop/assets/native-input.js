@@ -26,8 +26,8 @@
             if (Number.isSafeInteger(token) && token > 0) await rpc('input_close',{token});
             throw new Error('Invalid native input configuration.');
         }
-        let node, source, keepAlive, alive = true, timer, next = 0, reportAt = 0, lastPacketAt = Date.now(), suspended = false;
-        const status = {host:info.host,device:info.label,sampleRate:info.sample_rate,channels:info.channels,deviceChannels:info.device_channels ?? info.channels,transport:'native-to-WebAudio',underruns:0,overruns:0};
+        let node, source, keepAlive, alive = true, timer, next = 0, reportAt = 0, lastPacketAt = Date.now(), suspended = false, lastPullAt = Date.now();
+        const status = {host:info.host,device:info.label,sampleRate:info.sample_rate,channels:info.channels,deviceChannels:info.device_channels ?? info.channels,transport:'native-to-WebAudio',underruns:0,overruns:0,maxReadMs:0,maxPullGapMs:0};
         const track = {
             kind:'audio', readyState:'live',
             getSettings:() => ({deviceId:deviceId(info),sampleRate:info.sample_rate,channelCount:info.channels}),
@@ -67,7 +67,11 @@
                 if (!alive) return;
                 if (state.audioContext !== context || context.state === 'closed') { track.stop(); return; }
                 try {
+                    const started = Date.now();
+                    status.maxPullGapMs = Math.max(status.maxPullGapMs,started-lastPullAt);
+                    lastPullAt = started;
                     const packet = await rpc('input_read',{token});
+                    status.maxReadMs = Math.max(status.maxReadMs,Date.now()-started);
                     if (!alive) return;
                     if (state.audioContext !== context || context.state === 'closed') { track.stop(); return; }
                     if (packet.position !== next || !Number.isInteger(packet.length) || packet.length < 0 || packet.length > 4096) throw new Error('Native input packet discontinuity.');

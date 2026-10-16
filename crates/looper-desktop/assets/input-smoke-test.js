@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
     const wait = ms => new Promise(resolve => setTimeout(resolve,ms));
     let result;
     const diagnostics = {audioSaved:false};
+    let heartbeatAt = performance.now(), maxUiGap = 0;
+    const heartbeat = setInterval(()=>{const now=performance.now();maxUiGap=Math.max(maxUiGap,now-heartbeatAt);heartbeatAt=now;},10);
     try {
         window.alert = message => { throw new Error(message); };
         const addInput = InputManager.addInputTrack;
@@ -32,6 +34,8 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
         await LoopManager.startRecording(0);
         await wait(1500);
         diagnostics.recordingEnd = {...input.stream.nativeStatus};
+        diagnostics.stopTime = state.audioContext.currentTime;
+        diagnostics.beforeStopUiGap = maxUiGap;
         LoopManager.stopRecording(true);
         for (let i=0;i<600 && (state.isRecording || !state.loops[0].audioBuffer);i++) await wait(10);
         const buffer = state.loops[0].audioBuffer;
@@ -44,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
         assert(true,'Captured PCM is finite');
         await wait(550); // Include the final worklet counter report.
         const capture = {...input.stream.nativeStatus};
-        Object.assign(diagnostics,{capture,peak,frames:buffer.length,trackState:track.readyState,inputError:InputManager.lastInputError});
+        Object.assign(diagnostics,{capture,peak,frames:buffer.length,maxUiGap,trackState:track.readyState,inputError:InputManager.lastInputError});
         assert(capture.frames > 0 && !capture.error && track.readyState === 'live','Rust capture remains live after recording');
         const quality = {reportedUnderruns:capture.underruns-beforeRecording.underruns,reportedOverruns:capture.overruns-beforeRecording.overruns};
         diagnostics.quality = quality;
@@ -59,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
     } catch(error) {
         result = {kind:'self_test',ok:false,checks,...diagnostics,inputs:window.RustLooper.input.status(),inputError:InputManager.lastInputError,error:String(error),stack:error.stack};
     } finally {
+        clearInterval(heartbeat);
         for (const input of [...state.inputs]) for (const track of input.stream?.getTracks() || []) track.stop();
         window.ipc.postMessage(JSON.stringify(result));
     }
