@@ -1,0 +1,18 @@
+[package]
+name = "looper-clap"
+description = "CLAP plugin prototype for Aion Looper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+clap-sys = "=0.5.0"
+looper-core = { path = "../looper-core" }
+looper-host = { path = "../looper-host" }
+
+[dev-dependencies]
+libloading = "=0.8.9"

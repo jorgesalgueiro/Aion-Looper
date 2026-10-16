@@ -1,0 +1,91 @@
+Aion Looper graphical migration preview (Windows x64)
+
+Launch Aion-Looper.exe. Keep all supplied DLLs beside it.
+Temporary launchers and PowerShell hosting have been removed.
+Physical input opens and records on the tested E2x2/WASAPI interface.
+Known issue: intermittent native-to-WebAudio underruns around recording
+finalization on Windows and WSLg. This preview is not verified for gap-free
+live performance. See INPUT_TESTING.md for passing checks and limitations.
+The original Ascii-Looper interface, graphics and controls are embedded in the
+program. Click START and choose/allow the audio input as you normally would.
+The program does not need a browser tab or a development server.
+Native Rubber Band R3 is bundled for Sample Lab stretching. SoundTouch JS remains
+bundled for compatibility fallback; processing needs no CDN connection.
+MIDI inputs now connect natively through WinMM. Use the original MIDI controls
+and learn workflow. Reconnection and overflow release tracked held notes.
+The synthetic routing tests pass; physical MIDI controllers remain unverified.
+Settings are stored in Rust-Looper-profile
+beside the executable. Microsoft Edge WebView2 Runtime is required (normally
+present on Windows 10/11).
+
+This is a staged migration, not completed native audio/DSP parity.
+The graphical app currently retains the original Web Audio/AudioWorklet engine
+to preserve the existing loop, synth, FX, tracker and project workflows.
+Stopped-loop normalization for mono/stereo takes up to one million frames now
+passes through Rust DSP. Overdub, substitute and merge finalization also use the
+Rust mixer for mono/stereo buffers at matching sample rates, up to one million
+combined frames. Other cases retain the original behavior. Binary float32 transfer
+preserves sample precision, and queued edits on each buffer execute in order.
+Overdub/substitute finalization now also performs captured DC removal, existing
+system/manual latency correction and 8 ms splice fading in the Rust worker.
+Undo history and PCM commit wait for completion and reject stale take/session
+results. This preserves the existing correction model; physical calibration and
+round-trip latency are not verified.
+First recordings now finalize in Rust too: free capture, dynamic bar trimming,
+synchronized extraction, padding/tail folding, latency correction, fades and DC
+removal. The original Record/Stop controls and playback behavior remain intact.
+Input plus requested target must fit one million frames, mono/stereo at the
+context sample rate. Other cases use the original finalizer. Pending results
+cannot overwrite replaced takes or a changed recording/transport session.
+Stopped-loop MULT now doubles the take through Rust, up to 500,000 input frames,
+with the existing undo/redo and sync-source updates. Sampler REVERSE/NORMALIZE
+use Rust for mono/stereo takes up to one million frames, preserving sample rate.
+Interactive MULT on a playing loop now finalizes captured audio in Rust: DC
+removal, 8 ms splice fading and append. One million combined frames are supported;
+larger takes retain the original processor. Undo/redo and restart remain intact.
+WAV import uses Rust for mono/stereo PCM16/24 or float32 audio at the context's
+sample rate, up to one million frames and 16 MB of file data. Files needing rate
+conversion or unsupported codecs/layouts retain browser decoding. Clicking a
+loop waveform exports PCM16 through Rust, preserving the original filename and
+WAV bytes. Integer import scaling and arithmetic rounding are calibrated to
+match the host browser; all 65,536 PCM16 integer inputs match in WebView2.
+Project SAVE uses Rust for embedded loop and sampler WAVs, retaining the original
+ALP format, settings and names. Native encodes are serialized through a bounded
+queue; queued audio is captured when save is requested.
+EXP ALL dry takes and master/input/recorded-stem WAVs now encode through Rust.
+Master, input and stem export fades run in the same worker job, preserving the
+original PCM16 bytes and short-buffer behavior. Bulk exports freeze all dry
+takes before waiting, and preserve names, order, tracker files and error cleanup.
+Unsupported sizes/layouts and failures retain source encoding on saved audio.
+Compressed performance decoding and live dry/wet bouncing remain in Web Audio.
+Sample Lab REV, NORM, CROP and SAVE WAV now use Rust. Selection snapping,
+one-slot undo and no-op normalization history retain their original behavior.
+PROCESS uses Rubber Band 4.0.0 R3 offline for independent stretch and pitch,
+with coupled stereo and exact requested output length, on the worker thread.
+Native input/output each support up to one million frames, mono/stereo at
+8-192 kHz. Wider/larger jobs and failures retain SoundTouch JS; neutral ratio
+and pitch keep the original slice-only shortcut. Replaced sources, contexts or
+in-place normalization reject stale DSP results. Subjective listening checks and
+non-Windows device validation remain outstanding.
+MIC/LINE now uses native input. Choose the host/device in the existing input
+selector; MON stays off until you enable it. L/R/ST, gain/pan, input FX, meters
+and recording retain their existing controls. Wider interfaces capture their
+first pair; APP/SYS retains browser capture. Up to four native inputs are supported.
+The native-to-WebAudio transport adds buffering and reports gaps/errors through
+the existing input banner. Playback still uses Web Audio. Native JACK/ASIO input
+requires a matching feature build; the normal package uses WASAPI.
+
+Verified in the native window: startup, stylesheet, secure audio context,
+offline SoundTouch, ten loop controls, WAV import, normalization through Rust,
+play/mute/stop/clear, synthetic-input AudioWorklet recording, Rust overdub,
+substitute and merge, MULT and sampler transforms, sample-exact undo/redo,
+track expansion and workspace tabs.
+Project SAVE and reload also pass with loop/sampler audio and metadata preserved.
+Rust synthetic native input passes MIC/LINE, MON, recording, L/R routing, device
+changes and removal. These automated UI checks use synthetic input and do not
+prove that the standalone executable can capture this PC's physical microphone.
+To test manually: START, choose MIC/LINE device, enable MON, then REC on an empty
+loop and press STOP. MON connects input to the recording bus and speakers;
+headphones avoid feedback. The original gain, pan and L/R/ST controls remain.
+Audible monitoring, transport latency, MIDI controllers, project dialogs, every DSP
+setting, JACK/ASIO and long live sessions still need further device testing.

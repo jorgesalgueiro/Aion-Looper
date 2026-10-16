@@ -1,0 +1,863 @@
+
+// =============================================
+// MODULE 2: CORE AUDIO ENGINE
+// =============================================
+
+
+// Audio Worklet Processors
+// =============================================
+// MODULE: AUDIO ENGINE (CORE)
+// =============================================
+// Worklet processor source: injected as a <script type="text/worklet-script">
+// element so the worklet loader (below) can collect it from the DOM.
+(function () {
+    const el = document.createElement('script');
+    el.type = 'text/worklet-script';
+    el.textContent = `
+const getWorkletSampleRate = () => {
+    return (typeof sampleRate === 'number') ? sampleRate : 44100;
+};
+
+/**
+ * SVF Filter Class (Ported from svf_filter.jsfx-inc)
+ * Implements Andrew Simper's linear trapezoidal integrated SVF
+ */
+class SVF {
+    constructor() {
+        this.ic1eq = 0;
+        this.ic2eq = 0;
+        this.a1 = 0; this.a2 = 0; this.a3 = 0;
+        this.m0 = 0; this.m1 = 0; this.m2 = 0;
+    }
+
+    setCoeffs(g, k, a1, a2, a3, m0, m1, m2) {
+        this.a1 = a1; this.a2 = a2; this.a3 = a3;
+        this.m0 = m0; this.m1 = m1; this.m2 = m2;
+    }
+
+    process(v0) {
+        const v3 = v0 - this.ic2eq;
+        const v1 = this.a1 * this.ic1eq + this.a2 * v3;
+        const v2 = this.ic2eq + this.a2 * this.ic1eq + this.a3 * v3;
+        this.ic1eq = 2 * v1 - this.ic1eq;
+        this.ic2eq = 2 * v2 - this.ic2eq;
+        // Optimization: Flush denormals to zero to prevent CPU spikes on silence
+        if (Math.abs(this.ic1eq) < 1e-9) this.ic1eq = 0;
+        if (Math.abs(this.ic2eq) < 1e-9) this.ic2eq = 0;
+        return this.m0 * v0 + this.m1 * v1 + this.m2 * v2;
+    }
+}
+`;
+    document.head.appendChild(el);
+})();
+
+// from main.js:
+
+class AudioEngine {
+    /**
+     * Initializes the core audio components.
+     * Creates AudioContext in a suspended state.
+     */
+    static async initialize(config = {}) {
+        try {
+            // Preserve numeric zero; the selector also supplies it as a string.
+            const latHint = (config.latencyHint === '0') ? 0 : (config.latencyHint ?? 'interactive');
+
+            const options = { latencyHint: latHint };
+            this.requestedLatencyHint = latHint;
+            const sampleRate = Number(config.sampleRate);
+            // Auto/missing/invalid rates leave the browser free to use the device default.
+            if (Number.isFinite(sampleRate) && sampleRate > 0) {
+                options.sampleRate = sampleRate;
+            }
+            
+            state.audioContext = new (window.AudioContext || window.webkitAudioContext)(options);
+            state.latencyCalibration = null;
+
+            // This is the main mix bus. All audio sources (loops, mic)
+            // must be connected here *before* the masterGain.
+            state.masterMixer = state.audioContext.createGain();
+            
+            // This is the final master volume control.
+            state.masterGain = state.audioContext.createGain();
+            // Initialize to unity to ensure sound passes if fade-in fails
+            state.masterGain.gain.value = 1.0; 
+
+           // --- VU Meters ---
+           const meterSize = 2048;
+           
+           // Master Meter
+           state.masterMeter = state.audioContext.createAnalyser();
+           state.masterMeter.fftSize = meterSize;
+           state.masterMeterData = new Float32Array(state.masterMeter.fftSize);
+           state.masterPeak = { value: 0, lastUpdate: 0, linearPeak: 0 };
+
+            // --- Master Limiter (Safety) ---
+            // Prevents digital clipping at the output
+            state.masterLimiter = state.audioContext.createDynamicsCompressor();
+            state.masterLimiter.threshold.value = -0.5; // Adjusted to prevent over-compression
+            state.masterLimiter.knee.value = 10; // Soft knee for transparency
+            state.masterLimiter.ratio.value = 20; // High ratio for brickwall limiting
+            state.masterLimiter.attack.value = 0.002; // 2ms attack (Faster to catch peaks)
+            state.masterLimiter.release.value = 0.050; // 50ms release
+
+            // --- Master Soft Clipper (Safety Saturation) ---
+            // Gently saturates peaks before they hit the limiter to prevent hard digital breaking
+            state.masterSoftClip = state.audioContext.createWaveShaper();
+            state.masterSoftClip.oversample = '4x'; // Prevent aliasing from the saturation curve on the master bus
+            const softClipCurve = new Float32Array(4097);
+            const threshold = 0.875;
+            // Unity below the knee, with symmetric, zero-slope endpoints at +/-0.9375.
+            for (let i = 0; i < softClipCurve.length; i++) {
+                const x = 2 * i / (softClipCurve.length - 1) - 1;
+                const magnitude = Math.abs(x);
+                softClipCurve[i] = Math.sign(x) * (magnitude <= threshold
+                    ? magnitude
+                    : magnitude - (magnitude - threshold) ** 2 / (2 * (1 - threshold)));
+            }
+            state.masterSoftClip.curve = softClipCurve;
+
+            // --- Destinations for recording ---
+            state.loopDestination = state.audioContext.createMediaStreamDestination();
+            state.masterDestination = state.audioContext.createMediaStreamDestination();
+            state.inputDestination = state.audioContext.createMediaStreamDestination();
+
+            // --- Master Audio Chain ---
+            // Live: masterMixer -> masterGain -> SoftClip -> Output
+            state.masterMixer.connect(state.masterGain);
+            // Recording branch routing is deferred until the EQ worklet is loaded.
+            
+            state.masterStartTime = 0; // Will be set on resume
+            
+            // Pre-calculate the first reverb impulse safely
+            if (typeof effects !== 'undefined' && effects.reverb) {
+                effects.reverb.impulseBuffer = this.createSimpleReverbIR(1.0, 1.0, state.audioContext.sampleRate);
+            }
+            
+            // --- Load AudioWorklet ---
+            try {
+                const scriptEls = document.querySelectorAll('script[type="text/worklet-script"]');
+                if (!scriptEls || scriptEls.length === 0) {
+                    throw new Error("Processor script elements not found.");
+                }
+                
+                let processorScript = '';
+                scriptEls.forEach(el => processorScript += el.textContent + '\n');
+                
+                let url;
+                try {
+                    if (window.location.protocol === 'file:') {
+                        url = 'data:application/javascript;base64,' + btoa(unescape(encodeURIComponent(processorScript)));
+                    } else {
+                        const blob = new Blob([processorScript], { type: 'application/javascript' });
+                        url = URL.createObjectURL(blob);
+                    }
+                    await state.audioContext.audioWorklet.addModule(url);
+                } finally {
+                    if (url && url.startsWith('blob:')) {
+                        URL.revokeObjectURL(url);
+                    }
+                }
+            }
+            catch (e) { 
+                console.error("Worklet load failed:", e); 
+            }
+            
+            // --- Worklet Health Check ---
+            try {
+                const testNode = new AudioWorkletNode(state.audioContext, 'recorder-processor');
+                testNode.disconnect();
+            } catch(e) {
+                throw new Error("AudioWorklets failed to initialize. Your browser may be blocking them, or you are not on HTTPS/localhost.");
+            }
+
+            // --- Initialize Master Bus FX (EQ -> Comp) ---
+            // Master EQ
+            try {
+                const p = state.masterFx.eq;
+                const d = (typeof effects !== 'undefined' && effects.eq) || {};
+                state.masterEQ = new AudioWorkletNode(state.audioContext, 'eq-processor', {
+                    parameterData: {
+                        lcFreq: p.lcFreq ?? d.lcFreq, lsFreq: p.lsFreq ?? d.lsFreq, lsGain: p.lsGain ?? d.lsGain,
+                        hsFreq: p.hsFreq ?? d.hsFreq, hsGain: p.hsGain ?? d.hsGain, hcFreq: p.hcFreq ?? d.hcFreq
+                    }
+                });
+                // Set Peaks
+                for(let i=1; i<=6; i++) {
+                    state.masterEQ.parameters.get(`p${i}Freq`).value = p[`p${i}Freq`] ?? d[`p${i}Freq`];
+                    state.masterEQ.parameters.get(`p${i}Gain`).value = p[`p${i}Gain`] ?? d[`p${i}Gain`];
+                    state.masterEQ.parameters.get(`p${i}Q`).value = p[`p${i}Q`] ?? d[`p${i}Q`];
+                }
+            } catch(e) { console.warn("Master EQ init failed", e); state.masterEQ = null; }
+            
+            // Master Comp
+            state.masterComp = state.audioContext.createDynamicsCompressor();
+            const cp = state.masterFx.comp;
+            state.masterComp.threshold.value = cp.threshold;
+            state.masterComp.ratio.value = cp.ratio;
+            state.masterComp.knee.value = cp.knee;
+            state.masterComp.attack.value = cp.attack;
+            state.masterComp.release.value = cp.release;
+            
+            // Master Comp Makeup Gain
+            state.masterCompGain = state.audioContext.createGain();
+            state.masterCompGain.gain.value = cp.gain ?? 1.0;
+            
+            // Live output uses only the soft clipper; look-ahead dynamics and EQ
+            // belong to the parallel master recording branch.
+            let lastNode = state.masterGain;
+            if (state.masterSoftClip) {
+                lastNode.connect(state.masterSoftClip);
+                lastNode = state.masterSoftClip;
+            }
+            lastNode.connect(state.audioContext.destination);
+            lastNode.connect(state.masterMeter);
+            // Record the same master level, then apply the recording-only finish.
+            if (state.masterEQ) { lastNode.connect(state.masterEQ); lastNode = state.masterEQ; }
+            if (state.masterComp) { lastNode.connect(state.masterComp); lastNode = state.masterComp; }
+            if (state.masterCompGain) { lastNode.connect(state.masterCompGain); lastNode = state.masterCompGain; }
+            if (state.masterLimiter) {
+                lastNode.connect(state.masterLimiter);
+                lastNode = state.masterLimiter;
+            }
+            if (state.masterDestination) {
+                lastNode.connect(state.masterDestination);
+            }
+            return true;
+            
+        } catch (error) {
+            console.error("Audio engine initialization failed:", error);
+            if (state.audioContext) {
+                state.audioContext.close().catch(() => {});
+                state.audioContext = null;
+            }
+            alert("Failed to initialize audio engine. Your browser might not be supported.");
+            return false;
+        }
+    }
+
+    /**
+     * Resumes the AudioContext if it's suspended.
+     * This is CRITICAL and must be called by a user action (e.g., button click).
+     */
+    static async resume() {
+        if (!state.audioContext) return false;
+        if (state.audioContext.state === 'closed') return false;
+        
+        if (state.audioContext.state === 'running') {
+            if (state.masterStartTime === 0) {
+                state.masterStartTime = state.audioContext.currentTime;
+                if (window.MetronomeScheduler) window.MetronomeScheduler.updateSettings();
+            }
+            return true;
+        }
+
+        try {
+            // Resume context (handles suspended or interrupted states common on iOS/macOS)
+            if (state.audioContext.state !== 'running') await state.audioContext.resume();
+            if (state.audioContext.state === 'running') {
+                if (state.masterStartTime === 0) {
+                    state.masterStartTime = state.audioContext.currentTime;
+                    if (window.MetronomeScheduler) window.MetronomeScheduler.updateSettings();
+                }
+                return true;
+            }
+        } catch (e) {
+            console.error('Error resuming audio context:', e);
+            alert("Could not start audio. Please click again.");
+        }
+        return false;
+    }
+
+    /**
+     * Centralized envelope/fade utility to prevent audio clicks and popping.
+     */
+    static scheduledFade(nodeOrParam, targetValue, startTime, durationMs = 15) {
+        if (!nodeOrParam) return;
+        const param = nodeOrParam.gain || nodeOrParam.pan || (typeof nodeOrParam.setValueAtTime === 'function' ? nodeOrParam : null);
+        if (!param) return;
+        
+        const durSec = Math.max(0.001, durationMs / 1000.0);
+        try {
+            param.cancelScheduledValues(startTime);
+            try { param.setValueAtTime(param.value, startTime); } catch(e){}
+            param.linearRampToValueAtTime(targetValue, startTime + durSec);
+        } catch(e) { Log.debug('AudioEngine', 'scheduledFade error:', e); }
+    }
+    
+    /**
+     * Robustly connects an AudioNode to the master mix bus.
+     * All loops and monitored inputs MUST use this.
+     * @param {AudioNode} node - The final node of a loop or mic chain.
+     */
+    static connectToMaster(node) {
+        if (node && state.masterMixer) {
+            try {
+                node.connect(state.masterMixer);
+            } catch (e) {
+                console.error("Failed to connect node to master mixer:", e);
+            }
+        }
+    }
+
+    /**
+     * Gets the current audio context time. Returns 0 if not initialized.
+     */
+    static get currentTime() {
+        return state.audioContext ? state.audioContext.currentTime : 0;
+    }
+
+    /** Estimated audible context time, for visuals only; scheduling uses currentTime. */
+    static get playbackTime() {
+        const ctx = state.audioContext;
+        if (!ctx) return 0;
+        const now = Number.isFinite(ctx.currentTime) ? Math.max(0, ctx.currentTime) : 0;
+        try {
+            if (typeof ctx.getOutputTimestamp === 'function' && typeof performance !== 'undefined') {
+                const stamp = ctx.getOutputTimestamp();
+                const wallTime = performance.now();
+                // Some browsers return zero/uninitialized timestamps during startup.
+                if (stamp && Number.isFinite(stamp.contextTime) && stamp.contextTime > 0 &&
+                    Number.isFinite(stamp.performanceTime) && stamp.performanceTime > 0 &&
+                    Number.isFinite(wallTime)) {
+                    const audible = stamp.contextTime + (wallTime - stamp.performanceTime) / 1000;
+                    if (Number.isFinite(audible)) return Math.max(0, Math.min(now, audible));
+                }
+            }
+        } catch (e) { /* Unsupported or temporarily unavailable output timestamp. */ }
+        const latency = value => Number.isFinite(value) ? Math.max(0, value) : 0;
+        return Math.max(0, now - latency(ctx.baseLatency) - latency(ctx.outputLatency));
+    }
+
+    // Capture meters pass playbackTime = now; output meters wait for audible samples.
+    static readMeter(analyser, data, meter, playbackTime = this.playbackTime, now = this.currentTime) {
+        const ctx = state.audioContext;
+        const running = !!ctx && ctx.state === 'running';
+        now = Number.isFinite(now) ? Math.max(0, now) : 0;
+        playbackTime = Number.isFinite(playbackTime) ? Math.max(0, Math.min(now, playbackTime)) : now;
+        const reset = !meter._history || meter._context !== ctx || meter._running !== running ||
+            now < meter._sampleTime ||
+            (analyser && (meter._analyser !== analyser || (data && meter._data !== data)));
+        if (reset) {
+            meter._history = [];
+            meter.rms = 0;
+            meter.peak = 0;
+            meter._time = playbackTime;
+            meter._peakUntil = playbackTime;
+            meter._clipUntil = -Infinity;
+        }
+        meter._context = ctx;
+        meter._running = running;
+        meter._analyser = analyser || null;
+        meter._data = data || null;
+        meter._sampleTime = now;
+
+        let rms = 0;
+        let peak = 0;
+        if (running && analyser && data && data.length) {
+            analyser.getFloatTimeDomainData(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+                const value = Number.isFinite(data[i]) ? data[i] : 0;
+                sum += value * value;
+                peak = Math.max(peak, Math.abs(value));
+            }
+            rms = Math.sqrt(sum / data.length);
+        }
+        // Missing analysers enqueue silence, rather than discarding their audible tail.
+        const history = meter._history;
+        // A stalled clock must not evict pending audio or overwrite a disconnected tail.
+        if (!history.length || history[history.length - 1].time !== now) {
+            history.push({ time: now, rms, peak });
+            if (history.length > 128) history.shift();
+        }
+        rms = 0;
+        peak = 0;
+        for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i].time <= playbackTime) {
+                rms = history[i].rms;
+                peak = history[i].peak;
+                break;
+            }
+        }
+
+        // Latency-estimate jitter may move playbackTime backwards, but must not rewind holds.
+        const time = Math.max(meter._time, playbackTime);
+        const dt = time - meter._time;
+        meter.rms = rms >= meter.rms ? rms : rms + (meter.rms - rms) * Math.exp(-dt / 0.18);
+        const fallTime = Math.max(0, time - Math.max(meter._time, meter._peakUntil));
+        meter.peak *= Math.pow(10, -fallTime); // 20 dB/second, only after the 0.8s hold.
+        if (peak > 0 && peak >= meter.peak) {
+            meter.peak = peak;
+            meter._peakUntil = time + 0.8;
+        }
+        // Clip timing is independent of held peaks, display rounding, and redraw thresholds.
+        if (peak >= 1) meter._clipUntil = time + 1.2;
+        meter.clipped = time < meter._clipUntil;
+        meter._time = time;
+        meter.linearPeak = peak < 0.001 ? 0 : peak;
+        if (meter.rms < 0.001) meter.rms = 0;
+        if (meter.peak < 0.001) meter.peak = 0;
+        const toDb = value => value > 0 ? Math.max(-60, 20 * Math.log10(value)) : -60;
+        const toPercent = db => Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+        meter.peakDb = toDb(meter.peak);
+        meter.rmsPercent = toPercent(toDb(meter.rms));
+        meter.peakPercent = toPercent(meter.peakDb);
+        return meter;
+    }
+    
+    static updateMasterEQ(param, val) {
+        state.masterFx.eq[param] = val;
+        if (state.masterEQ) {
+            const p = state.masterEQ.parameters.get(param);
+            if (p) {
+                try {
+                    p.cancelScheduledValues(this.currentTime);
+                    try { p.setValueAtTime(p.value, this.currentTime); } catch(e){}
+                    p.setTargetAtTime(val, this.currentTime, 0.05);
+                } catch(e) {
+                    p.setValueAtTime(val, this.currentTime);
+                }
+            }
+        }
+    }
+    static updateMasterComp(param, val) {
+        state.masterFx.comp[param] = val;
+        if (param === 'gain') {
+            if (state.masterCompGain) {
+                try {
+                    state.masterCompGain.gain.cancelScheduledValues(this.currentTime);
+                    try { state.masterCompGain.gain.setValueAtTime(state.masterCompGain.gain.value, this.currentTime); } catch(e){}
+                    state.masterCompGain.gain.setTargetAtTime(val, this.currentTime, 0.05);
+                } catch(e) {
+                    state.masterCompGain.gain.setValueAtTime(val, this.currentTime);
+                }
+            }
+            return;
+        }
+        if (state.masterComp) {
+            if (state.masterComp[param]) {
+                try {
+                    state.masterComp[param].cancelScheduledValues(this.currentTime);
+                    try { state.masterComp[param].setValueAtTime(state.masterComp[param].value, this.currentTime); } catch(e){}
+                    state.masterComp[param].setTargetAtTime(val, this.currentTime, 0.05);
+                } catch(e) {
+                    state.masterComp[param].setValueAtTime(val, this.currentTime);
+                }
+            }
+        }
+    }
+
+    /**
+     * Creates a natural-sounding stereo impulse response.
+     * Dense noise shaped by a smooth exponential decay (a classic Schroeder-style
+     * IR). Dense, because a sparse velvet-noise IR sounds grainy/metallic; the
+     * convolver's cost depends on IR *length* not density, so filling every
+     * sample is free. `decay` maps to the decay rate: higher decay = tighter,
+     * faster-decaying tail (same direction as the previous pow() envelope).
+     */
+    static createSimpleReverbIR(duration, decay, sampleRate) {
+        if (!state.audioContext) return null;
+        duration = Math.max(0.1, duration); // Minimum 100ms to avoid degenerate buffer
+        const length = Math.max(1, Math.floor(sampleRate * duration));
+        const audioBuffer = state.audioContext.createBuffer(2, length, sampleRate);
+        // Exponential decay rate from the user 'decay' param. Tuned so the tail
+        // stays lush/audible (rate too high front-loads all the energy and makes
+        // the reverb sound thin/short). Higher decay = tighter/shorter tail, same
+        // direction as the previous pow() envelope.
+        const rate = Math.max(1.5, (decay || 1) * 1.8);
+
+        for(let c=0; c<2; c++) {
+            let maxPeak = 0;
+            let rms = 0;
+            const data = audioBuffer.getChannelData(c);
+            for (let i = 0; i < length; i++) {
+                const t = i / length;
+                // Smooth exponential decay envelope over dense white noise.
+                const env = Math.exp(-rate * t);
+                const val = (Math.random() * 2 - 1) * env;
+                data[i] = val;
+                rms += val * val;
+                if (Math.abs(val) > maxPeak) maxPeak = Math.abs(val);
+            }
+            // Normalize to prevent gain explosion with short decays
+            if (maxPeak > 0.001) {
+                // Normalize by RMS/Energy rather than peak to keep volume consistent across durations
+                // Target a rough gain factor that doesn't blow up the convolver
+                const actualRms = Math.sqrt(rms / length);
+                const norm = 0.1 / (actualRms + 0.0001);
+                for (let i = 0; i < length; i++) data[i] *= norm;
+            }
+        }
+        return audioBuffer;
+    }
+    
+    /**
+     * Converts a MIDI note number to frequency (Hz).
+     */
+    static midiNoteToFrequency(note) {
+        return 440 * Math.pow(2, (note - 69) / 12);
+    }
+    
+    /**
+     * Creates a new AudioBuffer with the audio reversed.
+     */
+    static getReversedBuffer(buffer) {
+        if (!buffer || !state.audioContext) return null;
+        const nc = buffer.numberOfChannels; 
+        const len = buffer.length; 
+        const sr = buffer.sampleRate;
+        const rev = state.audioContext.createBuffer(nc, len, sr);
+        for (let ch = 0; ch < nc; ch++) {
+            const d = buffer.getChannelData(ch); 
+            const rd = rev.getChannelData(ch);
+            rd.set(d);
+            rd.reverse();
+        }
+        return rev;
+    }
+
+    /**
+     * Converts an AudioBuffer to a WAV file (as an ArrayBuffer).
+     */
+    static bufferToWAV(audioBuffer) {
+        if (!audioBuffer) { Log.warn('AudioEngine', 'bufferToWAV called with null buffer'); return null; }
+        const numChannels = audioBuffer.numberOfChannels;
+        const sampleRate = audioBuffer.sampleRate;
+        const length = audioBuffer.length;
+        // Interleave channels
+        const samples = new Float32Array(length * numChannels);
+        for (let channel = 0; channel < numChannels; channel++) {
+            const channelData = audioBuffer.getChannelData(channel);
+            for (let i = 0; i < length; i++) {
+                samples[i * numChannels + channel] = channelData[i];
+            }
+        }
+        return this.encodeWAV(samples, sampleRate, numChannels);
+    }
+
+    /**
+     * Helper function to write the WAV file header.
+     */
+    static encodeWAV(samples, sampleRate, numChannels) {
+        if (!Number.isFinite(sampleRate)) sampleRate = 44100;
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+        const writeString = (offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        };
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * 2, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * numChannels * 2, true);
+        view.setUint16(32, numChannels * 2, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, samples.length * 2, true);
+        let offset = 44;
+        for (let i = 0; i < samples.length; i++) {
+            const raw = samples[i];
+            const sample = Number.isFinite(raw) ? Math.max(-1, Math.min(1, raw)) : 0;
+            view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+            offset += 2;
+        }
+        return buffer;
+    }
+
+    /**
+     * Compensates for system audio latency (Input + Output) by circularly shifting
+     * the buffer "back in time" (left shift).
+     */
+    static compensateLatency(buffer) {
+        const ctx = state.audioContext;
+        if (!ctx || !buffer) return buffer;
+
+        // Calculate total latency: System (Input+Output) + Manual Correction
+        const sysLat = (ctx.baseLatency || 0) + (ctx.outputLatency || 0);
+        const manualLat = (state.inputLatencyMs || 0) / 1000.0;
+        const lat = Math.max(0, sysLat + manualLat); // Prevent negative latency
+        
+        // If latency is negligible, return original
+        if (lat < 0.0001) return buffer;
+        
+        // Calculate shift without arbitrary offsets. User should use manual slider for fine-tuning.
+        const shiftSamples = Math.min(buffer.length, Math.floor(lat * buffer.sampleRate));
+        const newBuffer = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+
+        for (let c = 0; c < buffer.numberOfChannels; c++) {
+            const oldData = buffer.getChannelData(c);
+            const newData = newBuffer.getChannelData(c);
+            
+            // Circular shift: Move [shift...end] to [0...len-shift]
+            if (buffer.length > shiftSamples) {
+                newData.set(oldData.subarray(shiftSamples), 0);
+                newData.set(oldData.subarray(0, shiftSamples), buffer.length - shiftSamples);
+
+                const wrapIndex = buffer.length - shiftSamples;
+                const fadeLen = Math.min(Math.floor(buffer.sampleRate * 0.005), shiftSamples, wrapIndex);
+                if (fadeLen > 0) {
+                    for (let i = 0; i < fadeLen; i++) {
+                        const fade = i / fadeLen;
+                        newData[wrapIndex - fadeLen + i] *= Math.cos(fade * (Math.PI / 2));
+                        newData[wrapIndex + i] *= Math.sin(fade * (Math.PI / 2));
+                    }
+                }
+            } else {
+                newData.set(oldData);
+            }
+        }
+        return newBuffer;
+    }
+
+    /**
+     * Mixes buffer2 into buffer1 circularly (wrapping around).
+     * Modifies buffer1 in-place. Used for seamless overdubs.
+     */
+    static async mixBuffersCircular(buffer1, buffer2, offsetSeconds, feedback = 0.80) {
+        if (!buffer1 || !buffer2 || buffer1.length === 0 || buffer2.length === 0) return Promise.resolve();
+        
+        return new Promise((resolve) => {
+            const sr = buffer1.sampleRate;
+            const len1 = buffer1.length;
+            const len2 = buffer2.length;
+            let offsetSamples = Math.floor(offsetSeconds * sr);
+            // Ensure positive wrap-around
+            offsetSamples = ((offsetSamples % len1) + len1) % len1;
+            const fadeSamples = Math.max(1, Math.min(Math.floor(sr * 0.01), Math.floor(len2 * 0.1))); // 10ms equal-power fade, min 1 sample
+
+            // Precompute fade tables to eliminate expensive math in inner loop
+            const fadeFb = new Float32Array(fadeSamples);
+            const fadeVol = new Float32Array(fadeSamples);
+            
+            for (let i = 0; i < fadeSamples; i++) {
+                const progress = i / fadeSamples;
+                fadeFb[i] = feedback + (1.0 - feedback) * Math.cos(progress * (Math.PI / 2));
+                fadeVol[i] = Math.sin(progress * (Math.PI / 2));
+            }
+
+            const CHUNK_SIZE = 48000; // Process 1 second per tick to maintain UI responsiveness
+            let currentChunk = 0;
+            const numChannels = buffer1.numberOfChannels;
+
+            const processChunk = () => {
+                // Abort if the audio context has been closed during processing
+                if (!state.audioContext || state.audioContext.state === 'closed') { resolve(); return; }
+                const startIdx = currentChunk * CHUNK_SIZE;
+                const endIdx = Math.min(startIdx + CHUNK_SIZE, len2);
+                
+                for (let c = 0; c < numChannels; c++) {
+                    const d1 = buffer1.getChannelData(c);
+                    const d2 = (buffer2.numberOfChannels > c) ? buffer2.getChannelData(c) : buffer2.getChannelData(0);
+                    
+                    let pos = (offsetSamples + startIdx) % len1;
+                    
+                    for (let i = startIdx; i < endIdx; i++) {
+                        let currentFb = feedback;
+                        let newVol = 1.0;
+                        
+                        if (i < fadeSamples) {
+                            currentFb = fadeFb[i];
+                            newVol = fadeVol[i];
+                        } else if (i >= len2 - fadeSamples) {
+                            const outIdx = len2 - 1 - i;
+                            currentFb = fadeFb[outIdx];
+                            newVol = fadeVol[outIdx];
+                        }
+
+                        let sum = (d1[pos] * currentFb) + (d2[i] * newVol);
+                        
+                        // Optimized soft clipping (only triggers math on peaks)
+                        if (sum > 0.95) {
+                            sum = 0.95 + 0.05 * Math.tanh((sum - 0.95) * 10);
+                        } else if (sum < -0.95) {
+                            sum = -0.95 + 0.05 * Math.tanh((sum + 0.95) * 10);
+                        }
+
+                        d1[pos] = sum;
+                        
+                        pos++;
+                        if (pos >= len1) pos = 0;
+                    }
+                }
+
+                if (endIdx < len2) {
+                    currentChunk++;
+                    setTimeout(processChunk, 0); // Yield to event loop
+                } else {
+                    resolve();
+                }
+            };
+
+            processChunk();
+        });
+    }
+
+    /**
+     * Performs a seamless crossfade at the loop boundary.
+     * Uses zero-crossing alignment and equal-power (√cos/√sin) curves
+     * to eliminate clicks and make the loop transition sound natural.
+     *
+     * Strategy (based on standard DSP looping techniques):
+     *   1. Find zero-crossings near the start and end of the fade region
+     *      so the crossfade begins/ends at amplitude zero.
+     *   2. Apply an equal-power crossfade: the head fades in with √sin
+     *      and the tail fades out with √cos, keeping perceived loudness
+     *      constant through the overlap.
+     *   3. Use a generous overlap window (requested time, up to 20 % of
+     *      a short loop) so the transition is spread over enough samples
+     *      to be inaudible.
+     */
+    static seamlessLoopCrossfade(audioBuffer, fadeTimeSeconds) {
+        if (!audioBuffer || audioBuffer.length < 4) return;
+
+        const sr = audioBuffer.sampleRate;
+        const len = audioBuffer.length;
+        const requestedSamples = Math.floor(sr * (fadeTimeSeconds || 0.015));
+        const maxSafeSamples = Math.floor(len * 0.2);
+        const fadeSamples = Math.min(requestedSamples, maxSafeSamples);
+
+        if (fadeSamples < 2) return;
+
+        for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
+            const data = audioBuffer.getChannelData(c);
+
+            // --- Zero-crossing snap at the HEAD (sample 0 region) ----------
+            // Search forward from sample 0 for the first positive-going zero
+            // crossing within the first quarter of the fade window.
+            let headStart = 0;
+            const zcSearchLen = Math.min(Math.floor(fadeSamples * 0.25), 256);
+            for (let i = 1; i < zcSearchLen && i < len; i++) {
+                if (data[i - 1] <= 0 && data[i] > 0) { headStart = i; break; }
+            }
+
+            // --- Zero-crossing snap at the TAIL (end of buffer region) -----
+            // Search backward from the last sample for a positive-going zero
+            // crossing within the last quarter of the fade window.
+            let tailEnd = len;
+            for (let i = len - 2; i > len - 1 - zcSearchLen && i > 0; i--) {
+                if (data[i - 1] <= 0 && data[i] > 0) { tailEnd = i; break; }
+            }
+
+            // Effective overlap length after zero-crossing adjustment
+            const overlapLen = Math.min(fadeSamples, tailEnd - headStart);
+            if (overlapLen < 2) continue;
+
+            // The tail region starts so that tail[tailEnd - overlapLen] aligns
+            // with the head at headStart.
+            const tailStart = tailEnd - overlapLen;
+
+            // --- Equal-power crossfade ------------------------------------
+            // head fades IN  : gain = √sin(π/2 · t)   (0 → 1)
+            // tail fades OUT : gain = √cos(π/2 · t)   (1 → 0)
+            // This keeps  head² + tail² = 1  at every sample → constant power.
+            const halfPi = Math.PI / 2;
+            for (let i = 0; i < overlapLen; i++) {
+                const t = i / overlapLen;
+                const gainIn  = Math.sqrt(Math.sin(halfPi * t));
+                const gainOut = Math.sqrt(Math.cos(halfPi * t));
+                const headIdx = headStart + i;
+                const tailIdx = tailStart + i;
+                if (headIdx < len && tailIdx >= 0 && tailIdx < len) {
+                    data[headIdx] = data[headIdx] * gainIn + data[tailIdx] * gainOut;
+                }
+            }
+
+            // --- Smooth the very first and last samples to zero -----------
+            // A tiny 8-sample cosine fade at the absolute start and end
+            // guarantees the loop point is click-free even if the zero-
+            // crossing snap wasn't perfect.
+            const edgeLen = Math.min(8, Math.floor(overlapLen * 0.1));
+            for (let i = 0; i < edgeLen; i++) {
+                const edgeFade = 0.5 - 0.5 * Math.cos(Math.PI * i / edgeLen);
+                data[i] *= edgeFade;
+                data[len - 1 - i] *= edgeFade;
+            }
+        }
+    }
+
+    /**
+     * Slices an AudioBuffer based on start/end ratios (0.0 - 1.0).
+     */
+    static sliceBuffer(buffer, startRatio, endRatio) {
+        if (!buffer || !state.audioContext) return buffer;
+        const channels = buffer.numberOfChannels;
+        const rate = buffer.sampleRate;
+        const len = buffer.length;
+        const startSample = Math.floor(startRatio * len);
+        const endSample = Math.floor(endRatio * len);
+        const newLen = endSample - startSample;
+
+        if (newLen <= 0) return buffer; // Fail safe
+
+        const newBuf = state.audioContext.createBuffer(channels, newLen, rate);
+        for (let i = 0; i < channels; i++) {
+            const d = buffer.getChannelData(i).subarray(startSample, endSample);
+            newBuf.getChannelData(i).set(d);
+        }
+        return newBuf;
+    }
+    
+    /**
+     * Normalizes a buffer to 0dB. Returns true if changed.
+     */
+    static normalizeBuffer(buffer) {
+        if (!buffer) return false;
+        let maxPeak = 0;
+        for (let c = 0; c < buffer.numberOfChannels; c++) {
+            const data = buffer.getChannelData(c);
+            for (let i = 0; i < data.length; i++) {
+                const abs = Math.abs(data[i]);
+                if (abs > maxPeak) maxPeak = abs;
+            }
+        }
+        if (maxPeak > 0.0001 && Math.abs(maxPeak - 1.0) > 0.0001) {
+            const ratio = 1.0 / maxPeak;
+            for (let c = 0; c < buffer.numberOfChannels; c++) {
+                const data = buffer.getChannelData(c);
+                for (let i = 0; i < data.length; i++) data[i] *= ratio;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Deep clones an AudioBuffer.
+     */
+    static cloneBuffer(buffer) {
+        if (!buffer || !state.audioContext) return null;
+        const newBuf = state.audioContext.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+        for (let i = 0; i < buffer.numberOfChannels; i++) {
+            newBuf.copyToChannel(buffer.getChannelData(i), i);
+        }
+        return newBuf;
+    }
+
+    /**
+     * Applies a short fade in/out to a buffer to prevent clicks.
+     * Required for Export operations.
+     */
+    static applyFades(buffer, duration = 0.01) {
+        if (!buffer) return;
+        const length = buffer.length;
+        if (length === 0) return;
+        let fadeSamples = Math.floor(duration * buffer.sampleRate);
+        if (fadeSamples * 2 >= length) fadeSamples = Math.floor(length / 3); // Strict non-overlap for short buffers
+        for (let c = 0; c < buffer.numberOfChannels; c++) {
+            const data = buffer.getChannelData(c);
+            for (let i = 0; i < fadeSamples; i++) {
+                const gain = i / fadeSamples;
+                if (i < length) data[i] *= gain; // Fade In
+                if (length - 1 - i >= 0) data[length - 1 - i] *= gain; // Fade Out
+            }
+        }
+    }
+}
+

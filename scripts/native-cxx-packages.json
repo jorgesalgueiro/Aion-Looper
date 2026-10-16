@@ -1,0 +1,57 @@
+[
+  {
+    "name": "mingw-w64-x86_64-gcc",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-gcc-16.2.0-6-any.pkg.tar.zst",
+    "sha256": "f9a78b7f257984bc8a2b62d5f93f1af45b03d4b84afaf2eafc7d90c9b8c4568e"
+  },
+  {
+    "name": "mingw-w64-x86_64-crt",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-crt-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst",
+    "sha256": "5513117e204c933ed3b3e17b1bb809667653b72b3ca932d0c048ffc8f01f3801"
+  },
+  {
+    "name": "mingw-w64-x86_64-headers",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-headers-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst",
+    "sha256": "b6f06085e8f3858cb59ed72d581203c75000592bdaa55af2710be3b1a752a7bb"
+  },
+  {
+    "name": "mingw-w64-x86_64-gmp",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-gmp-6.3.0-2-any.pkg.tar.zst",
+    "sha256": "8924433974c4add46cb46ea4f6ef283b5c5139d3f552375115b5580f855015cc"
+  },
+  {
+    "name": "mingw-w64-x86_64-isl",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-isl-0.28-1-any.pkg.tar.zst",
+    "sha256": "03ed191718a89edc46e783deed46b8fd20ec47a09fcdefb37c6c4169b6188b08"
+  },
+  {
+    "name": "mingw-w64-x86_64-libgcc",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-libgcc-16.2.0-6-any.pkg.tar.zst",
+    "sha256": "e0815432c4225892b0eef57055fe507fa0b9a036436f046605f6629696bd1b88"
+  },
+  {
+    "name": "mingw-w64-x86_64-libstdc++",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-libstdc%2B%2B-16.2.0-6-any.pkg.tar.zst",
+    "sha256": "924b47e8c3e20b6448e29d3333acc638a4f4783c1c45230e09673532f9c4f198"
+  },
+  {
+    "name": "mingw-w64-x86_64-mpc",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-mpc-1.4.1-1-any.pkg.tar.zst",
+    "sha256": "ce024a90d59c8a591d2c88ef94a386c6367750bf9edc6a944e80815ec5d93344"
+  },
+  {
+    "name": "mingw-w64-x86_64-mpfr",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-mpfr-4.2.2-3-any.pkg.tar.zst",
+    "sha256": "9ecbc05f1f855bc656a8f111d367f61fbd90dbbfcf469ba74d6d5dd1ec07a542"
+  },
+  {
+    "name": "mingw-w64-x86_64-windows-default-manifest",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-windows-default-manifest-20260815-1-any.pkg.tar.zst",
+    "sha256": "d2dd9a4f3a3362bc85ca273dff2b0f9868cfba7ba60151499b5935a049f00d74"
+  },
+  {
+    "name": "mingw-w64-x86_64-winpthreads",
+    "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-winpthreads-14.0.0.r426.g4564ee4b5-2-any.pkg.tar.zst",
+    "sha256": "c19924c9a353cbbca5d209cb95f0fc1c3a2051dd788f4b1a109ba4df97bbbe0f"
+  }
+]

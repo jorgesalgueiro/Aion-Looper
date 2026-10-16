@@ -1,0 +1,13 @@
+[workspace]
+members = ["crates/looper-core", "crates/looper-files", "crates/looper-cli", "crates/looper-audio", "crates/looper-desktop", "crates/looper-stretch", "crates/looper-midi", "crates/looper-host", "crates/looper-clap"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-only"
+repository = "https://github.com/jorgesalgueiro/Aion-Looper"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

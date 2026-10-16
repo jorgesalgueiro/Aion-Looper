@@ -1,0 +1,21 @@
+[package]
+name = "looper-cli"
+description = "Native offline sample tools for Rust-Looper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+jack = ["looper-audio/jack"]
+asio = ["looper-audio/asio"]
+
+[[bin]]
+name = "rust-looper"
+path = "src/main.rs"
+
+[dependencies]
+looper-core = { path = "../looper-core" }
+looper-files = { path = "../looper-files" }
+looper-audio = { path = "../looper-audio" }

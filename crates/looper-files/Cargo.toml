@@ -1,0 +1,10 @@
+[package]
+name = "looper-files"
+description = "Lossless audio file handling for Rust-Looper control workers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+looper-core = { path = "../looper-core" }
