@@ -1043,3 +1043,14 @@ test('message-task transfers finish without depending on background timers',asyn
         assert.equal(next.getChannelData(1)[8192],-.5);
     } finally {clearTimeout(guard);for(const channel of channels){channel.port1.close();channel.port2.close();}}
 });
+
+test('input push events require the exact document session and bypass RPC replies',async()=>{
+    const h=harness(),events=[];
+    h.bridge.onInputEvent=event=>events.push(event);
+    const pending=h.bridge.request('input_open');
+    const sent=h.messages[0];
+    h.bridge.receive({id:sent.id,session:sent.session,ok:true,value:{}});await pending;
+    for(const session of [undefined,'obsolete',sent.session]) h.bridge.receive({kind:'native_input',session,token:7,sequence:1,packet:{}});
+    assert.equal(events.length,1);
+    assert.equal(events[0].session,sent.session);
+});

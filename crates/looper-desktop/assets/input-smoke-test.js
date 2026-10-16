@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
         const input = state.inputs[0], track = input?.stream?.getAudioTracks()[0];
         assert(track?.readyState === 'live',`Physical microphone opened: ${InputManager.lastInputError || ''}`);
         assert(!input.monitor,'MON starts off');
+        assert(input.stream.nativeStatus.delivery==='acknowledged-push','Native input uses acknowledged push delivery');
         const settings = track.getSettings();
         diagnostics.settings = settings;
         const devices = await window.RustLooper.input.devices();

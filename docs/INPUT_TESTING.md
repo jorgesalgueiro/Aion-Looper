@@ -78,3 +78,32 @@ on Ubuntu, including synthetic MIC/LINE, monitoring, stereo/L/R recording,
 overdub/substitute and device removal. These synthetic passes do not override
 the failed physical quality reports described above.
 
+
+## Acknowledged input delivery (2026-10-16)
+
+Native input now pushes sequenced PCM packets after a document-scoped startup
+handshake. Each source permits one unacknowledged packet, with at most 4,096
+stereo frames per packet and four active sources. Matching acknowledgements
+release the next packet; stale sessions, tokens and sequences cannot consume
+input. Idle heartbeats keep stalled-capture detection active. Legacy clients
+retain request-based reads; streaming sources reject competing reads.
+
+The capture callback remains separate from packet encoding and UI delivery.
+This removes the frontend 4 ms polling timer while preserving the existing
+64 ms worklet prefill. The diagnostic maxPullGapMs now measures arrival gaps
+between pushed packets; maxAckMs measures acknowledgement round-trip time.
+
+Verification of this revision:
+- Nine Rust input adapter/lifecycle tests passed, including packet bounds,
+  independent four-source delivery, stale acknowledgements and sequence exhaustion.
+- Strict desktop Clippy passed on Ubuntu; Windows and Linux packages built.
+- Windows/E2x2 and Ubuntu/WSLg physical recording each passed all 12 checks
+  with zero reported underruns/overruns, using acknowledged delivery.
+- Packaged graphical suites passed 131 Windows and 132 Ubuntu checks.
+- All 88 desktop JavaScript tests passed, including failed handshake cleanup,
+  stale-session rejection, stream replacement and malformed packet handling.
+
+These short trials supersede the earlier failing physical runs for this input
+transport. They do not establish long-session stability or latency. Audio was
+not saved and output remained muted. Direct Linux devices, ASIO/JACK hardware,
+macOS/iOS execution and fully native playback still require verification.

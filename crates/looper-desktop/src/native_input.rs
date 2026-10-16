@@ -25,6 +25,10 @@ pub struct Request {
     pub token: u64,
     #[serde(default)]
     pub synthetic: bool,
+    #[serde(default)]
+    pub streaming: bool,
+    #[serde(default)]
+    pub sequence: u64,
 }
 enum Source {
     Device(input::LiveInput),
@@ -65,12 +69,18 @@ impl Source {
         }
     }
 }
+struct Delivery {
+    sequence: u64,
+    waiting: bool,
+    sent: Instant,
+}
 struct Handle {
     token: u64,
     session: String,
     source: Source,
     next: u64,
     touched: Instant,
+    delivery: Option<Delivery>,
 }
 pub struct Service {
     handles: Vec<Handle>,
@@ -89,6 +99,64 @@ impl Service {
     pub fn expire(&mut self) {
         self.handles
             .retain(|handle| handle.touched.elapsed() < INPUT_LEASE);
+    }
+    pub fn wait_duration(&self) -> Duration {
+        if self.handles.iter().any(|handle| handle.delivery.is_some()) {
+            Duration::from_millis(2)
+        } else {
+            Duration::from_secs(1)
+        }
+    }
+    /// At most one unacknowledged PCM event per source; at most four sources.
+    pub fn pump(&mut self) -> Vec<Value> {
+        self.expire();
+        let mut events = Vec::new();
+        let mut index = 0;
+        while index < self.handles.len() {
+            let handle = &mut self.handles[index];
+            let Some(delivery) = &handle.delivery else {
+                index += 1;
+                continue;
+            };
+            let waiting = delivery.waiting;
+            let heartbeat = delivery.sent.elapsed() >= Duration::from_secs(1);
+            handle.source.advance();
+            let status = handle.source.reader().status();
+            let interrupted = status.dropped_frames > 0
+                || status.stream_errors > 0
+                || status.nonfinite_samples > 0
+                || status.malformed_blocks > 0;
+            if !interrupted && (waiting || (status.frames <= handle.next && !heartbeat)) {
+                index += 1;
+                continue;
+            }
+            let delivery = handle.delivery.as_mut().unwrap();
+            let sequence = delivery
+                .sequence
+                .checked_add(1)
+                .filter(|sequence| *sequence <= MAX_TOKEN);
+            let result = if sequence.is_some() {
+                read(handle)
+            } else {
+                Err("Input sequence exhausted.".into())
+            };
+            let sequence = sequence.unwrap_or(MAX_TOKEN);
+            match result {
+                Ok(packet) => {
+                    let delivery = handle.delivery.as_mut().unwrap();
+                    delivery.sequence = sequence;
+                    delivery.waiting = true;
+                    delivery.sent = Instant::now();
+                    events.push(json!({"kind":"native_input","token":handle.token,"session":handle.session,"sequence":sequence,"packet":packet}));
+                    index += 1;
+                }
+                Err(error) => {
+                    events.push(json!({"kind":"native_input","token":handle.token,"session":handle.session,"sequence":sequence,"error":error}));
+                    self.handles.remove(index);
+                }
+            }
+        }
+        events
     }
     pub fn execute(&mut self, request: Request) -> Value {
         self.expire();
@@ -181,8 +249,13 @@ impl Service {
                     source,
                     next: 0,
                     touched: Instant::now(),
+                    delivery: request.streaming.then(|| Delivery {
+                        sequence: 0,
+                        waiting: true,
+                        sent: Instant::now(),
+                    }),
                 });
-                Ok(json!({"token":token,"info":info}))
+                Ok(json!({"token":token,"info":info,"streaming":request.streaming}))
             }
             "input_read" => {
                 let index = self
@@ -192,12 +265,31 @@ impl Service {
                         handle.token == request.token && handle.session == request.session
                     })
                     .ok_or("Native input is no longer active.")?;
+                if self.handles[index].delivery.is_some() {
+                    return Err("Streaming input requires acknowledgements, not reads.".into());
+                }
                 self.handles[index].touched = Instant::now();
                 let result = read(&mut self.handles[index]);
                 if result.is_err() {
                     self.handles.remove(index);
                 }
                 result
+            }
+            "input_ack" => {
+                let handle = self
+                    .handles
+                    .iter_mut()
+                    .find(|handle| {
+                        handle.token == request.token && handle.session == request.session
+                    })
+                    .ok_or("Native input is no longer active.")?;
+                let delivery = handle.delivery.as_mut().ok_or("Input is not streaming.")?;
+                if !delivery.waiting || delivery.sequence != request.sequence {
+                    return Err("Invalid input acknowledgement.".into());
+                }
+                delivery.waiting = false;
+                handle.touched = Instant::now();
+                Ok(json!({}))
             }
             "input_close" => {
                 self.handles.retain(|handle| {
@@ -363,6 +455,7 @@ mod tests {
             session: "test".into(),
             next: 0,
             touched: Instant::now(),
+            delivery: None,
             source: Source::Synthetic {
                 writer,
                 reader,
@@ -386,6 +479,129 @@ mod tests {
             service.execute(request("input_read", "test", 7))["ok"],
             false
         );
+        assert!(service.handles.is_empty());
+    }
+    fn open_stream(service: &mut Service) -> u64 {
+        let mut open = request("input_open", "push", 0);
+        open.streaming = true;
+        let reply = service.execute(open);
+        assert_eq!(reply["value"]["streaming"], true);
+        let token = reply["value"]["token"].as_u64().unwrap();
+        if let Source::Synthetic { started, .. } = &mut service.handles.last_mut().unwrap().source {
+            *started = Instant::now() + Duration::from_secs(60);
+        }
+        token
+    }
+    fn acknowledge(service: &mut Service, token: u64, sequence: u64) -> Value {
+        let mut ack = request("input_ack", "push", token);
+        ack.sequence = sequence;
+        service.execute(ack)
+    }
+    fn feed(service: &mut Service, token: u64, samples: &[f32]) {
+        let handle = service
+            .handles
+            .iter_mut()
+            .find(|handle| handle.token == token)
+            .unwrap();
+        if let Source::Synthetic { writer, .. } = &mut handle.source {
+            writer.capture(samples, 2);
+        }
+    }
+    #[test]
+    fn pushed_input_waits_for_matching_ack_and_never_consumes_pcm_twice() {
+        let mut service = Service::new(true);
+        let token = open_stream(&mut service);
+        feed(&mut service, token, &[1.5, -0.0, 0.25, -0.5]);
+        assert!(service.pump().is_empty());
+        assert_eq!(
+            service.execute(request("input_ack", "other", token))["ok"],
+            false
+        );
+        assert_eq!(acknowledge(&mut service, token, 0)["ok"], true);
+        let events = service.pump();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["sequence"], 1);
+        assert_eq!(events[0]["packet"]["position"], 0);
+        assert_eq!(
+            events[0]["packet"]["pcm"],
+            crate::bridge::encode_pcm(&[[1.5, -0.0], [0.25, -0.5]])
+        );
+        feed(&mut service, token, &[0.75, -0.125]);
+        assert!(service.pump().is_empty());
+        assert_eq!(
+            service.execute(request("input_read", "push", token))["ok"],
+            false
+        );
+        assert_eq!(acknowledge(&mut service, token, 2)["ok"], false);
+        assert!(service.pump().is_empty());
+        assert_eq!(acknowledge(&mut service, token, 1)["ok"], true);
+        let events = service.pump();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["sequence"], 2);
+        assert_eq!(events[0]["packet"]["position"], 2);
+        assert_eq!(events[0]["packet"]["length"], 1);
+        assert_eq!(acknowledge(&mut service, token, 1)["ok"], false);
+        if let Source::Synthetic { writer, .. } = &mut service.handles[0].source {
+            writer.metrics().stream_error();
+        }
+        let events = service.pump();
+        assert_eq!(events.len(), 1);
+        assert!(events[0]["error"].as_str().unwrap().contains("interrupted"));
+        assert!(service.handles.is_empty());
+        assert!(service.pump().is_empty());
+    }
+    #[test]
+    fn four_streams_have_independent_bounded_delivery_and_idle_heartbeats() {
+        let mut service = Service::new(true);
+        let tokens: Vec<_> = (0..4).map(|_| open_stream(&mut service)).collect();
+        for &token in &tokens {
+            assert_eq!(acknowledge(&mut service, token, 0)["ok"], true);
+            feed(&mut service, token, &[0.25, -0.5]);
+        }
+        let events = service.pump();
+        assert_eq!(events.len(), 4);
+        for (event, token) in events.iter().zip(&tokens) {
+            assert_eq!(event["token"], *token);
+        }
+        assert!(service.pump().is_empty());
+        for &token in &tokens {
+            assert_eq!(acknowledge(&mut service, token, 1)["ok"], true);
+        }
+        for handle in &mut service.handles {
+            handle.delivery.as_mut().unwrap().sent = Instant::now() - Duration::from_secs(2);
+        }
+        let events = service.pump();
+        assert_eq!(events.len(), 4);
+        assert!(events
+            .iter()
+            .all(|event| event["packet"]["length"] == 0 && event["sequence"] == 2));
+        assert!(service.pump().is_empty());
+        for handle in &mut service.handles {
+            handle.touched = Instant::now() - INPUT_LEASE - Duration::from_secs(1);
+        }
+        assert!(service.pump().is_empty());
+        assert!(service.handles.is_empty());
+    }
+    #[test]
+    fn pushed_packets_are_bounded_and_sequence_exhaustion_closes_capture() {
+        let mut service = Service::new(true);
+        let token = open_stream(&mut service);
+        assert_eq!(acknowledge(&mut service, token, 0)["ok"], true);
+        feed(&mut service, token, &vec![0.125; 10000]);
+        let events = service.pump();
+        assert_eq!(events[0]["packet"]["length"], 4096);
+        assert_eq!(acknowledge(&mut service, token, 1)["ok"], true);
+        let events = service.pump();
+        assert_eq!(events[0]["packet"]["position"], 4096);
+        assert_eq!(events[0]["packet"]["length"], 904);
+        assert_eq!(acknowledge(&mut service, token, 2)["ok"], true);
+        service.handles[0].delivery.as_mut().unwrap().sequence = MAX_TOKEN;
+        feed(&mut service, token, &[0.25, -0.5]);
+        let events = service.pump();
+        assert!(events[0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("sequence exhausted"));
         assert!(service.handles.is_empty());
     }
 }

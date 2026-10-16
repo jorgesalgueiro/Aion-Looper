@@ -135,6 +135,7 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
         await InputManager.addInputTrack();
         assert(state.inputs.length === 1 && state.inputs[0].deviceId.startsWith('native:'), 'Native input attaches through the existing MIC/LINE path');
         assert(!state.inputs[0].monitor, 'Native input keeps MON off by default');
+        assert(state.inputs[0].stream.nativeStatus.delivery==='acknowledged-push','Native capture uses bounded acknowledged delivery');
         const nativeDevices = await window.RustLooper.input.devices();
         assert(nativeDevices.length === 1 && nativeDevices[0].deviceId === state.inputs[0].deviceId, 'Native device selector uses host and device identity');
         document.querySelector('.input-track-row button[onclick*="InputManager.toggleMonitor(0)"]').click();

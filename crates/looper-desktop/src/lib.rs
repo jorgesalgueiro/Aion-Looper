@@ -91,7 +91,7 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     std::thread::spawn(move || {
         let mut service = native_input::Service::new(allow_synthetic);
         loop {
-            match input_receiver.recv_timeout(Duration::from_secs(1)) {
+            match input_receiver.recv_timeout(service.wait_duration()) {
                 Ok(request) => {
                     if input_proxy
                         .send_event(UiEvent::Reply(service.execute(request)))
@@ -102,6 +102,11 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => service.expire(),
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+            for packet in service.pump() {
+                if input_proxy.send_event(UiEvent::Reply(packet)).is_err() {
+                    return;
+                }
             }
         }
     });

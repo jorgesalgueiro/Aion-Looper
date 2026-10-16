@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const tick = () => new Promise(resolve => setImmediate(resolve));
-function transport() {
+function transport(streaming = false) {
     const calls = [], pending = [], nodes = [], timers = [], events = {};
     const context = {state:'running',sampleRate:48000,destination:{},
         audioWorklet:{addModule:async()=>{}},
@@ -20,13 +20,13 @@ function transport() {
     }
     const window = {addEventListener:(event,handler)=>{events[event]=handler;},RustLooper:{request:async(operation,args)=>{
         calls.push({operation,...args});
-        if (operation==='input_open') return {token:7,info:{host:'WASAPI',device:'stable-id',label:'Mic',channels:2,sample_rate:48000}};
+        if (operation==='input_open') return {token:7,streaming,info:{host:'WASAPI',device:'stable-id',label:'Mic',channels:2,sample_rate:48000}};
         if (operation==='input_read') return new Promise(resolve=>pending.push(resolve));
         if (operation==='input_devices') return {devices:[{host:'WASAPI',device:'stable-id',label:'Mic'}]};
         return {};
     }}};
     vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../assets/native-input.js'),'utf8'),{window,state,InputManager,AudioWorkletNode:WorkletNode,atob,console:{error(){}},setTimeout:handler=>{timers.push(handler);return timers.length;},clearTimeout(){}});
-    return {input:window.RustLooper.input,state,context,nodes,calls,pending,timers,events,InputManager};
+    return {window,input:window.RustLooper.input,state,context,nodes,calls,pending,timers,events,InputManager};
 }
 function packet(position,frames) {
     const bytes = Buffer.alloc(frames.length*8);
@@ -196,4 +196,49 @@ test('bounded prefill absorbs batched IPC delivery without losing a continuous i
     assert.equal(buffered.underruns,0);
     assert.equal(buffered.overruns,0);
     assert.ok(buffered.write-buffered.read<=buffered.capacity);
+});
+
+test('acknowledged push forwards each packet once without input polling timers',async()=>{
+    const h=transport(true),stream=await h.input.getStream({audio:{}}),processor=h.nodes[0];
+    assert.equal(h.calls[0].streaming,true);
+    assert.equal(h.calls[1].operation,'input_ack');assert.equal(h.calls[1].sequence,0);
+    assert.equal(h.pending.length,0);assert.equal(h.timers.length,0);
+    h.window.RustLooper.onInputEvent({token:99,sequence:1,packet:packet(0,[[9,9]])});
+    h.window.RustLooper.onInputEvent({token:7,sequence:1,packet:packet(0,[[1.5,-0],[.25,-.5]])});
+    await tick();
+    const pcm=processor.messages.find(message=>message.type==='pcm').samples;
+    assert.deepEqual(Array.from(pcm),[1.5,-0,.25,-.5]);
+    assert.equal(h.calls.at(-1).sequence,1);
+    assert.equal(stream.nativeStatus.delivery,'acknowledged-push');
+    assert.equal(h.calls.some(call=>call.operation==='input_read'),false);
+    assert.equal(h.timers.length,0);
+    stream.getTracks()[0].stop();
+    const count=h.calls.length;
+    h.window.RustLooper.onInputEvent({token:7,sequence:2,packet:packet(2,[[9,9]])});
+    assert.equal(h.calls.length,count);
+});
+
+for(const failure of ['sequence','position','fault','context']) {
+    test(`invalid or obsolete pushed ${failure} closes input without acknowledging PCM`,async()=>{
+        const h=transport(true),stream=await h.input.getStream({audio:{}});
+        h.state.inputs.push({id:0,stream});
+        if(failure==='context')h.state.audioContext={state:'running'};
+        h.window.RustLooper.onInputEvent({token:7,sequence:failure==='sequence'?2:1,
+            ...(failure==='fault'?{error:'Device disconnected'}:{packet:packet(failure==='position'?10:0,[[.25,-.5]])})});
+        assert.equal(stream.getTracks()[0].readyState,'ended');
+        assert.equal(h.calls.filter(call=>call.operation==='input_ack').length,1);
+        assert.equal(h.calls.at(-1).operation,'input_close');
+        assert.equal(h.nodes[0].messages.filter(message=>message.type==='pcm').length,0);
+    });
+}
+
+test('failed push handshake rejects opening and releases its native stream',async()=>{
+    const h=transport(true),request=h.window.RustLooper.request;
+    h.window.RustLooper.request=async(operation,args)=>{
+        if(operation==='input_ack')throw new Error('Capture owner gone');
+        return request(operation,args);
+    };
+    await assert.rejects(h.input.getStream({audio:{}}),/Capture owner gone/);
+    assert.equal(h.input.status().length,0);
+    assert.equal(h.calls.at(-1).operation,'input_close');
 });

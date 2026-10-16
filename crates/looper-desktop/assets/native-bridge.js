@@ -17,6 +17,7 @@
         },
         receive(response) {
             if (response.session != null && response.session !== session) return;
+            if (response.kind === 'native_input') { if(response.session===session)window.RustLooper.onInputEvent?.(response); return; }
             if (response.kind === 'native_midi') { window.RustLooper.onMidiEvent?.(response); return; }
             const request = pending.get(response.id);
             if (!request) return;

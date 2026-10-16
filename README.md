@@ -1,6 +1,6 @@
 # Aion Looper
 
-Windows test download: [portable x64 preview](https://github.com/jorgesalgueiro/Aion-Looper/releases/tag/v0.1.0-preview.20261016.2).
+Windows test download: [portable x64 preview](https://github.com/jorgesalgueiro/Aion-Looper/releases/tag/v0.1.0-preview.20261016.3).
 Extract the entire ZIP and run `Aion-Looper.exe`. Keep its DLLs beside it.
 First-recording finalization now yields during PCM transfer; short physical tests
 pass without new reported gaps. See [verification and limits](docs/RECORDING_TRANSFER.md).

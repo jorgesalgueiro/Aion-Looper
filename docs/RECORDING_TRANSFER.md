@@ -58,3 +58,5 @@ Platform verification no longer cancels Linux when another platform fails.
 
 The current Linux graphical suite also passed 131 checks. WSLg physical capture
 still reports one post-recording underrun; that limitation remains open.
+
+The subsequent acknowledged input transport replaces frontend polling. Short Windows and WSLg physical trials now pass without reported gaps; see INPUT_TESTING.md for bounds, checks and remaining limits.
