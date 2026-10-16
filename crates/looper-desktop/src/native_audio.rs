@@ -7,7 +7,48 @@ use looper_core::{checkpoint::Checkpoint, Command, MAX_TRACKS};
 use looper_files::project::{self, Project};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+
+// PCM history lives on the worker only: at most 64 MB across all tracks/stacks.
+const HISTORY_FRAMES: usize = 8_000_000;
+#[derive(Default)]
+struct EditHistory {
+    undo: VecDeque<(usize, Vec<looper_core::Frame>)>,
+    redo: VecDeque<(usize, Vec<looper_core::Frame>)>,
+}
+impl EditHistory {
+    fn clear_track(&mut self, track: usize) {
+        self.undo.retain(|(t, _)| *t != track);
+        self.redo.retain(|(t, _)| *t != track);
+    }
+    fn count(&self, track: usize, redo: bool) -> usize {
+        (if redo { &self.redo } else { &self.undo })
+            .iter()
+            .filter(|(t, _)| *t == track)
+            .count()
+    }
+    fn push(&mut self, track: usize, audio: Vec<looper_core::Frame>, redo: bool) {
+        let stack = if redo { &mut self.redo } else { &mut self.undo };
+        stack.push_back((track, audio));
+        while stack.iter().filter(|(t, _)| *t == track).count() > 5 {
+            let index = stack.iter().position(|(t, _)| *t == track).unwrap();
+            stack.remove(index);
+        }
+        while self
+            .undo
+            .iter()
+            .chain(&self.redo)
+            .map(|(_, a)| a.len())
+            .sum::<usize>()
+            > HISTORY_FRAMES
+        {
+            if self.undo.pop_front().is_none() {
+                self.redo.pop_front();
+            }
+        }
+    }
+}
 use std::{
     fs,
     io::{BufReader, BufWriter, Read, Write},
@@ -108,6 +149,7 @@ struct Handle {
     capacity: usize,
     master: f32,
     input_gain: f32,
+    history: EditHistory,
 }
 pub struct Service {
     handle: Option<Handle>,
@@ -344,6 +386,7 @@ impl Service {
                 capacity,
                 master: gain,
                 input_gain,
+                history: EditHistory::default(),
             });
             self.handle
                 .as_mut()
@@ -376,6 +419,64 @@ impl Service {
             .filter(|h| h.token == r.token && h.session == r.session)
             .ok_or("Native audio session is closed or replaced.")?;
         match r.operation.as_str() {
+            "engine_edit" => {
+                if r.track >= h.tracks
+                    || !matches!(r.command.as_str(), "normalize" | "undo" | "redo")
+                {
+                    return Err("Invalid native edit.".into());
+                }
+                if h.source.controller().status().tracks[r.track].state
+                    != looper_core::State::Stopped
+                {
+                    return Err(
+                        "Stop the target loop before editing; other loops can keep playing.".into(),
+                    );
+                }
+                let mut takes = h.source.controller().snapshot(project::MAX_FRAMES)?;
+                let current = std::mem::take(&mut takes[r.track].audio);
+                drop(takes);
+                if current.is_empty() || current.len() > HISTORY_FRAMES {
+                    return Err("Take is empty or exceeds the native editing history limit (8 million frames).".into());
+                }
+                let redo = r.command == "redo";
+                let mut normalized = Vec::new();
+                let index;
+                let audio = if r.command == "normalize" {
+                    normalized.clone_from(&current);
+                    if !looper_core::buffer::normalize(&mut normalized) {
+                        return Ok(json!({"changed":false}));
+                    }
+                    index = None;
+                    &normalized
+                } else {
+                    let stack = if redo {
+                        &h.history.redo
+                    } else {
+                        &h.history.undo
+                    };
+                    let i = stack
+                        .iter()
+                        .rposition(|(t, _)| *t == r.track)
+                        .ok_or("No native normalization edit to restore.")?;
+                    index = Some(i);
+                    &stack[i].1
+                };
+                h.source.controller().begin_edit(r.track, audio)?;
+                finish_replacement(&mut h.source)?;
+                if let Some(i) = index {
+                    let stack = if redo {
+                        &mut h.history.redo
+                    } else {
+                        &mut h.history.undo
+                    };
+                    stack.remove(i);
+                    h.history.push(r.track, current, !redo);
+                } else {
+                    h.history.redo.retain(|(t, _)| *t != r.track);
+                    h.history.push(r.track, current, false);
+                }
+                Ok(json!({"changed":true}))
+            }
             "engine_project_import" => {
                 if r.track >= h.tracks {
                     return Err("Invalid native track.".into());
@@ -420,18 +521,8 @@ impl Service {
                 looper_core::buffer::seam_fade(&mut wave.frames, rate, 0.015)
                     .map_err(|e| format!("Import seam: {e:?}"))?;
                 h.source.controller().begin_import(r.track, &wave.frames)?;
-                let deadline = Instant::now() + Duration::from_secs(5);
-                loop {
-                    h.source.pump();
-                    if let Some(result) = h.source.controller().finish_import() {
-                        result?;
-                        break;
-                    }
-                    if Instant::now() > deadline && h.source.controller().cancel_import() {
-                        return Err("Audio callback did not accept the import in time; the existing take was kept. Close audio if the device has stopped.".into());
-                    }
-                    std::thread::sleep(Duration::from_millis(1));
-                }
+                finish_replacement(&mut h.source)?;
+                h.history.clear_track(r.track);
                 Ok(
                     json!({"imported":true,"track":r.track,"frames":wave.frames.len(),"sample_rate":rate,"channels":wave.channels,"gain":1.0,"feedback":0.8,"seam_seconds":0.015}),
                 )
@@ -495,7 +586,7 @@ impl Service {
                 "discontinuities":s.discontinuities,"command_errors":s.command_errors,"stream_errors":s.stream_errors,"malformed_blocks":s.malformed,
                 "input_peak":s.input_peak,"output_peak":s.output_peak,"callback_frames":s.callback_frames,
                 "capture":{"frames":s.capture.frames,"dropped_frames":s.capture.dropped_frames,"errors":s.capture.stream_errors,"nonfinite_samples":s.capture.nonfinite_samples,"malformed_blocks":s.capture.malformed_blocks},
-                "tracks":s.tracks[..h.tracks].iter().map(|t|json!({"state":format!("{:?}",t.state).to_lowercase(),"length":t.length_frames,"position":t.position_frames,"muted":t.muted})).collect::<Vec<_>>()}),
+                "tracks":s.tracks[..h.tracks].iter().enumerate().map(|(i,t)|json!({"undo":h.history.count(i,false),"redo":h.history.count(i,true),"state":format!("{:?}",t.state).to_lowercase(),"length":t.length_frames,"position":t.position_frames,"muted":t.muted})).collect::<Vec<_>>()}),
                 )
             }
             "engine_control" => {
@@ -548,6 +639,12 @@ impl Service {
                     _ => return Err("Invalid native track or control.".into()),
                 };
                 h.source.controller().send(control)?;
+                if matches!(
+                    r.command.as_str(),
+                    "record" | "clear" | "overdub" | "substitute"
+                ) {
+                    h.history.clear_track(r.track);
+                }
                 match control {
                     Control::Master(value) => h.master = value,
                     Control::InputGain(value) => h.input_gain = value,
@@ -557,6 +654,20 @@ impl Service {
             }
             _ => Err("Unknown native audio request.".into()),
         }
+    }
+}
+
+fn finish_replacement(source: &mut Source) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        source.pump();
+        if let Some(result) = source.controller().finish_import() {
+            return result;
+        }
+        if Instant::now() > deadline && source.controller().cancel_import() {
+            return Err("Audio callback did not accept the take in time; the existing take was kept. Close audio if the device has stopped.".into());
+        }
+        std::thread::sleep(Duration::from_millis(1));
     }
 }
 
@@ -641,6 +752,147 @@ mod tests {
         }
     }
 
+    fn pcm(service: &mut Service) -> Vec<looper_core::checkpoint::Take> {
+        service
+            .handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .snapshot(project::MAX_FRAMES)
+            .unwrap()
+    }
+    fn control(service: &mut Service, token: u64, command: &str, value: f32) {
+        let mut r = request("engine_control", token);
+        r.command = command.into();
+        r.value = value;
+        assert_eq!(service.execute(r)["ok"], true);
+        blocks(service, 1);
+    }
+    fn edit(service: &mut Service, token: u64, command: &str) -> Value {
+        let mut r = request("engine_edit", token);
+        r.command = command.into();
+        service.execute(r)
+    }
+    #[test]
+    fn normalize_history_is_exact_preserves_mix_and_other_playback_and_rejects_active_targets() {
+        let mut service = Service::new(true);
+        let token = service.execute(request("engine_open", 0))["value"]["token"]
+            .as_u64()
+            .unwrap();
+        blocks(&mut service, 1);
+        control(&mut service, token, "record", 0.0);
+        blocks(&mut service, 4);
+        control(&mut service, token, "finish", 0.0);
+        for (name, value) in [("gain", 0.5), ("feedback", 0.6), ("mute", 1.0)] {
+            control(&mut service, token, name, value);
+        }
+        let before = pcm(&mut service).remove(0);
+        // Another loop keeps playing during all offline edits.
+        service
+            .handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .begin_import(1, &[[0.2, -0.1]; 256])
+            .unwrap();
+        blocks(&mut service, 1);
+        assert!(service
+            .handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .finish_import()
+            .unwrap()
+            .is_ok());
+        let mut play = request("engine_control", token);
+        play.command = "play".into();
+        play.track = 1;
+        assert_eq!(service.execute(play)["ok"], true);
+        blocks(&mut service, 1);
+        assert_eq!(edit(&mut service, token, "normalize")["ok"], true);
+        let normalized = pcm(&mut service);
+        assert!(normalized[1].playing);
+        assert_eq!(normalized[1].audio, vec![[0.2, -0.1]; 256]);
+        assert_eq!(
+            (
+                normalized[0].gain,
+                normalized[0].feedback,
+                normalized[0].muted
+            ),
+            (0.5, 0.6, true)
+        );
+        let peak = normalized[0]
+            .audio
+            .iter()
+            .flatten()
+            .copied()
+            .map(f32::abs)
+            .fold(0.0, f32::max);
+        assert!((peak - 1.0).abs() < 1e-6);
+        assert_eq!(
+            edit(&mut service, token, "normalize")["value"]["changed"],
+            false
+        );
+        assert_eq!(service.handle.as_ref().unwrap().history.count(0, false), 1);
+        assert_eq!(edit(&mut service, token, "undo")["ok"], true);
+        assert_eq!(pcm(&mut service)[0], before);
+        assert_eq!(edit(&mut service, token, "undo")["ok"], false);
+        assert_eq!(edit(&mut service, token, "redo")["ok"], true);
+        assert_eq!(pcm(&mut service)[0], normalized[0]);
+        assert_eq!(edit(&mut service, token, "undo")["ok"], true);
+        assert_eq!(edit(&mut service, token, "normalize")["ok"], true);
+        assert_eq!(
+            edit(&mut service, token, "redo")["ok"],
+            false,
+            "new edit invalidates redo"
+        );
+        control(&mut service, token, "play", 0.0);
+        assert_eq!(edit(&mut service, token, "undo")["ok"], false);
+        assert_eq!(
+            service.handle.as_ref().unwrap().history.count(0, false),
+            1,
+            "rejection retains history"
+        );
+        control(&mut service, token, "overdub", 0.0);
+        assert_eq!(
+            service.handle.as_ref().unwrap().history.count(0, false),
+            0,
+            "capture invalidates old PCM history"
+        );
+        control(&mut service, token, "finish", 0.0);
+        control(&mut service, token, "clear", 0.0);
+        assert_eq!(
+            edit(&mut service, token, "undo")["ok"],
+            false,
+            "never resurrect deleted takes"
+        );
+        service.shutdown();
+    }
+    #[test]
+    fn history_caps_steps_and_total_pcm_across_both_stacks() {
+        let mut history = EditHistory::default();
+        for _ in 0..9 {
+            history.push(0, vec![[0.0; 2]; 8], false);
+        }
+        assert_eq!(history.count(0, false), 5);
+        history.push(1, vec![[0.0; 2]; HISTORY_FRAMES / 2], false);
+        history.push(2, vec![[0.0; 2]; HISTORY_FRAMES / 2], true);
+        assert_eq!(history.count(0, false), 0);
+        assert_eq!(
+            history
+                .undo
+                .iter()
+                .chain(&history.redo)
+                .map(|(_, a)| a.len())
+                .sum::<usize>(),
+            HISTORY_FRAMES
+        );
+        history.clear_track(2);
+        assert_eq!(history.count(2, true), 0);
+    }
     #[test]
     fn wav_import_decodes_on_worker_applies_reference_seam_and_keeps_other_playback() {
         let mut service = Service::new(true);

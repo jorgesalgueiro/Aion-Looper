@@ -73,16 +73,32 @@ impl Controller {
         track: usize,
         audio: &[looper_core::Frame],
     ) -> Result<(), String> {
+        self.begin_replacement(track, audio, false)
+    }
+    /// Offline edits share the import retirement path, retaining gain/feedback/mute.
+    pub fn begin_edit(&mut self, track: usize, audio: &[looper_core::Frame]) -> Result<(), String> {
+        self.begin_replacement(track, audio, true)
+    }
+    fn begin_replacement(
+        &mut self,
+        track: usize,
+        audio: &[looper_core::Frame],
+        editing: bool,
+    ) -> Result<(), String> {
         let _ = self.finish_import();
         if self.import_ticket.is_some() || self.producer.slots() != QUEUE {
             return Err("Native controls or an import are pending. Retry when they finish.".into());
         }
-        let prepared = self
+        let checkpoint = self
             .checkpoint
             .as_ref()
-            .ok_or("Imports require checkpoint storage")?
-            .prepare_replacement(track, audio)
-            .map_err(|e| format!("Prepare import: {e:?}"))?;
+            .ok_or("Edits require checkpoint storage")?;
+        let prepared = if editing {
+            checkpoint.prepare_edit(track, audio)
+        } else {
+            checkpoint.prepare_replacement(track, audio)
+        }
+        .map_err(|e| format!("Prepare take: {e:?}"))?;
         let ticket = Arc::new(AtomicU32::new(0));
         let job = Box::new(ImportJob {
             prepared,

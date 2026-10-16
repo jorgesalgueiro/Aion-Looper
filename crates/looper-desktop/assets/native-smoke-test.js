@@ -88,6 +88,13 @@ window.addEventListener('aion-native-ready',async()=>{
             assert(document.getElementById('loop-action-1').textContent==='PLAY','Original imported loop action shows PLAY');
             let rejected=false;try{await api.request('engine_project_import',{token:opened.token,track:0,path:wavePath});}catch(_){rejected=true;}assert(rejected,'Import into a playing loop is rejected');
             await api.command('stop',0);await until(s=>s.tracks[0].state==='stopped');
+            const editButton=name=>[...document.querySelectorAll('#loop-1 button')].find(b=>b.textContent===name);
+            assert(!editButton('NORM').disabled&&editButton('UNDO').disabled,'Original NORM is enabled for stopped takes and empty history disables UNDO');
+            await editButton('NORM').onclick();await until(s=>s.tracks[1].undo===1);
+            assert(!editButton('UNDO').disabled,'Rust normalization enables original UNDO');
+            await editButton('UNDO').onclick();await until(s=>s.tracks[1].redo===1&&s.tracks[1].undo===0);
+            await editButton('REDO').onclick();await until(s=>s.tracks[1].undo===1&&s.tracks[1].redo===0);
+            checks.push('Original NORM, UNDO and REDO controls edit native PCM without WebAudio');
             savedProject=await api.saveProject();assert(savedProject.saved&&savedProject.project.endsWith('.aion'),'Original project save writes a native Rust project');
             const list=await api.projects();assert(list.projects.includes(savedProject.project),'Native saved project is listed for reopening');
         }

@@ -99,6 +99,7 @@ pub struct Replacement {
     parent: Arc<Checkpoint>,
     next: Arc<Checkpoint>,
     applied: bool,
+    reset_levels: bool,
 }
 impl Replacement {
     pub fn checkpoint(&self) -> Arc<Checkpoint> {
@@ -123,8 +124,10 @@ impl Replacement {
         self.parent.epoch.fetch_add(2, SeqCst);
         std::mem::swap(&mut track.audio, &mut self.audio);
         track.length = self.length;
-        track.gain = 1.0;
-        track.feedback = 0.8;
+        if self.reset_levels {
+            track.gain = 1.0;
+            track.feedback = 0.8;
+        }
         track.position = 0;
         track.state = State::Stopped;
         engine.schedule.cancel(self.track);
@@ -220,7 +223,18 @@ impl Checkpoint {
             parent: Arc::clone(self),
             next,
             applied: false,
+            reset_levels: true,
         })
+    }
+    /// Worker-prepared edit of a stopped take; retain its current mix settings.
+    pub fn prepare_edit(
+        self: &Arc<Self>,
+        track: usize,
+        audio: &[Frame],
+    ) -> Result<Replacement, Error> {
+        let mut replacement = self.prepare_replacement(track, audio)?;
+        replacement.reset_levels = false;
+        Ok(replacement)
     }
     /// Single audio/control owner only; transactions must not nest.
     pub fn begin(&self) -> Transaction<'_> {

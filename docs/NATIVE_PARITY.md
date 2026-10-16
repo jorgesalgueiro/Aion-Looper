@@ -13,7 +13,8 @@ workflows while individual native workflows are completed and verified.
 | Individual WAV export | Dry stereo float32, Rust worker | Existing dry/wet exports |
 | Existing `.alp` import and project interchange | Pending | Existing workflow |
 | WAV/audio import | Matching-rate mono/stereo WAV into stopped tracks; Rust decode/seam; other tracks continue | Existing workflow, with Rust WAV decoding where supported |
-| Undo/redo, normalize, reverse, multiply, merge | Pending in native transport/UI | Existing workflow; several offline operations already use Rust |
+| Normalize and its per-loop undo/redo | Rust worker; original NORM/UNDO/REDO controls for stopped takes; bounded session history | Existing workflow |
+| Punch/global undo, reverse, multiply, merge | Pending in native transport/UI | Existing workflow; several offline operations already use Rust |
 | Pan, speed, start offsets, retrigger/stutter, solo | Pending UI/engine integration | Existing workflow |
 | BPM/bar sync, quantization, metronome, tracker | Pending native integration | Existing workflow |
 | Effects, synths, sampler, full MIDI/gamepad mapping | Pending native integration | Existing workflow |
@@ -26,3 +27,9 @@ transport timing and sync, then effects/synths and their complete saved state.
 Finish and verify each workflow against the reference before enabling its UI.
 The compatibility interface must remain available until those workflows reach
 native parity. Public release packages may lag these local ASIO previews.
+
+Native normalize history stores at most five entries per loop per stack and 8 million stereo frames
+(64 MB) across all loops and undo/redo stacks. Other loops may keep playing; finish
+all captures/punches first. Mix settings and mute are preserved. History is session-only;
+recording, punching, successful import and clear invalidate the target history. Saves
+keep the resulting PCM, not the undo stacks. Silent/already-normalized takes are no-ops.

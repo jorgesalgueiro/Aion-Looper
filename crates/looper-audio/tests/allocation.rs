@@ -143,8 +143,19 @@ fn native_callback_and_control_queue_have_no_heap_operations() {
         .unwrap();
     writer.capture(&[0.0; 128], 2);
     duplex.render(&mut data, 2);
-    for (track, cancel, success) in [(1, false, true), (0, false, false), (1, true, false)] {
-        control.begin_import(track, &[[0.2, -0.1]; 64]).unwrap();
+    for (track, cancel, success, editing) in [
+        (1, false, true, false),
+        (0, false, false, false),
+        (1, true, false, false),
+        (1, false, true, true),
+        (0, false, false, true),
+        (1, true, false, true),
+    ] {
+        if editing {
+            control.begin_edit(track, &[[0.2, -0.1]; 64]).unwrap();
+        } else {
+            control.begin_import(track, &[[0.2, -0.1]; 64]).unwrap();
+        }
         if cancel {
             assert!(control.cancel_import());
         }

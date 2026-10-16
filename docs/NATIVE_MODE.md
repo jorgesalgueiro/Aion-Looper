@@ -38,7 +38,7 @@ Use `Start-Compatibility-Audio.cmd` or `--compatibility-audio` for the complete 
 in versioned `.aion` files beside the app. Loop SAVE exports stereo float32 WAV.
 Closing still discards unsaved changes. Existing `.alp` projects open through
 compatibility mode; their import into the native engine remains pending.
-Synths, effects, MIDI mapping, musical quantization, waveform editing, undo/redo
+Synths, effects, MIDI mapping, musical quantization, waveform editing, punch/global undo
 and the original recording latency/seam/DC finalization behavior still require
 migration. See [NATIVE_PARITY.md](NATIVE_PARITY.md) for the comparison. Controls
 apply at native callback boundaries, not browser timestamps. Audio ownership follows the native window, not UI polling. Minimizing or pausing
@@ -115,3 +115,25 @@ Windows. There are 37 desktop unit tests, 26 audio tests including callback heap
 accounting and concurrent snapshot/playback, and 13 file tests. A 30-second
 physical TOPPING/ASIO test at 48 kHz and 128-frame callbacks reports zero underrun
 or dropped frames, with output muted and no saved microphone recordings.
+
+## Native normalization and edit history
+
+Stop a recorded or imported loop, then press its original **NORM** button. Rust
+normalizes stereo PCM using a shared channel peak; gain, feedback and mute stay
+unchanged. Other loops can keep playing, but finish all recording/punch operations
+before editing. **UNDO** and **REDO** restore normalization edits exactly.
+Silent or already-normalized takes do not add history.
+
+History is limited to five entries per loop per stack and 8 million stereo frames
+(64 MB) total. Oldest undo entries are evicted first when the memory limit is
+reached. Takes exceeding this limit cannot be edited. History is reset by recording,
+overdub/substitute, successful WAV import, clear and closing audio. Projects save
+the resulting PCM, without history. Punch undo, global undo and the original
+reverse-on-next-play toggle still await migration.
+
+Editing verification: Windows and Ubuntu each pass 41 native GUI checks, plus
+131 Windows / 132 Ubuntu compatibility GUI checks. Rust tests cover exact normalize/undo/redo PCM, mix
+settings, unrelated playback, rejected edits, history invalidation and memory bounds.
+The allocation test checks zero callback heap operations for import and edit success,
+rejection and cancellation. A silent 30-second TOPPING ASIO regression at 48 kHz /
+128 frames reports zero underruns/dropped input frames; microphone audio was not saved.

@@ -59,6 +59,7 @@
         const gain=get(`loop-vol-slider-${i}`),feedback=get(`loop-fbk-slider-${i}`),action=get(`loop-action-${i}`)||card.querySelector('.loop-track-action');
         // IDs are resolved within the detached card until it is attached.
         const controls={action,mute,clear,exportWav:buttons.find(b=>b.textContent==='SAVE'),gain:gain||card.querySelector(`[id="loop-vol-slider-${i}"]`),feedback:feedback||card.querySelector(`[id="loop-fbk-slider-${i}"]`)};
+        for(const name of ["normalize","undo","redo"]){controls[name]=buttons.find(b=>b.textContent===(name==="normalize"?"NORM":name.toUpperCase()));controls[name].onclick=()=>editTake(i,name).catch(error);}
         trackControls.push(controls);
         controls.action.onclick=()=>perform(i);
         controls.exportWav.onclick=()=>exportWave(i).catch(error);
@@ -92,6 +93,11 @@
         fileBusy=true;get('import-wave').disabled=true;draw(lastTracks);
         try{const result=await request('engine_project_import',{token,track,path});const c=trackControls[track];model.loops[track].name='';model.loops[track].volume=1;model.loops[track].feedback=.8;get(`loop-${track}`).querySelector('.track-name').value='';c.gain.value='1';c.feedback.value='.8';get(`loop-vol-display-${track}`).textContent='0.0dB';get(`loop-fbk-display-${track}`).textContent='80%';get('project-status').textContent=`Imported WAV into loop ${track+1}: ${(result.frames/result.sample_rate).toFixed(2)}s. Save the project to keep it.`;get('error').textContent='';await status();return result;}
         finally{fileBusy=false;get('import-wave').disabled=!token;draw(lastTracks);}
+    }
+    async function editTake(track,command){
+        if(!token||fileBusy)throw new Error("Start audio and wait for the current operation.");
+        fileBusy=true;draw(lastTracks);
+        try{const result=await request("engine_edit",{token,track,command});get("error").textContent="";await status();return result;}finally{fileBusy=false;draw(lastTracks);}
     }
     async function dropFile(paths,x,y){
         if(paths.length!==1)throw new Error('Drop one WAV file onto one stopped loop.');
@@ -148,6 +154,9 @@
             card.className=`loop ${t.state}`;c.action.textContent=renderer.getLoopAction(model.loops[i]);c.action.setAttribute('aria-label',`Loop ${i+1}: ${c.action.textContent}`);
             get(`loop-state-symbol-${i}`).textContent=symbols[t.state]||'( )';get(`loop-state-text-${i}`).textContent=t.state.toUpperCase();get(`loop-extra-info-${i}`).textContent=`${t.muted?'[MUTED] ':''}${t.length?`${model.loops[i].duration.toFixed(1)}s`:''}`;
             for(const el of [c.action,c.gain,c.feedback]){el.disabled=!available;el.title=el===c.action?`Loop ${i+1}: ${c.action.textContent}`:'Native audio control';}
+            const editing=available&&t.state==="stopped"&&!tracks.some(t=>["recording","overdubbing","substituting"].includes(t.state));
+            c.normalize.disabled=!editing;c.normalize.title="Normalize stopped take in Rust (undoable)";
+            for(const name of ["undo","redo"]){c[name].disabled=!editing||!t[name];c[name].title=`${name.toUpperCase()} native normalization edits; recording/punch/import/clear resets history`;}
             c.exportWav.disabled=!available||!t.length;c.exportWav.title='Export dry stereo float32 WAV to AionProjects';c.mute.disabled=!available||!t.length;c.clear.disabled=!available||t.state==='empty';c.clear.title='Discard this native take';c.mute.title='Native loop mute';c.mute.textContent=t.muted?'UNM':'MUTE';c.mute.setAttribute('aria-pressed',String(t.muted));c.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
             const position=t.length?100*t.position/t.length:0,progress=card.querySelector('.native-position');progress.setAttribute('aria-valuenow',position.toFixed(1));progress.firstElementChild.style.width=`${position}%`;
         }
@@ -183,6 +192,6 @@
     window.addEventListener('resize',fitLogos);fitLogos();
     setInterval(async()=>{if(!pollEnabled||polling||!token)return;polling=true;try{await status();}catch(reason){error(reason);}finally{polling=false;}},100);
     window.addEventListener('pagehide',()=>{if(token)request('engine_close',{token}).catch(()=>{});});
-    window.AionNative={open,close,command,status,devices,request,projects,saveProject,loadProject,exportWave,importWave,dropFile,onDrop(paths,x,y){dropFile(paths,x,y).catch(error);},setPolling(enabled){pollEnabled=enabled;}};
+    window.AionNative={open,close,command,status,devices,request,projects,saveProject,loadProject,exportWave,importWave,editTake,dropFile,onDrop(paths,x,y){dropFile(paths,x,y).catch(error);},setPolling(enabled){pollEnabled=enabled;}};
     controls(false);draw([]);projects().catch(error);devices().catch(error);window.dispatchEvent(new Event('aion-native-ready'));
 })();
