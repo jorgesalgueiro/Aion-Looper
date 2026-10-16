@@ -457,7 +457,7 @@ impl Service {
                     let i = stack
                         .iter()
                         .rposition(|(t, _)| *t == r.track)
-                        .ok_or("No native normalization edit to restore.")?;
+                        .ok_or("No native edit or punch pass to restore.")?;
                     index = Some(i);
                     &stack[i].1
                 };
@@ -635,19 +635,61 @@ impl Service {
                     },
                     _ => return Err("Invalid native track or control.".into()),
                 };
+                let punch = matches!(r.command.as_str(), "overdub" | "substitute");
+                // The service is the sole control producer. A coherent playing take
+                // with an empty control queue cannot start writing before this send.
+                // Snapshot/copy happens on this worker while playback keeps running.
+                let mut before_punch = None;
+                let mut history_notice = None;
+                if punch {
+                    // Drain earlier slider/play/stop requests before taking history.
+                    // This preserves ordered controls without snapshotting old settings.
+                    let deadline = Instant::now() + Duration::from_millis(100);
+                    while h.source.controller().controls_pending() {
+                        h.source.pump();
+                        if Instant::now() >= deadline {
+                            return Err("Native controls are still pending; retry the punch when audio resumes.".into());
+                        }
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                    if h.source.controller().status().tracks[r.track].state
+                        != looper_core::State::Playing
+                    {
+                        return Err("Start playback before overdub or substitute.".into());
+                    }
+                    match h.source.controller().snapshot(project::MAX_FRAMES) {
+                        Ok(mut takes) => {
+                            let take = &mut takes[r.track];
+                            if !take.playing || take.audio.is_empty() {
+                                return Err("Start playback before overdub or substitute.".into());
+                            }
+                            if take.audio.len() > HISTORY_FRAMES {
+                                history_notice = Some("Punch started without undo: the take exceeds the 8 million frame history limit.");
+                            } else {
+                                before_punch = Some(std::mem::take(&mut take.audio));
+                            }
+                        }
+                        Err(_) => history_notice = Some("Punch started without undo: finish other captures/punches and wait for controls before starting an undoable pass."),
+                    }
+                }
                 h.source.controller().send(control)?;
-                if matches!(
-                    r.command.as_str(),
-                    "record" | "clear" | "overdub" | "substitute"
-                ) {
+                if matches!(r.command.as_str(), "record" | "clear")
+                    || (punch && before_punch.is_none())
+                {
                     h.history.clear_track(r.track);
+                }
+                if let Some(audio) = before_punch {
+                    h.history.redo.retain(|(track, _)| *track != r.track);
+                    h.history.push(r.track, audio, false);
                 }
                 match control {
                     Control::Master(value) => h.master = value,
                     Control::InputGain(value) => h.input_gain = value,
                     _ => {}
                 }
-                Ok(json!({"queued":true}))
+                Ok(
+                    json!({"queued":true,"undo_recorded":if punch {Some(history_notice.is_none())} else {None},"history_notice":history_notice}),
+                )
             }
             _ => Err("Unknown native audio request.".into()),
         }
@@ -856,8 +898,8 @@ mod tests {
         control(&mut service, token, "overdub", 0.0);
         assert_eq!(
             service.handle.as_ref().unwrap().history.count(0, false),
-            0,
-            "capture invalidates old PCM history"
+            2,
+            "punch keeps older edits and snapshots the previous take"
         );
         control(&mut service, token, "finish", 0.0);
         control(&mut service, token, "clear", 0.0);
@@ -867,6 +909,179 @@ mod tests {
             "never resurrect deleted takes"
         );
         service.shutdown();
+    }
+    fn punch_request(service: &mut Service, token: u64, command: &str) -> Value {
+        let mut r = request("engine_control", token);
+        r.command = command.into();
+        service.execute(r)
+    }
+    #[test]
+    fn punch_history_restores_exact_pcm_for_both_modes_and_rejects_invalid_or_pending_passes() {
+        let mut s = Service::new(true);
+        let token = s.execute(request("engine_open", 0))["value"]["token"]
+            .as_u64()
+            .unwrap();
+        blocks(&mut s, 1);
+        s.handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .begin_import(0, &[[0.125, -0.25]; 512])
+            .unwrap();
+        blocks(&mut s, 1);
+        s.handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .finish_import()
+            .unwrap()
+            .unwrap();
+        for (name, value) in [("gain", 0.5), ("feedback", 0.6), ("mute", 1.0)] {
+            control(&mut s, token, name, value);
+        }
+        s.handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .begin_import(1, &[[0.2, -0.1]; 256])
+            .unwrap();
+        blocks(&mut s, 1);
+        s.handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .finish_import()
+            .unwrap()
+            .unwrap();
+        let mut other = request("engine_control", token);
+        other.track = 1;
+        other.command = "play".into();
+        s.execute(other);
+        blocks(&mut s, 1);
+        let original = pcm(&mut s).remove(0);
+        assert_eq!(punch_request(&mut s, token, "overdub")["ok"], false);
+        for mode in ["overdub", "substitute"] {
+            control(&mut s, token, "play", 0.0);
+            let before = pcm(&mut s).remove(0).audio;
+            let begun = punch_request(&mut s, token, mode);
+            assert_eq!(begun["ok"], true, "{begun}");
+            assert_eq!(begun["value"]["undo_recorded"], true);
+            blocks(&mut s, 5);
+            let count = s.handle.as_ref().unwrap().history.count(0, false);
+            assert_eq!(
+                punch_request(&mut s, token, mode)["ok"],
+                false,
+                "duplicate punch must not clear history"
+            );
+            assert_eq!(
+                edit(&mut s, token, "undo")["ok"],
+                false,
+                "finish the pass before undo"
+            );
+            assert_eq!(s.handle.as_ref().unwrap().history.count(0, false), count);
+            control(&mut s, token, "finish", 0.0);
+            let punched = pcm(&mut s).remove(0);
+            assert_ne!(punched.audio, before);
+            assert_eq!(edit(&mut s, token, "undo")["ok"], true);
+            assert_eq!(pcm(&mut s)[0].audio, before);
+            assert_eq!(edit(&mut s, token, "redo")["ok"], true);
+            assert_eq!(pcm(&mut s)[0], punched);
+            let other = pcm(&mut s).remove(1);
+            assert!(other.playing);
+            assert_eq!(other.audio, vec![[0.2, -0.1]; 256]);
+            assert_eq!(
+                (punched.gain, punched.feedback, punched.muted),
+                (original.gain, original.feedback, original.muted)
+            );
+        }
+        assert_eq!(edit(&mut s, token, "undo")["ok"], true);
+        control(&mut s, token, "play", 0.0);
+        assert_eq!(punch_request(&mut s, token, "overdub")["ok"], true);
+        blocks(&mut s, 3);
+        control(&mut s, token, "finish", 0.0);
+        assert_eq!(
+            edit(&mut s, token, "redo")["ok"],
+            false,
+            "new punch invalidates redo"
+        );
+        let before = pcm(&mut s).remove(0);
+        let count = s.handle.as_ref().unwrap().history.count(0, false);
+        assert_eq!(
+            punch_request(&mut s, token, "substitute")["ok"],
+            false,
+            "stopped pass rejected"
+        );
+        assert_eq!(pcm(&mut s)[0], before);
+        assert_eq!(s.handle.as_ref().unwrap().history.count(0, false), count);
+        control(&mut s, token, "play", 0.0);
+        let mut pending = request("engine_control", token);
+        pending.command = "stop".into();
+        s.execute(pending);
+        assert_eq!(
+            punch_request(&mut s, token, "overdub")["ok"],
+            false,
+            "queued stop is applied before deciding whether to start a pass"
+        );
+        blocks(&mut s, 1);
+        assert_eq!(s.handle.as_ref().unwrap().history.count(0, false), count);
+        control(&mut s, token, "clear", 0.0);
+        assert_eq!(edit(&mut s, token, "undo")["ok"], false);
+        s.shutdown();
+    }
+    #[test]
+    fn concurrent_capture_keeps_running_and_explicitly_reports_unavailable_punch_history() {
+        let mut s = Service::new(true);
+        let token = s.execute(request("engine_open", 0))["value"]["token"]
+            .as_u64()
+            .unwrap();
+        control(&mut s, token, "record", 0.0);
+        blocks(&mut s, 4);
+        control(&mut s, token, "finish", 0.0);
+        assert_eq!(edit(&mut s, token, "normalize")["ok"], true);
+        control(&mut s, token, "play", 0.0);
+        let mut record = request("engine_control", token);
+        record.track = 1;
+        record.command = "record".into();
+        s.execute(record);
+        blocks(&mut s, 2);
+        let frames = s
+            .handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .status()
+            .tracks[1]
+            .length_frames;
+        let begun = punch_request(&mut s, token, "overdub");
+        assert_eq!(begun["ok"], true);
+        assert_eq!(begun["value"]["undo_recorded"], false);
+        assert!(begun["value"]["history_notice"]
+            .as_str()
+            .unwrap()
+            .contains("without undo"));
+        blocks(&mut s, 4);
+        let status = s.handle.as_mut().unwrap().source.controller().status();
+        assert_eq!(status.tracks[0].state, looper_core::State::Overdubbing);
+        assert_eq!(status.tracks[1].state, looper_core::State::Recording);
+        assert!(status.tracks[1].length_frames > frames);
+        assert_eq!(
+            s.handle.as_ref().unwrap().history.count(0, false),
+            0,
+            "untracked punch invalidates stale history"
+        );
+        control(&mut s, token, "finish", 0.0);
+        let mut finish = request("engine_control", token);
+        finish.track = 1;
+        finish.command = "finish".into();
+        s.execute(finish);
+        blocks(&mut s, 1);
+        assert_eq!(edit(&mut s, token, "undo")["ok"], false);
+        s.shutdown();
     }
     #[test]
     fn history_caps_steps_and_total_pcm_across_both_stacks() {

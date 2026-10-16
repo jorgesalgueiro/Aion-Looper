@@ -29,11 +29,23 @@ window.addEventListener('aion-native-ready',async()=>{
         action.click();await until(s=>s.tracks[1].state==='playing'&&!action.disabled);
         action.click();await until(s=>s.tracks[1].state==='overdubbing'&&!action.disabled);
         action.click();await until(s=>s.tracks[1].state==='playing'&&!action.disabled);
+        await api.command('stop',1);await until(s=>s.tracks[1].state==='stopped'&&!action.disabled);
+        const punchButton=name=>[...document.querySelectorAll('#loop-1 button')].find(b=>b.textContent===name);
+        assert(!punchButton('UNDO').disabled,'Finished native overdub enables original UNDO');
+        const overdubHistory=(await api.status()).tracks[1].undo;
+        await punchButton('UNDO').onclick();await until(s=>s.tracks[1].redo===1&&s.tracks[1].undo===overdubHistory-1);
+        await punchButton('REDO').onclick();await until(s=>s.tracks[1].redo===0&&s.tracks[1].undo===overdubHistory);
+        checks.push('Original UNDO and REDO restore a native overdub pass');
+        await api.command('play',1);await until(s=>s.tracks[1].state==='playing'&&!action.disabled);
         mode.value='substitute';mode.dispatchEvent(new Event('change'));action.click();await until(s=>s.tracks[1].state==='substituting'&&!action.disabled);
         action.click();await until(s=>s.tracks[1].state==='playing'&&!action.disabled);
         mode.value='normal';mode.dispatchEvent(new Event('change'));
         checks.push('Original loop action drives record, finish/play, stop, overdub and substitute in Rust');
         document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'2',bubbles:true}));await until(s=>s.tracks[1].state==='stopped'&&!action.disabled);
+        const substituteHistory=(await api.status()).tracks[1].undo;
+        await punchButton('UNDO').onclick();await until(s=>s.tracks[1].redo===1&&s.tracks[1].undo===substituteHistory-1);
+        await punchButton('REDO').onclick();await until(s=>s.tracks[1].redo===0&&s.tracks[1].undo===substituteHistory);
+        checks.push('Original UNDO and REDO restore a native substitute pass');
         checks.push('Original number-key loop control uses native transport');
         await api.command('clear',1);await until(s=>s.tracks[1].state==='empty');
         const start=await until(s=>s.frames>0);
@@ -54,6 +66,12 @@ window.addEventListener('aion-native-ready',async()=>{
         await wait(50);const playing=await api.status();assert(playing.tracks[0].position>0,'Native loop playback advances');
         await api.command('mute',0,1);await until(s=>s.tracks[0].muted);checks.push('Native mute updates without a browser gain node');
         await api.command('gain',0,.5);await api.command('feedback',0,.6);
+        await api.command('record',1);const parallel=await until(s=>s.tracks[1].state==='recording');
+        const untracked=await api.command('overdub',0);await until(s=>s.tracks[0].state==='overdubbing');await wait(40);
+        assert(untracked.undo_recorded===false&&document.getElementById('error').textContent.includes('without undo'),'Concurrent capture explicitly reports unavailable punch undo in the original interface');
+        const continued=await api.status();assert(continued.tracks[1].state==='recording'&&continued.tracks[1].length>parallel.tracks[1].length,'Another loop keeps capturing during a punch without history');
+        await api.command('finish',0);await until(s=>s.tracks[0].state==='stopped');await api.command('finish',1);await until(s=>s.tracks[1].state==='stopped');await api.command('clear',1);await until(s=>s.tracks[1].state==='empty');
+        await api.command('play',0);await until(s=>s.tracks[0].state==='playing');
         await api.command('overdub',0);await until(s=>s.tracks[0].state==='overdubbing');await wait(60);await api.command('finish',0);await until(s=>s.tracks[0].state==='stopped');checks.push('Native overdub completes');
         await api.command('play',0);await until(s=>s.tracks[0].state==='playing');await api.command('substitute',0);await until(s=>s.tracks[0].state==='substituting');await wait(60);await api.command('finish',0);await until(s=>s.tracks[0].state==='stopped');checks.push('Native substitute completes');
         if(window.AionNativeImportFile){

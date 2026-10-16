@@ -143,7 +143,7 @@
             return result;
         }finally{opening=false;controls(Boolean(token));}
     }
-    function command(command,track=0,value=0){if(!token)return Promise.reject(new Error('Start native audio first.'));return request('engine_control',{token,command,track,value});}
+    async function command(command,track=0,value=0){if(!token)throw new Error('Start native audio first.');const result=await request('engine_control',{token,command,track,value});if(result.history_notice)get('error').textContent=result.history_notice;else if(result.undo_recorded===true)get('error').textContent='';return result;}
     async function close(){const old=token;token=0;generation++;try{if(old)await request('engine_close',{token:old});}finally{monitor=false;controls(false);get('monitor').textContent='MON OFF';get('monitor').setAttribute('aria-pressed','false');get('input-meter').value=0;get('output-meter').value=0;get('status').textContent='Audio closed. Unsaved native loops have been released.';draw([]);get('startOverlay').style.display='flex';}}
     function draw(tracks){
         lastTracks=tracks;
@@ -156,7 +156,7 @@
             for(const el of [c.action,c.gain,c.feedback]){el.disabled=!available;el.title=el===c.action?`Loop ${i+1}: ${c.action.textContent}`:'Native audio control';}
             const editing=available&&t.state==="stopped"&&!tracks.some(t=>["recording","overdubbing","substituting"].includes(t.state));
             c.normalize.disabled=!editing;c.normalize.title="Normalize stopped take in Rust (undoable)";
-            for(const name of ["undo","redo"]){c[name].disabled=!editing||!t[name];c[name].title=`${name.toUpperCase()} native normalization edits; recording/punch/import/clear resets history`;}
+            for(const name of ["undo","redo"]){c[name].disabled=!editing||!t[name];c[name].title=`${name.toUpperCase()} native normalization and punch passes; stop the loop first; recording/import/clear resets history`;}
             c.exportWav.disabled=!available||!t.length;c.exportWav.title='Export dry stereo float32 WAV to AionProjects';c.mute.disabled=!available||!t.length;c.clear.disabled=!available||t.state==='empty';c.clear.title='Discard this native take';c.mute.title='Native loop mute';c.mute.textContent=t.muted?'UNM':'MUTE';c.mute.setAttribute('aria-pressed',String(t.muted));c.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
             const position=t.length?100*t.position/t.length:0,progress=card.querySelector('.native-position');progress.setAttribute('aria-valuenow',position.toFixed(1));progress.firstElementChild.style.width=`${position}%`;
         }

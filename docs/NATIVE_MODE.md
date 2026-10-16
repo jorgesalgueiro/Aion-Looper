@@ -38,7 +38,7 @@ Use `Start-Compatibility-Audio.cmd` or `--compatibility-audio` for the complete 
 in versioned `.aion` files beside the app. Loop SAVE exports stereo float32 WAV.
 Closing still discards unsaved changes. Existing `.alp` projects open through
 compatibility mode; their import into the native engine remains pending.
-Synths, effects, MIDI mapping, musical quantization, waveform editing, punch/global undo
+Synths, effects, MIDI mapping, musical quantization, waveform editing, global undo
 and the original recording latency/seam/DC finalization behavior still require
 migration. See [NATIVE_PARITY.md](NATIVE_PARITY.md) for the comparison. Controls
 apply at native callback boundaries, not browser timestamps. Audio ownership follows the native window, not UI polling. Minimizing or pausing
@@ -116,7 +116,7 @@ accounting and concurrent snapshot/playback, and 13 file tests. A 30-second
 physical TOPPING/ASIO test at 48 kHz and 128-frame callbacks reports zero underrun
 or dropped frames, with output muted and no saved microphone recordings.
 
-## Native normalization and edit history
+## Native normalization and punch history
 
 Stop a recorded or imported loop, then press its original **NORM** button. Rust
 normalizes stereo PCM using a shared channel peak; gain, feedback and mute stay
@@ -124,11 +124,20 @@ unchanged. Other loops can keep playing, but finish all recording/punch operatio
 before editing. **UNDO** and **REDO** restore normalization edits exactly.
 Silent or already-normalized takes do not add history.
 
+Overdub and substitute snapshot the previous take in Rust before starting a pass.
+Finish or stop the target, then use UNDO to recover its exact pre-pass PCM and
+REDO to restore the punch. Gain, feedback and mute retain their current settings.
+Other loops may keep playing. Starting a new pass clears redo for that loop.
+
 History is limited to five entries per loop per stack and 8 million stereo frames
 (64 MB) total. Oldest undo entries are evicted first when the memory limit is
 reached. Takes exceeding this limit cannot be edited. History is reset by recording,
-overdub/substitute, successful WAV import, clear and closing audio. Projects save
-the resulting PCM, without history. Punch undo, global undo and the original
+successful WAV import, clear and closing audio. If another loop is capturing or
+punching, or the take exceeds the history budget, the punch still starts without
+undo: the original interface reports the reason and clears stale target history.
+Finish all captures before starting an undoable pass. Pending controls drain
+before the snapshot; a stalled callback rejects the request after 100 ms. Projects save
+the resulting PCM, without history. Global undo and the original
 reverse-on-next-play toggle still await migration.
 
 Editing verification: Windows and Ubuntu each pass 41 native GUI checks, plus
@@ -142,3 +151,12 @@ Native WAV import now converts 8–192 kHz source audio to the session rate in R
 Drop a WAV onto a stopped loop, or use the Project Menu path controls. Duration
 and pitch are retained and the panel reports rate conversion. The converted take
 must fit the track duration; see [NATIVE_IMPORT.md](NATIVE_IMPORT.md).
+
+Punch-history verification: 42 desktop Rust tests pass on Windows and Ubuntu,
+with strict Clippy and the audio/core regression suites. Both native webviews pass
+49 checks, including the original UNDO/REDO buttons for overdub and substitute,
+concurrent-capture continuation and the visible history-unavailable notice.
+Compatibility checks pass (131 Windows / 132 Ubuntu). A silent 30-second TOPPING
+ASIO regression at 48 kHz / 128 frames passes 35 checks, with zero underruns or
+dropped input frames and no saved microphone recordings. History remains bounded,
+worker-owned and session-only; global undo and live playback undo remain pending.

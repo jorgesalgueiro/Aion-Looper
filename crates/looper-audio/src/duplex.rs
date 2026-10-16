@@ -133,6 +133,11 @@ impl Controller {
         })
     }
 
+    /// Worker-side readiness for operations requiring a stable pre-command take.
+    pub fn controls_pending(&self) -> bool {
+        self.import_ticket.is_some() || self.producer.slots() != QUEUE
+    }
+
     pub fn snapshot(&self, max_frames: usize) -> Result<Vec<Take>, String> {
         if self.import_ticket.is_some() || self.producer.slots() != QUEUE {
             return Err("Controls are pending. Try saving again.".into());
