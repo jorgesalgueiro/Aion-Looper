@@ -7,11 +7,11 @@ Launch `Start-Native-Audio.cmd` beside the Windows executable, choose
 & './dist/Aion-Looper-Windows/Aion-Looper.exe' --native-audio --input-host ASIO --input-device 'TOPPING Pro USB Audio Device'
 ```
 
-This is an opt-in native session, separate from the compatibility interface.
+Windows ASIO builds open this native session by default.
 It loads no AudioContext, AudioWorklet, browser PCM transport or SoundTouch.
 The webview displays controls and meters; Rust owns capture, recording storage,
 loop playback, monitoring, gain, feedback, mixing and the ASIO output stream.
-The ordinary launch still opens the existing compatibility interface.
+Use `Start-Compatibility-Audio.cmd` or `--compatibility-audio` for the original interface. Non-ASIO builds retain the compatibility default.
 
 ## Controls and current limits
 

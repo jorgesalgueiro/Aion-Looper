@@ -60,7 +60,7 @@
                 if (data.overruns > 0) { fault(new Error('Native input transport overflow.')); return; }
                 if (data.underruns > 0) {
                     const input = state.inputs.find(input => input.stream === stream);
-                    if (input) { InputManager.lastInputError = `INPUT ${input.id+1}: native transport underruns (${data.underruns}); captured audio may contain gaps.`; InputManager.renderUI(); }
+                    if (input) { InputManager.lastInputError = `INPUT ${input.id+1}: compatibility transport underruns (${data.underruns}); captured audio may contain gaps. Use Start-Native-Audio.cmd for Rust ASIO audio.`; InputManager.renderUI(); }
                 }
             };
             streams.set(stream,{source,context}); active.add(stream);

@@ -22,9 +22,20 @@ enum UiEvent {
     EncodedReply(String),
     Report(Value),
 }
+fn native_launch(args: &[String], native_default: bool) -> bool {
+    match args.first().map(String::as_str) {
+        Some("--native-self-test") => return true,
+        Some("--self-test" | "--input-smoke-test") => return false,
+        _ => {}
+    }
+    if args.iter().any(|arg| arg == "--compatibility-audio") {
+        return false;
+    }
+    native_default || args.iter().any(|arg| arg == "--native-audio")
+}
 pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     let native_test = args.first().is_some_and(|arg| arg == "--native-self-test");
-    let native_mode = native_test || args.iter().any(|arg| arg == "--native-audio");
+    let native_mode = native_launch(&args, cfg!(all(target_os = "windows", feature = "asio")));
     let native_test_physical = args.iter().any(|arg| arg == "--native-test-physical");
     let input_smoke = args.first().is_some_and(|arg| arg == "--input-smoke-test");
     let test_report =
@@ -189,8 +200,20 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    #[cfg(target_os = "windows")]
+    let app_icon = {
+        use tao::platform::windows::IconExtWindows;
+        Some(tao::window::Icon::from_resource(1, None)?)
+    };
+    #[cfg(not(target_os = "windows"))]
+    let app_icon = None;
     let window = WindowBuilder::new()
-        .with_title("Aion Looper")
+        .with_title(if native_mode {
+            "Aion Looper — Native Audio"
+        } else {
+            "Aion Looper — Compatibility Audio"
+        })
+        .with_window_icon(app_icon)
         .with_inner_size(tao::dpi::LogicalSize::new(1440.0, 960.0))
         .with_visible(test_report.is_none())
         .build(&event_loop)?;
@@ -378,4 +401,29 @@ pub fn run(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
             _ => (),
         }
     });
+}
+
+#[cfg(test)]
+mod launch_tests {
+    use super::native_launch;
+    #[test]
+    fn asio_default_uses_native_while_compatibility_and_test_modes_stay_explicit() {
+        let args = |values: &[&str]| {
+            values
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert!(native_launch(&[], true));
+        assert!(!native_launch(&[], false));
+        assert!(!native_launch(&args(&["--compatibility-audio"]), true));
+        assert!(native_launch(&args(&["--native-audio"]), false));
+        for mode in ["--self-test", "--input-smoke-test"] {
+            assert!(!native_launch(&args(&[mode, "report.json"]), true));
+        }
+        assert!(native_launch(
+            &args(&["--native-self-test", "report.json"]),
+            false
+        ));
+    }
 }

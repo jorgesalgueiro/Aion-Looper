@@ -4,8 +4,8 @@ The ordinary published preview through 20261016.3 uses WASAPI. ASIO must be
 compiled in; changing a device name in that preview does not enable it.
 
 On this PC the connected E2x2 is exposed by `TOPPING Pro USB Audio Device`.
-In the ASIO-enabled desktop app, start audio and select
-`ASIO / TOPPING Pro USB Audio Device` in the existing input device selector.
+Windows ASIO builds now open the Rust native audio interface by default. Select
+`TOPPING Pro USB Audio Device`, then press START AUDIO.
 Other registered drivers also appear; a registry entry alone does not mean its
 hardware is connected or that it has input channels. A driver-open failure is
 reported rather than silently switching to WASAPI.
@@ -16,11 +16,13 @@ For direct launch with this driver:
 & './dist/Aion-Looper-Windows/Aion-Looper.exe' --input-host ASIO --input-device 'TOPPING Pro USB Audio Device'
 ```
 
-These launch options choose the default native input. An explicit selection in
-the input selector takes precedence. Monitoring still starts off; enable MON to
-hear input. Playback currently uses Web Audio and its Windows output device;
-this describes the compatibility interface. The new optional native mode also
-owns ASIO output and loop transport; see NATIVE_MODE.md.
+Native mode owns ASIO input, output and loop transport; see NATIVE_MODE.md for
+controls and limits. Monitoring starts off. Native takes cannot be saved yet.
+
+Use Start-Compatibility-Audio.cmd or --compatibility-audio for the original
+interface. There the launch options set the default input selection; an explicit
+selection in its input selector takes precedence. Compatibility playback still
+uses Web Audio and the Windows output device. Its browser transport may underrun.
 
 ## Build and test
 
