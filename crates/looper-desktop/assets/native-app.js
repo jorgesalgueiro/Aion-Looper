@@ -60,6 +60,7 @@
         // IDs are resolved within the detached card until it is attached.
         const controls={action,mute,clear,exportWav:buttons.find(b=>b.textContent==='SAVE'),gain:gain||card.querySelector(`[id="loop-vol-slider-${i}"]`),feedback:feedback||card.querySelector(`[id="loop-fbk-slider-${i}"]`)};
         for(const name of ["normalize","undo","redo"]){controls[name]=buttons.find(b=>b.textContent===(name==="normalize"?"NORM":name.toUpperCase()));controls[name].onclick=()=>editTake(i,name).catch(error);}
+        controls.multiply=buttons.find(b=>b.textContent==='MULT');controls.multiply.onclick=()=>editTake(i,'multiply').catch(error);
         controls.retrigger=buttons.find(b=>b.textContent==='RTRG');controls.stutter=buttons.find(b=>b.textContent==='STUT');
         controls.retrigger.onclick=()=>runTrack(i,()=>command('retrigger',i));
         controls.stutter.onpointerdown=event=>startStutter(i,event);
@@ -190,6 +191,7 @@
             c.stutter.disabled=!available||t.state!=='playing';c.stutter.title='Hold native fragment; release to resume (120 BPM reference duration)';c.stutter.classList.toggle('btn-active',Boolean(t.stuttering));c.stutter.setAttribute('aria-pressed',String(Boolean(t.stuttering)));
             if(t.state!=='playing'&&heldStutters.has(i))releaseStutter(i);
             const editing=available&&t.state==="stopped"&&!tracks.some(t=>["recording","overdubbing","substituting"].includes(t.state));
+            c.multiply.disabled=!editing;c.multiply.title='Double a stopped take in Rust (undoable); live multiply capture is pending';
             c.normalize.disabled=!editing;c.normalize.title="Normalize stopped take in Rust (undoable)";
             for(const name of ["undo","redo"]){c[name].disabled=!editing||!t[name];c[name].title=`${name.toUpperCase()} native normalization and punch passes; stop the loop first; recording/import/clear resets history`;}
             c.exportWav.disabled=!available||!t.length;c.exportWav.title='Export dry stereo float32 WAV to AionProjects';c.mute.disabled=!available||!t.length;c.clear.disabled=!available||t.state==='empty';c.clear.title='Discard this native take';c.mute.title='Native loop mute';c.mute.textContent=t.muted?'UNM':'MUTE';c.mute.setAttribute('aria-pressed',String(t.muted));c.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';

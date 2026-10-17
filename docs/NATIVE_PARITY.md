@@ -14,7 +14,8 @@ workflows while individual native workflows are completed and verified.
 | Existing `.alp` import and project interchange | Pending | Existing workflow |
 | WAV/audio import | 8–192 kHz mono/stereo WAV converted to the session rate in Rust; stopped target; other tracks continue | Existing workflow, with Rust WAV decoding where supported |
 | Normalize, overdub/substitute and global undo/redo | Rust worker; original loop/master buttons and Ctrl/Cmd+Z; stopped targets; bounded session history | Existing workflow |
-| Reverse, multiply, merge | Pending in native transport/UI | Existing workflow; several offline operations already use Rust |
+| Instant multiply | Rust worker; original MULT doubles a stopped take with local/global undo/redo | Existing stopped-loop fallback |
+| Reverse, live multiply capture, merge | Pending in native transport/UI | Existing workflow; several offline operations already use Rust |
 | Retrigger and hold-to-stutter | Rust callback; original RTRG/STUT buttons; reference 120 BPM fragment | Existing workflow, including musical sync |
 | Pan, speed, start offsets, solo | Pending UI/engine integration | Existing workflow |
 | BPM/bar sync, quantization, metronome, tracker | Pending native integration | Existing workflow |
@@ -53,3 +54,10 @@ window blur and page hiding release held controls. Fragment length follows the
 reference at 120 BPM (125 ms, limited to half the take, minimum 10 ms, clipped at
 the take end). Native BPM sync, quantized retrigger and rate changes remain pending.
 The hold is transient: it changes no PCM, history or saved project state.
+
+MULT on a stopped take doubles its PCM exactly, without rate/channel changes or
+an added fade. Local/global undo and redo restore the original/doubled length.
+Other loops can keep playing; finish all captures first. Both the destination
+capacity and the 8 million frame editing budget are checked before allocating
+the repeated PCM. Failure keeps the existing take and history. Live multiply
+capture remains pending, and MULT stays disabled on playing/capturing targets.

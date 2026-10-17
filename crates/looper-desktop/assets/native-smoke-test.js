@@ -59,9 +59,14 @@ window.addEventListener('aion-native-ready',async()=>{
         checks.push('Window focus loss releases the native stutter');
         transportButton('STUT').onpointerdown(new PointerEvent('pointerdown',{button:0,pointerId:54}));await until(s=>s.tracks[1].stuttering);transportButton('STUT').onlostpointercapture(new PointerEvent('lostpointercapture',{pointerId:54}));await until(s=>!s.tracks[1].stuttering);
         checks.push('Lost pointer capture releases the native stutter');
+        assert(transportButton('MULT').disabled,'Original MULT stays disabled during playback until live multiply is migrated');
 
         await api.command('stop',1);await until(s=>s.tracks[1].state==='stopped');
-
+        const beforeMult=(await api.status()).tracks[1].length;
+        assert(!transportButton('MULT').disabled,'Original MULT enables instant doubling on a stopped take');
+        await transportButton('MULT').onclick();await until(s=>s.tracks[1].length===2*beforeMult);
+        const undoMult=[...document.querySelectorAll('#loop-1 button')].find(b=>b.textContent==='UNDO');await undoMult.onclick();await until(s=>s.tracks[1].length===beforeMult);
+        checks.push('Original MULT doubles native audio and UNDO restores its original length');
         await api.command('clear',1);await until(s=>s.tracks[1].state==='empty');
         const start=await until(s=>s.frames>0);
         assert(start.callback_frames>0,'Native output callback is running');
@@ -144,6 +149,10 @@ window.addEventListener('aion-native-ready',async()=>{
             await api.command('play',1);await until(s=>s.tracks[1].state==='playing');assert(globalUndo.disabled&&globalUndo.textContent==='UNDO L2','Playing global target is identified but disabled until stopped');
             await api.command('stop',1);await until(s=>s.tracks[1].state==='stopped'&&!globalUndo.disabled);
 
+            await editButton('MULT').onclick();await until(s=>s.tracks[1].length===2*importedFrames);
+            await globalUndo.onclick();await until(s=>s.tracks[1].length===importedFrames);
+            await globalRedo.onclick();await until(s=>s.tracks[1].length===2*importedFrames);
+            importedFrames*=2;checks.push('Global undo and redo restore multiplied native take lengths');
             savedProject=await api.saveProject();assert(savedProject.saved&&savedProject.project.endsWith('.aion'),'Original project save writes a native Rust project');
             const list=await api.projects();assert(list.projects.includes(savedProject.project),'Native saved project is listed for reopening');
         }

@@ -202,3 +202,26 @@ accounting confirms no allocations/frees for these controls in the callback.
 Compatibility checks pass (131 Windows / 132 Ubuntu). The silent 30-second
 TOPPING ASIO regression at 48 kHz / 128 frames passes 41 checks with zero
 underruns or dropped input frames and no saved microphone recordings.
+
+## Native instant multiply
+
+Stop a take and press its original **MULT** button to double it in Rust. The
+result contains two exact copies, retaining gain, feedback, mute and the loop
+name. Local/master UNDO and REDO restore the original or doubled take, including
+its length. SAVE PROJ keeps the doubled PCM, without applying another fade.
+
+The doubled take must fit the existing loop capacity and the 8 million frame
+editing budget. Failed operations retain PCM and history. Other loops may keep
+playing, but finish all captures before editing. MULT is disabled during playback
+because interactive multiply capture is still pending; a playing take is never
+silently replaced by instant doubling. Growing a running track remains pending.
+
+Instant-multiply verification: 47 desktop Rust tests and strict Clippy pass on
+Windows and Ubuntu, alongside the core/audio regressions. Both native webviews
+pass 64 checks, including the original MULT button, local/global length restoration
+and project save/reopen of the doubled take. Tests cover exact sample bits,
+headroom, mix/mute preservation, uninterrupted other-track playback and rejected
+capacity/history bounds without losing PCM or redo. Compatibility checks pass
+(131 Windows / 132 Ubuntu). The silent 30-second TOPPING ASIO regression at
+48 kHz / 128 frames passes 44 checks with zero underruns/dropped input frames and
+no saved microphone recordings. Live multiply capture remains pending.

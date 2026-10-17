@@ -441,7 +441,7 @@ impl Service {
             "engine_edit" => {
                 if !matches!(
                     r.command.as_str(),
-                    "normalize" | "undo" | "redo" | "global_undo" | "global_redo"
+                    "normalize" | "multiply" | "undo" | "redo" | "global_undo" | "global_redo"
                 ) {
                     return Err("Invalid native edit.".into());
                 }
@@ -469,15 +469,21 @@ impl Service {
                     return Err("Take is empty or exceeds the native editing history limit (8 million frames).".into());
                 }
 
-                let mut normalized = Vec::new();
+                let mut edited = Vec::new();
                 let index;
-                let audio = if r.command == "normalize" {
-                    normalized.clone_from(&current);
-                    if !looper_core::buffer::normalize(&mut normalized) {
-                        return Ok(json!({"changed":false}));
+                let audio = if matches!(r.command.as_str(), "normalize" | "multiply") {
+                    if r.command == "multiply" {
+                        multiply_length(current.len(), h.capacity)?;
+                        edited = looper_core::buffer::repeat(&current, 2)
+                            .map_err(|e| format!("Multiply take: {e:?}"))?;
+                    } else {
+                        edited.clone_from(&current);
+                        if !looper_core::buffer::normalize(&mut edited) {
+                            return Ok(json!({"changed":false}));
+                        }
                     }
                     index = None;
-                    &normalized
+                    &edited
                 } else {
                     let stack = if redo {
                         &h.history.redo
@@ -491,6 +497,7 @@ impl Service {
                     index = Some(i);
                     &stack[i].1
                 };
+                let frames = audio.len();
                 h.source.controller().begin_edit(track, audio)?;
                 finish_replacement(&mut h.source)?;
                 if let Some(i) = index {
@@ -505,7 +512,7 @@ impl Service {
                     h.history.new_edit(track);
                     h.history.push(track, current, false);
                 }
-                Ok(json!({"changed":true,"track":track}))
+                Ok(json!({"changed":true,"track":track,"frames":frames}))
             }
             "engine_project_import" => {
                 if r.track >= h.tracks {
@@ -759,6 +766,25 @@ impl Service {
             _ => Err("Unknown native audio request.".into()),
         }
     }
+}
+
+fn multiply_length(length: usize, capacity: usize) -> Result<usize, String> {
+    let frames = length
+        .checked_mul(2)
+        .ok_or("Doubled take length overflow.")?;
+    if frames == 0 || frames > capacity {
+        return Err(
+            "Doubled take exceeds the loop capacity; use a shorter take. Existing audio was kept."
+                .into(),
+        );
+    }
+    if frames > HISTORY_FRAMES {
+        return Err(
+            "Doubled take exceeds the 8 million frame editing limit; existing audio was kept."
+                .into(),
+        );
+    }
+    Ok(frames)
 }
 
 fn finish_replacement(source: &mut Source) -> Result<(), String> {
@@ -1334,6 +1360,141 @@ mod tests {
             s.execute(request("engine_status", token))["value"]["command_errors"],
             0
         );
+        s.shutdown();
+    }
+    fn load_fixture(s: &mut Service, track: usize, audio: &[looper_core::Frame]) {
+        s.handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .begin_import(track, audio)
+            .unwrap();
+        blocks(s, 1);
+        s.handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .finish_import()
+            .unwrap()
+            .unwrap();
+    }
+    #[test]
+    fn multiply_is_bit_exact_undoable_and_preserves_mix_and_other_playback() {
+        let mut s = Service::new(true);
+        let token = s.execute(request("engine_open", 0))["value"]["token"]
+            .as_u64()
+            .unwrap();
+        blocks(&mut s, 1);
+        let source = vec![[-0.0, 1.25], [0.125, -2.0], [0.4, 0.2], [0.2, -0.1]];
+        load_fixture(&mut s, 0, &source);
+        load_fixture(&mut s, 1, &[[0.2, -0.1]; 256]);
+        for (name, value) in [("gain", 0.5), ("feedback", 0.6), ("mute", 1.0)] {
+            control(&mut s, token, name, value);
+        }
+        let mut play = request("engine_control", token);
+        play.track = 1;
+        play.command = "play".into();
+        s.execute(play);
+        blocks(&mut s, 1);
+        let before = pcm(&mut s);
+        let clock = s
+            .handle
+            .as_mut()
+            .unwrap()
+            .source
+            .controller()
+            .status()
+            .frames;
+        let result = edit(&mut s, token, "multiply");
+        assert_eq!(result["ok"], true, "{result}");
+        assert_eq!(result["value"]["frames"], 8);
+        let doubled = pcm(&mut s);
+        let bits =
+            |a: &[looper_core::Frame]| a.iter().flatten().map(|v| v.to_bits()).collect::<Vec<_>>();
+        assert_eq!(
+            bits(&doubled[0].audio),
+            bits(&[source.clone(), source].concat())
+        );
+        assert_eq!(
+            (doubled[0].gain, doubled[0].feedback, doubled[0].muted),
+            (0.5, 0.6, true)
+        );
+        assert_eq!(doubled[1], before[1]);
+        assert!(doubled[1].playing);
+        assert!(
+            s.handle
+                .as_mut()
+                .unwrap()
+                .source
+                .controller()
+                .status()
+                .frames
+                > clock
+        );
+        assert_eq!(edit(&mut s, token, "undo")["ok"], true);
+        assert_eq!(bits(&pcm(&mut s)[0].audio), bits(&before[0].audio));
+        assert_eq!(edit(&mut s, token, "global_redo")["ok"], true);
+        assert_eq!(pcm(&mut s), doubled);
+        assert_eq!(edit(&mut s, token, "global_undo")["ok"], true);
+        assert_eq!(edit(&mut s, token, "multiply")["ok"], true);
+        assert_eq!(
+            edit(&mut s, token, "redo")["ok"],
+            false,
+            "new multiply invalidates redo"
+        );
+        control(&mut s, token, "play", 0.0);
+        assert_eq!(
+            edit(&mut s, token, "multiply")["ok"],
+            false,
+            "live multiply is not silently substituted by doubling"
+        );
+        control(&mut s, token, "stop", 0.0);
+        assert_eq!(pcm(&mut s)[0].audio, doubled[0].audio);
+        s.shutdown();
+    }
+    #[test]
+    fn multiply_rejects_capacity_without_changing_pcm_or_redo_and_checks_allocation_bounds() {
+        assert_eq!(
+            multiply_length(HISTORY_FRAMES / 2, HISTORY_FRAMES),
+            Ok(HISTORY_FRAMES)
+        );
+        assert!(multiply_length(HISTORY_FRAMES / 2 + 1, usize::MAX).is_err());
+        assert!(multiply_length(usize::MAX, usize::MAX).is_err());
+        assert!(multiply_length(0, 100).is_err());
+        let mut s = Service::new(true);
+        let token = s.execute(request("engine_open", 0))["value"]["token"]
+            .as_u64()
+            .unwrap();
+        blocks(&mut s, 1);
+        load_fixture(&mut s, 0, &vec![[0.125, -0.25]; 30000]);
+        assert_eq!(edit(&mut s, token, "normalize")["ok"], true);
+        assert_eq!(edit(&mut s, token, "undo")["ok"], true);
+        let before = pcm(&mut s);
+        let failed = edit(&mut s, token, "multiply");
+        assert_eq!(failed["ok"], false);
+        assert!(failed["error"].as_str().unwrap().contains("capacity"));
+        assert_eq!(pcm(&mut s), before);
+        assert_eq!(s.handle.as_ref().unwrap().history.count(0, true), 1);
+        assert_eq!(edit(&mut s, token, "global_redo")["ok"], true);
+        let before = pcm(&mut s);
+        let mut record = request("engine_control", token);
+        record.track = 1;
+        record.command = "record".into();
+        s.execute(record);
+        blocks(&mut s, 2);
+        assert_eq!(
+            edit(&mut s, token, "multiply")["ok"],
+            false,
+            "active capture prevents coherent editing"
+        );
+        let mut finish = request("engine_control", token);
+        finish.track = 1;
+        finish.command = "finish".into();
+        s.execute(finish);
+        blocks(&mut s, 1);
+        assert_eq!(pcm(&mut s)[0], before[0]);
         s.shutdown();
     }
     #[test]
