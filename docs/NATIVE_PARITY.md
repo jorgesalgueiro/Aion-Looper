@@ -15,7 +15,8 @@ workflows while individual native workflows are completed and verified.
 | WAV/audio import | 8–192 kHz mono/stereo WAV converted to the session rate in Rust; stopped target; other tracks continue | Existing workflow, with Rust WAV decoding where supported |
 | Normalize, overdub/substitute and global undo/redo | Rust worker; original loop/master buttons and Ctrl/Cmd+Z; stopped targets; bounded session history | Existing workflow |
 | Reverse, multiply, merge | Pending in native transport/UI | Existing workflow; several offline operations already use Rust |
-| Pan, speed, start offsets, retrigger/stutter, solo | Pending UI/engine integration | Existing workflow |
+| Retrigger and hold-to-stutter | Rust callback; original RTRG/STUT buttons; reference 120 BPM fragment | Existing workflow, including musical sync |
+| Pan, speed, start offsets, solo | Pending UI/engine integration | Existing workflow |
 | BPM/bar sync, quantization, metronome, tracker | Pending native integration | Existing workflow |
 | Effects, synths, sampler, full MIDI/gamepad mapping | Pending native integration | Existing workflow |
 | Waveforms and detailed per-track meters | Pending metadata/render integration | Existing workflow |
@@ -44,3 +45,11 @@ Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z operate on the global timeline outside text fiel
 A new normalize/punch operation clears global redo, preserving other loops' local
 redo buffers as in the reference. Clear/import/record and eviction remove stale
 targets; closing audio resets history. Live playback undo remains pending.
+
+RTRG restarts a stopped or playing take at frame zero. STUT holds a fragment from
+the current callback position; release resumes the full loop at that phase. Stop,
+clear, punch and retrigger cancel the fragment. Pointer release/cancel, lost capture,
+window blur and page hiding release held controls. Fragment length follows the
+reference at 120 BPM (125 ms, limited to half the take, minimum 10 ms, clipped at
+the take end). Native BPM sync, quantized retrigger and rate changes remain pending.
+The hold is transient: it changes no PCM, history or saved project state.

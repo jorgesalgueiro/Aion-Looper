@@ -48,6 +48,10 @@ pub enum Command {
     Feedback(f32),
     /// Restart playback at a source-frame offset, wrapping to the take's length.
     Retrigger(usize),
+    /// Hold a fragment starting at the current playback frame (clipped at the end).
+    StutterStart(usize),
+    /// Release any held fragment, retaining the current playback phase.
+    StutterStop,
 }
 
 struct Track {
@@ -58,6 +62,7 @@ struct Track {
     muted: bool,
     gain: f32,
     feedback: f32,
+    stutter: Option<(usize, usize)>,
 }
 
 impl Track {
@@ -75,6 +80,7 @@ impl Track {
             muted: false,
             gain: 1.0,
             feedback: 0.80,
+            stutter: None,
         })
     }
 
@@ -98,10 +104,22 @@ impl Track {
                 self.state = State::Playing;
             }
             Command::Retrigger(offset) if matches!(self.state, State::Playing | State::Stopped) => {
+                self.stutter = None;
                 self.position = offset % self.length;
                 self.state = State::Playing;
             }
+            Command::StutterStart(0) => return Err(Error::InvalidParameter),
+            Command::StutterStart(frames) if self.state == State::Playing => {
+                if self.stutter.is_none() {
+                    self.stutter = Some((
+                        self.position,
+                        self.position.saturating_add(frames).min(self.length),
+                    ));
+                }
+            }
+            Command::StutterStop => self.stutter = None,
             Command::Stop if self.state != State::Empty => {
+                self.stutter = None;
                 self.state = if self.length == 0 {
                     State::Empty
                 } else {
@@ -109,13 +127,20 @@ impl Track {
                 };
             }
             Command::Clear => {
+                self.stutter = None;
                 // Stale storage is inaccessible until overwritten by a new take.
                 self.length = 0;
                 self.position = 0;
                 self.state = State::Empty;
             }
-            Command::Overdub if self.state == State::Playing => self.state = State::Overdubbing,
-            Command::Substitute if self.state == State::Playing => self.state = State::Substituting,
+            Command::Overdub if self.state == State::Playing => {
+                self.stutter = None;
+                self.state = State::Overdubbing;
+            }
+            Command::Substitute if self.state == State::Playing => {
+                self.stutter = None;
+                self.state = State::Substituting;
+            }
             Command::Mute(muted) => self.muted = muted,
             Command::Gain(gain) if gain.is_finite() && (0.0..=4.0).contains(&gain) => {
                 self.gain = gain
@@ -160,7 +185,15 @@ impl Track {
         } else if self.state == State::Substituting {
             self.audio.write(self.position, input);
         }
-        self.position = (self.position + 1) % self.length;
+        self.position = if let Some((start, end)) = self.stutter {
+            if self.position + 1 >= end {
+                start
+            } else {
+                self.position + 1
+            }
+        } else {
+            (self.position + 1) % self.length
+        };
         // Capture monitoring is separate. A punch is heard on the next cycle.
         if self.muted {
             [0.0; 2]
@@ -238,6 +271,15 @@ impl Engine {
         })
     }
 
+    pub fn is_stuttering(&self, track: usize) -> Result<bool, Error> {
+        Ok(self
+            .tracks
+            .get(track)
+            .ok_or(Error::InvalidTrack)?
+            .stutter
+            .is_some())
+    }
+
     pub fn clock_frames(&self) -> u64 {
         self.clock
     }
@@ -278,6 +320,7 @@ impl Engine {
         for (index, frame) in audio.iter().enumerate() {
             track.audio.write(index, *frame);
         }
+        track.stutter = None;
         track.length = audio.len();
         track.position = 0;
         track.state = State::Stopped;

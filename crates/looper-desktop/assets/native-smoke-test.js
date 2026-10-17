@@ -47,6 +47,21 @@ window.addEventListener('aion-native-ready',async()=>{
         await punchButton('REDO').onclick();await until(s=>s.tracks[1].redo===0&&s.tracks[1].undo===substituteHistory);
         checks.push('Original UNDO and REDO restore a native substitute pass');
         checks.push('Original number-key loop control uses native transport');
+        const transportButton=name=>[...document.querySelectorAll('#loop-1 button')].find(b=>b.textContent===name);
+        assert(!transportButton('RTRG').disabled&&transportButton('STUT').disabled,'Original RTRG works on stopped takes while STUT requires playback');
+        await transportButton('RTRG').onclick();await until(s=>s.tracks[1].state==='playing'&&!transportButton('STUT').disabled);
+        transportButton('STUT').onpointerdown(new PointerEvent('pointerdown',{button:0,pointerId:51}));await until(s=>s.tracks[1].stuttering);
+        assert(transportButton('STUT').getAttribute('aria-pressed')==='true','Original STUT button reflects the native held fragment');
+        window.dispatchEvent(new PointerEvent('pointerup',{pointerId:51}));await until(s=>!s.tracks[1].stuttering);
+        transportButton('STUT').onpointerdown(new PointerEvent('pointerdown',{button:0,pointerId:52}));await until(s=>s.tracks[1].stuttering);window.dispatchEvent(new PointerEvent('pointercancel',{pointerId:52}));await until(s=>!s.tracks[1].stuttering);
+        checks.push('Pointer release and cancellation stop the native stutter');
+        transportButton('STUT').onpointerdown(new PointerEvent('pointerdown',{button:0,pointerId:53}));await until(s=>s.tracks[1].stuttering);window.dispatchEvent(new Event('blur'));await until(s=>!s.tracks[1].stuttering);
+        checks.push('Window focus loss releases the native stutter');
+        transportButton('STUT').onpointerdown(new PointerEvent('pointerdown',{button:0,pointerId:54}));await until(s=>s.tracks[1].stuttering);transportButton('STUT').onlostpointercapture(new PointerEvent('lostpointercapture',{pointerId:54}));await until(s=>!s.tracks[1].stuttering);
+        checks.push('Lost pointer capture releases the native stutter');
+
+        await api.command('stop',1);await until(s=>s.tracks[1].state==='stopped');
+
         await api.command('clear',1);await until(s=>s.tracks[1].state==='empty');
         const start=await until(s=>s.frames>0);
         assert(start.callback_frames>0,'Native output callback is running');

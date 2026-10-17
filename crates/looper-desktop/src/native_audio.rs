@@ -613,7 +613,7 @@ impl Service {
                 "discontinuities":s.discontinuities,"command_errors":s.command_errors,"stream_errors":s.stream_errors,"malformed_blocks":s.malformed,
                 "input_peak":s.input_peak,"output_peak":s.output_peak,"callback_frames":s.callback_frames,
                 "capture":{"frames":s.capture.frames,"dropped_frames":s.capture.dropped_frames,"errors":s.capture.stream_errors,"nonfinite_samples":s.capture.nonfinite_samples,"malformed_blocks":s.capture.malformed_blocks},
-                "tracks":s.tracks[..h.tracks].iter().enumerate().map(|(i,t)|json!({"undo":h.history.count(i,false),"redo":h.history.count(i,true),"state":format!("{:?}",t.state).to_lowercase(),"length":t.length_frames,"position":t.position_frames,"muted":t.muted})).collect::<Vec<_>>()}),
+                "tracks":s.tracks[..h.tracks].iter().enumerate().map(|(i,t)|json!({"undo":h.history.count(i,false),"redo":h.history.count(i,true),"state":format!("{:?}",t.state).to_lowercase(),"length":t.length_frames,"position":t.position_frames,"muted":t.muted,"stuttering":s.stuttering[i]})).collect::<Vec<_>>()}),
                 )
             }
             "engine_control" => {
@@ -632,6 +632,38 @@ impl Service {
                         "play" => Control::Track {
                             track: r.track,
                             command: Command::Play,
+                        },
+                        "retrigger" | "stutter_start" => {
+                            let status = h.source.controller().status().tracks[r.track];
+                            if (command == "stutter_start"
+                                && status.state != looper_core::State::Playing)
+                                || (command == "retrigger"
+                                    && !matches!(
+                                        status.state,
+                                        looper_core::State::Playing | looper_core::State::Stopped
+                                    ))
+                            {
+                                return Err("Retrigger needs a stopped/playing take; stutter needs playback.".into());
+                            }
+                            let rate = h.info["sample_rate"].as_u64().unwrap() as usize;
+                            // Reference formula at the native mode's fixed 120 BPM:
+                            // one sixteenth, at most half a take, at least 10 ms.
+                            let fragment = (rate / 8)
+                                .min(status.length_frames / 2)
+                                .max(rate / 100)
+                                .max(1);
+                            Control::Track {
+                                track: r.track,
+                                command: if command == "retrigger" {
+                                    Command::Retrigger(0)
+                                } else {
+                                    Command::StutterStart(fragment)
+                                },
+                            }
+                        }
+                        "stutter_stop" => Control::Track {
+                            track: r.track,
+                            command: Command::StutterStop,
                         },
                         "stop" => Control::Track {
                             track: r.track,
@@ -1246,6 +1278,63 @@ mod tests {
         assert_eq!(history.count(2, true), 1);
         history.clear_track(2);
         assert_eq!(history.target(true), None);
+    }
+    #[test]
+    fn transport_controls_preserve_pcm_and_history_and_release_on_punch_stop_or_clear() {
+        let mut s = Service::new(true);
+        let token = s.execute(request("engine_open", 0))["value"]["token"]
+            .as_u64()
+            .unwrap();
+        control(&mut s, token, "record", 0.0);
+        blocks(&mut s, 5);
+        control(&mut s, token, "finish", 0.0);
+        assert_eq!(edit(&mut s, token, "normalize")["ok"], true);
+        let original = pcm(&mut s).remove(0).audio;
+        assert_eq!(
+            punch_request(&mut s, token, "stutter_start")["ok"],
+            false,
+            "stopped stutter rejected on worker"
+        );
+        control(&mut s, token, "retrigger", 0.0);
+        control(&mut s, token, "stutter_start", 0.0);
+        blocks(&mut s, 6);
+        let status = s.execute(request("engine_status", token));
+        assert_eq!(status["value"]["tracks"][0]["stuttering"], true);
+        assert_eq!(pcm(&mut s)[0].audio, original);
+        assert_eq!(s.handle.as_ref().unwrap().history.count(0, false), 1);
+        control(&mut s, token, "stutter_stop", 0.0);
+        assert_eq!(
+            s.execute(request("engine_status", token))["value"]["tracks"][0]["stuttering"],
+            false
+        );
+        control(&mut s, token, "stutter_start", 0.0);
+        control(&mut s, token, "overdub", 0.0);
+        assert_eq!(
+            s.execute(request("engine_status", token))["value"]["tracks"][0]["stuttering"],
+            false
+        );
+        control(&mut s, token, "finish", 0.0);
+        assert_eq!(edit(&mut s, token, "undo")["ok"], true);
+        assert_eq!(pcm(&mut s)[0].audio, original);
+        control(&mut s, token, "retrigger", 0.0);
+        control(&mut s, token, "stutter_start", 0.0);
+        control(&mut s, token, "stop", 0.0);
+        assert_eq!(
+            s.execute(request("engine_status", token))["value"]["tracks"][0]["stuttering"],
+            false
+        );
+        control(&mut s, token, "clear", 0.0);
+        control(&mut s, token, "stutter_stop", 0.0);
+        assert_eq!(
+            punch_request(&mut s, token, "retrigger")["ok"],
+            false,
+            "empty retrigger rejected on worker"
+        );
+        assert_eq!(
+            s.execute(request("engine_status", token))["value"]["command_errors"],
+            0
+        );
+        s.shutdown();
     }
     #[test]
     fn history_caps_steps_and_total_pcm_across_both_stacks() {

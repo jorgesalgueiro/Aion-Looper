@@ -179,3 +179,26 @@ isolation, stopped-target gating and session reset. Compatibility checks pass
 (131 Windows / 132 Ubuntu). The silent 30-second TOPPING ASIO regression at
 48 kHz / 128 frames passes 36 checks with zero underruns or dropped input frames;
 no microphone recordings are saved. Source PCM and history remain owned by Rust.
+
+## Native retrigger and stutter
+
+Use the original **RTRG** button to start/restart a take at its first frame.
+Hold **STUT** during playback to repeat a short fragment from the current phase;
+release it to continue full-loop playback from that phase. Rust owns the fragment
+and sample clock. Stop, clear, punch and retrigger cancel a hold. Pointer cancel,
+lost pointer capture, window blur and hiding the page also release held controls.
+
+Stutter uses the reference formula at 120 BPM: 125 ms, at most half the take, at
+least 10 ms, clipped at the loop end. A one-frame remainder repeats safely. Native
+BPM/sync and quantized retrigger are still pending. Neither control edits PCM or
+adds undo entries; holds are not persisted in projects and do not restart other loops.
+
+Transport verification: Windows and Ubuntu pass the core/audio/host regressions,
+45 desktop Rust tests and strict Clippy. Both native webviews pass 60 checks,
+including original RTRG/STUT controls, pointer release/cancel/lost capture and
+window blur. Sample-exact tests cover held ranges, end clipping, one-frame takes,
+release phase, retrigger, unchanged PCM and other-track clock continuity. Heap
+accounting confirms no allocations/frees for these controls in the callback.
+Compatibility checks pass (131 Windows / 132 Ubuntu). The silent 30-second
+TOPPING ASIO regression at 48 kHz / 128 frames passes 41 checks with zero
+underruns or dropped input frames and no saved microphone recordings.

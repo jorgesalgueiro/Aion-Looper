@@ -25,7 +25,7 @@
     const escapeHTML=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const renderer=window.AionOriginalRenderer(model,{t:key=>key},{escapeHTML},{});
     let token=0,info=null,monitor=false,polling=false,pollEnabled=true,generation=0,lastTracks=[],lastHistory={},opening=false,fileBusy=false;
-    const busy=new Set(),trackControls=[];
+    const busy=new Set(),trackControls=[],heldStutters=new Map();
     document.querySelector('.project-file-section').insertAdjacentHTML('beforeend','<label>Native projects <select id="native-projects" aria-label="Saved native projects"></select></label><button id="projects-refresh" class="std-btn">REFRESH PROJECTS</button><p id="project-status" role="status"></p>');
     document.querySelector('.project-format-badge').textContent='.AION';
     document.querySelector('.project-file-section').insertAdjacentHTML('beforeend','<label>WAV path <input id="import-path" type="text" placeholder="Drop a WAV onto a stopped loop, or paste its full path" aria-label="Native WAV path"></label><div class="native-controls"><label>Loop <select id="import-track" aria-label="WAV target loop"></select></label><button id="import-wave" class="std-btn btn-orange" disabled>IMPORT WAV</button></div>');
@@ -60,6 +60,10 @@
         // IDs are resolved within the detached card until it is attached.
         const controls={action,mute,clear,exportWav:buttons.find(b=>b.textContent==='SAVE'),gain:gain||card.querySelector(`[id="loop-vol-slider-${i}"]`),feedback:feedback||card.querySelector(`[id="loop-fbk-slider-${i}"]`)};
         for(const name of ["normalize","undo","redo"]){controls[name]=buttons.find(b=>b.textContent===(name==="normalize"?"NORM":name.toUpperCase()));controls[name].onclick=()=>editTake(i,name).catch(error);}
+        controls.retrigger=buttons.find(b=>b.textContent==='RTRG');controls.stutter=buttons.find(b=>b.textContent==='STUT');
+        controls.retrigger.onclick=()=>runTrack(i,()=>command('retrigger',i));
+        controls.stutter.onpointerdown=event=>startStutter(i,event);
+        controls.stutter.onlostpointercapture=event=>releasePointer(event.pointerId);
         trackControls.push(controls);
         controls.action.onclick=()=>perform(i);
         controls.exportWav.onclick=()=>exportWave(i).catch(error);
@@ -74,6 +78,21 @@
         card.querySelector('.ascii-vu-meter').textContent='Level display pending';
         wrapper.appendChild(card);get('loopContainer').appendChild(wrapper);
     }
+    function startStutter(track,event){
+        const button=trackControls[track].stutter;if(event.button!==0||button.disabled||heldStutters.has(track))return;
+        event.preventDefault();event.stopPropagation();const owner={token,pointer:event.pointerId};heldStutters.set(track,owner);
+        try{button.setPointerCapture(event.pointerId);}catch(_){}
+        command('stutter_start',track).then(status).catch(reason=>{if(heldStutters.get(track)===owner)heldStutters.delete(track);error(reason);});
+    }
+    function releaseStutter(track){
+        const owner=heldStutters.get(track);if(!owner)return Promise.resolve();heldStutters.delete(track);
+        if(owner.token!==token)return Promise.resolve();
+        return request('engine_control',{token:owner.token,command:'stutter_stop',track}).then(()=>token===owner.token?status():null).catch(error);
+    }
+    function releasePointer(pointer){for(const [track,owner]of heldStutters)if(owner.pointer===pointer)releaseStutter(track);}
+    function releaseAllStutters(){for(const track of [...heldStutters.keys()])releaseStutter(track);}
+    window.addEventListener('pointerup',event=>releasePointer(event.pointerId));window.addEventListener('pointercancel',event=>releasePointer(event.pointerId));
+    window.addEventListener('blur',releaseAllStutters);document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseAllStutters();});
     function controls(running){
         get('import-wave').disabled=!running||fileBusy;get('import-wave').title='Import WAV into an empty/stopped native loop';
         get('btnSaveProj').disabled=!running||fileBusy;get('btnSaveProj').title='Save native takes and settings (.aion)';get('btnLoadProj').disabled=running||fileBusy;get('btnLoadProj').title='Load the selected native project after closing audio';get('project-load').disabled=running||fileBusy;
@@ -150,7 +169,7 @@
         }finally{opening=false;controls(Boolean(token));}
     }
     async function command(command,track=0,value=0){if(!token)throw new Error('Start native audio first.');const result=await request('engine_control',{token,command,track,value});if(result.history_notice)get('error').textContent=result.history_notice;else if(result.undo_recorded===true)get('error').textContent='';return result;}
-    async function close(){const old=token;token=0;generation++;try{if(old)await request('engine_close',{token:old});}finally{monitor=false;controls(false);get('monitor').textContent='MON OFF';get('monitor').setAttribute('aria-pressed','false');get('input-meter').value=0;get('output-meter').value=0;get('status').textContent='Audio closed. Unsaved native loops have been released.';draw([]);get('startOverlay').style.display='flex';}}
+    async function close(){releaseAllStutters();const old=token;token=0;generation++;try{if(old)await request('engine_close',{token:old});}finally{monitor=false;controls(false);get('monitor').textContent='MON OFF';get('monitor').setAttribute('aria-pressed','false');get('input-meter').value=0;get('output-meter').value=0;get('status').textContent='Audio closed. Unsaved native loops have been released.';draw([]);get('startOverlay').style.display='flex';}}
     function draw(tracks){
         lastTracks=tracks;if(!tracks.length)lastHistory={};
         const capturing=tracks.some(t=>["recording","overdubbing","substituting"].includes(t.state));
@@ -167,6 +186,9 @@
             card.className=`loop ${t.state}`;c.action.textContent=renderer.getLoopAction(model.loops[i]);c.action.setAttribute('aria-label',`Loop ${i+1}: ${c.action.textContent}`);
             get(`loop-state-symbol-${i}`).textContent=symbols[t.state]||'( )';get(`loop-state-text-${i}`).textContent=t.state.toUpperCase();get(`loop-extra-info-${i}`).textContent=`${t.muted?'[MUTED] ':''}${t.length?`${model.loops[i].duration.toFixed(1)}s`:''}`;
             for(const el of [c.action,c.gain,c.feedback]){el.disabled=!available;el.title=el===c.action?`Loop ${i+1}: ${c.action.textContent}`:'Native audio control';}
+            c.retrigger.disabled=!available||!['playing','stopped'].includes(t.state);c.retrigger.title='Restart native playback from the first frame (no musical quantization yet)';
+            c.stutter.disabled=!available||t.state!=='playing';c.stutter.title='Hold native fragment; release to resume (120 BPM reference duration)';c.stutter.classList.toggle('btn-active',Boolean(t.stuttering));c.stutter.setAttribute('aria-pressed',String(Boolean(t.stuttering)));
+            if(t.state!=='playing'&&heldStutters.has(i))releaseStutter(i);
             const editing=available&&t.state==="stopped"&&!tracks.some(t=>["recording","overdubbing","substituting"].includes(t.state));
             c.normalize.disabled=!editing;c.normalize.title="Normalize stopped take in Rust (undoable)";
             for(const name of ["undo","redo"]){c[name].disabled=!editing||!t[name];c[name].title=`${name.toUpperCase()} native normalization and punch passes; stop the loop first; recording/import/clear resets history`;}

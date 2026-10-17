@@ -24,6 +24,7 @@ struct TrackMetrics {
     length: AtomicUsize,
     position: AtomicUsize,
     muted: AtomicU32,
+    stuttering: AtomicU32,
 }
 #[derive(Default)]
 struct Metrics {
@@ -51,6 +52,7 @@ pub struct Status {
     pub callback_frames: usize,
     pub capture: capture::Status,
     pub tracks: [TrackStatus; MAX_TRACKS],
+    pub stuttering: [bool; MAX_TRACKS],
 }
 struct ImportJob {
     prepared: Replacement,
@@ -152,6 +154,7 @@ impl Controller {
             Control::Track { track, command } => {
                 track < MAX_TRACKS
                     && match command {
+                        Command::StutterStart(frames) => frames > 0,
                         Command::Gain(value) => value.is_finite() && (0.0..=4.0).contains(&value),
                         Command::Feedback(value) => {
                             value.is_finite() && (0.0..=1.0).contains(&value)
@@ -185,6 +188,9 @@ impl Controller {
             output_peak: f32::from_bits(m.output_peak.load(Ordering::Relaxed)),
             callback_frames: m.callback_frames.load(Ordering::Relaxed),
             capture: self.capture_metrics.status(),
+            stuttering: std::array::from_fn(|i| {
+                m.tracks[i].stuttering.load(Ordering::Relaxed) != 0
+            }),
             tracks: std::array::from_fn(|i| {
                 let t = &m.tracks[i];
                 TrackStatus {
@@ -394,6 +400,10 @@ impl Renderer {
                     State::Overdubbing => 4,
                     State::Substituting => 5,
                 },
+                Ordering::Relaxed,
+            );
+            t.stuttering.store(
+                u32::from(self.engine.is_stuttering(i).unwrap()),
                 Ordering::Relaxed,
             );
             t.length.store(status.length_frames, Ordering::Relaxed);

@@ -271,3 +271,26 @@ fn imported_take_commits_without_restarting_other_loops_and_failed_imports_keep_
     assert!(controller.begin_import(1, &[[f32::NAN, 0.0]]).is_err());
     assert!(controller.begin_import(1, &[[0.0; 2]; 129]).is_err());
 }
+
+#[test]
+fn stutter_status_and_audio_follow_the_native_callback_with_exact_release_and_retrigger() {
+    let (mut w, mut c, mut r) = setup(64);
+    control(&mut c, Command::Record);
+    render(&mut w, &mut r, &[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]);
+    c.send(Control::FinishStopped { track: 0 }).unwrap();
+    render(&mut w, &mut r, &[0.0; 2]);
+    control(&mut c, Command::Play);
+    assert_eq!(render(&mut w, &mut r, &[0.0; 2]), [0.1, 0.2]);
+    control(&mut c, Command::StutterStart(1));
+    assert_eq!(
+        render(&mut w, &mut r, &[0.0; 6]),
+        [0.3, 0.4, 0.3, 0.4, 0.3, 0.4]
+    );
+    assert!(c.status().stuttering[0]);
+    control(&mut c, Command::StutterStop);
+    assert_eq!(render(&mut w, &mut r, &[0.0; 4]), [0.3, 0.4, 0.5, 0.6]);
+    assert!(!c.status().stuttering[0]);
+    control(&mut c, Command::Retrigger(0));
+    assert_eq!(render(&mut w, &mut r, &[0.0; 2]), [0.1, 0.2]);
+    assert_eq!(c.status().command_errors, 0);
+}

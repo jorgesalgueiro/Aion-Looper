@@ -119,6 +119,17 @@ fn native_callback_and_control_queue_have_no_heap_operations() {
         writer.capture(&[0.125_f32; 128], 2);
         duplex.render(&mut data, 2);
     }
+    for command in [
+        Command::Retrigger(0),
+        Command::StutterStart(8),
+        Command::StutterStop,
+    ] {
+        control
+            .send(looper_audio::duplex::Control::Track { track: 0, command })
+            .unwrap();
+        writer.capture(&[0.125_f32; 128], 2);
+        duplex.render(&mut data, 2);
+    }
     control
         .send(looper_audio::duplex::Control::Track {
             track: 0,

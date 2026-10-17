@@ -123,6 +123,7 @@ impl Replacement {
         self.parent.poisoned.store(true, SeqCst);
         self.parent.epoch.fetch_add(2, SeqCst);
         std::mem::swap(&mut track.audio, &mut self.audio);
+        track.stutter = None;
         track.length = self.length;
         if self.reset_levels {
             track.gain = 1.0;
