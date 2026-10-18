@@ -20,7 +20,7 @@ See [ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
   Unmute Input control; choose devices/ASIO and buffer size in the window's Options.
 - **Recorded audio is temporary and is not included in DAW/project state yet.**
   Same-rate reprepare retains PCM and stops loops; a sample-rate change clears PCM
-  and reports the reset. Export, undo, projects, synths, tracker, effects, MIDI learn
+  and reports the reset. Export, projects, synths, tracker, effects, MIDI learn
   and full host/MIDI clock synchronization remain pending.
 
 ```sh
@@ -80,3 +80,14 @@ changes the stored clip during reversed playback, the old source is retained
 until restart/stop, matching the reference's independent reversed buffer. Other
 effect controls remain unported. This source build extends 0.4.3; old ZIPs do not
 contain these follow-ups. Only the incremental standalone test build is updated.
+
+
+Development follow-up: original per-loop and global **UNDO/REDO** buttons now
+restore overdub/substitute checkpoints in C++, with Ctrl/Cmd+Z and Shift+Z redo.
+The five-snapshot loop limit and 50-entry global order follow the reference.
+NORM does not create a checkpoint. Undo/Redo preserve controls and stopped state;
+playing loops restart with the restored PCM. Failed/canceled edits preserve prior
+history. Restoration is available on stable playing/stopped tracks; the same
+track's capture/finalization temporarily disables it. Audio/history remain
+session-only, and retained snapshots add memory beyond the capture pool. No new
+package is produced; use the current incremental standalone build for testing.

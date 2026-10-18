@@ -64,6 +64,6 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
     }
     // Telemetry is lossy by design; never wait when the editor is closed/slow.
     (void) meters.push({frame, peak});
-    (void) views.push({loops.view(), frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset});
+    (void) views.push({loops.view(), frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo()});
 }
 }

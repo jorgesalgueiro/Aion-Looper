@@ -308,3 +308,36 @@ working set; allocator/JUCE/WebView and deferred retirement also consume memory.
 Do not treat the earlier capture-pool size or transient estimates as a hard
 process-memory cap. Twenty held sources and Clear All are exercised under the
 callback allocation watch and sanitizers. No reverse caches grow with toggles.
+
+
+### Immutable Undo/Redo ownership
+
+Each track has fixed arrays for five undo and five redo handles; their combined
+live depth never exceeds five. A successful overdub/substitute commit transfers
+its old current-clip lease into undo. The worker result becomes current. Eviction
+and redo-branch deletion enqueue leases for worker-only release. NORM does not
+save history. Undo/Redo transfer the current lease into the opposite stack and
+restore a saved handle without a copy, allocation or deletion on the callback.
+Controls remain separate from audio history. Playing restores restart phase/source
+and blend; stopped restores remain stopped. Same-track in-flight edits are guarded.
+
+Global history consists of fixed 50-entry track-ID arrays. Append, latest removal,
+eviction and clear use bounded scans/shifts, matching the JS order semantics.
+A new edit clears global redo and only its own local redo branch. Snapshots carry
+per-loop depths and global target IDs through the existing SPSC telemetry. Failed
+or invalidated worker transactions never alter history or discard a redo branch.
+
+Clear and stopped prepare release history with the existing ownership rules. The
+retirement queue now has 256 entries, covering 20 current clips, 20 held reverse
+sources, at most 100 history leases and an in-flight job/result. The registry is
+worker-owned; any registry growth remains outside audio processing. Maximal-history
+Clear All/cancellation and all 20 held sources are covered by sanitizer/allocation
+checks. History copies are avoided by retaining immutable generations, so a
+callback history operation performs pointer and metadata work only.
+
+Snapshots consume memory beyond the 64 MiB capture pool: at default full resident
+capacity, five generations can retain another 320 MiB, plus held reverse sources,
+worker scratch/results, deferred retirement, JUCE and WebView. These are working
+set estimates, not a hard process cap. Memory-pressure/mobile acceptance remains
+pending. Same-rate engine reprepare stops and retains history; rate/capacity reset
+joins the worker and clears it. No project/DAW PCM persistence is implied.

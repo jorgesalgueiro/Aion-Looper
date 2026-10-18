@@ -38,8 +38,11 @@
         }
         down(event) {
             const target=event.target;
-            if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || target?.isContentEditable
-                || ['INPUT','TEXTAREA','SELECT','BUTTON'].includes(target?.tagName)) return;
+            const textInput=target?.tagName==='INPUT'&&!['CHECKBOX','RADIO','RANGE','BUTTON','FILE','SUBMIT','RESET'].includes((target.type||'text').toUpperCase());
+            if (event.altKey || target?.isContentEditable || textInput
+                || ['TEXTAREA','SELECT'].includes(target?.tagName)) return;
+            if(event.code==='KeyZ' && (event.ctrlKey||event.metaKey)){event.preventDefault();this.actions.history?.(!!event.shiftKey);return;}
+            if(event.repeat || event.ctrlKey || event.metaKey)return;
             const key=event.code || event.key;
             if(this.presses.has(key))return;
             if(event.key==='+' || event.code==='NumpadAdd') {event.preventDefault();this.actions.mode('overdub');return;}

@@ -23,6 +23,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert(await evaluate(`!document.getElementById('loopContainer').textContent.includes('undefined')`),'Missing renderer field');assert(!visible.text.includes('\u00c3'),'Garbled native status text');
  const snapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);assert(snapshot.ok&&snapshot.tracks.length===20);
  assert(snapshot.tracks.every(t=>t.state==='empty'),'Smoke test must not capture audio');
+ assert(await evaluate(`document.getElementById('btnGlobalUndo').disabled&&document.getElementById('btnGlobalRedo').disabled&&[...document.querySelectorAll('#loopContainer button')].filter(b=>['UNDO','REDO'].includes(b.textContent.trim())).every(b=>b.disabled)`),'Empty history controls are disabled');
  const layout=await evaluate(`({extraPanel:!!document.getElementById('native-mode'),masterInOriginal:!!document.querySelector('#mod-master #native-master'),inputInOriginal:!!document.querySelector('#mod-input #native-monitor'),stopInOriginal:!!document.querySelector('#mod-menu #native-stop-all'),syncOff:document.querySelector('input[name=syncMode][value=off]').checked})`);
  assert(!layout.extraPanel&&layout.masterInOriginal&&layout.inputInOriginal&&layout.stopInOriginal&&layout.syncOff,JSON.stringify(layout));
  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'+',code:'Equal',bubbles:true}))`);
@@ -110,6 +111,32 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    assert(normAck.lastRequestId>beforeNorm.lastRequestId&&normAck.rejected,'NORM binding reaches audio owner, which rejects the fixture-only clip');
    await evaluate(`__JUCE__.backend.emitByBackend=window.savedBackendEmit;delete window.savedBackendEmit`);
  }
+ if(snapshot.audioReady){
+   await delay(150);
+   const beforeEmptyHistory=await evaluate(`AionNative.request({operation:'snapshot'})`);
+   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyZ',key:'z',ctrlKey:true,bubbles:true}));document.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyZ',key:'Z',ctrlKey:true,shiftKey:true,bubbles:true}));`);
+   await delay(350);
+   const afterEmptyHistory=await evaluate(`AionNative.request({operation:'snapshot'})`);
+   assert.equal(afterEmptyHistory.lastRequestId,beforeEmptyHistory.lastRequestId,'Empty Ctrl+Z/Ctrl+Shift+Z are silent no-ops like the original JS');
+   // History presentation/routing only: no PCM is inserted or microphone captured.
+   await evaluate(`window.savedBackendEmit=__JUCE__.backend.emitByBackend;__JUCE__.backend.emitByBackend=function(event,payload){if(event==='__juce__complete'){const message=JSON.parse(payload);if(message.result?.tracks){Object.assign(message.result.tracks[0],{state:'playing',length:512,undoCount:1,redoCount:1});message.result.nextUndo=0;message.result.nextRedo=0;}payload=JSON.stringify(message);}return window.savedBackendEmit.call(this,event,payload);}`);
+   for(let n=0;n<40;++n){if(await evaluate(`!document.getElementById('btnGlobalUndo').disabled&&document.getElementById('btnGlobalUndo').textContent==='UNDO L1'`))break;await delay(50);}
+   assert(await evaluate(`!document.getElementById('btnGlobalUndo').disabled&&!document.getElementById('btnGlobalRedo').disabled&&document.getElementById('btnGlobalRedo').textContent==='REDO L1'`),'Original global history labels and availability');
+   const gestures=[`[...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='UNDO').click()`,`[...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='REDO').click()`,`document.getElementById('btnGlobalUndo').click()`,`document.getElementById('btnGlobalRedo').click()`,`document.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyZ',key:'z',ctrlKey:true,bubbles:true}))`,`document.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyZ',key:'Z',metaKey:true,shiftKey:true,bubbles:true}))`];
+   for(const gesture of gestures){const before=await evaluate(`AionNative.request({operation:'snapshot'})`);await evaluate(gesture);let ack;for(let n=0;n<60;++n){ack=await evaluate(`AionNative.request({operation:'snapshot'})`);if(ack.lastRequestId>before.lastRequestId)break;await delay(50);}assert(ack.lastRequestId>before.lastRequestId&&ack.rejected,'History gesture reaches real owner, which rejects snapshot-only history');}
+   await evaluate(`__JUCE__.backend.emitByBackend=window.savedBackendEmit;delete window.savedBackendEmit`);
+   for(let n=0;n<40;++n){if(await evaluate(`document.getElementById('btnGlobalUndo').disabled&&document.getElementById('btnGlobalRedo').disabled`))break;await delay(50);}
+   assert(await evaluate(`document.getElementById('btnGlobalUndo').disabled&&document.getElementById('btnGlobalRedo').disabled`),'History fixture restores empty native state');
+   const beforeRepeat=await evaluate(`AionNative.request({operation:'snapshot'})`);
+   await evaluate(`window.historyFixtureBase=${beforeRepeat.lastRequestId};window.savedBackendEmit=__JUCE__.backend.emitByBackend;__JUCE__.backend.emitByBackend=function(event,payload){if(event==='__juce__complete'){const message=JSON.parse(payload);if(message.result?.tracks){const done=message.result.lastRequestId>window.historyFixtureBase;Object.assign(message.result.tracks[0],{state:'playing',length:512,undoCount:done?0:1,redoCount:done?1:0});message.result.nextUndo=done?-1:0;message.result.nextRedo=done?0:-1;if(done)message.result.rejected=false;}payload=JSON.stringify(message);}return window.savedBackendEmit.call(this,event,payload);}`);
+   for(let n=0;n<40;++n){if(await evaluate(`!document.getElementById('btnGlobalUndo').disabled`))break;await delay(50);}
+   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyZ',key:'z',ctrlKey:true,bubbles:true}));document.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyZ',key:'z',ctrlKey:true,bubbles:true}));`);
+   for(let n=0;n<40;++n){if((await evaluate(`AionNative.request({operation:'snapshot'})`)).lastRequestId>beforeRepeat.lastRequestId)break;await delay(50);}
+   await delay(300);
+   assert.equal((await evaluate(`AionNative.request({operation:'snapshot'})`)).lastRequestId,beforeRepeat.lastRequestId+1,'Repeated Undo stops at the newly acknowledged empty depth');
+   await evaluate(`__JUCE__.backend.emitByBackend=window.savedBackendEmit;delete window.savedBackendEmit;delete window.historyFixtureBase`);
+
+ }
  const invalid=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:3})`);assert(!invalid.ok);
  const muted=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:0})`);assert(muted.ok);
  const expired=await evaluate(`AionNative.request({operation:'loop',action:'record',track:0,generation:${snapshot.generation||1},expiresAt:Date.now()-1000})`);assert(!expired.ok&&expired.error.includes('expired'));
@@ -126,7 +153,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    for(let n=0;n<60;++n){stopped=await evaluate(`AionNative.request({operation:'snapshot'})`);if(stopped.lastRequestId>beforeStop.lastRequestId&&!stopped.rejected)break;await delay(50);}
    assert(stopped.lastRequestId>beforeStop.lastRequestId&&!stopped.rejected&&stopped.tracks.every(t=>t.state==='empty'),JSON.stringify(stopped));
  }
- const dom=await evaluate(`({handlers:[...document.querySelectorAll('#loopContainer *')].flatMap(e=>[...e.attributes].filter(a=>/^on/i.test(a.name))).length,unsupported:[...document.querySelectorAll('#loopContainer button')].filter(e=>e.textContent.trim()==='UNDO').every(e=>e.disabled),hasAudioContext:!!window.state?.audioContext,master:document.getElementById('native-master').value})`);
+ const dom=await evaluate(`({handlers:[...document.querySelectorAll('#loopContainer *')].flatMap(e=>[...e.attributes].filter(a=>/^on/i.test(a.name))).length,unsupported:[...document.querySelectorAll('#loopContainer button')].filter(e=>e.textContent.trim()==='SAVE').every(e=>e.disabled),hasAudioContext:!!window.state?.audioContext,master:document.getElementById('native-master').value})`);
  assert.equal(dom.handlers,0);assert(dom.unsupported&&!dom.hasAudioContext);assert.equal(Number(dom.master),0);
  await evaluate(`document.documentElement.style.scrollBehavior='auto';window.scrollTo({top:0,behavior:'instant'})`);
  const screenshot=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(path.join(output,'native-looper-top.png'),Buffer.from(screenshot.data,'base64'));

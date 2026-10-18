@@ -4,7 +4,7 @@
 comparison. Full application sound/functionality parity is NOT established.**
 After the capture and command-ordering gates passed, NORM was added as a separate
 worker transaction. After its live no-op repair passed, the original Rvers control
-was ported and compared separately. Hardware/listening and the remaining items below still need
+was ported and compared separately, followed by Undo/Redo after reverse gates passed. Hardware/listening and the remaining items below still need
 acceptance work; the original interface remains the contract.
 
 ## Reference and comparison scope
@@ -81,6 +81,34 @@ read comparison uses a linear interpolation model on the actual JS source sample
 it does not establish Web Audio resampler, envelope or scheduled-start equivalence.
 The original capture and NORM fixtures and thresholds remain intact.
 
+## Undo/Redo acceptance
+
+The unchanged Loop.saveStateForUndo/undo/redo/clear, LoopManager.pushUndoState,
+cloneBuffer and capture/edit DSP execute in the history oracle. The native path
+records and finalizes actual takes, restores immutable clip leases and renders
+committed PCM. Nineteen mono/stereo and global-order cases compare 828 history
+snapshots (all 20 slots plus global heads) and 666,144 frames at 8/48/96 kHz.
+Lengths are 17/512/4097, with eight edits to exercise eviction, five undo/redo
+steps, excess no-ops, NORM, replacement, redo branching and clear. The global
+fixture runs 120 edits over 20 slots, covering the 50-entry cap and local/global
+interactions. Maximum Windows error is 1.249e-7 at the unchanged 1e-6 tolerance.
+
+Stable playing/stopped restoration is supported. Same-track capture/finalization
+is temporarily guarded to prevent racing an edit transaction; unrelated-track
+capture can continue. Failed or canceled edits commit no new checkpoint and keep
+the redo branch, improving failure recovery. Successful new edits clear that
+loop's redo and the global redo order; other loops' local redo remains available,
+matching the JS. NORM creates no checkpoint. Playing restoration uses the existing
+transition envelope; stopped restoration stays stopped and keeps all controls.
+
+A native UI regression exposed empty Ctrl+Z sending rejected commands instead of
+silently doing nothing. Dispatch now consults acknowledged history depth; the
+empty and repeated-Undo tests pass. Original per-loop/global buttons, target
+labels, Ctrl/Cmd+Z and Shift+Z redo are used without new markup. Text editing keeps
+its own shortcuts, while nontext controls allow the reference global gestures.
+Source PCM and state comparisons do not establish full browser envelopes, host
+lifecycle, memory-pressure or hardware acceptance. Histories are not persisted.
+
 ## Historical failure and repair
 
 0.4.1 directly overwrote playing PCM while recording an edit. The isolated raw
@@ -132,7 +160,7 @@ and gets priority over unsent controls.
 | Capture timing/input | Latency compensation, multi-input routing, calibration, hardware duplex/underruns |
 | Browser playback equivalence | Attack/release, resampler/antialiasing and full browser-rendered audio fixtures |
 | Performance gestures | Ordered/coalesced bounded queue now tested; broader physical multi-controller integration remains |
-| Loop features | SUS, stutter, multiply, start offsets, merge, names, undo/redo, WAV import/export |
+| Loop features | SUS, stutter, multiply, start offsets, merge, names, WAV import/export |
 | Projects/master recording | ALP/PCM persistence and master/input recording unported; session audio remains temporary |
 | Timing | Static/dynamic sync, count-in, cascade, metronome and MIDI/host clock unported |
 | Instruments/effects | Drone, sampler, tracker, effects and preset DSP unported |

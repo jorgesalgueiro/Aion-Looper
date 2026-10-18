@@ -5,6 +5,19 @@
 namespace aion {
 namespace {
 float safe(float value) noexcept { return std::isfinite(value) ? std::clamp(value,-8.0f,8.0f) : 0.0f; }
+void append(std::array<std::uint8_t,50>& order,std::uint32_t& size,std::uint32_t id) noexcept {
+    if(size==order.size()){std::move(order.begin()+1,order.end(),order.begin());--size;}
+    order[size++]=static_cast<std::uint8_t>(id);
+}
+bool remove(std::array<std::uint8_t,50>& order,std::uint32_t& size,std::uint32_t id,bool last) noexcept {
+    int found=-1;
+    for(std::uint32_t i=0;i<size;++i)if(order[i]==id){found=static_cast<int>(i);if(!last)break;}
+    if(found<0)return false;
+    std::move(order.begin()+found+1,order.begin()+size,order.begin()+found);--size;return true;
+}
+void forget(std::array<std::uint8_t,50>& order,std::uint32_t& size,std::uint32_t id) noexcept {
+    std::uint32_t out=0;for(std::uint32_t i=0;i<size;++i)if(order[i]!=id)order[out++]=order[i];size=out;
+}
 bool capturing(LoopState state) noexcept {return state==LoopState::recording||state==LoopState::overdubbing||state==LoopState::substituting;}
 }
 LoopBank::~LoopBank(){shutdown();}
@@ -20,7 +33,7 @@ void LoopBank::prepare(std::uint32_t frames,std::uint32_t fadeFrames,double samp
     totalBlocks=std::clamp(frames/blockFrames,1u,maxBlocks);
     audio.assign(static_cast<std::size_t>(totalBlocks)*blockFrames*2,0.0f);
     for(auto& track:tracks)track=Track{};
-    freeCount=totalBlocks;residentBlocks=0;
+    freeCount=totalBlocks;residentBlocks=0;undoSize=redoSize=0;
     for(std::uint32_t i=0;i<totalBlocks;++i)freeBlocks[i]=static_cast<std::uint16_t>(i);
     fadeLength=std::min(fadeFrames,1920u);poolFull=false;soloTrack=-1;
     rate=std::isfinite(sampleRate)&&sampleRate>0?sampleRate:48000;
@@ -85,7 +98,8 @@ void LoopBank::acceptResult() noexcept {
             if(track.clip)residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
             // Web Audio reverses into an independent source buffer. NORM edits
             // the stored buffer, leaving that playing reversed copy untouched.
-            if(job.normalize&&resultChanged&&track.activeReverse&&!track.reverseHold)
+            if(job.edit&&!job.normalize)saveUndo(track,job.track);
+            else if(job.normalize&&resultChanged&&track.activeReverse&&!track.reverseHold)
                 track.reverseHold=track.clip; // Transfer the old audio lease.
             else retire(track.clip);
             track.clip=result;
@@ -123,6 +137,31 @@ void LoopBank::restartSource(Track& track) noexcept {
     retire(track.reverseHold);track.reverseHold=nullptr;
     track.activeReverse=track.info.state==LoopState::playing&&track.info.reverse;
 }
+void LoopBank::saveUndo(Track& track,std::uint32_t id) noexcept {
+    if(track.info.undoCount==track.undo.size()){
+        retire(track.undo[0]);std::move(track.undo.begin()+1,track.undo.end(),track.undo.begin());
+        --track.info.undoCount;(void)remove(undoOrder,undoSize,id,false);
+    }
+    track.undo[track.info.undoCount++]=track.clip; // Transfer current audio lease into history.
+    for(std::uint32_t i=0;i<track.info.redoCount;++i)retire(track.redo[i]);
+    track.redo.fill(nullptr);track.info.redoCount=0;
+    append(undoOrder,undoSize,id);redoSize=0;
+}
+bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
+    auto& from=redo?track.redo:track.undo;auto& to=redo?track.undo:track.redo;
+    auto& fromCount=redo?track.info.redoCount:track.info.undoCount;
+    auto& toCount=redo?track.info.undoCount:track.info.redoCount;
+    if(!track.clip||!fromCount||toCount>=to.size()||
+       (track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopped))return false;
+    residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
+    to[toCount++]=track.clip;track.clip=from[--fromCount];from[fromCount]=nullptr;
+    residentBlocks+=(track.clip->length+blockFrames-1)/blockFrames;
+    track.info.length=track.clip->length;track.info.finalizationFailed=false;
+    if(redo){if(remove(redoOrder,redoSize,id,true))append(undoOrder,undoSize,id);}
+    else if(remove(undoOrder,undoSize,id,true))append(redoOrder,redoSize,id);
+    if(track.info.state==LoopState::playing){track.phase=0;track.info.position=0;restartSource(track);blend(track);}
+    return true;
+}
 void LoopBank::stop(Track& track) noexcept {
     if(capturing(track.info.state))(void)finish(track);
     if(track.info.state==LoopState::finalizing){track.finalPlay=false;track.playWhileFinalizing=false;}
@@ -132,6 +171,11 @@ void LoopBank::stop(Track& track) noexcept {
 }
 void LoopBank::clear(Track& track) noexcept {
     ++track.revision;
+    for(std::uint32_t i=0;i<track.info.undoCount;++i)retire(track.undo[i]);
+    for(std::uint32_t i=0;i<track.info.redoCount;++i)retire(track.redo[i]);
+    track.undo.fill(nullptr);track.redo.fill(nullptr);
+    const auto historyId=static_cast<std::uint32_t>(&track-tracks.data());
+    forget(undoOrder,undoSize,historyId);forget(redoOrder,redoSize,historyId);
     retire(track.reverseHold);track.reverseHold=nullptr;track.activeReverse=false;
     track.tail=track.last;track.tailRemaining=fadeLength;
     for(std::uint32_t i=0;i<track.blockCount;++i)freeBlocks[freeCount++]=track.blocks[i];
@@ -146,10 +190,14 @@ void LoopBank::clear(Track& track) noexcept {
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
     if(action==LoopAction::stopAll){for(auto& track:tracks)stop(track);return true;}
-    if(action==LoopAction::clearAll){for(auto& track:tracks)clear(track);return true;}
+    if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks)clear(track);return true;}
+    if(action==LoopAction::undoGlobal){const int next=nextUndo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),false);}
+    if(action==LoopAction::redoGlobal){const int next=nextRedo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),true);}
     if(id>=trackCount)return false;
     auto& t=tracks[id];auto& s=t.info.state;
     switch(action){
+        case LoopAction::undo:return restore(t,id,false);
+        case LoopAction::redo:return restore(t,id,true);
         case LoopAction::record:
             if(s!=LoopState::empty||!available()||hasCapture())return false;
             t.info.playbackRate=t.rate=1;t.rateRemaining=0;t.captureLength=t.captureOffset=0;
@@ -209,6 +257,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if (t.rateRemaining) t.rateIncrement = (value-t.rate)/t.rateRemaining;
             else t.rate = value;
             return true;
+        case LoopAction::undoGlobal:
+        case LoopAction::redoGlobal:
         case LoopAction::clearAll:
         case LoopAction::stopAll:break;
     }

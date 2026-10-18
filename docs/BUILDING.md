@@ -220,3 +220,14 @@ node tests/ReverseParity.cjs build/core/aion_reference_probe
 
 Use the existing standalone build for interactive checks during migration.
 Routine feature changes do not require a version bump or new ZIP/plugin package.
+
+
+The core CTest suite now includes `js_native_history`. To inspect its unchanged-JS
+history and restored-PCM comparison directly:
+
+```sh
+node tests/HistoryParity.cjs build/core/aion_reference_probe
+```
+
+On Windows use `build/windows/Release/aion_reference_probe.exe`. Undo/Redo testing
+uses the same existing standalone build; no new package/version is needed.

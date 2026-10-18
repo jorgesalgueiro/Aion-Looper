@@ -30,7 +30,7 @@ bool equal(const std::vector<aion::Stereo>& a,const std::vector<aion::Stereo>& b
 }
 void loopTests(){
  using namespace aion;using A=LoopAction;
- LoopBank bank;bank.prepare(8192,0);auto input=wave(512);
+ auto bankStorage=std::make_unique<LoopBank>();auto& bank=*bankStorage;bank.prepare(8192,0);auto input=wave(512);
  check(bank.apply(A::record,0)&&!bank.apply(A::record,1),"one capture owner");
  watch=true;for(auto sample:input)bank.tick(sample);check(bank.apply(A::finish,0),"publish take");watch=false;
  check(bank.view()[0].state==LoopState::finalizing,"finish publishes saving state");

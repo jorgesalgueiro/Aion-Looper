@@ -26,7 +26,7 @@ const callbacks=new Map(),events=[];
 const keyboardContext={window:{},setTimeout,clearTimeout};
 vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),keyboardContext);
 let timerId=0;
-const keyboard=new keyboardContext.window.AionPerformance({track:()=>({}),action:i=>events.push(['action',i]),hold:i=>events.push(['hold',i]),mode:m=>events.push(['mode',m]),stop:()=>events.push(['stop']),retrigger:()=>events.push(['retrigger']),halfSpeed:()=>events.push(['half'])},{set:fn=>{callbacks.set(++timerId,fn);return timerId;},clear:id=>callbacks.delete(id)});
+const keyboard=new keyboardContext.window.AionPerformance({track:()=>({}),action:i=>events.push(['action',i]),hold:i=>events.push(['hold',i]),mode:m=>events.push(['mode',m]),stop:()=>events.push(['stop']),retrigger:()=>events.push(['retrigger']),halfSpeed:()=>events.push(['half']),history:redo=>events.push(['history',redo])},{set:fn=>{callbacks.set(++timerId,fn);return timerId;},clear:id=>callbacks.delete(id)});
 const key=(code,key,extra={})=>({code,key,target:{tagName:'BODY'},preventDefault(){},...extra});
 keyboard.down(key('Digit1','1'));assert.deepEqual(events.pop(),['action',0]);
 keyboard.down(key('Digit1','1',{repeat:true}));assert.equal(events.length,0);
@@ -38,6 +38,9 @@ for(const e of [key('Equal','+'),key('Minus','-'),key('Space',' '),key('Slash','
 assert.deepEqual(events.splice(0),[['mode','overdub'],['mode','substitute'],['stop'],['retrigger'],['half']]);
 keyboard.down(key('Digit2','2',{target:{tagName:'INPUT'}}));keyboard.down(key('Digit2','2',{ctrlKey:true}));assert.equal(events.length,0);
 keyboard.down(key('Digit3','3'));keyboard.cancel();assert.equal(callbacks.size,0);
+for(const extra of [{ctrlKey:true},{metaKey:true,shiftKey:true},{ctrlKey:true,repeat:true}])keyboard.down(key('KeyZ','z',extra));
+assert.deepEqual(events.splice(0),[['action',2],['history',false],['history',true],['history',false]]);
+keyboard.down(key('KeyZ','z',{ctrlKey:true,target:{tagName:'INPUT'}}));assert.equal(events.length,0);
 console.log('PASS: reference keyboard loop keys, shifted bank, modes, stop, retrigger, long-press, repeat/focus/blur guards');
 
 snapshot.tracks[0]={...snapshot.tracks[0],pan:10,playbackRate:0.5};
@@ -87,3 +90,9 @@ snapshot.tracks[0].reverse=true;cards=context.window.AionLoopMarkup(snapshot,'no
 assert(/type="checkbox" checked id="loop-0-reverse"/.test(cards[0]));
 snapshot.tracks[0].reverse=false;cards=context.window.AionLoopMarkup(snapshot,'normal');
 assert(/type="checkbox"  id="loop-0-reverse"/.test(cards[0]));
+
+keyboard.down(key('KeyZ','z',{ctrlKey:true,target:{tagName:'BUTTON'}}));
+keyboard.down(key('KeyZ','z',{metaKey:true,shiftKey:true,target:{tagName:'INPUT',type:'range'}}));
+assert.deepEqual(events.splice(0),[['history',false],['history',true]]);
+snapshot.tracks[0].undoCount=2;snapshot.tracks[0].redoCount=1;cards=context.window.AionLoopMarkup(snapshot,'normal');
+assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/.test(cards[0]),'Original history buttons reflect native counts');

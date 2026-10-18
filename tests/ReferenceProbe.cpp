@@ -24,11 +24,18 @@ int main(int argc,char**) {
         else if(operation=="record")accepted=bank.apply(A::record,id);
         else if(operation=="finish")accepted=bank.apply(A::finish,id);
         else if(operation=="overdub")accepted=bank.apply(A::overdub,id);
+        else if(operation=="undo")accepted=bank.apply(A::undo,id);
+        else if(operation=="redo")accepted=bank.apply(A::redo,id);
+        else if(operation=="undoGlobal")accepted=bank.apply(A::undoGlobal,0);
+        else if(operation=="redoGlobal")accepted=bank.apply(A::redoGlobal,0);
+        else if(operation=="stopAll")accepted=bank.apply(A::stopAll,0);
+        else if(operation=="clearAll")accepted=bank.apply(A::clearAll,0);
         else if(operation=="normalize")accepted=bank.apply(A::normalize,id);
         else if(operation=="stop")accepted=bank.apply(A::stop,id);
         else if(operation=="play")accepted=bank.apply(A::play,id);
         else if(operation=="reverse")accepted=bank.apply(A::reverse,id,value);
         else if(operation=="retrigger")accepted=bank.apply(A::retrigger,id);
+        else if(operation=="history") {std::cout<<1;for(const auto& t:bank.view())std::cout<<' '<<t.undoCount<<' '<<t.redoCount;std::cout<<' '<<bank.nextUndo()<<' '<<bank.nextRedo()<<'\n';continue;}
         else if(operation=="tick")output=bank.tick({value,right});
         else if(operation=="volume")accepted=bank.apply(A::volume,id,value);
         else if(operation=="feedback")accepted=bank.apply(A::feedback,id,value);

@@ -10,11 +10,11 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse };
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal };
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
-    std::uint32_t length = 0, position = 0;
+    std::uint32_t length = 0, position = 0, undoCount = 0, redoCount = 0;
     float volume = 1, feedback = 0.8f, peak = 0, pan = 5, playbackRate = 1;
     bool muted = false, solo = false, finalizationFailed = false, reverse = false;
 };
@@ -38,6 +38,8 @@ public:
     std::array<LoopView, trackCount> view() const noexcept;
     std::uint32_t capacity() const noexcept { return totalBlocks * blockFrames; }
     std::uint32_t available() const noexcept;
+    int nextUndo() const noexcept { return undoSize?undoOrder[undoSize-1]:-1; }
+    int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
 private:
     struct Clip {
@@ -48,6 +50,7 @@ private:
     struct Track {
         LoopView info{};
         Clip* clip = nullptr; // Immutable samples; one audio lease plus any in-flight job lease.
+        std::array<Clip*,5> undo{},redo{}; // Immutable history leases, matching the reference depth.
         Clip* reverseHold = nullptr; // Old raw clip backing a playing reversed source after NORM.
         bool activeReverse = false;
         std::uint64_t revision = 0;
@@ -85,7 +88,7 @@ private:
     std::thread worker;
     Clip* result = nullptr;
     bool resultChanged = true; // Worker publishes with result through jobState.
-    SpscQueue<Clip*,64> retired;
+    SpscQueue<Clip*,256> retired; // 20 current + 20 held sources + at most 100 history + one job.
     std::vector<std::unique_ptr<Clip>> owned; // Worker only, except stopped prepare/destruction.
     double rate = 48000;
     std::uint32_t residentBlocks = 0;
@@ -93,6 +96,10 @@ private:
     void clear(Track&) noexcept;
     void blend(Track&) noexcept;
     void restartSource(Track&) noexcept;
+    void saveUndo(Track&,std::uint32_t) noexcept;
+    bool restore(Track&,std::uint32_t,bool redo) noexcept;
+    std::array<std::uint8_t,50> undoOrder{},redoOrder{};
+    std::uint32_t undoSize=0,redoSize=0;
     bool hasCapture() const noexcept;
     std::array<Track, trackCount> tracks{};
     std::array<std::uint16_t, maxBlocks> freeBlocks{};

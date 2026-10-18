@@ -356,3 +356,46 @@ Validation:
 - Only the incremental Windows Standalone test app is rebuilt. No package,
   plugin-format build or version bump is produced. Existing ZIPs predate these
   follow-ups. Hardware/DAW/Apple validation and full application parity are pending.
+
+
+## Undo/Redo (2026-10-18, incremental source build)
+
+Reverse and the preceding feature gates passed before starting this feature.
+Original per-loop/global buttons and Ctrl/Cmd+Z / Shift+Z redo now reach C++.
+Successful edit finalization transfers an immutable old PCM lease into a five-deep
+history; restore swaps handles without full-clip work or allocation on audio.
+The 50-entry global order follows the original JS, including eviction and branch
+rules. NORM is not undoable as a new step, matching reference behavior. Stable
+playing/stopped tracks can restore; the same track's active edit is guarded.
+
+- Windows Release and Ubuntu CTest pass 8/8. The new history oracle executes the
+  unchanged JS history, cloning and DSP methods. Nineteen cases compare 828
+  metadata snapshots across all 20 slots/global heads and 666,144 PCM frames at
+  8/48/96 kHz, lengths 17/512/4097. Eight edits/five restorations test local eviction;
+  120 edits over 20 tracks test global ordering/cap and local/global interaction.
+  Substitution, NORM, branch replacement, clear and exhausted-history no-ops remain
+  in the fixture. Maximum Windows error 1.249e-7, tolerance unchanged at 1e-6.
+- Core tests verify exact stereo restoration, stopped state and preserved controls,
+  failed/canceled edit atomicity and redo retention, Stop during finalization,
+  unrelated-track capture, reset, 20 tracks at maximum history depth with retained
+  reverse sources, and cancellation/clear of that ownership graph. The expanded
+  fixed retirement queue holds the worst-case lease burst. The audio-thread C++
+  new/delete watch remains zero; snapshots intentionally retain extra PCM memory.
+- Timestamped Undo/Redo/global restores and reverse latching produce identical
+  output and acknowledgements at 64/128 blocks. The first timing fixture generated
+  edit inputs from absolute engine clocks, which vary while waiting for workers;
+  fixing it to use identical relative input frames removed that invalid comparison.
+- Unchanged capture audits pass on Windows/Ubuntu: 126 cases / 965,826 frames,
+  maximum error 7.395e-8, tolerance unchanged at 1e-6. Reverse and NORM gates remain.
+- Ubuntu ASan/UBSan and ThreadSanitizer core tests pass, including maximal history
+  clear/cancel. ThreadSanitizer uses the documented process-local setarch launch.
+- Native WebView2 checks original loop/global controls and labels plus all shortcut
+  routes using restored snapshot-only history fixtures. The real audio owner
+  rejects those absent clips; no microphone is captured and output stays muted.
+  A new empty-shortcut regression failed before its fix (two commands sent where
+  JS sends none). The corrected frontend resolves against acknowledged depth;
+  both empty-history and repeated-Undo-to-empty tests now pass. Unsupported SAVE
+  stays disabled; the old empty-UNDO-disabled check is retained explicitly.
+- Only the incremental standalone test app is rebuilt. No version bump, ZIP or
+  plugin package is made. History/audio are temporary; hardware/DAW, full browser
+  rendering and long-session/mobile memory-pressure acceptance remain pending.

@@ -70,12 +70,14 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("lastRequestId", static_cast<juce::int64>(latest.lastRequestId));
         result->setProperty("rejected", latest.rejected); result->setProperty("poolFull", latest.poolFull);
         result->setProperty("audioReset", latest.audioReset);
+        result->setProperty("nextUndo",latest.nextUndo);result->setProperty("nextRedo",latest.nextRedo);
         const char* names[] = {"empty", "recording", "playing", "stopped", "overdubbing", "substituting", "finalizing"};
         juce::Array<juce::var> tracks;
         for (const auto& t : latest.tracks) {
             auto* object = new juce::DynamicObject();
             object->setProperty("state", names[static_cast<unsigned>(t.state)]);
             object->setProperty("length", static_cast<int>(t.length)); object->setProperty("position", static_cast<int>(t.position));
+            object->setProperty("undoCount",static_cast<int>(t.undoCount));object->setProperty("redoCount",static_cast<int>(t.redoCount));
             object->setProperty("reverse", t.reverse);
             object->setProperty("pan", t.pan); object->setProperty("playbackRate", t.playbackRate);
             object->setProperty("volume", t.volume); object->setProperty("feedback", t.feedback);
@@ -106,7 +108,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if (!id.isInt() || static_cast<int>(id) < 0 || static_cast<int>(id) >= static_cast<int>(aion::LoopBank::trackCount)
             || !generation.isInt() || static_cast<int>(generation) <= 0) return fail("Invalid track or audio generation");
         const auto actionName = request.getProperty("action", {}).toString();
-        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse"};
+        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal"};
         unsigned action = 0;
         for (; action < std::size(names) && actionName != names[action]; ++action) {}
         if (action == std::size(names)) return fail("Unknown looper action");

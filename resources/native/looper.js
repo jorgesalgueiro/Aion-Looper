@@ -51,6 +51,7 @@
         const status = input.querySelector('#native-status');
         const master = output.querySelector('#native-master'), monitor = input.querySelector('#native-monitor');
         const autoPlay = document.getElementById('autoPlayAfterRecord');
+        const globalUndo=document.getElementById('btnGlobalUndo'),globalRedo=document.getElementById('btnGlobalRedo');
         const enable = element => {element.disabled=false;element.title=element.getAttribute('aria-label')||element.textContent.trim();};
         [master,monitor,autoPlay].forEach(enable);
         const bindTabs=(buttonClass,panelClass,ids)=>{
@@ -73,6 +74,13 @@
         const scheduler = new window.AionCommandQueue({ready:enabled,
             run:c=>sendCommand(c.action,c.track,c.value),notify:message=>notify(message)});
         const command=(action,track,value=0)=>scheduler.enqueue(()=>({action,track,value}));
+        const restoreHistory=(redo,id=null)=>scheduler.enqueue(()=>{
+            const target=id??snapshot[redo?'nextRedo':'nextUndo'],t=snapshot.tracks[target];
+            // Original empty history is a no-op. Resolve at dispatch so a rapid
+            // repeated gesture uses the last acknowledged depth, not stale UI.
+            if(!t?.[redo?'redoCount':'undoCount']||!['playing','stopped'].includes(t.state))return null;
+            return {action:redo?(id===null?'redoGlobal':'redo'):(id===null?'undoGlobal':'undo'),track:id??0,value:0};
+        });
         const halfSpeed=id=>scheduler.enqueue(()=>snapshot.tracks[id].length?{action:'speed',track:id,value:snapshot.tracks[id].playbackRate===1?0.5:1}:null);
         const queueControl=(action,track,value)=>{if(enabled())scheduler.enqueue(()=>({action,track,value}),{key:`${track}:${action}`});};
         const actionFor = t => t.state === 'empty' ? 'record' : t.state === 'stopped' ? 'play'
@@ -99,6 +107,9 @@
         autoPlay.addEventListener('change',()=>setParameter('autoPlayAfterRecord',autoPlay.checked?1:0));
         const stopSession=()=>{keyboard.cancel();scheduler.enqueue(()=>({action:'stopAll',track:0,value:0}),{stop:true});};
         stopAll.addEventListener('click', stopSession);
+        globalUndo.title='Undo Last Action';globalRedo.title='Redo Last Action';
+        globalUndo.addEventListener('click',()=>restoreHistory(false));
+        globalRedo.addEventListener('click',()=>restoreHistory(true));
         clearAll.addEventListener('click', () => {if(window.confirm('Clear ALL loops and master recordings?')){keyboard.cancel();scheduler.reset();command('clearAll',0);}});
         const mainAction=id=>{
             selected=id;
@@ -119,6 +130,7 @@
             action:id=>mainAction(id),
             hold:id=>scheduler.enqueue(()=>{const state=snapshot.tracks[id].state;return state==='stopped'?{action:'clear',track:id,value:0}:state==='playing'?{action:'stop',track:id,value:0}:null;}),
             mode:next=>{mode=mode===next?'normal':next;refresh();},
+            history:redo=>restoreHistory(redo),
             stop:stopSession,retrigger:()=>command('retrigger',selected),halfSpeed:()=>halfSpeed(selected)
         });
         document.addEventListener('keydown',e=>keyboard.down(e));
@@ -145,12 +157,14 @@
                 bind(row.querySelector('.loop-track-delete'),()=>command('clear',i));
                 const solo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='SOLO'),()=>command('solo',i));
                 const retrigger=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='RTRG'),()=>command('retrigger',i));
+                const undo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='UNDO'),()=>restoreHistory(false,i));
+                const redo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='REDO'),()=>restoreHistory(true,i));
                 const reverse=bind(row.querySelector(`#loop-${i}-reverse`),()=>scheduler.enqueue(()=>({action:'reverse',track:i,value:snapshot.tracks[i].reverse?0:1})),'change');
                 const normalize=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='NORM'),()=>command('normalize',i));
                 feedback.addEventListener('dblclick',()=>queueControl('feedback',i,0.8));
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const canvas=row.querySelector('canvas');canvas.title='Playback position';
-                rows.push({row,main,volume,feedback,pan,speed,half,reset,mute,solo,retrigger,normalize,reverse,canvas});wrapper.append(row);container.append(wrapper);
+                rows.push({row,main,volume,feedback,pan,speed,half,reset,mute,solo,retrigger,normalize,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
         function refresh() {
@@ -160,6 +174,11 @@
             if(document.activeElement!==monitor)monitor.checked=snapshot.inputMonitor;
             output.querySelector('#native-master-value').textContent=snapshot.masterGain===0?'MUTED':snapshot.masterGain.toFixed(2);
             stopAll.disabled=!active;clearAll.disabled=!active||busy;
+            const historyAvailable=id=>Number.isInteger(id)&&id>=0&&['playing','stopped'].includes(snapshot.tracks[id]?.state);
+            globalUndo.disabled=!active||!historyAvailable(snapshot.nextUndo);
+            globalRedo.disabled=!active||!historyAvailable(snapshot.nextRedo);
+            globalUndo.textContent=snapshot.nextUndo>=0?`UNDO L${snapshot.nextUndo+1}`:'UNDO';
+            globalRedo.textContent=snapshot.nextRedo>=0?`REDO L${snapshot.nextRedo+1}`:'REDO';
             if(document.activeElement!==autoPlay)autoPlay.checked=snapshot.autoPlayAfterRecord;
             document.getElementById('activeCount').textContent=`${snapshot.tracks.filter(t=>t.state!=='empty').length}/20`;
             document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['recording','overdubbing','substituting','finalizing'].includes(t.state))?'RECORDING':'READY';
@@ -184,6 +203,8 @@
                 r.speed.disabled=!active||editing;r.half.disabled=!active||editing||!t.length;
                 r.reset.disabled=!active||editing||t.playbackRate===1;
                 r.retrigger.disabled=!active||!t.length||['recording','finalizing'].includes(t.state);
+                r.undo.disabled=!active||!t.undoCount||!['playing','stopped'].includes(t.state);
+                r.redo.disabled=!active||!t.redoCount||!['playing','stopped'].includes(t.state);
                 r.reverse.checked=!!t.reverse;
                 r.normalize.disabled=!active||!t.length||!['playing','stopped'].includes(t.state)||snapshot.tracks.some(t=>['recording','overdubbing','substituting','finalizing'].includes(t.state));
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';

@@ -19,6 +19,7 @@ void operator delete[](void* p, std::size_t) noexcept { ::operator delete(p); }
 static void check(bool ok, const char* what) { if(!ok) { std::cerr<<what<<'\n'; std::exit(1); } }
 void loopTests();
 void reverseTests();
+void historyTests();
 int main() {
     aion::SpscQueue<unsigned, 8> q; unsigned value=0;
     for(unsigned i=0;i<7;++i) check(q.push(i),"queue capacity");
@@ -42,5 +43,6 @@ int main() {
     x[0]=std::numeric_limits<float>::infinity(); a.process(ax,1,1);check(x[0]==0.0f,"nonfinite audio");
     loopTests();
     reverseTests();
+    historyTests();
     std::cout<<"PASS: queue bounds/concurrency, sample timing, smoothing, 64/128 invariance, no callback new/delete, finite output\n";
 }

@@ -19,6 +19,7 @@ struct EngineView {
     std::uint32_t generation = 0, lastRequestId = 0, freeFrames = 0;
     float inputPeak = 0, outputPeak = 0;
     bool rejected = false, poolFull = false, audioReset = false;
+    int nextUndo=-1,nextRedo=-1;
 };
 // Audio owner only for prepare/process/target/transport. The message thread is
 // the sole producer of commands; the message thread alone consumes meters.
