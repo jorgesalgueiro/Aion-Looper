@@ -277,3 +277,36 @@ adds JUCE's generated Info.txt dependency to its resource rule; incremental rebu
 regenerates it, and Standalone/VST3 file properties now report 0.4.3. The Windows
 ZIP is regenerated from those binaries and checked for CRC integrity, required
 formats, current documentation and exclusion of intermediate/test artifacts.
+
+
+## NORM follow-up: unchanged audio must keep its envelope (2026-10-18)
+
+A wider live-playback test found a bug beyond the committed-PCM comparison:
+repeating NORM on an already unity-peaked loop restarted the transition blend,
+although the reference normalizeBuffer returns false and leaves audio untouched.
+The regression failed before the repair with "no-op normalization must leave live
+PCM and playback envelope unchanged". New features were held while repairing it.
+
+The worker now publishes the reference kernel's changed/no-change result alongside
+its immutable PCM result through the existing release/acquire job-state handshake.
+An unchanged result retains the current transition envelope as well as phase;
+changed audio and capture edits retain their existing smoothing behavior. No scan,
+allocation, mutex or extra syscall was added to the audio callback.
+
+The regression compares exact stereo output with an untouched native control loop
+at source phases 2 (attack), 21 (steady playback) and 511 (wrap). The fixture first
+drains previous playback tails so asynchronous worker wait time cannot influence
+the starting envelope. The corrected Windows core test passed three consecutive
+runs. Existing reference thresholds, linked-stereo PCM, capture, cancellation,
+allocation failure and 64/128 tests remain unchanged.
+
+Only the incremental Windows standalone test binary is updated for this repair.
+No new ZIP, plugin package or version bump is produced. Existing packaged 0.4.3
+artifacts predate this fix; use the current source build when testing it.
+
+
+Final repair gates: Windows Release and Ubuntu core CTest pass 6/6. Both connected
+capture audits retain 126 cases / 965,826 frames with maximum error 7.395e-8 at
+unchanged 1e-6 tolerance. The corrected fixture also passes Ubuntu ASan/UBSan and
+ThreadSanitizer core tests (process-local setarch invocation as above). Hardware,
+DAW and full browser playback equivalence remain outside these results.

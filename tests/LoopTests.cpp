@@ -94,6 +94,26 @@ void loopTests(){
  check(bank.apply(A::normalize,0),"normalize reset publish");bank.prepare(4096,0);
  check(!bank.finalizationPending()&&!bank.apply(A::normalize,0),"reset joins normalize worker; empty normalize rejected");
  check(bank.apply(A::record,0)&&!bank.apply(A::normalize,0),"capture cannot normalize unfinished PCM");bank.apply(A::clear,0);
+ // Reference NORM does nothing when the shared peak is already unity. A
+ // repeated live NORM must not restart the playback transition envelope either.
+ for(int phase:{2,21,511}){
+ auto normControlStorage=std::make_unique<LoopBank>(),normRepeatStorage=std::make_unique<LoopBank>();
+ auto& normControl=*normControlStorage;auto& normRepeat=*normRepeatStorage;
+ for(auto* instance:{&normControl,&normRepeat}){
+  instance->prepare(8192,4);capture(*instance,0,input);
+  check(instance->apply(A::normalize,0),"prepare unity peak fixture");wait(*instance);
+  // Worker wait duration varies; drain the previous source tail before comparing attacks.
+  instance->apply(A::stop,0);for(int i=0;i<4;++i)instance->tick({});
+  instance->apply(A::retrigger,0);
+ }
+ for(int i=0;i<phase;++i){auto control=normControl.tick({});auto repeated=normRepeat.tick({});check(control.left==repeated.left&&control.right==repeated.right,"identical normalized playback fixture");}
+ check(normRepeat.apply(A::normalize,0),"repeat live unity NORM");
+ for(int n=0;normRepeat.finalizationPending()&&n<10000;++n){watch=true;normRepeat.beginBlock();watch=false;std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+ check(!normRepeat.finalizationPending(),"repeat live unity NORM completes");
+ watch=true;
+ for(int i=0;i<128;++i){auto control=normControl.tick({});auto repeated=normRepeat.tick({});check(control.left==repeated.left&&control.right==repeated.right,"no-op normalization must leave live PCM and playback envelope unchanged");}
+ watch=false;
+ }
  // Preserve the existing pan/rate/fade regressions on finalized, DC-corrected PCM.
  bank.prepare(8192,0);capture(bank,0,input);auto source=render(bank,0);
  for(float speed : {0.25f,0.5f,0.37f,2.0f}){

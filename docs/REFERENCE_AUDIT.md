@@ -50,6 +50,13 @@ uses additional memory. Unit tests cover live phase, repeated/idempotent NORM,
 failed allocation, 32 clear cancellations, reset, empty/capturing rejection and
 normalized playback at 64/128 samples. No physical listening claim follows.
 
+The live NORM follow-up also covers a case the committed-PCM fixture did not:
+when normalizeBuffer reports no change, the native commit must preserve the
+current playback envelope. A failing paired-playback regression exposed a fade
+restart on repeated NORM. Worker publication now carries the changed flag, and
+the regression checks exact stereo output during attack, steady playback and wrap.
+See VALIDATION.md for the repair and test-build scope; older ZIPs predate it.
+
 ## Historical failure and repair
 
 0.4.1 directly overwrote playing PCM while recording an edit. The isolated raw

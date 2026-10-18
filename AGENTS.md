@@ -32,3 +32,10 @@ The native audio diagnostic and connected NORM comparison are hard acceptance ga
 connected manual capture/finalization pipeline; the old raw-mixer regression is
 retained in the kernel comparison. Do not infer full-feature or hardware parity
 from the committed-PCM subset. See docs/REFERENCE_AUDIT.md for current limits.
+
+
+Build cadence: use incremental core tests and the existing standalone binary by
+default. The user explicitly requests the minimum packages needed for testing;
+do not routinely bump versions or generate ZIPs for each feature/bug fix. Preserve
+the existing interface. A reproduced acceptance failure takes priority over new
+features even if a previous narrower comparison passed.

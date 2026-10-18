@@ -82,6 +82,7 @@ private:
     std::atomic<bool> stopping{false};
     std::thread worker;
     Clip* result = nullptr;
+    bool resultChanged = true; // Worker publishes with result through jobState.
     SpscQueue<Clip*,64> retired;
     std::vector<std::unique_ptr<Clip>> owned; // Worker only, except stopped prepare/destruction.
     double rate = 48000;

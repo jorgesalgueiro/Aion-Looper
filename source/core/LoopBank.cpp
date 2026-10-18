@@ -42,13 +42,13 @@ void LoopBank::workerLoop() noexcept {
     while(!stopping.load(std::memory_order_acquire)){
         unsigned expected=1;
         if(jobState.compare_exchange_strong(expected,2,std::memory_order_acquire)){
-            result=nullptr;
+            result=nullptr;resultChanged=true;
             try {
                 auto output=std::make_unique<Clip>();
                 output->length=job.edit?job.base->length:job.length;
                 if(job.normalize){
                     output->channels=job.base->channels;
-                    (void)reference::normalize(output->channels[0],output->channels[1]);
+                    resultChanged=reference::normalize(output->channels[0],output->channels[1]);
                 } else for(unsigned c=0;c<2;++c){
                     std::vector<float> take(job.length);
                     for(std::uint32_t i=0;i<job.length;++i)
@@ -91,7 +91,7 @@ void LoopBank::acceptResult() noexcept {
         const bool play=track.finalPlay&&(job.edit||autoPlay);
         track.info.state=track.clip?(play?LoopState::playing:LoopState::stopped):LoopState::empty;
         if(!track.clip)track.info.length=0;
-        if(result){if(!job.normalize){track.phase=0;track.info.position=0;}blend(track);}
+        if(result){if(!job.normalize){track.phase=0;track.info.position=0;}if(resultChanged)blend(track);}
     }else retire(result);
     result=nullptr;jobState.store(0,std::memory_order_release);
 }
