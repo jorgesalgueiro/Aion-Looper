@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Preserve original assets byte-for-byte, including their existing whitespace.
+resources/ui/** -text

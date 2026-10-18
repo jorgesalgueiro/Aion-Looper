@@ -1,0 +1,21 @@
+{
+  "source": ".reference/Ascii-Looper",
+  "files": {
+    "favicon.ico": "b2e253659ca84b213c122a9013b15cf16d5b2ff2059bf780f637ccfd7712b868",
+    "harmony-effect.afx": "08a4cfcdc0da23325615d8bedb34de79d73efc52e51821072f3719f2e076a4fc",
+    "index.html": "2a29facfcee1a697bb52728852656cc111d4f8ccef4935119f040723261ddefa",
+    "LICENSE": "189b1af95d661151e054cea10c91b3d754e4de4d3fecfb074c1fb29476f7167b",
+    "main.js": "3f7e9bb5007b8df10a87a4a8bea66737b471ce1c9029f7c6011b88483395ca19",
+    "Modules/audioEngine.js": "07f424a093963fcfceac6df948ee8162ca7cd3887c19d9de4969079ef889a51d",
+    "Modules/debug.js": "3fd8f15173ea701e31531a97688d2442edeb322e2a348103356d8d906c5c3e78",
+    "Modules/droneSynth.js": "4cb82bce93f50ffc26acd9be9a68f8efe41cd7ceeee28bfd7c14fc273cd931fb",
+    "Modules/effects.js": "45f136f3006b75d54771bf5e59704bfa1e1cbc423b163b0894ff89765a1239cf",
+    "Modules/i18n.js": "68024a53e4c469496444b756703e39004d2a0e1a0711a5a9efeb9e0629a0270b",
+    "Modules/loopTracks.js": "dc6bf8b4f86ae4552f430d28cb706df0c3eef920fe7efe8d6c6b7eb5ed967b4c",
+    "Modules/projectManager.js": "156d27180a5df38085511df050defdf6693712a0170f54604721e92e0904d151",
+    "Modules/scales.js": "b699e5faaa18d709da6711589f2ce70082dab2b152b3b4dcaf50329275a842be",
+    "Modules/tracker.js": "4c834dec4f3314de56cecad5f8bbeb8c5363b8ea56f25b9a94e9f2522ed5e0e0",
+    "README.md": "8a81a73a81e99c4dbd51f3eb8ccf05e0cfcdc540e67842b901b237c9acd4e0c6",
+    "styles.css": "55c6e55b10e9d83d2c3164ee152ceec86be20d75894374db851e7d7dfc59813f"
+  }
+}

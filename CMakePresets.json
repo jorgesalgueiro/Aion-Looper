@@ -1,0 +1,94 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "core",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/core",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AION_BUILD_PLUGIN": "OFF"
+      }
+    },
+    {
+      "name": "linux",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "windows",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/windows"
+    },
+    {
+      "name": "macos",
+      "generator": "Xcode",
+      "binaryDir": "${sourceDir}/build/macos",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0"
+      }
+    },
+    {
+      "name": "ios",
+      "generator": "Xcode",
+      "binaryDir": "${sourceDir}/build/ios",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "iOS",
+        "CMAKE_OSX_SYSROOT": "iphoneos",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0",
+        "AION_BUILD_AUV3": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "core",
+      "configurePreset": "core"
+    },
+    {
+      "name": "linux",
+      "configurePreset": "linux"
+    },
+    {
+      "name": "windows",
+      "configurePreset": "windows",
+      "configuration": "Release"
+    },
+    {
+      "name": "macos",
+      "configurePreset": "macos",
+      "configuration": "Release"
+    },
+    {
+      "name": "ios",
+      "configurePreset": "ios",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "core",
+      "configurePreset": "core",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux",
+      "configurePreset": "linux",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

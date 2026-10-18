@@ -1,0 +1,15 @@
+/.reference/
+/.deps/
+/build/
+/out/
+/dist/
+/target/
+/.toolchain/
+/verification/
+/.vs/
+/CMakeUserPresets.json
+**/AionProjects/
+**/NativeTestProjects/
+**/__pycache__/
+*.user
+.DS_Store
