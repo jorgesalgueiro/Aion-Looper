@@ -9,7 +9,8 @@ to needed native audio/input/MIDI configuration using the original style.
 Latest accepted work: native capture/overdub finalization, ordered frontend
 performance commands, the original NORM action (including its no-op envelope
 repair), the loop Rvers control, per-loop/global Undo/Redo, and original MULT
-capture/doubling. Offline DSP and connected
+capture/doubling, and the internal Master BPM static/dynamic arm-record-play
+workflow with unified mouse/keyboard gestures. Offline DSP and connected
 committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.
@@ -41,3 +42,13 @@ default. The user explicitly requests the minimum packages needed for testing;
 do not routinely bump versions or generate ZIPs for each feature/bug fix. Preserve
 the existing interface. A reproduced acceptance failure takes priority over new
 features even if a previous narrower comparison passed.
+
+Main-workflow gates: js_native_sync must retain actual original recorder/grid/
+extraction/effective-rate methods, including fractional-tempo and loud-input cases.
+When changing the performance controller, run real NativeUiSmoke pointer/key
+press/release/hold checks as well as strict browser-timer mocks: the prior mocks
+missed a WebView2 Illegal invocation receiver bug that stranded held inputs.
+Do not reintroduce object-method calls to unbound Window timer functions. Keep
+capture deadlines on audio samples and cancel all armed/queued starts on panic,
+clear/reset. Internal Master BPM acceptance does not imply DAW/MIDI clock,
+latency-calibrated physical input or full browser-rendered audio acceptance.

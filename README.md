@@ -102,3 +102,26 @@ jobs preserve existing audio. Growth and longer history restores must fit the
 current session audio budget. No new ZIP or version is made; use the existing
 incremental standalone test app. Persistence and full application parity remain
 pending.
+
+Development follow-up: the main **arm / record / play** workflow now uses a
+native sample clock, with the original OFF / STATIC / DYNAMIC controls, BPM,
+bars, meter fields, visual count-in, timeline and main loop buttons.
+
+- Choose the audio device/input in Options and Unmute Input, then raise MASTER
+  VOLUME to hear playback. A missing native input now reports an explicit error.
+- Click a loop's main button, or use 1–0 (Shift for loops 11–20). Mouse down and
+  key down use the same action path; release cannot duplicate the action.
+- STATIC arms for the shared grid, records the fixed length and optionally plays.
+  CANCEL disarms it. A stopped loop queues PLAY; pressing CANCEL prevents its start.
+- DYNAMIC records immediately. FINISH normally waits for the next bar; a second
+  FINISH stops now. As in the reference, the last 50ms of a bar finish immediately
+  and short takes are retained rather than padded to a whole bar.
+- A synced short STOP waits for the grid; another STOP or a 600ms hold cuts now.
+  Space / STOP ALL cancels queued starts and finishes capture without late autoplay.
+
+The browser timer receiver bug that stranded held keys/pointers is fixed, with
+real WebView2 press/release/hold regressions. This increment uses the internal
+Master BPM grid. Loop-source sync, DAW/MIDI clock following, audible metronome /
+count-in, latency calibration and pre-tap snapping remain pending. Recording
+settings are latched for the active take. Audio/projects are still session-only.
+Only the current standalone test app is rebuilt; no new ZIP or version is made.

@@ -442,3 +442,64 @@ byte/SHA identical. There is no new panel, version bump, ZIP or plugin package.
   A single worker lane guards concurrent capture/finalization interactions.
   Variable-length history can retain substantially more memory than the earlier
   fixed-length estimate; ARCHITECTURE documents the conservative bound.
+
+## Main arm / record / play, static and dynamic — 2026-10-18
+
+Baseline before this workflow: Windows 9/9 plus the unchanged connected capture
+comparison passed (102.05s suite; 126 cases / 965,826 frames). All original UI
+assets stay byte/SHA identical. No tolerance is widened and no previous oracle
+case is removed. Only the incremental Standalone app/probes are built; no new
+ZIP, installer, plugin-format package or version is produced.
+
+- Windows Release and Ubuntu CTest pass 10/10 (116.15s / 177.49s). The unchanged
+  capture audit also passes both platforms: 126 cases, 965,826 frames, maximum
+  error 7.395e-8 at tolerance 1e-6. NORM, reverse, history, MULT and kernel/state
+  gates remain intact.
+- The final expanded unchanged-JS sync oracle passes on Windows and Ubuntu:
+  112 cases, 224 metadata snapshots, 108 effective-rate checks, 388,772 committed
+  PCM frames, maximum error 6.094e-8 at the unchanged 1e-6 audio tolerance.
+  The 64 original capture cases and 32 grid/count-in/cancel cases are retained;
+  16 extra loud-input cases cover clipping in the folded tail and dynamic trim.
+  Three sample rates (8/48/96 kHz), mono/stereo, early/second/forced finish, uneven
+  meters/default geometry, fractional BPM and both dynamic/non-dynamic rate rules
+  are exercised. Pure rate telemetry is compared at its native float precision.
+- Core tests pass exact frame-boundary arming/cancellation, fixed capture/extraction,
+  post-commit phase, queued play/cancel, quantized short stop/second stop/panic,
+  dynamic bar wait/second tap/50ms window/trim, Stop All, settings latched during a
+  take, oversized reservation rejection, failed worker allocation and clear/reset.
+  Static and dynamic capture plus committed playback agree exactly at 64/128 blocks.
+  The audio-thread C++ new/delete watch stays zero. Ubuntu ASan/UBSan core passes
+  (4.15s), and TSan core passes with the documented process-local setarch launch.
+- The original-JS comparison first caught fractional-tempo static PCM disagreement
+  at frame zero (native 0.210854292 versus JS 0.122038739). The original extractor
+  floors its prefix offset, while deadline capture began on the ceiling sample.
+  The two-sample POD input prefix repair preserves that sample without a new
+  capture buffer. The same failing fractional case now passes; its tolerance and
+  input stream are unchanged.
+- The broader core gate then caught 2401 versus the intended 2400-sample queued
+  deadline from floating-point integer noise. The repair removes only noise within
+  four double epsilons before applying ceiling; an explicit fractional 2400.001
+  deadline still becomes 2401. Old and new suites pass after the repair.
+- Real WebView2 pointer/key tests exposed a genuine controller failure missed by
+  the original permissive timer mocks: setTimeout/clearTimeout were invoked with
+  the timer-object receiver, causing Illegal invocation, failed hold setup and
+  failed release cleanup. Repeated presses were consequently ignored. Arrow
+  wrappers now call the Window timer functions correctly. A strict receiver mock
+  and actual browser traces guard that failure. A delayed real hold is recovered
+  on release at most once; blur/cancel never invents one.
+- Native smoke passes original sync radio/BPM/bars/meter fields through APVTS,
+  timeline marker reuse and OFF-mode zero playhead, armed/queued CANCEL and STOP
+  NOW captions, real mouse down/up/click exactly once, mouse hold, repeated number
+  keys, held key/auto-repeat suppression, parameter bounds and missing-input errors.
+  The real core rejects snapshot-only capture/history fixtures; no microphone is
+  recorded and master output remains zero. Pointer traces require no browser
+  exceptions and are restored/removed afterward. Test timings wait for audio-owner
+  acknowledgements rather than fixed sleeps; an isolated WebView test profile and
+  foreground-equivalent timer flags avoid stale shared debug sessions. One earlier
+  debug-page discovery attempt failed; the isolated-profile run succeeds.
+- Internal master-grid scheduling is the accepted scope. Loop-source/DAW/MIDI clock,
+  audible metronome/count-in, pre-tap snap and latency calibration remain disabled
+  or unported. Native capture settings are latched rather than reading mutable
+  browser globals during worker finalization. Physical ASIO/TOPPING/JACK/CoreAudio,
+  live listening, browser resampling/envelopes and Apple/mobile remain unverified.
+  Audio/history are still temporary and are not saved into project/DAW state.

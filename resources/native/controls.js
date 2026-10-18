@@ -33,8 +33,22 @@
         close() {this.closed=true;this.reset();}
     };
     window.AionPerformance = class {
-        constructor(actions, timers = {set:setTimeout, clear:clearTimeout}) {
-            this.actions=actions; this.timers=timers; this.presses=new Map();
+        constructor(actions, timers = {set:(fn,delay)=>setTimeout(fn,delay), clear:id=>clearTimeout(id)}) {
+            this.actions=actions;this.timers=timers;this.now=timers.now||(()=>globalThis.performance?.now?.()??Date.now());this.presses=new Map();
+        }
+        press(id,key) {
+            if(this.presses.has(key)||!this.actions.track(id))return;
+            const press={id,start:this.now(),fired:false,timer:null};this.presses.set(key,press);
+            this.actions.action(id);
+            if(!this.presses.has(key))return;
+            press.timer=this.timers.set(()=>{if(this.presses.get(key)===press&&!press.fired){press.fired=true;this.actions.hold(id);}},600);
+        }
+        release(key,cancel=false) {
+            const press=this.presses.get(key);if(!press)return;
+            this.timers.clear(press.timer);this.presses.delete(key);
+            // Background WebViews may defer a timer. A real >=600ms release
+            // still performs one hold; cancellation/blur never invents one.
+            if(!cancel&&!press.fired&&this.now()-press.start>=600)this.actions.hold(press.id);
         }
         down(event) {
             const target=event.target;
@@ -55,13 +69,12 @@
             if(!match)return;
             const digit=Number(match[1]),id=(digit===0?9:digit-1)+(event.shiftKey?10:0);
             if(!this.actions.track(id))return;
-            event.preventDefault();this.actions.action(id);
-            this.presses.set(key,this.timers.set(()=>{this.actions.hold(id);},600));
+            event.preventDefault();this.press(id,key);
         }
         up(event) {
             const key=event.code || event.key;
-            if(this.presses.has(key)){this.timers.clear(this.presses.get(key));this.presses.delete(key);}
+            this.release(key);
         }
-        cancel() {for(const timer of this.presses.values())this.timers.clear(timer);this.presses.clear();}
+        cancel() {for(const press of this.presses.values())this.timers.clear(press.timer);this.presses.clear();}
     };
 })();

@@ -9,6 +9,9 @@ for(const name of ['createEffectToggleHTML','generateEffectsControlsHTML','getLo
     const start=original.indexOf('    static '+name+'('),end=original.indexOf('\n    }',start)+6;
     assert(start>=0 && adapter.includes(original.slice(start,end)), 'original markup method changed: '+name);
 }
+const scales=fs.readFileSync(path.join(root,'resources/ui/Modules/scales.js'),'utf8').replace(/\r\n/g,'\n');
+const markerStart=scales.indexOf('    static renderTimelineMarkers() {'),markerEnd=scales.indexOf('\n    }',markerStart)+6;
+assert(adapter.includes(scales.slice(markerStart,markerEnd).replace(/[ \t]+$/gm,'')),'Original sync timeline marker method changed');
 const context={window:{}};vm.runInNewContext(adapter,context);
 const snapshot={sampleRate:48000,tracks:Array.from({length:20},()=>({state:'empty',length:0,volume:1,feedback:0.8,muted:false}))};
 let cards=context.window.AionLoopMarkup(snapshot,'normal');
@@ -43,6 +46,17 @@ assert.deepEqual(events.splice(0),[['action',2],['history',false],['history',tru
 keyboard.down(key('KeyZ','z',{ctrlKey:true,target:{tagName:'INPUT'}}));assert.equal(events.length,0);
 keyboard.down(key('Backslash','\\'));assert.deepEqual(events.pop(),['multiply']);
 keyboard.down(key('Backslash','\\',{target:{tagName:'INPUT'}}));assert.equal(events.length,0);
+keyboard.press(4,'pointer:8');assert.deepEqual(events.pop(),['action',4]);
+keyboard.press(4,'pointer:8');assert.equal(events.length,0,'Pointer duplicate is ignored');
+keyboard.release('pointer:8');assert.equal(callbacks.size,0,'Pointer release cancels hold');
+keyboard.press(4,'pointer:9');assert.deepEqual(events.pop(),['action',4]);[...callbacks.values()][0]();assert.deepEqual(events.pop(),['hold',4]);keyboard.cancel();assert.equal(callbacks.size,0);
+let heldClock=0;const delayed=[];const delayedKeyboard=new keyboardContext.window.AionPerformance({track:()=>({}),action:i=>delayed.push(['action',i]),hold:i=>delayed.push(['hold',i])},{set:()=>1,clear(){},now:()=>heldClock});
+delayedKeyboard.press(0,'pointer:1');heldClock=650;delayedKeyboard.release('pointer:1');delayedKeyboard.release('pointer:1');assert.deepEqual(delayed.splice(0),[['action',0],['hold',0]],'Delayed timer fallback performs exactly one real hold');
+delayedKeyboard.press(1,'pointer:2');heldClock+=1000;delayedKeyboard.release('pointer:2',true);assert.deepEqual(delayed.splice(0),[['action',1]],'Pointer cancellation never invents a delayed hold');
+delayedKeyboard.press(2,'Digit3');heldClock+=1000;delayedKeyboard.cancel();assert.deepEqual(delayed.splice(0),[['action',2]],'Blur/panic cancel never fires delayed holds');
+const strictBrowserTimers={window:{},setTimeout:function(){'use strict';if(this?.set)throw new TypeError('Illegal invocation');return 1;},clearTimeout:function(){'use strict';if(this?.clear)throw new TypeError('Illegal invocation');}};
+vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),strictBrowserTimers);
+const browserKeys=new strictBrowserTimers.window.AionPerformance({track:()=>({}),action(){},hold(){}});browserKeys.press(0,'mouse');browserKeys.release('mouse');browserKeys.press(0,'mouse');browserKeys.cancel();assert.equal(browserKeys.presses.size,0,'Browser timer receiver and release cleanup');
 console.log('PASS: reference keyboard loop keys, shifted bank, modes, stop, retrigger, long-press, repeat/focus/blur guards');
 
 snapshot.tracks[0]={...snapshot.tracks[0],pan:10,playbackRate:0.5};

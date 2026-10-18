@@ -20,12 +20,14 @@ struct EngineView {
     float inputPeak = 0, outputPeak = 0;
     bool rejected = false, poolFull = false, audioReset = false;
     int nextUndo=-1,nextRedo=-1;
+    SyncView sync{};
 };
 // Audio owner only for prepare/process/target/transport. The message thread is
 // the sole producer of commands; the message thread alone consumes meters.
 class Engine {
 public:
     void prepare(double sampleRate, std::uint32_t poolFrames = LoopBank::defaultFrames);
+    void configureSync(SyncSettings settings) noexcept {loops.configureSync(settings);}
     void setMonitoring(bool enabled) noexcept { monitoring = enabled; }
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;

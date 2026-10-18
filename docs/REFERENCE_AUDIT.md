@@ -162,7 +162,7 @@ and gets priority over unsent controls.
 | Performance gestures | Ordered/coalesced bounded queue now tested; broader physical multi-controller integration remains |
 | Loop features | SUS, stutter, start offsets, merge, names, WAV import/export |
 | Projects/master recording | ALP/PCM persistence and master/input recording unported; session audio remains temporary |
-| Timing | Static/dynamic sync, count-in, cascade, metronome and MIDI/host clock unported |
+| Timing | Loop-source sync, audible count-in/metronome, cascade and MIDI/host clock unported; native Master BPM static/dynamic workflow now has scoped gates |
 | Instruments/effects | Drone, sampler, tracker, effects and preset DSP unported |
 | Controllers | MIDI learn, CC/note/PC/expression, gamepad and keyboard remapping unported |
 
@@ -203,3 +203,47 @@ cancellation, current-PCM exhaustion, rejected oversized doubles and larger hist
 restores, and growth reservations while another track has a pending job. Failed
 or canceled transactions never publish an undo checkpoint. This intentionally
 improves allocation-failure recovery over JS's pre-allocation checkpoint timing.
+
+## Main arm / record / play acceptance scope
+
+The main workflow is now implemented for the internal Master BPM source. The
+unchanged `LoopManager.startRecording/stopRecording/processRecordedData`,
+`SyncManager.getNextGridTime/getNextBarTime`, actual recorder chunk conversion,
+reference extraction/DC/fade code and `Loop.effectivePlaybackRate` execute in the
+new oracle. IO, AudioWorklet delivery, visual timers and DOM updates are stubbed;
+no tested audio calculation is replaced by a hand-written JS substitute.
+
+The comparison covers OFF/STATIC/DYNAMIC rate selection, static arm/count-in /
+cancel timing across default and uneven meters, manual early stop, fixed-size
+extraction/padding/folded tail, dynamic first/second-tap and forced finish, short
+and multi-bar trim, mono/stereo and 8/48/96 kHz, including fractional BPM. The native
+source receives the same input stream as the original recorder, including its
+pre-arm prefix. Audio tolerance remains 1e-6. JS floating times are converted to
+sample deadlines with at most a one-sample representation difference; native core
+regressions additionally require exact intended integer-grid boundaries.
+
+Zero latency is the oracle scope: system/manual compensation, physical input
+routing and listening, browser sample interpolation/envelopes, DAW/MIDI clock,
+loop-source sync, count-in sound/metronome and pre-tap snap are not accepted by
+these tests. As in the reference, dynamic takes start at the tap and can remain
+shorter than a whole bar; the native UI does not pretend its disabled SNAP/REC TIME
+controls provide recovered pre-tap audio. Timing settings are latched for a take,
+an intentional safety improvement over mutable browser-global finalization state.
+
+Two live regressions are retained: fractional-tempo static extraction initially
+lost the reference's floor-prefix sample, fixed with the two-sample POD history;
+and exact grid arithmetic could yield a deadline one sample late, fixed by
+removing only integer representation noise. Real native input also exposed
+`Illegal invocation` from browser timer functions called as controller-object
+methods. Their corrected invocation and release/cancel cleanup are checked with
+both strict timer mocks and actual WebView2 pointer/key events. Node mocks alone
+are insufficient acceptance for main performance gestures.
+
+Final main-workflow report: 112 cases, 224 metadata snapshots, 108 native-float
+rate checks and 388,772 PCM frames pass on Windows and Ubuntu, with maximum audio
+error 6.094e-8 at unchanged tolerance 1e-6. Initial cases are retained; loud-input
+fixtures were appended to cover the static tail clamp and dynamic trimming.
+Core timing/playback is exact at both 64/128 buffers after commit, and the real
+browser repeated-key/mouse hold/release acceptance passes after the timer fix.
+See VALIDATION.md for failures, repairs, platform gates and the separate hardware
+acceptance still required.

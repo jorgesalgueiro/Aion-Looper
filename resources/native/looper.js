@@ -6,6 +6,7 @@
         if (!rpc || !window.AionLoopMarkup) return;
         let alive = true, mode = 'normal', snapshot = null, pending = null, busy = false;
         let lastFrame = -1, advancedAt = 0, pollTimer, error = '';
+        let markerKey='';window.addEventListener('resize',()=>markerKey='');
         const rows = [], input = document.getElementById('inputTracksContainer');
         // The only new area is native input configuration, inside the original INPUT MIXER.
         input.innerHTML = `<div class="mixer-row input-track-row" style="display:block">
@@ -65,7 +66,12 @@
         bindTabs('.main-tab-btn','.workspace-panel',['ws-loops','ws-drone','ws-tracker','ws-live']);
         bindTabs('.manual-tab-btn','.manual-content',['manual-en','manual-es','manual-pt']);
 
-        document.querySelector('input[name=syncMode][value=off]').checked=true;
+        const syncModes=[...document.querySelectorAll('input[name=syncMode]')];
+        const timingControls={syncBpm:document.getElementById('bpmInput'),syncBars:document.getElementById('numBars'),syncNum:document.getElementById('timeSigNum'),syncDen:document.getElementById('timeSigDen'),countInVisual:document.getElementById('countInVisual')};
+        syncModes.forEach((radio,index)=>{enable(radio);radio.addEventListener('change',()=>{if(radio.checked)setParameter('syncMode',index);});});
+        for(const [id,element] of Object.entries(timingControls)){enable(element);element.addEventListener('change',()=>setParameter(id,element.type==='checkbox'?(element.checked?1:0):Number(element.value)));}
+        for(const [id,min,max] of [['syncBpm',10,999],['syncBars',1,64],['syncNum',1,32],['syncDen',1,32]]){timingControls[id].min=min;timingControls[id].max=max;}
+
         const mapping=document.getElementById('keyMappingUI');
         mapping.innerHTML='<div class="mapping-tabs"><button class="tab-btn active">Keyboard</button></div><div class="mapping-scroll-container"><table class="mapping-table">'+Array.from({length:20},(_,i)=>`<tr><td>Loop ${i+1}</td><td>${i<10?'':'Shift+'}${(i+1)%10}</td></tr>`).join('')+'<tr><td>Global OD</td><td>+</td></tr><tr><td>Global SUB</td><td>-</td></tr><tr><td>STOP ALL</td><td>Space</td></tr><tr><td>Retrigger selected loop</td><td>/</td></tr><tr><td>Multiply selected loop</td><td>&#92;</td></tr></table></div>';
         document.getElementById('midiStatus').textContent='Native MIDI mapping is not ported yet.';
@@ -88,6 +94,7 @@
         const halfSpeed=id=>scheduler.enqueue(()=>snapshot.tracks[id].length?{action:'speed',track:id,value:snapshot.tracks[id].playbackRate===1?0.5:1}:null);
         const queueControl=(action,track,value)=>{if(enabled())scheduler.enqueue(()=>({action,track,value}),{key:`${track}:${action}`});};
         const actionFor = t => t.state === 'empty' ? 'record' : t.state === 'stopped' ? 'play'
+            : ['queued','stopping'].includes(t.state)?'stop'
             : t.state === 'playing' ? (mode === 'normal' ? 'stop' : mode) : 'finish';
         const notify = message => {error=String(message); status.textContent=error;};
         async function setParameter(id, value) {
@@ -97,6 +104,7 @@
         async function sendCommand(action, track, value=0) {
             if (!enabled()) return;
             if (['overdub','substitute'].includes(action) && snapshot.tracks[track].playbackRate!==1) {notify('Reset loop speed to 1.0x before overdub or substitute.');return;}
+            if(action==='record'&&snapshot.syncMode===1&&Math.round(snapshot.gridLength*snapshot.sampleRate)>snapshot.freeFrames){notify('Static loop length exceeds available recording capacity. Reduce bars or clear a loop.');return;}
             busy=true; error=''; refresh();
             try {
                 const generation=snapshot.generation;
@@ -121,7 +129,7 @@
             scheduler.enqueue(()=>{
                 const t=snapshot.tracks[id];
                 if(t.state==='finalizing')return null;
-                const owner=snapshot.tracks.findIndex(t=>['recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
+                const owner=snapshot.tracks.findIndex(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 if(t.state==='empty'&&owner>=0&&owner!==id) {
                     if(snapshot.tracks[owner].state==='finalizing')return null;
                     return {action:'finish',track:owner,value:0};
@@ -132,7 +140,7 @@
         const keyboard = new window.AionPerformance({
             track:id=>snapshot?.tracks[id],
             action:id=>mainAction(id),
-            hold:id=>scheduler.enqueue(()=>{const state=snapshot.tracks[id].state;return state==='stopped'?{action:'clear',track:id,value:0}:state==='playing'?{action:'stop',track:id,value:0}:null;}),
+            hold:id=>scheduler.enqueue(()=>{const state=snapshot.tracks[id].state;return state==='stopped'?{action:'clear',track:id,value:0}:['playing','stopping'].includes(state)?{action:'stopImmediate',track:id,value:0}:null;}),
             mode:next=>{mode=mode===next?'normal':next;refresh();},
             history:redo=>restoreHistory(redo),
             multiply:()=>multiply(selected),
@@ -150,7 +158,13 @@
                 stripHandlers(row);
                 row.querySelectorAll('button,input,select,textarea').forEach(e => {e.disabled=true;e.title='Unavailable in this preview';});
                 const bind=(element,callback,event='click') => {element.dataset.nativeControl='true';element.title=element.getAttribute('aria-label')||element.textContent.trim();element.addEventListener(event,callback);return element;};
-                const main=bind(row.querySelector(`#loop-action-${i}`),()=>mainAction(i));
+                const main=bind(row.querySelector(`#loop-action-${i}`),e=>{if(e.detail===0)mainAction(i);});
+                main.addEventListener('pointerdown',e=>{
+                    if(e.button!==0||e.isPrimary===false)return;
+                    e.preventDefault();selected=i;main.setPointerCapture(e.pointerId);keyboard.press(i,`pointer:${e.pointerId}`);
+                });
+                main.addEventListener('pointerup',e=>keyboard.release(`pointer:${e.pointerId}`));
+                for(const event of ['pointercancel','lostpointercapture'])main.addEventListener(event,e=>keyboard.release(`pointer:${e.pointerId}`,true));
                 const volume=bind(row.querySelector(`#loop-vol-slider-${i}`),e=>queueControl('volume',i,Number(e.target.value)),'input');
                 const feedback=bind(row.querySelector(`#loop-fbk-slider-${i}`),e=>queueControl('feedback',i,Number(e.target.value)),'input');
                 const pan=bind(row.querySelector(`#loop-pan-slider-${i}`),e=>queueControl('pan',i,Number(e.target.value)),'input');
@@ -188,13 +202,13 @@
             globalRedo.textContent=snapshot.nextRedo>=0?`REDO L${snapshot.nextRedo+1}`:'REDO';
             if(document.activeElement!==autoPlay)autoPlay.checked=snapshot.autoPlayAfterRecord;
             document.getElementById('activeCount').textContent=`${snapshot.tracks.filter(t=>t.state!=='empty').length}/20`;
-            document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state))?'RECORDING':'READY';
-            const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)',multiplying:'(M)',finalizing:'[..]'};
+            document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state))?'RECORDING':'READY';
+            const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)',multiplying:'(M)',finalizing:'[..]',armed:'(A)',queued:'[Q]',stopping:'[S]'};
             rows.forEach((r,i)=>{
                 const t=snapshot.tracks[i];r.row.className=`loop ${t.state}`;
                 r.row.querySelectorAll('[data-native-control]').forEach(e=>e.disabled=!active);
                 r.main.disabled=!active||t.state==='finalizing'||(t.state==='empty'&&snapshot.freeFrames===0);
-                r.main.textContent=t.state==='finalizing'?'SAVING':actionFor(t)==='substitute'?'REPLACE':actionFor(t).toUpperCase();r.main.setAttribute('aria-label',`Loop ${i+1}: ${r.main.textContent}`);r.main.title=r.main.getAttribute('aria-label');
+                r.main.textContent=t.state==='finalizing'?'SAVING':['armed','queued'].includes(t.state)?'CANCEL':t.state==='stopping'?'STOP NOW':actionFor(t)==='substitute'?'REPLACE':actionFor(t).toUpperCase();r.main.setAttribute('aria-label',`Loop ${i+1}: ${r.main.textContent}`);r.main.title=r.main.getAttribute('aria-label');
                 r.row.querySelector(`#loop-state-symbol-${i}`).textContent=symbols[t.state];
                 r.row.querySelector(`#loop-state-text-${i}`).textContent=t.state==='finalizing'?'SAVING':t.state.toUpperCase();
                 r.row.querySelector(`#loop-extra-info-${i}`).textContent=`${t.muted?'[MUTED] ':''}${t.length?`(${(t.length/snapshot.sampleRate/t.playbackRate).toFixed(1)}s)`:''}`;
@@ -206,15 +220,15 @@
                 if(document.activeElement!==r.speed)r.speed.value=t.playbackRate;
                 r.row.querySelector(`#loop-pan-display-${i}`).textContent=t.pan;
                 r.row.querySelector(`#loop-speed-display-${i}`).textContent=`${t.playbackRate.toFixed(2)}x`;
-                const editing=['recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state);
+                const editing=['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state);
                 r.speed.disabled=!active||editing;r.half.disabled=!active||editing||!t.length;
                 r.reset.disabled=!active||editing||t.playbackRate===1;
-                r.retrigger.disabled=!active||!t.length||editing;
+                r.retrigger.disabled=!active||!t.length||editing||['queued','stopping'].includes(t.state);
                 r.undo.disabled=!active||!t.undoCount||!['playing','stopped'].includes(t.state);
                 r.redo.disabled=!active||!t.redoCount||!['playing','stopped'].includes(t.state);
                 r.reverse.checked=!!t.reverse;
-                r.mult.disabled=!active||!t.length||!['playing','stopped','multiplying'].includes(t.state)||snapshot.tracks.some((other,id)=>id!==i&&['recording','overdubbing','substituting','multiplying','finalizing'].includes(other.state));
-                r.normalize.disabled=!active||!t.length||!['playing','stopped'].includes(t.state)||snapshot.tracks.some(t=>['recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
+                r.mult.disabled=!active||!t.length||!['playing','stopped','multiplying'].includes(t.state)||snapshot.tracks.some((other,id)=>id!==i&&['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(other.state));
+                r.normalize.disabled=!active||!t.length||!['playing','stopped'].includes(t.state)||snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
                 r.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
                 r.mute.textContent=t.muted?'UNM':'MUTE';r.mute.setAttribute('aria-pressed',String(t.muted));
@@ -227,10 +241,26 @@
             document.body.classList.toggle('mode-overdub',mode==='overdub');
             document.body.classList.toggle('mode-substitute',mode==='substitute');
             document.body.classList.toggle('is-multiplying',snapshot.tracks.some(t=>t.state==='multiplying'));
-            document.body.classList.toggle('is-recording',snapshot.tracks.some(t=>t.state==='recording'));
+            document.body.classList.toggle('is-recording',snapshot.tracks.some(t=>['recording','armed'].includes(t.state)));
+            document.body.classList.toggle('is-queued',snapshot.tracks.some(t=>t.state==='queued'));
+            syncModes.forEach((radio,index)=>radio.checked=snapshot.syncMode===index);
+            for(const [id,element] of Object.entries(timingControls))if(document.activeElement!==element){if(element.type==='checkbox')element.checked=!!snapshot[id];else element.value=snapshot[id];}
+            document.getElementById('dynamicOptionsPanel').style.display=snapshot.syncMode===2?'':'none';
+            const nextMarkers=`${snapshot.syncMode}:${snapshot.syncBars}:${snapshot.syncNum}`;
+            if(markerKey!==nextMarkers){window.AionSyncMarkup(snapshot);markerKey=nextMarkers;}
+            document.getElementById('loopLength').textContent=`${snapshot.gridLength.toFixed(2)}s`;
+            document.getElementById('playhead').style.left=snapshot.syncMode===0?'0%':`${snapshot.gridPosition*100}%`;
+            const armed=snapshot.tracks.find(t=>t.state==='armed');
+            const beats=armed?(armed.scheduledFrame-snapshot.syncFrame)/snapshot.sampleRate/(60/snapshot.syncBpm):0;
+            const pulse=active&&snapshot.countInVisual&&beats>0&&beats<=snapshot.syncNum&&Math.ceil(beats)-beats<0.15/(60/snapshot.syncBpm);
+            const masterModule=document.getElementById('mod-master');
+            masterModule.style.borderColor=pulse?(beats<=1?'#f00':'#ff0'):'';
+            masterModule.style.boxShadow=pulse?`0 0 10px ${beats<=1?'#f00':'#ff0'}`:'';
             const db=value=>value>0?`${(20*Math.log10(value)).toFixed(1)} dBFS`:'-inf dBFS';
             document.getElementById('master-ascii-vu').textContent=`MASTER | ${db(snapshot.outputPeak)}`;
             status.textContent=error || (!active?'Waiting for audio. Enable the audio device or host processing.':
+                snapshot.tracks.some(t=>t.stopPending)?'Recording: finish scheduled at the next bar. Press FINISH again to stop now.':
+                armed?`Armed: recording starts in ${Math.max(0,(armed.scheduledFrame-snapshot.syncFrame)/snapshot.sampleRate).toFixed(2)}s. Press CANCEL to disarm.`:
                 snapshot.tracks.some(t=>t.finalizationFailed)?'Take finalization failed; existing audio was kept.':
                 snapshot.poolFull?'Recording stopped: session audio memory is full. Clear a loop to free space.':
                 snapshot.audioReset?'Session audio cleared after a sample-rate change.':

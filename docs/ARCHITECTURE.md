@@ -382,3 +382,60 @@ MULT is guarded while another track captures or finalizes (including stopped
 doubling). Undo/Redo and retrigger are unavailable on a track being captured or
 finalized. These native transaction guards are explicit limits on interaction
 parity; concurrent edits and full browser lifecycle behavior are not established.
+
+### Native main workflow and master grid
+
+`SyncClock` is owned by the audio thread. OFF is the low-level core default (the
+older DSP probes therefore keep their contracts); the app's APVTS default is
+DYNAMIC, matching the original HTML. BPM, bar count, numerator/denominator and
+visual count-in now persist as parameters. The clock uses the reference bar/grid
+formulas: beats-per-bar is the numerator, and the denominator is stored/displayed
+without changing those formulas. Master BPM is the only enabled sync source.
+Host tempo/PPQ observation remains separate from this internal master clock.
+
+Each of 20 tracks has fixed start/end deadlines. STATIC reserves its planned
+resident PCM before entering ARMED; another recording/edit cannot steal that lane.
+The first future grid with the reference 30ms lead is selected; visual count-in
+adds one bar when the lead is less than 75% of a bar. A second main press cancels
+an arm, and queued PLAY/STOP use the same sample grid. STOP NOW, Stop All, clear
+and reset cancel deadlines without allowing later playback/capture resurrection.
+A deadline within four double-precision epsilons of an integer sample is snapped
+to that integer before ceiling; actual fractional deadlines retain their ceiling.
+
+STATIC captures its planned frames plus a maximum 20ms splice tail instead of
+waiting for the browser's 200ms delivery padding. The worker executes the actual
+reference extraction order: fixed-size zero-filled output, copied capture, at
+most 20ms of tail folded/clamped at the start; otherwise the reference end fade
+and 10ms crossfade; then DC removal. Prefix rounding follows the unchanged
+floor((targetTime - firstCapturedTime) * sampleRate) expression. Two recent input
+samples are retained as POD values so a floor boundary preceding the scheduled
+sample is not lost; no full pre-roll buffer or callback allocation is needed.
+The take pool still bounds physical capture, including tail/prefix. Failed worker
+allocation returns the reservation and preserves existing audio atomically.
+
+DYNAMIC starts at the tap, as the current reference does (its pre-buffer does not
+recover pre-tap audio). The first FINISH schedules the next bar unless the bar
+ends within 50ms; the second tap forces finish now. The worker rounds the raw
+length to a bar count and trims only when that rounded length is shorter than
+captured audio, then applies the original 15ms crossfade and DC pass. Short or
+fractional-bar takes are not padded. Mode, BPM, bar duration and origin are latched
+for the active capture; changed settings affect later takes and playback without
+retiming an in-flight extraction. Stop All bypasses waiting and suppresses autoplay.
+
+Source starts use shared-grid phase, including after asynchronous worker commit.
+The reference effectivePlaybackRate rule is retained for non-dynamic recorded
+clips; dynamic clips keep their manual rate. Tempo changes preserve elapsed beat
+phase by moving the master origin. Undo/Redo recompute the rate for restored clip
+lengths. Processing/scheduling remains bounded to 20 slots and uses no locks,
+allocation, deletion or full-clip scans on the callback. Hardware latency, browser
+resampling/envelopes and sample-accurate DAW/MIDI clock following are not implied.
+
+The original main buttons, number keys and shifted bank call one performance
+controller. Mouse pointer capture handles release outside the button; pointer
+cancel, lost capture and blur discard holds. Browser timer calls use arrow wrappers
+so the WebView's Window functions never receive the controller timer object as
+`this`. A >=600ms release can recover a delayed timer exactly once; cancellation
+never invents a hold. The subsequent browser click is ignored for real pointer
+presses, while keyboard/assistive click activation still works. Original timeline
+marker rendering is reused, and visual count-in pulses the existing master module.
+The frontend submits intent; sample deadlines and capture state live in C++.

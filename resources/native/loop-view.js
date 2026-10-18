@@ -227,6 +227,60 @@ const effectColors = {
         `;
     }
     }
+    const Log={debug(){}};
+    class SyncMarkup {
+    static renderTimelineMarkers() {
+        const markersContainer = document.getElementById('markers');
+        if (!markersContainer) return;
+
+        markersContainer.innerHTML = '';
+
+        if (!state.syncEnabled || state.loopLength <= 0) return;
+
+        const timeline = document.getElementById('timeline');
+        if (!timeline) return;
+
+        const width = timeline.offsetWidth - 20; // 20 for padding
+        const beatsPerBar = state.timeSig.num;
+        const totalBeats = beatsPerBar * state.bars;
+
+        // Safety check to prevent infinite loops or UI freezing
+        if (!totalBeats || totalBeats <= 0 || totalBeats > 256) {
+             Log.debug('Scales', 'Invalid beat count:', totalBeats);
+             return;
+        }
+
+        for (let beat = 0; beat < totalBeats; beat++) {
+            const beatNumber = beat + 1;
+            const position = (beat / totalBeats) * width; // Use beat, not beatNumber, for 0-indexed start
+
+            const marker = document.createElement('div');
+            marker.className = 'timeline-marker';
+            marker.style.left = `${position + 10}px`;
+
+            const label = document.createElement('span');
+            label.className = 'timeline-marker-label';
+
+            if (beat % beatsPerBar === 0) {
+                // Bar marker
+                marker.classList.add('bar');
+                const barNumber = Math.floor(beat / beatsPerBar) + 1;
+                label.textContent = `Bar ${barNumber}`;
+                marker.style.height = '70px'; // Taller bar markers
+            } else {
+                // Beat marker
+                label.textContent = `${beatNumber}`;
+            }
+
+            marker.appendChild(label);
+            markersContainer.appendChild(marker);
+        }
+    }
+    }
+    window.AionSyncMarkup = snapshot => {
+        state.syncEnabled=snapshot.syncMode!==0;state.bars=snapshot.syncBars;state.timeSig={num:snapshot.syncNum};
+        SyncMarkup.renderTimelineMarkers();
+    };
     window.AionLoopMarkup = (snapshot, mode) => {
         state.globalOverdubMode = mode === 'overdub'; state.globalSubstituteMode = mode === 'substitute';
         state.loops = snapshot.tracks.map(t => ({...t, duration: t.length / snapshot.sampleRate, playbackRate: t.playbackRate ?? 1, startDelay: 0, pan: t.pan ?? 5,

@@ -7,14 +7,19 @@
 #include <memory>
 #include <thread>
 #include "core/SpscQueue.h"
+#include "core/SyncClock.h"
 
 namespace aion {
-enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply };
+enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate };
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
     std::uint32_t length = 0, position = 0, undoCount = 0, redoCount = 0;
+    std::uint64_t scheduledFrame = 0;
+    double originalBpm = 0;
+    float effectiveRate = 1;
+    bool dynamicRecorded = false, stopPending = false;
     float volume = 1, feedback = 0.8f, peak = 0, pan = 5, playbackRate = 1;
     bool muted = false, solo = false, finalizationFailed = false, reverse = false;
 };
@@ -41,6 +46,9 @@ public:
     int nextUndo() const noexcept { return undoSize?undoOrder[undoSize-1]:-1; }
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
+    void configureSync(SyncSettings settings) noexcept;
+    void resetTimeline() noexcept { frame=0;sync.reset(rate); }
+    SyncView syncView() const noexcept {return sync.view(frame);}
 private:
     struct Clip {
         std::atomic<std::uint32_t> leases{1};
@@ -56,12 +64,16 @@ private:
         std::uint64_t revision = 0;
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
+        SyncMode recordMode=SyncMode::off;
+        double recordBarFrames=0,recordOrigin=0;
+        std::uint32_t plannedFrames=0,recordPrefix=0;
+        std::uint64_t startAt=0,endAt=0;
         std::array<std::uint16_t, maxBlocks> blocks{};
         std::uint32_t blockCount = 0, blendRemaining = 0, tailRemaining = 0;
         Stereo last{}, blendFrom{}, tail{};
         float gain = 1;
         double phase = 0;
-        float rate = 1, rateIncrement = 0;
+        float rate = 1, targetRate = 1, rateIncrement = 0;
         std::uint32_t rateRemaining = 0, panRemaining = 0;
         Stereo panGain{0.7071067811865475f, 0.7071067811865475f};
         Stereo panTarget = panGain, panIncrement{};
@@ -72,6 +84,8 @@ private:
         std::uint64_t revision = 0;
         Clip* base = nullptr;
         double feedback = 0.8;
+        SyncMode recordMode=SyncMode::off;
+        std::uint32_t outputFrames=0;
         bool edit = false, normalize = false, multiply = false, doubling = false;
     };
     float& sample(Track&, std::uint32_t frame, std::uint32_t channel) noexcept;
@@ -91,6 +105,11 @@ private:
     SpscQueue<Clip*,256> retired; // 20 current + 20 held sources + at most 100 history + one job.
     std::vector<std::unique_ptr<Clip>> owned; // Worker only, except stopped prepare/destruction.
     double rate = 48000;
+    std::uint64_t frame=0;
+    SyncClock sync;
+    Stereo previousInput{},olderInput{};
+    void updateRate(Track&) noexcept;
+    void schedules(Track&) noexcept;
     std::uint32_t residentBlocks = 0;
     void stop(Track&) noexcept;
     void clear(Track&) noexcept;

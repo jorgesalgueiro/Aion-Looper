@@ -242,3 +242,22 @@ node tests/MultiplyParity.cjs build/core/aion_reference_probe
 On Windows use `build/windows/Release/aion_reference_probe.exe`. Only the existing
 Standalone target needs rebuilding for this migration increment; no ZIP, installer
 or plugin-format package is required.
+
+The main workflow gate is `js_native_sync`. It runs the unchanged JS recorder,
+SyncManager helpers, extraction/DC/fade functions and effective-rate getter against
+the native clock/capture path:
+
+```sh
+node tests/SyncParity.cjs build/core/aion_reference_probe
+```
+
+Use `build/windows/Release/aion_reference_probe.exe` on Windows. Rebuild only
+`AionLooper_Standalone`, `aion_core_tests`, `aion_reference_probe`, and (when core
+changes require relinking) `aion_dsp_probe`, then run CTest and AudioParityAudit.
+The WebView2 smoke test uses the existing localhost port 9234 test setup. For
+repeatable native input tests, an isolated `WEBVIEW2_USER_DATA_FOLDER` under
+`build/` avoids sharing a test browser session; test-only
+`--disable-background-timer-throttling --disable-renderer-backgrounding` flags and
+CDP focus emulation model foreground input. The app stays muted and fixtures do
+not capture a microphone. Close and wait for the test instance to exit. No SDK,
+plugin-format build, installer, ZIP or version bump is needed for this increment.

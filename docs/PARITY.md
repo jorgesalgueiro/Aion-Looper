@@ -8,8 +8,9 @@
 | IPC/APVTS | Coherent snapshots, generation/expiry validation, loop commands, master/monitor/auto-play APVTS; parameter XML only | Session/generation tests, gestures, automation/state stress |
 | Audio owner | 20-slot native looper, bounded pool, smoothed gain/mute, finite protection | Hardware/DAW audio, 64/128 stress and allocation instrumentation |
 | Host transport | BPM/PPQ/play observation | Meter/cycle/seek and sample-accurate scheduling/sync |
-| Loop recording/play/stop/overdub/substitute | Single capture owner and worker reference finalization; committed manual PCM comparison passes | Reference behavioral fixtures, hardware and long-session tests |
-| Loop pan/varispeed | Native reference pan law, manual 0.25x-2x with phase/rate smoothing; half/reset | Antialiasing, browser audio comparison, sync ratios |
+| Loop recording/play/stop/overdub/substitute | Single capture owner and worker finalization; manual and static/dynamic zero-latency committed PCM comparisons pass | Hardware capture, latency compensation and long-session tests |
+| Internal static/dynamic sync and main gestures | Sample-clock arm/cancel, fixed capture, dynamic bar/second-tap finish, queued play/stop, visual count-in, original grid controls; unified mouse/keyboard | Native WebView2 input, reference timing/PCM and 64/128 gates; loop-source/DAW/MIDI clock and physical latency pending |
+| Loop pan/varispeed | Native reference pan law, manual 0.25x-2x and reference sync-ratio rates with smoothing; half/reset | Antialiasing, browser-rendered audio and live/hardware tempo changes |
 | Loop reverse | Original Rvers toggle; requested direction latches on play/retrigger; independent reversed source retained across NORM | Reference source PCM and state tests; hardware/browser rendering remain separate |
 | Loop normalization | Immutable worker NORM with shared stereo peak; unchanged-JS PCM/threshold tests | Hardware/listening, full browser playback and long-session stress |
 | Loop Undo/Redo | Per-loop five-snapshot history, global order and original controls/shortcuts; immutable handle swaps | Long-session/memory/hardware stress; restoration temporarily disabled on a track being captured/finalized |

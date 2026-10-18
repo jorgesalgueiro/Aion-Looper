@@ -10,7 +10,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     if (preparedRate != rate || loops.capacity() != std::clamp(poolFrames / LoopBank::blockFrames, 1u, LoopBank::maxBlocks) * LoopBank::blockFrames)
         loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005), rate);
     else (void) loops.apply(LoopAction::stopAll, 0);
-    preparedRate = rate;
+    loops.resetTimeline();preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     frame = 0; gain = target = increment = 0.0f; remaining = 0;
@@ -64,6 +64,6 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
     }
     // Telemetry is lossy by design; never wait when the editor is closed/slow.
     (void) meters.push({frame, peak});
-    (void) views.push({loops.view(), frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo()});
+    (void) views.push({loops.view(), frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView()});
 }
 }

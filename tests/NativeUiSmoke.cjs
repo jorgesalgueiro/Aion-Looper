@@ -15,6 +15,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;const timer=setTimeout(()=>{requests.delete(id);reject(Error('CDP timeout '+method));},10000);requests.set(id,reply=>{clearTimeout(timer);reply.error?reject(Error(JSON.stringify(reply.error))):resolve(reply.result);});ws.send(JSON.stringify({id,method,params}));});
  const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
  await call('Runtime.enable');
+ await call('Emulation.setFocusEmulationEnabled',{enabled:true});
  let info;
  for(let n=0;n<60;++n){info=await evaluate(`({cards:document.querySelectorAll('#loopContainer > div').length,status:document.getElementById('native-status')?.textContent,native:typeof window.AionNative?.request})`);if(info.cards===20)break;await delay(150);}
  assert.equal(info.cards,20,JSON.stringify(info));assert.equal(info.native,'function');
@@ -24,8 +25,21 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  const snapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);assert(snapshot.ok&&snapshot.tracks.length===20);
  assert(snapshot.tracks.every(t=>t.state==='empty'),'Smoke test must not capture audio');
  assert(await evaluate(`document.getElementById('btnGlobalUndo').disabled&&document.getElementById('btnGlobalRedo').disabled&&[...document.querySelectorAll('#loopContainer button')].filter(b=>['UNDO','REDO'].includes(b.textContent.trim())).every(b=>b.disabled)`),'Empty history controls are disabled');
- const layout=await evaluate(`({extraPanel:!!document.getElementById('native-mode'),masterInOriginal:!!document.querySelector('#mod-master #native-master'),inputInOriginal:!!document.querySelector('#mod-input #native-monitor'),stopInOriginal:!!document.querySelector('#mod-menu #native-stop-all'),syncOff:document.querySelector('input[name=syncMode][value=off]').checked})`);
- assert(!layout.extraPanel&&layout.masterInOriginal&&layout.inputInOriginal&&layout.stopInOriginal&&layout.syncOff,JSON.stringify(layout));
+ const layout=await evaluate(`({extraPanel:!!document.getElementById('native-mode'),masterInOriginal:!!document.querySelector('#mod-master #native-master'),inputInOriginal:!!document.querySelector('#mod-input #native-monitor'),stopInOriginal:!!document.querySelector('#mod-menu #native-stop-all'),syncMode:document.querySelector('input[name=syncMode]:checked').value,syncEnabled:[...document.querySelectorAll('input[name=syncMode]')].every(e=>!e.disabled)})`);
+ assert(!layout.extraPanel&&layout.masterInOriginal&&layout.inputInOriginal&&layout.stopInOriginal&&layout.syncEnabled&&layout.syncMode===['off','static','dynamic'][snapshot.syncMode],JSON.stringify(layout));
+ // Exercise the original sync controls through APVTS and coherent audio snapshots.
+ const timingBefore=await evaluate(`AionNative.request({operation:'snapshot'})`);
+ for(const [id,value,property] of [['bpmInput',137.5,'syncBpm'],['numBars',1,'syncBars'],['timeSigNum',3,'syncNum'],['timeSigDen',8,'syncDen']]){
+   await evaluate(`document.getElementById('${id}').value='${value}';document.getElementById('${id}').dispatchEvent(new Event('change'))`);
+   let timed;for(let n=0;n<60;++n){timed=await evaluate(`AionNative.request({operation:'snapshot'})`);if(timed[property]===value)break;await delay(50);}assert.equal(timed[property],value,'Original timing field reaches native owner: '+id);
+ }
+ for(const mode of ['off','static','dynamic']){
+   await evaluate(`document.querySelector('input[name=syncMode][value=${mode}]').click()`);
+   let timed;for(let n=0;n<60;++n){timed=await evaluate(`AionNative.request({operation:'snapshot'})`);if(timed.syncMode===['off','static','dynamic'].indexOf(mode))break;await delay(50);}assert.equal(timed.syncMode,['off','static','dynamic'].indexOf(mode));await delay(100);assert.equal(await evaluate(`document.getElementById('markers').children.length`),mode==='off'?0:3,'Original shared-grid beat markers');if(mode==='off')assert.equal(await evaluate(`document.getElementById('playhead').style.left`),'0%','OFF keeps the original timeline playhead at zero');
+ }
+ for(const id of ['syncBpm','syncBars','syncNum','syncDen','syncMode','countInVisual'])assert((await evaluate(`AionNative.request({operation:'setParameter',id:'${id}',value:${JSON.stringify(timingBefore[id])=== 'true'?1:JSON.stringify(timingBefore[id])==='false'?0:JSON.stringify(timingBefore[id])}})`)).ok);
+ assert(!(await evaluate(`AionNative.request({operation:'setParameter',id:'syncBpm',value:0})`)).ok);
+ assert(!(await evaluate(`AionNative.request({operation:'setParameter',id:'syncBars',value:1.5})`)).ok);
  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'+',code:'Equal',bubbles:true}))`);
  assert(await evaluate(`document.body.classList.contains('mode-overdub')`));
  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'-',code:'Minus',bubbles:true}))`);
@@ -123,6 +137,47 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    await evaluate(`__JUCE__.backend.emitByBackend=window.savedBackendEmit;delete window.savedBackendEmit`);
  }
  if(snapshot.audioReady){
+   // These snapshots verify presentation/routing only; no microphone recording.
+   await evaluate(`window.savedBackendEmit=__JUCE__.backend.emitByBackend;window.transportFixture='armed';__JUCE__.backend.emitByBackend=function(event,payload){if(event==='__juce__complete'){const message=JSON.parse(payload);if(message.result?.tracks){Object.assign(message.result.tracks[0],{state:window.transportFixture,length:window.transportFixture==='armed'?0:512,scheduledFrame:message.result.syncFrame+message.result.sampleRate});}payload=JSON.stringify(message);}return window.savedBackendEmit.call(this,event,payload);}`);
+   for(const state of ['armed','queued','stopping']){
+     await evaluate(`window.transportFixture='${state}'`);
+     const caption=state==='stopping'?'STOP NOW':'CANCEL';
+     for(let n=0;n<40;++n){if(await evaluate(`document.getElementById('loop-action-0').textContent==='${caption}'`))break;await delay(50);}
+     assert(await evaluate(`document.getElementById('loop-action-0').textContent==='${caption}'&&!document.getElementById('loop-action-0').disabled`),'Original '+state+' main control caption');
+   }
+   await evaluate(`window.transportFixture='armed';document.getElementById('loop-action-0').scrollIntoView({behavior:'instant',block:'center'})`);await delay(200);
+   const rect=await evaluate(`(()=>{const r=document.getElementById('loop-action-0').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+   await evaluate(`window.pointerTrace=[];window.tracePointer=e=>window.pointerTrace.push({type:e.type,target:e.target.id,id:e.pointerId,buttons:e.buttons,button:e.button,primary:e.isPrimary,at:performance.now()});window.oldPress=AionPerformance.prototype.press;AionPerformance.prototype.press=function(id,key){window.pointerTrace.push({type:'press',key,held:this.presses.has(key),state:this.actions.track(id)?.state});if(!window.testController){window.testController=this;window.oldAction=this.actions.action;window.oldHold=this.actions.hold;this.actions.action=id=>{window.pointerTrace.push({type:'action',state:this.actions.track(id)?.state});return window.oldAction(id);};this.actions.hold=id=>{window.pointerTrace.push({type:'hold',state:this.actions.track(id)?.state});return window.oldHold(id);};}return window.oldPress.call(this,id,key);};window.traceError=e=>window.pointerTrace.push({type:'error',message:e.message});window.addEventListener('error',window.traceError);for(const type of ['pointerdown','pointerup','pointercancel','lostpointercapture'])window.addEventListener(type,window.tracePointer,true);`);
+   assert(await evaluate(`document.elementFromPoint(${rect.x},${rect.y})?.id==='loop-action-0'`),'Mouse cancel target is the visible main button');
+   const beforeMouse=await evaluate(`AionNative.request({operation:'snapshot'})`);
+   await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:rect.x,y:rect.y});
+   await call('Input.dispatchMouseEvent',{type:'mousePressed',x:rect.x,y:rect.y,button:'left',clickCount:1});
+   await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:rect.x,y:rect.y,button:'left',clickCount:1});
+   let afterMouse;for(let n=0;n<80;++n){afterMouse=await evaluate(`AionNative.request({operation:'snapshot'})`);if(afterMouse.lastRequestId>beforeMouse.lastRequestId)break;await delay(50);}
+   assert.equal(afterMouse.lastRequestId,beforeMouse.lastRequestId+1,'Mouse down/up/click sends exactly one cancel command: '+JSON.stringify(await evaluate(`({events:window.pointerTrace,status:document.getElementById('native-status').textContent,disabled:document.getElementById('loop-action-0').disabled,caption:document.getElementById('loop-action-0').textContent})`)));
+   const beforeKey=afterMouse;
+   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{code:'Digit1',key:'1',bubbles:true}));document.dispatchEvent(new KeyboardEvent('keyup',{code:'Digit1',key:'1',bubbles:true}));`);
+   let afterKey;for(let n=0;n<80;++n){afterKey=await evaluate(`AionNative.request({operation:'snapshot'})`);if(afterKey.lastRequestId>beforeKey.lastRequestId)break;await delay(50);}assert.equal(afterKey.lastRequestId,beforeKey.lastRequestId+1,'Keyboard and mouse use the same cancel route');
+   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{code:'Digit1',key:'1',bubbles:true}));document.dispatchEvent(new KeyboardEvent('keyup',{code:'Digit1',key:'1',bubbles:true}));`);
+   let afterRepeat;for(let n=0;n<80;++n){afterRepeat=await evaluate(`AionNative.request({operation:'snapshot'})`);if(afterRepeat.lastRequestId>afterKey.lastRequestId)break;await delay(50);}assert.equal(afterRepeat.lastRequestId,afterKey.lastRequestId+1,'A released number key can be pressed again; no stranded key state');
+   await evaluate(`window.transportFixture='playing'`);
+   for(let n=0;n<40;++n){if(await evaluate(`document.getElementById('loop-action-0').textContent==='STOP'`))break;await delay(50);}
+   Object.assign(rect,await evaluate(`(()=>{const r=document.getElementById('loop-action-0').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`));
+   assert(await evaluate(`document.elementFromPoint(${rect.x},${rect.y})?.id==='loop-action-0'`),'Mouse hold target is the visible original main button');
+   const beforeHold=await evaluate(`AionNative.request({operation:'snapshot'})`);
+   await call('Input.dispatchMouseEvent',{type:'mousePressed',x:rect.x,y:rect.y,button:'left',clickCount:1});await delay(800);
+   await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:rect.x,y:rect.y,button:'left',clickCount:1});await delay(250);
+   let afterHold;for(let n=0;n<120;++n){afterHold=await evaluate(`AionNative.request({operation:'snapshot'})`);if(afterHold.lastRequestId>=beforeHold.lastRequestId+2)break;await delay(50);}assert.equal(afterHold.lastRequestId,beforeHold.lastRequestId+2,'Mouse hold sends short stop then immediate panic, with no release duplicate: '+JSON.stringify(await evaluate(`({events:window.pointerTrace,status:document.getElementById('native-status').textContent,disabled:document.getElementById('loop-action-0').disabled,caption:document.getElementById('loop-action-0').textContent})`)));
+   await delay(200);assert.equal((await evaluate(`AionNative.request({operation:'snapshot'})`)).lastRequestId,afterHold.lastRequestId,'Release never duplicates the held action');
+   const beforeKeyHold=await evaluate(`AionNative.request({operation:'snapshot'})`);
+   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{code:'Digit1',key:'1',bubbles:true}));document.dispatchEvent(new KeyboardEvent('keydown',{code:'Digit1',key:'1',repeat:true,bubbles:true}));`);await delay(800);
+   await evaluate(`document.dispatchEvent(new KeyboardEvent('keyup',{code:'Digit1',key:'1',bubbles:true}))`);
+   let afterKeyHold;for(let n=0;n<120;++n){afterKeyHold=await evaluate(`AionNative.request({operation:'snapshot'})`);if(afterKeyHold.lastRequestId>=beforeKeyHold.lastRequestId+2)break;await delay(50);}assert.equal(afterKeyHold.lastRequestId,beforeKeyHold.lastRequestId+2,'Keyboard hold cuts now once and ignores auto-repeat');
+   assert(await evaluate(`!window.pointerTrace.some(e=>e.type==='error')`),'Native press/release/hold produces no browser exceptions');
+   await evaluate(`for(const type of ['pointerdown','pointerup','pointercancel','lostpointercapture'])window.removeEventListener(type,window.tracePointer,true);AionPerformance.prototype.press=window.oldPress;if(window.testController){window.testController.actions.action=window.oldAction;window.testController.actions.hold=window.oldHold;}window.removeEventListener('error',window.traceError);delete window.oldPress;delete window.oldAction;delete window.oldHold;delete window.testController;delete window.traceError;delete window.tracePointer;delete window.pointerTrace`);
+   await evaluate(`__JUCE__.backend.emitByBackend=window.savedBackendEmit;delete window.savedBackendEmit;delete window.transportFixture`);
+ }
+ if(snapshot.audioReady){
    await delay(150);
    const beforeEmptyHistory=await evaluate(`AionNative.request({operation:'snapshot'})`);
    await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyZ',key:'z',ctrlKey:true,bubbles:true}));document.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyZ',key:'Z',ctrlKey:true,shiftKey:true,bubbles:true}));`);
@@ -150,6 +205,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  }
  const invalid=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:3})`);assert(!invalid.ok);
  const muted=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:0})`);assert(muted.ok);
+ if(!snapshot.inputAvailable){const missing=await evaluate(`AionNative.request({operation:'loop',action:'record',track:0,generation:${snapshot.generation||1},expiresAt:Date.now()+3000})`);assert(!missing.ok&&missing.error.includes('No native input'),'Missing input fails clearly without silently recording zeros');}
  const expired=await evaluate(`AionNative.request({operation:'loop',action:'record',track:0,generation:${snapshot.generation||1},expiresAt:Date.now()-1000})`);assert(!expired.ok&&expired.error.includes('expired'));
  if(snapshot.audioReady){
    const queued=await evaluate(`AionNative.request({operation:'loop',action:'play',track:0,generation:${snapshot.generation},expiresAt:Date.now()+3000})`);assert(queued.ok&&queued.queued);

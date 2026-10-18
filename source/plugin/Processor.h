@@ -30,6 +30,7 @@ private:
     std::atomic<float>* master = nullptr;
     std::atomic<float>* monitor = nullptr;
     std::atomic<float>* autoPlay = nullptr;
+    std::atomic<float> *syncMode=nullptr,*syncBpm=nullptr,*syncBars=nullptr,*syncNum=nullptr,*syncDen=nullptr,*countIn=nullptr;
     aion::EngineView latest{}; // Message-thread cached, coherent audio snapshot.
     std::uint32_t nextRequest = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AionProcessor)

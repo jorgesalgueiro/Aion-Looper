@@ -23,10 +23,19 @@ AionProcessor::AionProcessor()
       parameters(*this, nullptr, "AionState", {std::make_unique<juce::AudioParameterFloat>(
           juce::ParameterID{"masterGain", 1}, "Master gain", juce::NormalisableRange<float>{0.0f, 2.0f}, 0.0f),
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"inputMonitor", 1}, "Input monitor", false),
-          std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"autoPlayAfterRecord", 1}, "Auto-play after Rec", true)}) {
+          std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"autoPlayAfterRecord", 1}, "Auto-play after Rec", true),
+          std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"syncMode",1},"Sync mode",juce::StringArray{"Off","Static","Dynamic"},2),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"syncBpm",1},"Tempo",juce::NormalisableRange<float>{10,999},120),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID{"syncBars",1},"Bars",1,64,2),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID{"syncNum",1},"Beats per bar",1,32,4),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID{"syncDen",1},"Time signature denominator",1,32,4),
+          std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"countInVisual",1},"Visual count-in",true)}) {
     master = parameters.getRawParameterValue("masterGain");
     monitor = parameters.getRawParameterValue("inputMonitor");
     autoPlay = parameters.getRawParameterValue("autoPlayAfterRecord");
+    syncMode=parameters.getRawParameterValue("syncMode");syncBpm=parameters.getRawParameterValue("syncBpm");
+    syncBars=parameters.getRawParameterValue("syncBars");syncNum=parameters.getRawParameterValue("syncNum");
+    syncDen=parameters.getRawParameterValue("syncDen");countIn=parameters.getRawParameterValue("countInVisual");
 }
 void AionProcessor::prepareToPlay(double rate, int) { engine.prepare(rate); }
 bool AionProcessor::isBusesLayoutSupported(const BusesLayout& b) const {
@@ -42,6 +51,8 @@ void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuff
     engine.setTarget(master->load(std::memory_order_relaxed));
     engine.setMonitoring(monitor->load(std::memory_order_relaxed) >= 0.5f);
     engine.setAutoPlay(autoPlay->load(std::memory_order_relaxed) >= 0.5f);
+    engine.configureSync({static_cast<aion::SyncMode>(static_cast<unsigned>(syncMode->load())),syncBpm->load(),
+        static_cast<unsigned>(syncBars->load()),static_cast<unsigned>(syncNum->load()),static_cast<unsigned>(syncDen->load()),countIn->load()>=0.5f});
     engine.transport = {};
     if (auto* head = getPlayHead()) if (auto position = head->getPosition()) {
         engine.transport.hostValid = true;
@@ -87,7 +98,13 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("rejected", latest.rejected); result->setProperty("poolFull", latest.poolFull);
         result->setProperty("audioReset", latest.audioReset);
         result->setProperty("nextUndo",latest.nextUndo);result->setProperty("nextRedo",latest.nextRedo);
-        const char* names[] = {"empty", "recording", "playing", "stopped", "overdubbing", "substituting", "finalizing", "multiplying"};
+        const char* names[] = {"empty", "recording", "playing", "stopped", "overdubbing", "substituting", "finalizing", "multiplying", "armed", "queued", "stopping"};
+        const auto& timing=latest.sync;
+        result->setProperty("syncMode",static_cast<int>(timing.settings.mode));result->setProperty("syncBpm",timing.settings.bpm);
+        result->setProperty("syncBars",static_cast<int>(timing.settings.bars));result->setProperty("syncNum",static_cast<int>(timing.settings.numerator));
+        result->setProperty("syncDen",static_cast<int>(timing.settings.denominator));result->setProperty("countInVisual",timing.settings.countIn);
+        result->setProperty("gridLength",timing.loopSeconds);result->setProperty("barLength",timing.barSeconds);
+        result->setProperty("gridPosition",timing.position);result->setProperty("syncFrame",static_cast<juce::int64>(timing.frame));
         juce::Array<juce::var> tracks;
         for (const auto& t : latest.tracks) {
             auto* object = new juce::DynamicObject();
@@ -95,6 +112,8 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             object->setProperty("length", static_cast<int>(t.length)); object->setProperty("position", static_cast<int>(t.position));
             object->setProperty("undoCount",static_cast<int>(t.undoCount));object->setProperty("redoCount",static_cast<int>(t.redoCount));
             object->setProperty("reverse", t.reverse);
+            object->setProperty("scheduledFrame",static_cast<juce::int64>(t.scheduledFrame));object->setProperty("stopPending",t.stopPending);
+            object->setProperty("effectiveRate",t.effectiveRate);object->setProperty("dynamicRecorded",t.dynamicRecorded);
             object->setProperty("pan", t.pan); object->setProperty("playbackRate", t.playbackRate);
             object->setProperty("volume", t.volume); object->setProperty("feedback", t.feedback);
             object->setProperty("finalizationFailed", t.finalizationFailed); object->setProperty("solo", t.solo); object->setProperty("muted", t.muted); object->setProperty("peak", t.peak);
@@ -103,13 +122,15 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("tracks", juce::var(tracks));
     } else if (operation == "setParameter") {
         const auto id = request.getProperty("id", {}).toString();
-        if (id != "masterGain" && id != "inputMonitor" && id != "autoPlayAfterRecord") return fail("Unknown parameter");
+        const bool boolean=id=="inputMonitor"||id=="autoPlayAfterRecord"||id=="countInVisual";
+        const bool integral=id=="syncMode"||id=="syncBars"||id=="syncNum"||id=="syncDen";
+        if(!boolean&&!integral&&id!="masterGain"&&id!="syncBpm")return fail("Unknown parameter");
         const auto value = request.getProperty("value", {});
         if (!(value.isDouble() || value.isInt())) return fail("Expected numeric parameter value");
         const double number = static_cast<double>(value);
-        const double maximum = id == "masterGain" ? 2.0 : 1.0;
-        if (!std::isfinite(number) || number < 0.0 || number > maximum
-            || (id != "masterGain" && number != 0 && number != 1)) return fail("Parameter outside range");
+        const double maximum=id=="syncBpm"?999:(id=="syncBars"?64:(id=="syncNum"||id=="syncDen"?32:(id=="masterGain"||id=="syncMode"?2:1)));
+        const double minimum=id=="syncBpm"?10:(id=="syncBars"||id=="syncNum"||id=="syncDen"?1:0);
+        if(!std::isfinite(number)||number<minimum||number>maximum||(boolean&&number!=0&&number!=1)||(integral&&number!=std::floor(number)))return fail("Parameter outside range");
         auto* parameter = parameters.getParameter(id);
         parameter->beginChangeGesture(); parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(number))); parameter->endChangeGesture();
         result->setProperty("ok", true);
@@ -124,7 +145,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if (!id.isInt() || static_cast<int>(id) < 0 || static_cast<int>(id) >= static_cast<int>(aion::LoopBank::trackCount)
             || !generation.isInt() || static_cast<int>(generation) <= 0) return fail("Invalid track or audio generation");
         const auto actionName = request.getProperty("action", {}).toString();
-        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply"};
+        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply", "stopImmediate"};
         unsigned action = 0;
         for (; action < std::size(names) && actionName != names[action]; ++action) {}
         if (action == std::size(names)) return fail("Unknown looper action");
@@ -133,6 +154,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         const double number = static_cast<double>(value);
         if (!std::isfinite(number) || number < (actionName == "speed" ? 0.25 : 0.0) || number > (actionName == "pan" ? 10 : (actionName == "volume" || actionName == "speed" ? 2 : 1))
             || ((actionName == "mute" || actionName == "reverse") && number != 0 && number != 1)) return fail("Action value outside range");
+        if(actionName=="record"&&!inputAvailable(*this))return fail("No native input: enable an input device and Unmute Input in Options, or route audio from the host.");
         const auto requestId = nextRequest + 1;
         if (!engine.enqueueLoop({static_cast<aion::LoopAction>(action), static_cast<std::uint32_t>(static_cast<int>(id)), requestId,
                                 static_cast<std::uint32_t>(static_cast<int>(generation)), 0, actionName=="multiply"?(inputAvailable(*this)?1.0f:0.0f):static_cast<float>(number)}))
