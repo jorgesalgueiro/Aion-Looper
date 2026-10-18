@@ -335,9 +335,50 @@ Clear All/cancellation and all 20 held sources are covered by sanitizer/allocati
 checks. History copies are avoided by retaining immutable generations, so a
 callback history operation performs pointer and metadata work only.
 
-Snapshots consume memory beyond the 64 MiB capture pool: at default full resident
-capacity, five generations can retain another 320 MiB, plus held reverse sources,
-worker scratch/results, deferred retirement, JUCE and WebView. These are working
-set estimates, not a hard process cap. Memory-pressure/mobile acceptance remains
-pending. Same-rate engine reprepare stops and retains history; rate/capacity reset
+Snapshots consume memory beyond the 64 MiB capture pool. With fixed clip lengths,
+five generations across the full resident budget can retain another 320 MiB.
+With Multiply and unequal-length history, that estimate no longer bounds retained
+PCM: up to 100 historical clip handles may refer to older, larger clips, each
+limited individually by the resident capacity. A conservative 100 x 64 MiB bound
+is 6.25 GiB, before current clips, held reverse sources, worker scratch/results,
+deferred retirement, JUCE and WebView. This is not a hard process cap or a measured
+working set. Memory-pressure/mobile acceptance remains pending. Same-rate engine reprepare stops and retains history; rate/capacity reset
 joins the worker and clears it. No project/DAW PCM persistence is implied.
+
+### Multiply and unequal clip lengths
+
+`multiply` toggles an input capture on a playing loop at unity speed (the reference's
+0.01 tolerance is retained; a native rate ramp must first settle). The command's
+input-availability flag is resolved by C++: Standalone checks the active input
+channels and JUCE's input mute, plugins check their enabled input bus. The UI
+cannot override this routing decision. A stopped loop, or a playing loop without
+input, instead requests a worker doubling transaction. No new UI is introduced.
+
+Interactive capture keeps the old clip audible. Fewer than 128 frames return the
+capture blocks and resume unchanged, with no checkpoint or source restart. Other
+takes pass the unchanged DC-removal / 8ms crossfade order on the worker, then append
+after the complete old clip without rounding to a multiple or replacing samples.
+Doubling copies the original twice without additional DSP. The callback only
+publishes/accepts the job; failed allocation and revision cancellation retain the
+old clip/history. Stop suppresses late autoplay; successful playing commits reset
+the source using the requested reverse direction. Stopped doubles remain stopped.
+
+Multiply calls the equivalent of `Loop.saveStateForUndo`, not `pushUndoState`:
+it adds a five-deep local checkpoint but does not append global undo or clear
+global redo. This includes the reference's potentially stale global redo head
+when its local branch is discarded. General overdub/substitute rules above are
+unchanged. The per-loop history control is the reliable way to undo MULT.
+
+The current-PCM budget now reserves rounded growth for captured/pending Multiply
+jobs. Capture auto-finishes at the exact remaining frame limit; doubling and
+restoring a longer history clip reject before changing ownership if other current
+clips/captures/reserved growth leave insufficient room. The job caches its base
+length so admission/telemetry never dereference a worker-released canceled base.
+Retained history and reverse-source leases still consume additional memory beyond
+the resident/capture budget; the limit is not a hard process working-set cap.
+
+Like the existing NORM/edit path, one capture/finalization owns the worker lane;
+MULT is guarded while another track captures or finalizes (including stopped
+doubling). Undo/Redo and retrigger are unavailable on a track being captured or
+finalized. These native transaction guards are explicit limits on interaction
+parity; concurrent edits and full browser lifecycle behavior are not established.

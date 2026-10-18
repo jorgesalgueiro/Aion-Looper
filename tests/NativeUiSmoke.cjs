@@ -109,6 +109,17 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    let normAck;
    for(let n=0;n<40;++n){normAck=await evaluate(`AionNative.request({operation:'snapshot'})`);if(normAck.lastRequestId>beforeNorm.lastRequestId)break;await delay(50);}
    assert(normAck.lastRequestId>beforeNorm.lastRequestId&&normAck.rejected,'NORM binding reaches audio owner, which rejects the fixture-only clip');
+   assert.equal(typeof normAck.inputAvailable,'boolean','Native backend reports input routing availability');
+   for(const gesture of [`[...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='MULT').click()`,`document.dispatchEvent(new KeyboardEvent('keydown',{code:'Backslash',key:String.fromCharCode(92),bubbles:true}))`]){
+     for(let n=0;n<40;++n){if(await evaluate(`![...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='MULT').disabled`))break;await delay(50);}
+     const before=await evaluate(`AionNative.request({operation:'snapshot'})`);await evaluate(gesture);let ack;
+     for(let n=0;n<40;++n){ack=await evaluate(`AionNative.request({operation:'snapshot'})`);if(ack.lastRequestId>before.lastRequestId)break;await delay(50);}
+     assert(ack.lastRequestId>before.lastRequestId&&ack.rejected,'MULT button/shortcut reaches audio owner, which rejects a snapshot-only clip');
+   }
+   await evaluate(`__JUCE__.backend.emitByBackend=function(event,payload){if(event==='__juce__complete'){const message=JSON.parse(payload);if(message.result?.tracks){message.result.tracks[0].state='multiplying';message.result.tracks[0].length=512;}payload=JSON.stringify(message);}return window.savedBackendEmit.call(this,event,payload);}`);
+   for(let n=0;n<40;++n){if(await evaluate(`document.getElementById('loop-action-0').textContent==='FINISH'&&document.body.classList.contains('is-multiplying')`))break;await delay(50);}
+   assert(await evaluate(`document.getElementById('loop-action-0').textContent==='FINISH'&&!document.getElementById('loop-action-0').disabled&&document.getElementById('loop-state-symbol-0').textContent==='(M)'&&document.getElementById('loop-speed-slider-0').disabled&&[...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='RTRG').disabled&&![...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='MULT').disabled`),'Original Multiply state/FINISH/speed presentation');
+
    await evaluate(`__JUCE__.backend.emitByBackend=window.savedBackendEmit;delete window.savedBackendEmit`);
  }
  if(snapshot.audioReady){

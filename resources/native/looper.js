@@ -67,7 +67,7 @@
 
         document.querySelector('input[name=syncMode][value=off]').checked=true;
         const mapping=document.getElementById('keyMappingUI');
-        mapping.innerHTML='<div class="mapping-tabs"><button class="tab-btn active">Keyboard</button></div><div class="mapping-scroll-container"><table class="mapping-table">'+Array.from({length:20},(_,i)=>`<tr><td>Loop ${i+1}</td><td>${i<10?'':'Shift+'}${(i+1)%10}</td></tr>`).join('')+'<tr><td>Global OD</td><td>+</td></tr><tr><td>Global SUB</td><td>-</td></tr><tr><td>STOP ALL</td><td>Space</td></tr><tr><td>Retrigger selected loop</td><td>/</td></tr></table></div>';
+        mapping.innerHTML='<div class="mapping-tabs"><button class="tab-btn active">Keyboard</button></div><div class="mapping-scroll-container"><table class="mapping-table">'+Array.from({length:20},(_,i)=>`<tr><td>Loop ${i+1}</td><td>${i<10?'':'Shift+'}${(i+1)%10}</td></tr>`).join('')+'<tr><td>Global OD</td><td>+</td></tr><tr><td>Global SUB</td><td>-</td></tr><tr><td>STOP ALL</td><td>Space</td></tr><tr><td>Retrigger selected loop</td><td>/</td></tr><tr><td>Multiply selected loop</td><td>&#92;</td></tr></table></div>';
         document.getElementById('midiStatus').textContent='Native MIDI mapping is not ported yet.';
         let selected=0;
         const enabled = () => snapshot?.audioReady && Date.now()-advancedAt < 1000;
@@ -80,6 +80,10 @@
             // repeated gesture uses the last acknowledged depth, not stale UI.
             if(!t?.[redo?'redoCount':'undoCount']||!['playing','stopped'].includes(t.state))return null;
             return {action:redo?(id===null?'redoGlobal':'redo'):(id===null?'undoGlobal':'undo'),track:id??0,value:0};
+        });
+        const multiply=id=>scheduler.enqueue(()=>{
+            const t=snapshot.tracks[id];
+            return t.length&&['playing','stopped','multiplying'].includes(t.state)?{action:'multiply',track:id,value:0}:null;
         });
         const halfSpeed=id=>scheduler.enqueue(()=>snapshot.tracks[id].length?{action:'speed',track:id,value:snapshot.tracks[id].playbackRate===1?0.5:1}:null);
         const queueControl=(action,track,value)=>{if(enabled())scheduler.enqueue(()=>({action,track,value}),{key:`${track}:${action}`});};
@@ -117,7 +121,7 @@
             scheduler.enqueue(()=>{
                 const t=snapshot.tracks[id];
                 if(t.state==='finalizing')return null;
-                const owner=snapshot.tracks.findIndex(t=>['recording','overdubbing','substituting','finalizing'].includes(t.state));
+                const owner=snapshot.tracks.findIndex(t=>['recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 if(t.state==='empty'&&owner>=0&&owner!==id) {
                     if(snapshot.tracks[owner].state==='finalizing')return null;
                     return {action:'finish',track:owner,value:0};
@@ -131,6 +135,7 @@
             hold:id=>scheduler.enqueue(()=>{const state=snapshot.tracks[id].state;return state==='stopped'?{action:'clear',track:id,value:0}:state==='playing'?{action:'stop',track:id,value:0}:null;}),
             mode:next=>{mode=mode===next?'normal':next;refresh();},
             history:redo=>restoreHistory(redo),
+            multiply:()=>multiply(selected),
             stop:stopSession,retrigger:()=>command('retrigger',selected),halfSpeed:()=>halfSpeed(selected)
         });
         document.addEventListener('keydown',e=>keyboard.down(e));
@@ -160,11 +165,13 @@
                 const undo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='UNDO'),()=>restoreHistory(false,i));
                 const redo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='REDO'),()=>restoreHistory(true,i));
                 const reverse=bind(row.querySelector(`#loop-${i}-reverse`),()=>scheduler.enqueue(()=>({action:'reverse',track:i,value:snapshot.tracks[i].reverse?0:1})),'change');
+                const mult=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='MULT'),()=>multiply(i));
+                mult.title='Multiply [\\] — press to capture, press again to extend. No input = double.';
                 const normalize=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='NORM'),()=>command('normalize',i));
                 feedback.addEventListener('dblclick',()=>queueControl('feedback',i,0.8));
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const canvas=row.querySelector('canvas');canvas.title='Playback position';
-                rows.push({row,main,volume,feedback,pan,speed,half,reset,mute,solo,retrigger,normalize,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
+                rows.push({row,main,volume,feedback,pan,speed,half,reset,mute,solo,retrigger,normalize,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
         function refresh() {
@@ -181,8 +188,8 @@
             globalRedo.textContent=snapshot.nextRedo>=0?`REDO L${snapshot.nextRedo+1}`:'REDO';
             if(document.activeElement!==autoPlay)autoPlay.checked=snapshot.autoPlayAfterRecord;
             document.getElementById('activeCount').textContent=`${snapshot.tracks.filter(t=>t.state!=='empty').length}/20`;
-            document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['recording','overdubbing','substituting','finalizing'].includes(t.state))?'RECORDING':'READY';
-            const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)',finalizing:'[..]'};
+            document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state))?'RECORDING':'READY';
+            const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)',multiplying:'(M)',finalizing:'[..]'};
             rows.forEach((r,i)=>{
                 const t=snapshot.tracks[i];r.row.className=`loop ${t.state}`;
                 r.row.querySelectorAll('[data-native-control]').forEach(e=>e.disabled=!active);
@@ -199,14 +206,15 @@
                 if(document.activeElement!==r.speed)r.speed.value=t.playbackRate;
                 r.row.querySelector(`#loop-pan-display-${i}`).textContent=t.pan;
                 r.row.querySelector(`#loop-speed-display-${i}`).textContent=`${t.playbackRate.toFixed(2)}x`;
-                const editing=['recording','overdubbing','substituting','finalizing'].includes(t.state);
+                const editing=['recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state);
                 r.speed.disabled=!active||editing;r.half.disabled=!active||editing||!t.length;
                 r.reset.disabled=!active||editing||t.playbackRate===1;
-                r.retrigger.disabled=!active||!t.length||['recording','finalizing'].includes(t.state);
+                r.retrigger.disabled=!active||!t.length||editing;
                 r.undo.disabled=!active||!t.undoCount||!['playing','stopped'].includes(t.state);
                 r.redo.disabled=!active||!t.redoCount||!['playing','stopped'].includes(t.state);
                 r.reverse.checked=!!t.reverse;
-                r.normalize.disabled=!active||!t.length||!['playing','stopped'].includes(t.state)||snapshot.tracks.some(t=>['recording','overdubbing','substituting','finalizing'].includes(t.state));
+                r.mult.disabled=!active||!t.length||!['playing','stopped','multiplying'].includes(t.state)||snapshot.tracks.some((other,id)=>id!==i&&['recording','overdubbing','substituting','multiplying','finalizing'].includes(other.state));
+                r.normalize.disabled=!active||!t.length||!['playing','stopped'].includes(t.state)||snapshot.tracks.some(t=>['recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
                 r.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
                 r.mute.textContent=t.muted?'UNM':'MUTE';r.mute.setAttribute('aria-pressed',String(t.muted));
@@ -218,6 +226,7 @@
             document.getElementById('subModeIndicator').style.display=mode==='substitute'?'':'none';
             document.body.classList.toggle('mode-overdub',mode==='overdub');
             document.body.classList.toggle('mode-substitute',mode==='substitute');
+            document.body.classList.toggle('is-multiplying',snapshot.tracks.some(t=>t.state==='multiplying'));
             document.body.classList.toggle('is-recording',snapshot.tracks.some(t=>t.state==='recording'));
             const db=value=>value>0?`${(20*Math.log10(value)).toFixed(1)} dBFS`:'-inf dBFS';
             document.getElementById('master-ascii-vu').textContent=`MASTER | ${db(snapshot.outputPeak)}`;

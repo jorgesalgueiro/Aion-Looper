@@ -18,7 +18,7 @@ bool remove(std::array<std::uint8_t,50>& order,std::uint32_t& size,std::uint32_t
 void forget(std::array<std::uint8_t,50>& order,std::uint32_t& size,std::uint32_t id) noexcept {
     std::uint32_t out=0;for(std::uint32_t i=0;i<size;++i)if(order[i]!=id)order[out++]=order[i];size=out;
 }
-bool capturing(LoopState state) noexcept {return state==LoopState::recording||state==LoopState::overdubbing||state==LoopState::substituting;}
+bool capturing(LoopState state) noexcept {return state==LoopState::recording||state==LoopState::overdubbing||state==LoopState::substituting||state==LoopState::multiplying;}
 }
 LoopBank::~LoopBank(){shutdown();}
 void LoopBank::shutdown(){
@@ -58,8 +58,19 @@ void LoopBank::workerLoop() noexcept {
             result=nullptr;resultChanged=true;
             try {
                 auto output=std::make_unique<Clip>();
-                output->length=job.edit?job.base->length:job.length;
-                if(job.normalize){
+                output->length=job.multiply?job.base->length+(job.doubling?job.base->length:job.length):(job.edit?job.base->length:job.length);
+                if(job.multiply){
+                    for(unsigned c=0;c<2;++c){
+                        auto& data=output->channels[c];data=job.base->channels[c];
+                        if(job.doubling)data.insert(data.end(),job.base->channels[c].begin(),job.base->channels[c].end());
+                        else {
+                            std::vector<float> take(job.length);
+                            for(std::uint32_t i=0;i<job.length;++i)take[i]=audio[(static_cast<std::size_t>(job.blocks[i/blockFrames])*blockFrames+i%blockFrames)*2+c];
+                            reference::removeDc(take);(void)reference::crossfade(take,rate,0.008);
+                            data.insert(data.end(),take.begin(),take.end());
+                        }
+                    }
+                } else if(job.normalize){
                     output->channels=job.base->channels;
                     resultChanged=reference::normalize(output->channels[0],output->channels[1]);
                 } else for(unsigned c=0;c<2;++c){
@@ -98,7 +109,7 @@ void LoopBank::acceptResult() noexcept {
             if(track.clip)residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
             // Web Audio reverses into an independent source buffer. NORM edits
             // the stored buffer, leaving that playing reversed copy untouched.
-            if(job.edit&&!job.normalize)saveUndo(track,job.track);
+            if(job.edit&&!job.normalize)saveUndo(track,job.track,!job.multiply);
             else if(job.normalize&&resultChanged&&track.activeReverse&&!track.reverseHold)
                 track.reverseHold=track.clip; // Transfer the old audio lease.
             else retire(track.clip);
@@ -117,7 +128,9 @@ void LoopBank::acceptResult() noexcept {
 }
 bool LoopBank::finish(Track& track) noexcept {
     if(!capturing(track.info.state))return false;
-    if(!track.captureLength){
+    if(!track.captureLength||(track.info.state==LoopState::multiplying&&track.captureLength<128)){
+        for(std::uint32_t i=0;i<track.blockCount;++i)freeBlocks[freeCount++]=track.blocks[i];
+        track.blockCount=track.captureLength=0;
         if(track.info.state==LoopState::recording)clear(track);
         else track.info.state=LoopState::playing;
         return true;
@@ -125,7 +138,8 @@ bool LoopBank::finish(Track& track) noexcept {
     if(finalizationPending())return false;
     job.blocks=track.blocks;job.blockCount=track.blockCount;job.length=track.captureLength;
     job.track=static_cast<std::uint32_t>(&track-tracks.data());job.revision=track.revision;
-    job.normalize=false;job.edit=track.info.state!=LoopState::recording;job.base=track.clip;
+    job.normalize=false;job.multiply=track.info.state==LoopState::multiplying;job.doubling=false;
+    job.edit=track.info.state!=LoopState::recording;job.base=track.clip;job.baseLength=track.info.length;
     if(job.edit)job.base->leases.fetch_add(1,std::memory_order_relaxed);
     job.feedback=track.info.state==LoopState::substituting?0.0:track.info.feedback;job.offset=track.captureOffset;
     track.blockCount=0;track.captureLength=0;track.finalPlay=true;track.playWhileFinalizing=job.edit;
@@ -137,7 +151,7 @@ void LoopBank::restartSource(Track& track) noexcept {
     retire(track.reverseHold);track.reverseHold=nullptr;
     track.activeReverse=track.info.state==LoopState::playing&&track.info.reverse;
 }
-void LoopBank::saveUndo(Track& track,std::uint32_t id) noexcept {
+void LoopBank::saveUndo(Track& track,std::uint32_t id,bool global) noexcept {
     if(track.info.undoCount==track.undo.size()){
         retire(track.undo[0]);std::move(track.undo.begin()+1,track.undo.end(),track.undo.begin());
         --track.info.undoCount;(void)remove(undoOrder,undoSize,id,false);
@@ -145,7 +159,7 @@ void LoopBank::saveUndo(Track& track,std::uint32_t id) noexcept {
     track.undo[track.info.undoCount++]=track.clip; // Transfer current audio lease into history.
     for(std::uint32_t i=0;i<track.info.redoCount;++i)retire(track.redo[i]);
     track.redo.fill(nullptr);track.info.redoCount=0;
-    append(undoOrder,undoSize,id);redoSize=0;
+    if(global){append(undoOrder,undoSize,id);redoSize=0;}
 }
 bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     auto& from=redo?track.redo:track.undo;auto& to=redo?track.undo:track.redo;
@@ -153,6 +167,8 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     auto& toCount=redo?track.info.undoCount:track.info.redoCount;
     if(!track.clip||!fromCount||toCount>=to.size()||
        (track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopped))return false;
+    const auto restored=from[fromCount-1];
+    if(restored->length>track.clip->length&&restored->length-track.clip->length>growthRoom(track))return false;
     residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
     to[toCount++]=track.clip;track.clip=from[--fromCount];from[fromCount]=nullptr;
     residentBlocks+=(track.clip->length+blockFrames-1)/blockFrames;
@@ -196,6 +212,22 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
     if(id>=trackCount)return false;
     auto& t=tracks[id];auto& s=t.info.state;
     switch(action){
+        case LoopAction::multiply: {
+            if(value!=0&&value!=1)return false;
+            if(s==LoopState::multiplying)return finish(t);
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped)||hasCapture())return false;
+            if(s==LoopState::playing&&(std::abs(t.info.playbackRate-1)>0.01f||t.rateRemaining))return false;
+            if(s==LoopState::playing&&value==1){
+                if(!freeCount||growthRoom(t)<128)return false;
+                t.captureLength=t.captureOffset=0;t.info.finalizationFailed=false;s=LoopState::multiplying;poolFull=false;return true;
+            }
+            if(t.clip->length>growthRoom(t))return false;
+            job.blockCount=0;job.length=0;job.offset=0;job.track=id;job.revision=t.revision;
+            job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=false;job.multiply=job.doubling=true;
+            job.base->leases.fetch_add(1,std::memory_order_relaxed);
+            t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
+        }
         case LoopAction::undo:return restore(t,id,false);
         case LoopAction::redo:return restore(t,id,true);
         case LoopAction::record:
@@ -229,7 +261,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::normalize:
             if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped)||hasCapture())return false;
             job.blockCount=0;job.length=t.clip->length;job.offset=0;job.track=id;job.revision=t.revision;
-            job.base=t.clip;job.edit=true;job.normalize=true;
+            job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=true;job.multiply=job.doubling=false;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
             t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
@@ -251,7 +283,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         }
         case LoopAction::speed:
             if (!std::isfinite(value) || value < 0.25f || value > 2 || s == LoopState::recording
-                || s == LoopState::overdubbing || s == LoopState::substituting || s == LoopState::finalizing) return false;
+                || s == LoopState::overdubbing || s == LoopState::substituting || s == LoopState::multiplying || s == LoopState::finalizing) return false;
             if (value == t.info.playbackRate) return true;
             t.info.playbackRate = value; t.rateRemaining = fadeLength * 4;
             if (t.rateRemaining) t.rateIncrement = (value-t.rate)/t.rateRemaining;
@@ -266,9 +298,32 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
 }
 std::uint32_t LoopBank::available() const noexcept {
     auto used=residentBlocks;
-    for(const auto& track:tracks)if(track.info.state==LoopState::recording)used+=track.blockCount;
-    if(finalizationPending()&&!job.edit)used+=job.blockCount;
+    for(const auto& track:tracks){
+        if(track.info.state==LoopState::recording)used+=track.blockCount;
+        if(track.info.state==LoopState::multiplying)
+            used+=(track.info.length+track.captureLength+blockFrames-1)/blockFrames-(track.info.length+blockFrames-1)/blockFrames;
+    }
+    if(finalizationPending()){
+        if(!job.edit)used+=job.blockCount;
+        else if(job.multiply)used+=(job.baseLength+(job.doubling?job.baseLength:job.length)+blockFrames-1)/blockFrames-(job.baseLength+blockFrames-1)/blockFrames;
+    }
     return std::min(freeCount,totalBlocks-std::min(used,totalBlocks))*blockFrames;
+}
+std::uint32_t LoopBank::growthRoom(const Track& track) const noexcept {
+    auto used=residentBlocks;
+    for(const auto& t:tracks){
+        if(t.info.state==LoopState::recording)used+=t.blockCount;
+        if(t.info.state==LoopState::multiplying&& &t!=&track)
+            used+=(t.info.length+t.captureLength+blockFrames-1)/blockFrames-(t.info.length+blockFrames-1)/blockFrames;
+    }
+    if(finalizationPending()){
+        if(!job.edit)used+=job.blockCount;
+        else if(job.multiply&& &tracks[job.track]!=&track){
+            const auto length=job.baseLength;
+            used+=(length+(job.doubling?length:job.length)+blockFrames-1)/blockFrames-(length+blockFrames-1)/blockFrames;
+        }
+    }
+    return (totalBlocks-std::min(used,totalBlocks)+(track.info.length+blockFrames-1)/blockFrames)*blockFrames-track.info.length;
 }
 bool LoopBank::hasCapture() const noexcept {
     if(finalizationPending())return true;
@@ -281,7 +336,8 @@ Stereo LoopBank::tick(Stereo input) noexcept {
     for(auto& t:tracks){
         auto& v=t.info;
         if(capturing(v.state)){
-            if(t.captureLength%blockFrames==0){
+            if(v.state==LoopState::multiplying&&t.captureLength>=growthRoom(t)){poolFull=true;(void)finish(t);}
+            if(capturing(v.state)&&t.captureLength%blockFrames==0){
                 const bool room=v.state!=LoopState::recording||residentBlocks+t.blockCount<totalBlocks;
                 if(freeCount&&room)t.blocks[t.blockCount++]=freeBlocks[--freeCount];
                 else {poolFull=true;(void)finish(t);}
@@ -291,7 +347,7 @@ Stereo LoopBank::tick(Stereo input) noexcept {
                 if(v.state==LoopState::recording)v.length=t.captureLength;
             }
         }
-        const bool audible=t.clip&&(v.state==LoopState::playing||v.state==LoopState::overdubbing||v.state==LoopState::substituting||(v.state==LoopState::finalizing&&t.playWhileFinalizing));
+        const bool audible=t.clip&&(v.state==LoopState::playing||v.state==LoopState::overdubbing||v.state==LoopState::substituting||v.state==LoopState::multiplying||(v.state==LoopState::finalizing&&t.playWhileFinalizing));
         if(t.rateRemaining){t.rate+=t.rateIncrement;if(--t.rateRemaining==0)t.rate=v.playbackRate;}
         if(t.panRemaining){t.panGain.left+=t.panIncrement.left;t.panGain.right+=t.panIncrement.right;if(--t.panRemaining==0)t.panGain=t.panTarget;}
         Stereo out{};

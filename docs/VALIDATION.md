@@ -399,3 +399,46 @@ playing/stopped tracks can restore; the same track's active edit is guarded.
 - Only the incremental standalone test app is rebuilt. No version bump, ZIP or
   plugin package is made. History/audio are temporary; hardware/DAW, full browser
   rendering and long-session/mobile memory-pressure acceptance remain pending.
+
+
+## Original MULT capture/doubling — 2026-10-18
+
+The previous eight Windows gates plus the unchanged connected capture audit passed
+before starting MULT. This increment retains the original MULT button, backslash
+shortcut, original (M)/FINISH presentation and CSS. All 16 reference assets remain
+byte/SHA identical. There is no new panel, version bump, ZIP or plugin package.
+
+- Windows Release and Ubuntu CTest pass 9/9 (103.85s / 140.55s respectively), plus
+  the unchanged connected capture audit: 126 cases, 965,826 frames, maximum error
+  7.395e-8 at tolerance 1e-6. Existing NORM, reverse, history, state and kernel gates
+  all remain intact. After adding the mixed global-redo regression and a pending
+  growth assertion, the two affected gates passed again on both systems.
+- Final actual-JS MULT comparison: 90 cases, 832 metadata snapshots, 1,546,108
+  committed PCM frames, maximum absolute error 2.015e-8, unchanged tolerance 1e-6.
+  This covers zero/1/127/128-frame discard/accept boundaries, mono/stereo,
+  8/48/96 kHz, unequal append lengths and repeated stopped/no-input doubling,
+  unequal-length Undo/Redo, and original local/global redo interaction.
+- Core regressions pass worker OOM rollback with prior redo/PCM retained, active
+  capture/edit guards, Stop without late autoplay, Clear/reset cancellation,
+  held reverse-source cancellation, exact current-memory exhaustion and growth
+  reservation against another track's history restore. Oversized doubles and
+  longer Redo clips preserve state on rejection. After space is released they
+  succeed. Observed callback C++ new/delete remains zero. Timestamped Multiply
+  start/finish and committed rendering agree exactly at 64/128 blocks; asynchronous
+  worker completion blocks are deliberately outside that deterministic comparison.
+- Ubuntu ASan/UBSan core passes (3.26s); TSan core passes using the documented
+  process-local setarch launch. No global ASLR/security settings changed.
+- Native WebView2 checks MULT button/shortcut IPC against snapshot-only clips,
+  original Multiply state/FINISH/speed guards, existing history/other controls,
+  no inline handlers/legacy AudioContext, and muted output. The initial shortcut
+  fixture failed with a JS SyntaxError caused by backslash escaping in the test
+  harness; using String.fromCharCode(92) fixes the fixture and the complete smoke
+  check passes. No microphone capture is started. Review also caught retrigger
+  offered during capture although the audio owner guards it; the button now uses
+  the same capture/finalization guard and the smoke assertion covers it.
+- Only the existing incremental Windows Standalone app is updated. Physical
+  TOPPING/ASIO/JACK/CoreAudio, DAW/Apple/mobile, long-session memory pressure,
+  full browser-rendered audio and persistent projects/export remain unverified.
+  A single worker lane guards concurrent capture/finalization interactions.
+  Variable-length history can retain substantially more memory than the earlier
+  fixed-length estimate; ARCHITECTURE documents the conservative bound.

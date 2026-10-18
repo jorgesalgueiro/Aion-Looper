@@ -8,7 +8,8 @@ to needed native audio/input/MIDI configuration using the original style.
 
 Latest accepted work: native capture/overdub finalization, ordered frontend
 performance commands, the original NORM action (including its no-op envelope
-repair), the loop Rvers control, and per-loop/global Undo/Redo. Offline DSP and connected
+repair), the loop Rvers control, per-loop/global Undo/Redo, and original MULT
+capture/doubling. Offline DSP and connected
 committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.
@@ -29,7 +30,7 @@ Before advancing:
    fails. Keep working on that feature. Do not label a build production-ready on
    the strength of unit tests; driver/DAW/platform validation is separate work.
 
-The native audio diagnostic and connected NORM/reverse/history comparisons are hard acceptance gates. It now compares the
+The native audio diagnostic and connected NORM/reverse/history comparisons are hard acceptance gates, including the unchanged-JS Multiply comparison. It now compares the
 connected manual capture/finalization pipeline; the old raw-mixer regression is
 retained in the kernel comparison. Do not infer full-feature or hardware parity
 from the committed-PCM subset. See docs/REFERENCE_AUDIT.md for current limits.

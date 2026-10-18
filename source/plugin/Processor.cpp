@@ -2,6 +2,21 @@
 #include "ui/WebEditor.h"
 #include <cmath>
 #include <iterator>
+#include <juce_audio_utils/juce_audio_utils.h>
+#if JucePlugin_Build_Standalone
+#include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
+#endif
+namespace {
+bool inputAvailable(const juce::AudioProcessor& processor){
+#if JucePlugin_Build_Standalone
+    if(auto* holder=juce::StandalonePluginHolder::getInstance()){
+        auto* device=holder->deviceManager.getCurrentAudioDevice();
+        return device&&!holder->muteInput.load()&&device->getActiveInputChannels().countNumberOfSetBits()>0;
+    }
+#endif
+    return processor.getTotalNumInputChannels()>0;
+}
+}
 AionProcessor::AionProcessor()
     : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
                                        .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
@@ -59,6 +74,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("legacyAudioEnabled", false);
         const float masterValue = master->load();
         result->setProperty("masterGain", std::isfinite(masterValue) ? juce::jlimit(0.0f, 2.0f, masterValue) : 0.0f);
+        result->setProperty("inputAvailable",inputAvailable(*this));
         result->setProperty("inputMonitor", monitor->load() >= 0.5f);
         result->setProperty("autoPlayAfterRecord", autoPlay->load() >= 0.5f);
         result->setProperty("generation", static_cast<int>(latest.generation));
@@ -71,7 +87,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("rejected", latest.rejected); result->setProperty("poolFull", latest.poolFull);
         result->setProperty("audioReset", latest.audioReset);
         result->setProperty("nextUndo",latest.nextUndo);result->setProperty("nextRedo",latest.nextRedo);
-        const char* names[] = {"empty", "recording", "playing", "stopped", "overdubbing", "substituting", "finalizing"};
+        const char* names[] = {"empty", "recording", "playing", "stopped", "overdubbing", "substituting", "finalizing", "multiplying"};
         juce::Array<juce::var> tracks;
         for (const auto& t : latest.tracks) {
             auto* object = new juce::DynamicObject();
@@ -108,7 +124,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if (!id.isInt() || static_cast<int>(id) < 0 || static_cast<int>(id) >= static_cast<int>(aion::LoopBank::trackCount)
             || !generation.isInt() || static_cast<int>(generation) <= 0) return fail("Invalid track or audio generation");
         const auto actionName = request.getProperty("action", {}).toString();
-        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal"};
+        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply"};
         unsigned action = 0;
         for (; action < std::size(names) && actionName != names[action]; ++action) {}
         if (action == std::size(names)) return fail("Unknown looper action");
@@ -119,7 +135,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             || ((actionName == "mute" || actionName == "reverse") && number != 0 && number != 1)) return fail("Action value outside range");
         const auto requestId = nextRequest + 1;
         if (!engine.enqueueLoop({static_cast<aion::LoopAction>(action), static_cast<std::uint32_t>(static_cast<int>(id)), requestId,
-                                static_cast<std::uint32_t>(static_cast<int>(generation)), 0, static_cast<float>(number)}))
+                                static_cast<std::uint32_t>(static_cast<int>(generation)), 0, actionName=="multiply"?(inputAvailable(*this)?1.0f:0.0f):static_cast<float>(number)}))
             return fail("Audio generation changed or command queue is full");
         nextRequest = requestId;
         result->setProperty("ok", true); result->setProperty("queued", true);

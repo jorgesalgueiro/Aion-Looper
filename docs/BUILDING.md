@@ -231,3 +231,14 @@ node tests/HistoryParity.cjs build/core/aion_reference_probe
 
 On Windows use `build/windows/Release/aion_reference_probe.exe`. Undo/Redo testing
 uses the same existing standalone build; no new package/version is needed.
+
+The core CTest suite includes `js_native_multiply`. Run its unchanged-JS
+capture/append/doubling/history and committed PCM report directly with:
+
+```sh
+node tests/MultiplyParity.cjs build/core/aion_reference_probe
+```
+
+On Windows use `build/windows/Release/aion_reference_probe.exe`. Only the existing
+Standalone target needs rebuilding for this migration increment; no ZIP, installer
+or plugin-format package is required.

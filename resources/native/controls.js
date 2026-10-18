@@ -49,6 +49,7 @@
             if(event.key==='-' || event.code==='NumpadSubtract') {event.preventDefault();this.actions.mode('substitute');return;}
             if(event.code==='Space') {event.preventDefault();this.actions.stop();return;}
             if(event.key==='/' || event.code==='NumpadDivide') {event.preventDefault();this.actions.retrigger();return;}
+            if(event.key==='\\') {event.preventDefault();this.actions.multiply?.();return;}
             if(event.code==='KeyH') {event.preventDefault();this.actions.halfSpeed();return;}
             const match=/^(?:Digit|Numpad)([0-9])$/.exec(event.code);
             if(!match)return;

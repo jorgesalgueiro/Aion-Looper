@@ -20,6 +20,7 @@ static void check(bool ok, const char* what) { if(!ok) { std::cerr<<what<<'\n'; 
 void loopTests();
 void reverseTests();
 void historyTests();
+void multiplyTests();
 int main() {
     aion::SpscQueue<unsigned, 8> q; unsigned value=0;
     for(unsigned i=0;i<7;++i) check(q.push(i),"queue capacity");
@@ -44,5 +45,6 @@ int main() {
     loopTests();
     reverseTests();
     historyTests();
+    multiplyTests();
     std::cout<<"PASS: queue bounds/concurrency, sample timing, smoothing, 64/128 invariance, no callback new/delete, finite output\n";
 }

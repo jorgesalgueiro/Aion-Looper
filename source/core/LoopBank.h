@@ -9,8 +9,8 @@
 #include "core/SpscQueue.h"
 
 namespace aion {
-enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal };
+enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying };
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply };
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
@@ -68,11 +68,11 @@ private:
     };
     struct Job {
         std::array<std::uint16_t,maxBlocks> blocks{};
-        std::uint32_t blockCount = 0, length = 0, offset = 0, track = 0;
+        std::uint32_t blockCount = 0, length = 0, offset = 0, track = 0, baseLength = 0;
         std::uint64_t revision = 0;
         Clip* base = nullptr;
         double feedback = 0.8;
-        bool edit = false, normalize = false;
+        bool edit = false, normalize = false, multiply = false, doubling = false;
     };
     float& sample(Track&, std::uint32_t frame, std::uint32_t channel) noexcept;
     bool finish(Track&) noexcept;
@@ -96,11 +96,12 @@ private:
     void clear(Track&) noexcept;
     void blend(Track&) noexcept;
     void restartSource(Track&) noexcept;
-    void saveUndo(Track&,std::uint32_t) noexcept;
+    void saveUndo(Track&,std::uint32_t,bool global = true) noexcept;
     bool restore(Track&,std::uint32_t,bool redo) noexcept;
     std::array<std::uint8_t,50> undoOrder{},redoOrder{};
     std::uint32_t undoSize=0,redoSize=0;
     bool hasCapture() const noexcept;
+    std::uint32_t growthRoom(const Track&) const noexcept;
     std::array<Track, trackCount> tracks{};
     std::array<std::uint16_t, maxBlocks> freeBlocks{};
     std::vector<float> audio;

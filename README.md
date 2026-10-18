@@ -91,3 +91,14 @@ history. Restoration is available on stable playing/stopped tracks; the same
 track's capture/finalization temporarily disables it. Audio/history remain
 session-only, and retained snapshots add memory beyond the capture pool. No new
 package is produced; use the current incremental standalone build for testing.
+
+Development follow-up: the original **MULT** button and `\` shortcut now extend
+playing loops with captured input, or double a stopped loop / a playing loop with
+no native input source. Takes shorter than 128 frames are discarded. The native
+worker applies the original DC removal and splice fade before appending; Undo/Redo
+restore the original lengths and PCM. Like JS, MULT adds local undo history rather
+than a new global entry. Stop finishes without late autoplay, and failed/canceled
+jobs preserve existing audio. Growth and longer history restores must fit the
+current session audio budget. No new ZIP or version is made; use the existing
+incremental standalone test app. Persistence and full application parity remain
+pending.

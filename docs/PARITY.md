@@ -13,7 +13,8 @@
 | Loop reverse | Original Rvers toggle; requested direction latches on play/retrigger; independent reversed source retained across NORM | Reference source PCM and state tests; hardware/browser rendering remain separate |
 | Loop normalization | Immutable worker NORM with shared stereo peak; unchanged-JS PCM/threshold tests | Hardware/listening, full browser playback and long-session stress |
 | Loop Undo/Redo | Per-loop five-snapshot history, global order and original controls/shortcuts; immutable handle swaps | Long-session/memory/hardware stress; restoration temporarily disabled on a track being captured/finalized |
-| Loop editing/multiply/export | Other editing features not ported | Reference PCM/state/UI fixtures |
+| Loop Multiply | Original MULT/shortcut captures and appends >=128 frames, or doubles stopped/no-input loops; immutable local history and bounded growth | JS committed PCM/state, worker lifecycle and 64/128 checks; full browser/driver/sync acceptance pending |
+| Loop editing/export | Other editing features not ported | Reference PCM/state/UI fixtures |
 | Drone voices/sampler/tracker/FX | Not ported | Algorithm/timing/CPU and saved-state fixtures |
 | MIDI learn/FCB1010/Oxygen/HID | Designed, not implemented | Real hardware, reconnect/panic and learn matrix |
 | MIDI clock I/O | Designed, not implemented | PLL jitter/timeout/start/stop/SPP/host-loop tests |

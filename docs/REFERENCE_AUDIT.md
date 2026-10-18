@@ -4,7 +4,7 @@
 comparison. Full application sound/functionality parity is NOT established.**
 After the capture and command-ordering gates passed, NORM was added as a separate
 worker transaction. After its live no-op repair passed, the original Rvers control
-was ported and compared separately, followed by Undo/Redo after reverse gates passed. Hardware/listening and the remaining items below still need
+was ported and compared separately, followed by Undo/Redo after reverse gates passed, then MULT after the history gates passed. Hardware/listening and the remaining items below still need
 acceptance work; the original interface remains the contract.
 
 ## Reference and comparison scope
@@ -96,7 +96,7 @@ interactions. Maximum Windows error is 1.249e-7 at the unchanged 1e-6 tolerance.
 Stable playing/stopped restoration is supported. Same-track capture/finalization
 is temporarily guarded to prevent racing an edit transaction; unrelated-track
 capture can continue. Failed or canceled edits commit no new checkpoint and keep
-the redo branch, improving failure recovery. Successful new edits clear that
+the redo branch, improving failure recovery. Successful overdub/substitute edits clear that
 loop's redo and the global redo order; other loops' local redo remains available,
 matching the JS. NORM creates no checkpoint. Playing restoration uses the existing
 transition envelope; stopped restoration stays stopped and keeps all controls.
@@ -160,7 +160,7 @@ and gets priority over unsent controls.
 | Capture timing/input | Latency compensation, multi-input routing, calibration, hardware duplex/underruns |
 | Browser playback equivalence | Attack/release, resampler/antialiasing and full browser-rendered audio fixtures |
 | Performance gestures | Ordered/coalesced bounded queue now tested; broader physical multi-controller integration remains |
-| Loop features | SUS, stutter, multiply, start offsets, merge, names, WAV import/export |
+| Loop features | SUS, stutter, start offsets, merge, names, WAV import/export |
 | Projects/master recording | ALP/PCM persistence and master/input recording unported; session audio remains temporary |
 | Timing | Static/dynamic sync, count-in, cascade, metronome and MIDI/host clock unported |
 | Instruments/effects | Drone, sampler, tracker, effects and preset DSP unported |
@@ -178,3 +178,28 @@ node tests/AudioParityAudit.cjs build/core/aion_reference_probe
 On Windows use `build/windows/Release/aion_reference_probe.exe`. All acceptance
 steps must pass; passing state or kernels alone is insufficient. The CI capture
 workflow runs the same connected gate without continue-on-error. See AGENTS.md.
+
+## Multiply comparison scope
+
+The oracle executes the unchanged `Loop.multiply/multiplyInstant`,
+`LoopManager.startMultiply/stopMultiply/processMultiplyData/createBufferFromChunks`,
+`saveStateForUndo/undo/redo`, and audio conditioning functions. Graph restarts,
+AudioWorklet IO and DOM updates are stubbed; the tested DSP and control methods
+are unchanged. Native tests record real synthetic takes through the bounded pool,
+finish the worker job, then audition committed PCM through the existing center pan.
+
+Ninety mono/stereo cases compare 832 metadata snapshots and 1,546,108 PCM frames
+(maximum error 2.015e-8) at 8/48/96 kHz. They cover base lengths 1/17/512/4097,
+captures 0/1/127/128/513/8193, twice-repeated append, stopped/no-input doubling and
+unequal-length local Undo/Redo. A mixed overdub/undo/Multiply case preserves the
+reference's unusual local/global redo interaction. Tolerance stays 1e-6. These
+checks do not establish browser-rendered fades/resampling, physical input routing,
+latency compensation, DAW sync, full waveform visualization or mobile memory use.
+
+Core checks separately cover exact 64/128 timestamped capture/render equivalence,
+zero observed callback new/delete, short-capture discard, varispeed guards,
+allocation failure with redo retained, Stop/Clear/reset, reverse-held source
+cancellation, current-PCM exhaustion, rejected oversized doubles and larger history
+restores, and growth reservations while another track has a pending job. Failed
+or canceled transactions never publish an undo checkpoint. This intentionally
+improves allocation-failure recovery over JS's pre-allocation checkpoint timing.
