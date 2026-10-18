@@ -503,3 +503,49 @@ ZIP, installer, plugin-format package or version is produced.
   browser globals during worker finalization. Physical ASIO/TOPPING/JACK/CoreAudio,
   live listening, browser resampling/envelopes and Apple/mobile remain unverified.
   Audio/history are still temporary and are not saved into project/DAW state.
+
+
+### Mouse arm / record / play follow-up (2026-10-18)
+
+The unchanged reference `UIManager.createLoopElement` makes the header background
+and state text a short-action target. That listener was missing from the native
+adapter. It is restored with nested-control exclusion; the waveform retains its
+own role and main-button bubbling never sends a duplicate action. No original
+HTML, CSS or JS asset is edited.
+
+`MouseWorkflowHost.cpp` links the production shared processor/editor rather than
+mocking bridge replies. A separate test audio thread supplies stereo tones at
+48 kHz; real WebView2 CDP mouse events operate original visible controls. No
+hardware device is opened, and no production test hook or endpoint is introduced.
+`MouseWorkflow.cjs` checks actual captured PCM length and nonzero output through
+the processor with monitoring off. It covers header/button recording and replay,
+release after dragging outside, nested control/waveform isolation, static arm
+cancellation and automatic exact 96,000-frame capture, queued playback cancellation
+across a grid boundary, quantized stop and second-stop cut, dynamic bar finish and
+second-tap immediate finish, auto-play disabled, and rapid record/finish/play with
+no delayed hold after release. These tests supplement the existing original-JS
+PCM comparisons and the fixture-based Standalone smoke; they do not replace them.
+
+The first harness runs found test setup issues (JUCE custom-app entry point,
+restricted child-process WebView debugging, invisible radio inputs, and querying
+before bridge injection). The harness now provides its own entry point, runs with
+normal desktop child-process access, clicks visible radio labels, and waits for
+the actual bridge/cards. Grid-phase preconditions make cancellation checks occur
+before their deadlines; audio timing assertions still come from native snapshots.
+
+This acceptance is synthetic input through the production processor in a test
+host. Physical TOPPING/ASIO and other drivers, listening/round-trip latency and
+DAW/Apple/mobile behavior remain separate pending checks. The updated existing
+Standalone is the manual-test artifact; no ZIP/version/plugin package is created.
+
+Follow-up results: the complete real-mouse/native-PCM suite passes at both 64
+and 128 samples, including rapid record/finish/play and dynamic second finish.
+Windows CTest passes 10/10 (125.20s); Ubuntu CTest passes 10/10 (187.28s).
+The connected Windows and Ubuntu capture/overdub/substitute audits pass 126 cases / 965,826
+compared samples with maximum absolute error 7.394757495227111e-8 (tolerance
+unchanged at 1e-6). NativeUiSmoke also passes on the rebuilt Standalone at
+44.1 kHz: 20 original cards, no legacy AudioContext/inline handlers, real
+pointer/key holds/releases and audio-owner acknowledgements, master gain zero.
+Logs are `build/mouse-final.log`, `build/mouse-regression-windows.log`,
+`build/mouse-regression-ubuntu.log`, `build/mouse-audio-audit.log`, and
+`build/mouse-native-smoke.log`; build logs are local, not committed artifacts.

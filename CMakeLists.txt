@@ -139,6 +139,14 @@ endif()
 target_link_libraries(AionLooper PRIVATE aion_core AionUi
     juce::juce_audio_utils juce::juce_dsp juce::juce_gui_extra
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+# Optional hardware-free integration host: uses the production processor/editor,
+# feeds synthetic PCM, and never opens an audio device. Not installed or packaged.
+if(BUILD_TESTING AND WIN32)
+    add_executable(aion_mouse_host WIN32 EXCLUDE_FROM_ALL tests/MouseWorkflowHost.cpp)
+    target_include_directories(aion_mouse_host PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
+    target_compile_definitions(aion_mouse_host PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
+    target_link_libraries(aion_mouse_host PRIVATE AionLooper)
+endif()
 if(AION_BUILD_CLAP)
     clap_juce_extensions_plugin(TARGET AionLooper
         CLAP_ID "com.jorgesalgueiro.aionlooper" CLAP_FEATURES audio-effect utility stereo

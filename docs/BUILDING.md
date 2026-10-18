@@ -261,3 +261,23 @@ repeatable native input tests, an isolated `WEBVIEW2_USER_DATA_FOLDER` under
 CDP focus emulation model foreground input. The app stays muted and fixtures do
 not capture a microphone. Close and wait for the test instance to exit. No SDK,
 plugin-format build, installer, ZIP or version bump is needed for this increment.
+
+
+### Hardware-free mouse acceptance (Windows)
+
+Build the optional test host and the existing preview app, without packaging:
+
+```powershell
+& .toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --build build/windows --config Release --target aion_mouse_host AionLooper_Standalone --parallel 4
+& tools/TestMouseWorkflow.ps1
+```
+
+The runner exercises both 64- and 128-sample blocks on localhost CDP port 9235.
+It links the production processor/editor/IPC, supplies generated stereo PCM on a
+separate processing thread, and checks actual committed-loop playback. It never
+opens an audio device or uses snapshot fixtures. Its private WebView profiles
+live under `build/`; existing WebView environment settings are restored and each
+owned host is closed. A port already in use is an error. The optional target is
+excluded from default builds and is never installed or packaged. This supplements
+`NativeUiSmoke.cjs` (port 9234); it does not validate physical device routing,
+OS audio scheduling, monitoring latency, or the Standalone wrapper's input gate.

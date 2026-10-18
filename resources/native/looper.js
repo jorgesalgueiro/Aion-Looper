@@ -158,6 +158,12 @@
                 stripHandlers(row);
                 row.querySelectorAll('button,input,select,textarea').forEach(e => {e.disabled=true;e.title='Unavailable in this preview';});
                 const bind=(element,callback,event='click') => {element.dataset.nativeControl='true';element.title=element.getAttribute('aria-label')||element.textContent.trim();element.addEventListener(event,callback);return element;};
+                // Original header background/state text is also a short-action target.
+                // Nested controls and the waveform keep their own actions; main clicks
+                // are handled below, so bubbling must never trigger a second command.
+                row.querySelector('.loop-header').addEventListener('click',e=>{
+                    if(enabled()&&!e.target.closest('button,input,select,label,textarea,a,canvas'))mainAction(i);
+                });
                 const main=bind(row.querySelector(`#loop-action-${i}`),e=>{if(e.detail===0)mainAction(i);});
                 main.addEventListener('pointerdown',e=>{
                     if(e.button!==0||e.isPrimary===false)return;

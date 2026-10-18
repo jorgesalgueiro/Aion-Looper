@@ -125,3 +125,10 @@ Master BPM grid. Loop-source sync, DAW/MIDI clock following, audible metronome /
 count-in, latency calibration and pre-tap snapping remain pending. Recording
 settings are latched for the active take. Audio/projects are still session-only.
 Only the current standalone test app is rebuilt; no new ZIP or version is made.
+
+
+Mouse performance: the original loop header/state text also triggers the main
+short action, as in Ascii-Looper. The main button supports press/release outside
+its bounds without duplicating the action; clicks on nested controls or the
+waveform do not toggle recording. Hardware-free real-mouse/native-PCM acceptance
+instructions are in [BUILDING](docs/BUILDING.md#hardware-free-mouse-acceptance-windows).

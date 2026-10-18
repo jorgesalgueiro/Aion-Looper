@@ -52,3 +52,11 @@ Do not reintroduce object-method calls to unbound Window timer functions. Keep
 capture deadlines on audio samples and cancel all armed/queued starts on panic,
 clear/reset. Internal Master BPM acceptance does not imply DAW/MIDI clock,
 latency-calibrated physical input or full browser-rendered audio acceptance.
+
+Mouse-main workflow changes must also run tools/TestMouseWorkflow.ps1 against the
+optional aion_mouse_host at 64/128 samples. It links the production processor and
+editor and drives actual mouse capture/playback using synthetic PCM, without
+snapshot fixtures or physical devices. Preserve header/state-text short actions
+and exclude nested controls/waveform/main-button bubbling. This gate supplements
+NativeUiSmoke and unchanged-JS DSP/sync gates; it does not establish hardware or
+Standalone driver/input-gate acceptance. Do not install/package the test host.
