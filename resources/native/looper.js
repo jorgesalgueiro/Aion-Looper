@@ -69,11 +69,12 @@
         mapping.innerHTML='<div class="mapping-tabs"><button class="tab-btn active">Keyboard</button></div><div class="mapping-scroll-container"><table class="mapping-table">'+Array.from({length:20},(_,i)=>`<tr><td>Loop ${i+1}</td><td>${i<10?'':'Shift+'}${(i+1)%10}</td></tr>`).join('')+'<tr><td>Global OD</td><td>+</td></tr><tr><td>Global SUB</td><td>-</td></tr><tr><td>STOP ALL</td><td>Space</td></tr><tr><td>Retrigger selected loop</td><td>/</td></tr></table></div>';
         document.getElementById('midiStatus').textContent='Native MIDI mapping is not ported yet.';
         let selected=0;
-        let urgentStop=false;
-        const controls = new Map();
-        const queueControl=(action,track,value)=>{if(!enabled())return;controls.set(`${track}:${action}`,{action,track,value});drainControls();};
-        const drainControls=()=>{if(busy)return;if(urgentStop){urgentStop=false;command('stopAll',0);return;}if(!controls.size)return;const [key,c]=controls.entries().next().value;controls.delete(key);command(c.action,c.track,c.value);};
         const enabled = () => snapshot?.audioReady && Date.now()-advancedAt < 1000;
+        const scheduler = new window.AionCommandQueue({ready:enabled,
+            run:c=>sendCommand(c.action,c.track,c.value),notify:message=>notify(message)});
+        const command=(action,track,value=0)=>scheduler.enqueue(()=>({action,track,value}));
+        const halfSpeed=id=>scheduler.enqueue(()=>snapshot.tracks[id].length?{action:'speed',track:id,value:snapshot.tracks[id].playbackRate===1?0.5:1}:null);
+        const queueControl=(action,track,value)=>{if(enabled())scheduler.enqueue(()=>({action,track,value}),{key:`${track}:${action}`});};
         const actionFor = t => t.state === 'empty' ? 'record' : t.state === 'stopped' ? 'play'
             : t.state === 'playing' ? (mode === 'normal' ? 'stop' : mode) : 'finish';
         const notify = message => {error=String(message); status.textContent=error;};
@@ -81,8 +82,8 @@
             try {const reply=await rpc({operation:'setParameter',id,value});if(!reply.ok)throw Error(reply.error);}
             catch(e) {notify(e.message);}
         }
-        async function command(action, track, value=0) {
-            if (busy || !enabled()) return;
+        async function sendCommand(action, track, value=0) {
+            if (!enabled()) return;
             if (['overdub','substitute'].includes(action) && snapshot.tracks[track].playbackRate!==1) {notify('Reset loop speed to 1.0x before overdub or substitute.');return;}
             busy=true; error=''; refresh();
             try {
@@ -91,26 +92,34 @@
                 if(!reply.ok)throw Error(reply.error || 'Command was not queued');
                 await new Promise((resolve,reject) => {pending={id:reply.requestId,generation,resolve,reject,deadline:Date.now()+4000};});
             } catch(e) {notify(e.message);}
-            finally {busy=false;refresh();drainControls();}
+            finally {busy=false;refresh();}
         }
         master.addEventListener('input', () => {output.querySelector('#native-master-value').textContent=Number(master.value).toFixed(2);setParameter('masterGain',Number(master.value));});
         monitor.addEventListener('change', () => setParameter('inputMonitor',monitor.checked?1:0));
         autoPlay.addEventListener('change',()=>setParameter('autoPlayAfterRecord',autoPlay.checked?1:0));
-        const stopSession=()=>{keyboard.cancel();controls.clear();urgentStop=true;drainControls();};
+        const stopSession=()=>{keyboard.cancel();scheduler.enqueue(()=>({action:'stopAll',track:0,value:0}),{stop:true});};
         stopAll.addEventListener('click', stopSession);
-        clearAll.addEventListener('click', () => {if(window.confirm('Clear ALL loops and master recordings?')){keyboard.cancel();controls.clear();command('clearAll',0);}});
+        clearAll.addEventListener('click', () => {if(window.confirm('Clear ALL loops and master recordings?')){keyboard.cancel();scheduler.reset();command('clearAll',0);}});
         const mainAction=id=>{
             selected=id;
-            const owner=snapshot.tracks.findIndex(t=>['recording','overdubbing','substituting','finalizing'].includes(t.state));
-            if(snapshot.tracks[id].state==='empty'&&owner>=0&&owner!==id){command('finish',owner);return;}
-            command(actionFor(snapshot.tracks[id]),id);
+            const requestedMode=mode;
+            scheduler.enqueue(()=>{
+                const t=snapshot.tracks[id];
+                if(t.state==='finalizing')return null;
+                const owner=snapshot.tracks.findIndex(t=>['recording','overdubbing','substituting','finalizing'].includes(t.state));
+                if(t.state==='empty'&&owner>=0&&owner!==id) {
+                    if(snapshot.tracks[owner].state==='finalizing')return null;
+                    return {action:'finish',track:owner,value:0};
+                }
+                return {action:t.state==='playing'?(requestedMode==='normal'?'stop':requestedMode):actionFor(t),track:id,value:0};
+            });
         };
         const keyboard = new window.AionPerformance({
             track:id=>snapshot?.tracks[id],
             action:id=>mainAction(id),
-            hold:id=>{const state=snapshot?.tracks[id].state;if(state==='stopped')command('clear',id);else if(state==='playing')command('stop',id);},
+            hold:id=>scheduler.enqueue(()=>{const state=snapshot.tracks[id].state;return state==='stopped'?{action:'clear',track:id,value:0}:state==='playing'?{action:'stop',track:id,value:0}:null;}),
             mode:next=>{mode=mode===next?'normal':next;refresh();},
-            stop:stopSession,retrigger:()=>command('retrigger',selected),halfSpeed:()=>{if(snapshot?.tracks[selected].length)queueControl('speed',selected,snapshot.tracks[selected].playbackRate===1?0.5:1);}
+            stop:stopSession,retrigger:()=>command('retrigger',selected),halfSpeed:()=>halfSpeed(selected)
         });
         document.addEventListener('keydown',e=>keyboard.down(e));
         document.addEventListener('keyup',e=>keyboard.up(e));
@@ -129,10 +138,10 @@
                 const feedback=bind(row.querySelector(`#loop-fbk-slider-${i}`),e=>queueControl('feedback',i,Number(e.target.value)),'input');
                 const pan=bind(row.querySelector(`#loop-pan-slider-${i}`),e=>queueControl('pan',i,Number(e.target.value)),'input');
                 const speed=bind(row.querySelector(`#loop-speed-slider-${i}`),e=>queueControl('speed',i,Number(e.target.value)),'input');
-                const half=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1/2'),()=>queueControl('speed',i,snapshot.tracks[i].playbackRate===1?0.5:1));
+                const half=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1/2'),()=>halfSpeed(i));
                 const reset=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1x'),()=>queueControl('speed',i,1));
                 speed.addEventListener('dblclick',()=>queueControl('speed',i,1));
-                const mute=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='MUTE'),()=>command('mute',i,snapshot.tracks[i].muted?0:1));
+                const mute=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='MUTE'),()=>scheduler.enqueue(()=>({action:'mute',track:i,value:snapshot.tracks[i].muted?0:1})));
                 bind(row.querySelector('.loop-track-delete'),()=>command('clear',i));
                 const solo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='SOLO'),()=>command('solo',i));
                 const retrigger=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='RTRG'),()=>command('retrigger',i));
@@ -155,8 +164,8 @@
             const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)',finalizing:'[..]'};
             rows.forEach((r,i)=>{
                 const t=snapshot.tracks[i];r.row.className=`loop ${t.state}`;
-                r.row.querySelectorAll('[data-native-control]').forEach(e=>e.disabled=!active||(busy&&!e.matches('input[type=range]')));
-                r.main.disabled=!active||busy||t.state==='finalizing'||(t.state==='empty'&&snapshot.freeFrames===0);
+                r.row.querySelectorAll('[data-native-control]').forEach(e=>e.disabled=!active);
+                r.main.disabled=!active||t.state==='finalizing'||(t.state==='empty'&&snapshot.freeFrames===0);
                 r.main.textContent=t.state==='finalizing'?'SAVING':actionFor(t)==='substitute'?'REPLACE':actionFor(t).toUpperCase();r.main.setAttribute('aria-label',`Loop ${i+1}: ${r.main.textContent}`);r.main.title=r.main.getAttribute('aria-label');
                 r.row.querySelector(`#loop-state-symbol-${i}`).textContent=symbols[t.state];
                 r.row.querySelector(`#loop-state-text-${i}`).textContent=t.state==='finalizing'?'SAVING':t.state.toUpperCase();
@@ -170,9 +179,9 @@
                 r.row.querySelector(`#loop-pan-display-${i}`).textContent=t.pan;
                 r.row.querySelector(`#loop-speed-display-${i}`).textContent=`${t.playbackRate.toFixed(2)}x`;
                 const editing=['recording','overdubbing','substituting','finalizing'].includes(t.state);
-                r.speed.disabled=!active||editing;r.half.disabled=!active||busy||editing||!t.length;
-                r.reset.disabled=!active||busy||editing||t.playbackRate===1;
-                r.retrigger.disabled=!active||busy||!t.length||['recording','finalizing'].includes(t.state);
+                r.speed.disabled=!active||editing;r.half.disabled=!active||editing||!t.length;
+                r.reset.disabled=!active||editing||t.playbackRate===1;
+                r.retrigger.disabled=!active||!t.length||['recording','finalizing'].includes(t.state);
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
                 r.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
                 r.mute.textContent=t.muted?'UNM':'MUTE';r.mute.setAttribute('aria-pressed',String(t.muted));
@@ -197,7 +206,7 @@
             try {
                 const reply=await rpc({operation:'snapshot'});if(!reply.ok)throw Error(reply.error || 'State unavailable');
                 if(!alive)return;
-                if(snapshot && reply.generation!==snapshot.generation){controls.clear();urgentStop=false;}
+                if(snapshot && reply.generation!==snapshot.generation){scheduler.reset();}
                 if(reply.frame!==lastFrame || reply.generation!==snapshot?.generation){lastFrame=reply.frame;advancedAt=Date.now();}
                 snapshot=reply;
                 if(!rows.length)createRows(reply);
@@ -206,11 +215,11 @@
                     else if(reply.lastRequestId>=pending.id){reply.rejected?pending.reject(Error('Action is unavailable in the current loop state')):pending.resolve();pending=null;}
                     else if(Date.now()>pending.deadline){error='Audio is paused; the action remains queued until processing resumes.';}
                 }
-                refresh();
+                refresh();scheduler.pump();
             } catch(e) {if(alive)notify(e.message);}
             finally {if(alive)pollTimer=setTimeout(poll,66);}
         }
-        window.addEventListener('pagehide',()=>{alive=false;keyboard.cancel();stickyObserver.disconnect();clearTimeout(pollTimer);if(pending)pending.reject(Error('Editor closed'));pending=null;});
+        window.addEventListener('pagehide',()=>{alive=false;scheduler.close();keyboard.cancel();stickyObserver.disconnect();clearTimeout(pollTimer);if(pending)pending.reject(Error('Editor closed'));pending=null;});
         document.title='Aion-Looper';
         poll();
     });

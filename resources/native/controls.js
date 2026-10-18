@@ -1,6 +1,37 @@
 // Native routing for the reference keyboard gestures. No browser audio code.
 (() => {
     'use strict';
+    // Message-thread only. Resolve gestures against the latest acknowledged state.
+    window.AionCommandQueue = class {
+        constructor({ready, run, notify, now=Date.now, limit=128}) {
+            Object.assign(this,{ready,run,notify,now,limit});
+            this.items=[]; this.active=false; this.closed=false;
+        }
+        enqueue(resolve, {key=null, stop=false}={}) {
+            if(this.closed)return;
+            if(stop)this.items=[];
+            // Stop remains first even when controls arrive while audio is paused.
+            if(key)this.items=this.items.filter(item=>item.key!==key);
+            if(this.items.length>=this.limit){this.notify('Too many pending actions; wait for audio processing.');return;}
+            const item={resolve,key,stop,deadline:this.now()+3000};
+            if(stop)this.items.unshift(item);else this.items.push(item);
+            this.pump();
+        }
+        async pump() {
+            if(this.active || this.closed || !this.ready())return;
+            this.active=true;
+            try {
+                while(!this.closed && this.ready() && this.items.length) {
+                    const item=this.items.shift();
+                    if(!item.stop && this.now()>item.deadline){this.notify('Pending action expired before audio resumed.');continue;}
+                    try {const command=item.resolve();if(command)await this.run(command);}
+                    catch(error){this.notify(error.message);}
+                }
+            } finally {this.active=false;}
+        }
+        reset() {this.items=[];}
+        close() {this.closed=true;this.reset();}
+    };
     window.AionPerformance = class {
         constructor(actions, timers = {set:setTimeout, clear:clearTimeout}) {
             this.actions=actions; this.timers=timers; this.presses=new Map();

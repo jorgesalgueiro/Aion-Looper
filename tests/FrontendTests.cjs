@@ -43,3 +43,41 @@ console.log('PASS: reference keyboard loop keys, shifted bank, modes, stop, retr
 snapshot.tracks[0]={...snapshot.tracks[0],pan:10,playbackRate:0.5};
 cards=context.window.AionLoopMarkup(snapshot,'normal');
 assert(cards[0].includes('0.50x')&&cards[0].includes('value="10"'),'Original pan and speed values must use native state');
+
+// Exercise the same scheduler shipped in the native editor, with delayed audio acknowledgements.
+(async()=>{
+ const Queue=keyboardContext.window.AionCommandQueue;
+ let ready=true,clock=0,release,state='empty';const sent=[],errors=[];
+ const queue=new Queue({ready:()=>ready,now:()=>clock,notify:e=>errors.push(e),run:async c=>{
+   sent.push(c);await new Promise(r=>release=r);state=c;
+ }});
+ const settle=async()=>{for(let i=0;i<8;++i)await Promise.resolve();};
+ const gesture=()=>queue.enqueue(()=>state==='empty'?'record':state==='record'?'finish':'play');
+ gesture();gesture();gesture();
+ assert.deepEqual(sent,['record'],'Only one command can await acknowledgement');
+ release();await settle();assert.deepEqual(sent,['record','finish'],'Second press resolves after the acknowledged record');
+ release();await settle();assert.deepEqual(sent,['record','finish','play']);
+ release();await settle();
+ queue.enqueue(()=>'volume-start');
+ queue.enqueue(()=>'volume-old',{key:'volume'});queue.enqueue(()=>'volume-new',{key:'volume'});
+ release();await settle();assert.equal(sent.at(-1),'volume-new','Sliders retain their last pending value');
+ release();await settle();
+ queue.enqueue(()=>'in-flight');queue.enqueue(()=>'discard-on-stop');
+ queue.enqueue(()=>'stopAll',{stop:true});queue.enqueue(()=>'after-stop');
+ release();await settle();assert.equal(sent.at(-1),'stopAll','Stop precedes and removes unsent gestures');
+ release();await settle();assert.equal(sent.at(-1),'after-stop');release();await settle();
+ ready=false;queue.enqueue(()=>'stale');clock=4000;queue.pump();assert(!sent.includes('stale'));
+ queue.enqueue(()=>'stopAll',{stop:true});clock=10000;ready=true;queue.pump();
+ assert.equal(sent.at(-1),'stopAll','Urgent stop survives a pause beyond normal command expiry');release();await settle();
+ ready=false;queue.enqueue(()=>'expired');clock+=4000;ready=true;queue.pump();await settle();
+ assert(!sent.includes('expired'));assert(errors.some(e=>e.includes('expired')));
+ ready=false;queue.enqueue(()=>'wrong-generation');queue.reset();ready=true;queue.pump();await settle();
+ assert(!sent.includes('wrong-generation'));
+ ready=false;for(let i=0;i<129;++i)queue.enqueue(()=>i);
+ assert.equal(queue.items.length,128);assert(errors.some(e=>e.includes('Too many')));
+ queue.close();ready=true;queue.pump();await settle();assert.equal(queue.items.length,0);
+ // Rejected commands must not deadlock subsequent input.
+ const recovered=[];const retry=new Queue({ready:()=>true,notify:e=>errors.push(e),run:async c=>{if(c==='fail')throw Error('rejected');recovered.push(c);}});
+ retry.enqueue(()=>'fail');retry.enqueue(()=>'recovered');await settle();assert.deepEqual(recovered,['recovered']);
+ console.log('PASS: rapid gestures ordered by acknowledged state, slider coalescing, priority Stop, pause/resume, expiry, generation reset, bounded queue, close and rejection recovery');
+})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -63,6 +63,13 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  }
 
  if(snapshot.audioReady){
+   // Two same-turn clicks used to lose the second gesture during RPC acknowledgement.
+   await delay(150);
+   const beforeBurst=await evaluate(`AionNative.request({operation:'snapshot'})`);
+   await evaluate(`(()=>{const mute=[...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='MUTE');mute.click();mute.click();})()`);
+   let afterBurst;
+   for(let n=0;n<80;++n){afterBurst=await evaluate(`AionNative.request({operation:'snapshot'})`);if(afterBurst.lastRequestId>=beforeBurst.lastRequestId+2&&!afterBurst.tracks[0].muted)break;await delay(50);}
+   assert(afterBurst.lastRequestId>=beforeBurst.lastRequestId+2&&!afterBurst.tracks[0].muted,'Both rapid MUTE gestures reach native audio in order');
    for(let n=0;n<60;++n){if(await evaluate(`![...document.querySelectorAll('#mod-menu button')].find(b=>b.textContent.trim()==='DEL ALL').disabled`))break;await delay(50);}
    const before=await evaluate(`AionNative.request({operation:'snapshot'})`);
    await evaluate(`window.savedConfirm=window.confirm;window.confirmCalled=0;window.confirm=()=>{window.confirmCalled++;return false;};[...document.querySelectorAll('#mod-menu button')].find(b=>b.textContent.trim()==='DEL ALL').click();window.confirm=window.savedConfirm;delete window.savedConfirm;`);

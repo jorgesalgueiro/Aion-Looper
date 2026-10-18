@@ -214,3 +214,22 @@ busy. The dedicated app never captures microphone audio, stays muted and closes.
 Windows Release Standalone/VST3/CLAP build with ASIO ON. Local 0.4.2 preview package
 CRC, format and notice/audit inclusion checks pass. No production/driver/listening,
 DAW/Apple or complete-reference parity claim is made. No other feature was added.
+
+
+## Command ordering regression (2026-10-18)
+
+The editor previously returned early while a loop command awaited audio-owner
+acknowledgement. Rapid keyboard gestures could disappear; Stop could also be
+removed before a paused audio device resumed. The bounded message-thread command
+queue now serializes gestures and resolves toggles against acknowledged snapshots.
+Slider values coalesce; Stop removes unsent actions and takes priority, surviving
+pauses within the same audio generation. Other queued actions expire after three
+seconds; configuration resets and editor closure discard unsent work. An already
+accepted audio command still follows the existing backend acknowledgement contract.
+
+Frontend tests exercise burst ordering, coalescing, Stop, pause/resume, expiry,
+generation reset, 128-entry overflow, close and rejection recovery. Native WebView2
+smoke additionally clicks MUTE twice within one JavaScript turn and requires both
+audio-owner acknowledgements and the original final mute state. It passes with
+muted output and no recording. Windows core/state/DSP and committed PCM gates pass;
+Ubuntu core/state/DSP, committed PCM and frontend gates also pass. Original UI assets remain untouched.
