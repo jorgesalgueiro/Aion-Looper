@@ -94,3 +94,25 @@ The second command currently MUST fail with parity=false; removing it or relaxin
 its tolerance would not fix sound parity. Native probe formatting and VM browser
 stubs are test-only and are not linked into the app. Core allocation tests cover
 C++ new/delete, not every allocator in JUCE/driver/browser code.
+
+## Current-feature repair gate — 2026-10-18
+
+The user requires fixing and retesting the current feature before adding another.
+Feature progression is frozen on capture/overdub. AGENTS.md records this policy.
+The capture-quality workflow runs component regressions and then the strict native
+looper audio diagnostic; it currently fails, without continue-on-error. This is
+an acceptance signal, not a claim of device/browser end-to-end validation.
+
+Added offline C++ kernels for the existing feature's DC removal, zero-crossing
+crossfade and tapered/soft-clipped circular mix. `js_native_dsp_kernels` executes
+unchanged JS DSP functions (and the actual captured-loop DC block) as the oracle.
+471 fixtures compare 395,772 samples over short/empty/long buffers, 8-192 kHz,
+multiple fades/feedback values, negative/wrapped offsets, soft clipping and takes
+longer than the base. Maximum observed sample error on Windows is 4.994e-9 against
+an unchanged 1e-6 tolerance. Windows and Ubuntu component CTest pass 4/4.
+
+These kernels are NOT connected to the application capture path yet and MUST NOT
+be called for whole clips on the audio callback. The unchanged native looper audio
+diagnostic still exits 1 with 102/512 mismatches. No new app feature or ready-build
+claim is made. Next work remains the ownership/finalization integration and its
+cancellation/exhaustion/timing tests; passing kernels alone cannot close the gate.

@@ -56,3 +56,8 @@ and remaining differences. Actual unchanged JS methods are compared to native
 state in CTest when Node is available. The separate audio diagnostic currently
 fails: native overdub boundary processing and capture finalization do not yet
 match reference sound. Passing state/UI tests must not be presented as DSP parity.
+
+Feature progression is now frozen on capture/overdub repair under `AGENTS.md`.
+Offline finalization kernels have unchanged-JS sample tests, but the native looper
+integration still fails its audio acceptance check. The capture-quality CI job
+keeps that gate visible; passing component tests do not authorize the next feature.

@@ -1,0 +1,12 @@
+name: Capture audio acceptance gate
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  capture-audio:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake --preset core
+      - run: cmake --build --preset core
+      - run: ctest --preset core
+      - name: Native looper overdub comparison (integration still failing)
+        run: node tests/AudioParityAudit.cjs build/core/aion_reference_probe

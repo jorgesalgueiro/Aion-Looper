@@ -168,3 +168,17 @@ This audit does not establish full functionality or acoustic equivalence. The
 next DSP acceptance work requires preallocated capture/finalization transactions,
 reference DC/boundary processing, tapered/soft-clipped overdub, and broader
 browser-rendered audio fixtures. Apple/DAW/hardware testing remains pending.
+
+## Current capture/overdub repair components — 2026-10-18
+
+Windows Release and Ubuntu Debug CTest pass 4/4 with the new unchanged-JS offline
+DSP kernel comparison: 471 fixtures / 395,772 samples, maximum observed Windows
+error 4.994e-9 (tolerance 1e-6). The initial DC-oracle extraction selected an earlier
+buffer-copy loop; it was corrected to select the actual Remove DC Offset block,
+then the comparison was rerun successfully. Original reference bytes are unchanged.
+
+The separate native looper audio diagnostic was rerun unchanged and still FAILS
+with 102/512 samples different. Offline kernels are not wired into capture yet.
+A dedicated CI acceptance job retains this failure and feature additions are
+frozen. No native GUI or runtime packaging is needed for these unused component
+kernels; no new application behavior is claimed by the component test results.
