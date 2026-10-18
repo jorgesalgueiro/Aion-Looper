@@ -7,10 +7,11 @@
 #include <new>
 #include <thread>
 #include <vector>
-std::atomic<bool> watch{false};
+thread_local bool watch=false;
+std::atomic<bool> failWorkerAllocation{false};
 std::atomic<int> allocations{0};
-void* operator new(std::size_t n) { if(watch.load()) ++allocations; if(auto* p=std::malloc(n == 0 ? 1 : n)) return p; throw std::bad_alloc(); }
-void operator delete(void* p) noexcept { if(watch.load()) ++allocations; std::free(p); }
+void* operator new(std::size_t n) { if(watch) ++allocations; if(!watch && failWorkerAllocation.exchange(false))throw std::bad_alloc(); if(auto* p=std::malloc(n == 0 ? 1 : n)) return p; throw std::bad_alloc(); }
+void operator delete(void* p) noexcept { if(watch) ++allocations; std::free(p); }
 void* operator new[](std::size_t n) { return ::operator new(n); }
 void operator delete[](void* p) noexcept { ::operator delete(p); }
 void operator delete(void* p, std::size_t) noexcept { ::operator delete(p); }

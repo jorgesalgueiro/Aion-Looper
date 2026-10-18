@@ -182,3 +182,35 @@ with 102/512 samples different. Offline kernels are not wired into capture yet.
 A dedicated CI acceptance job retains this failure and feature additions are
 frozen. No native GUI or runtime packaging is needed for these unused component
 kernels; no new application behavior is claimed by the component test results.
+
+## Worker capture/finalization integration 0.4.2 — 2026-10-18
+
+Latest results supersede the older direct-write sound failure above. The original
+raw circular-mix regression remains in the kernel suite (now 472 cases / 396,284
+samples). The connected gate adds reference capture conditioning and waits for
+actual native worker commits; it passes 126 cases / 965,826 mono/stereo frames at
+8/48/96 kHz. Maximum error 7.395e-8 against unchanged 1e-6 tolerance. Scope excludes
+browser envelopes/resampling, latency correction, sync and hardware audio IO.
+
+MSVC Release and GCC Debug CTest pass 4/4. No observed audio-thread C++ new/delete
+in capture, job publication/commit, play/edit, clear/stop/cancellation and 20-slot
+playback. The watcher is thread-local so legitimate worker allocation is excluded;
+a forced worker bad_alloc checks rollback and error reporting. Stop during saving,
+clear-before-worker pickup, 32 repeated canceled edits, full resident/take budgets,
+rate reset and committed playback/pan/rate command invariance at 64/128 pass.
+
+AddressSanitizer/UBSan CTest pass 4/4. TSan core tests pass using process-local
+`setarch x86_64 -R`; default WSL launch reported unexpected memory mapping. The
+worker uses pinned capture blocks, immutable clip leases and worker-only deletion.
+These tools do not prove the absence of every race or instrument JUCE/drivers.
+
+The final native WebView2 test passes original controls, a completion-message
+SAVING fixture, cancellation confirmation and explicit Stop All audio acknowledgement.
+Two earlier fixture attempts did not intercept editor requests; the test was fixed
+without weakening the presentation assertion. The old Stop All enablement wait was
+also replaced with request-ID acknowledgement because Stop remains enabled while
+busy. The dedicated app never captures microphone audio, stays muted and closes.
+
+Windows Release Standalone/VST3/CLAP build with ASIO ON. Local 0.4.2 preview package
+CRC, format and notice/audit inclusion checks pass. No production/driver/listening,
+DAW/Apple or complete-reference parity claim is made. No other feature was added.

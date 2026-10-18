@@ -2,18 +2,29 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
-int main() {
+#include <sstream>
+#include <thread>
+#include <chrono>
+int main(int argc,char**) {
+    const bool audioOnly=argc>1;
     aion::LoopBank bank; bank.prepare(20*4096,0);
     std::string operation; unsigned id; float value;
-    while (std::cin >> operation >> id >> value) {
+    const auto wait=[&]{for(int n=0;bank.finalizationPending()&&n<10000;++n){bank.beginBlock();bank.tick({});std::this_thread::sleep_for(std::chrono::milliseconds(1));}return !bank.finalizationPending();};
+    std::string line;
+    while (std::getline(std::cin,line)) {
+        std::istringstream input(line);if(!(input>>operation>>id>>value))return 2;
+        float right=value;(void)(input>>right);
         bool accepted=true; aion::Stereo output{};
         using A=aion::LoopAction;
-        if(operation=="seed") {accepted=bank.apply(A::record,id);if(accepted){for(int i=0;i<8;++i)bank.tick({0.1f,0.2f});accepted=bank.apply(A::finish,id);}}
+        if(operation=="seed") {accepted=bank.apply(A::record,id);if(accepted){for(int i=0;i<8;++i)bank.tick({0.1f,0.2f});accepted=bank.apply(A::finish,id)&&wait();}}
+        else if(operation=="prepare")bank.prepare(id,0,value);
+        else if(operation=="wait")accepted=wait();
+        else if(operation=="substitute")accepted=bank.apply(A::substitute,id);
         else if(operation=="record")accepted=bank.apply(A::record,id);
         else if(operation=="finish")accepted=bank.apply(A::finish,id);
         else if(operation=="overdub")accepted=bank.apply(A::overdub,id);
         else if(operation=="retrigger")accepted=bank.apply(A::retrigger,id);
-        else if(operation=="tick")output=bank.tick({value,value});
+        else if(operation=="tick")output=bank.tick({value,right});
         else if(operation=="volume")accepted=bank.apply(A::volume,id,value);
         else if(operation=="feedback")accepted=bank.apply(A::feedback,id,value);
         else if(operation=="pan")accepted=bank.apply(A::pan,id,value);
@@ -24,7 +35,7 @@ int main() {
         else return 2;
         const auto views=bank.view();
         std::cout << accepted << std::setprecision(9);
-        for(const auto& t:views)std::cout << ' ' << t.volume << ' ' << t.feedback << ' ' << t.pan << ' ' << t.playbackRate << ' ' << t.muted << ' ' << t.solo;
+        if(!audioOnly)for(const auto& t:views)std::cout << ' ' << t.volume << ' ' << t.feedback << ' ' << t.pan << ' ' << t.playbackRate << ' ' << t.muted << ' ' << t.solo;
         std::cout << ' ' << output.left << ' ' << output.right << '\n';
     }
 }

@@ -8,5 +8,5 @@ jobs:
       - run: cmake --preset core
       - run: cmake --build --preset core
       - run: ctest --preset core
-      - name: Native looper overdub comparison (integration still failing)
+      - name: Native capture/overdub comparison against unchanged JS
         run: node tests/AudioParityAudit.cjs build/core/aion_reference_probe

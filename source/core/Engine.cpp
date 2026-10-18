@@ -8,7 +8,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     epoch.fetch_add(1, std::memory_order_acq_rel);
     audioReset = preparedRate != 0 && preparedRate != rate;
     if (preparedRate != rate || loops.capacity() != std::clamp(poolFrames / LoopBank::blockFrames, 1u, LoopBank::maxBlocks) * LoopBank::blockFrames)
-        loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005));
+        loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005), rate);
     else (void) loops.apply(LoopAction::stopAll, 0);
     preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};

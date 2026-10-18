@@ -231,3 +231,44 @@ apply reference DC/crossfade/mix/clipping routines off the callback, and commit
 an immutable result at an audio block boundary. Old PCM must survive exhaustion,
 cancellation and reset. Undo/export/project persistence should use the same
 ownership mechanism. This describes required work, not an implemented pipeline.
+
+## Connected capture transactions (0.4.2, supersedes direct-write preview)
+
+LoopBank now owns a setup-allocated capture pool and an offline worker. Fresh
+recording and edit takes write only into that pool. The committed clip is immutable,
+so an overdub never changes the playing samples before FINISH. FINISH transfers
+pinned block IDs and immutable job metadata through a release/acquire state
+handshake. No full-clip scan/copy/allocation happens in apply/processBlock.
+
+The worker assembles planar take storage and executes the reference routines:
+fresh take crossfade 15 ms then DC removal; edit DC removal then 8 ms crossfade,
+then circular tapered/soft-clipped mix into a private copy of the old clip.
+Successful results commit in beginBlock; stale revisions discard the result.
+Stop during finalization prevents autoplay, clear cancels through a revision, and
+prepare joins the worker before rate/storage reset. On allocation/processing failure
+the old clip remains valid and the UI reports failure. SAVING reuses the original
+main-button presentation, without adding a feature panel.
+
+A committed clip has one audio lease; a processing job takes an independent atomic
+lease before publication. Only the worker decrements/deletes released leases. This
+protects a job queued immediately before clear: the old clip cannot be destroyed
+before the worker starts reading it. A 64-entry SPSC retirement queue exceeds the
+20 track leases plus the single transaction/commit backlog. On queue overflow the
+worker retains storage until stopped prepare, never deleting on the audio owner.
+Audio-owned track/job revisions and free-block lists are not read by the UI.
+
+The logical committed-clip budget still follows the configured pool capacity,
+rounded to blocks (64 MiB by default); edit capture has its own reusable take pool.
+Actual memory is higher than the previous single-pool claim: immutable resident
+PCM, a private result and planar worker scratch add transient memory. At maximum
+size the data path can approach 224 MiB per instance, excluding JUCE/WebView/host
+memory. Allocation failure is handled off the callback and rolls back edits.
+Mobile/large-instance memory and hardware latency require platform validation.
+
+Worker completion latency is asynchronous, matching the reference finalization
+model. Sample-command/block invariance is tested after committed stopped clips
+are ready; it is not a claim that arbitrary thread scheduling gives an identical
+FINISH-to-play delay. Existing 64/128 playback/pan/rate command regressions remain.
+Audio new/delete instrumentation now watches the simulated callback thread via
+thread-local state; worker allocations are legitimate and are tested separately
+with forced failure, ASan/UBSan and TSan.

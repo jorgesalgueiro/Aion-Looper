@@ -115,7 +115,7 @@ compliance. Verify clock seeks/wraps, state restore, MIDI disconnect/panic, edit
 reopen, webview isolation, sanitizers and 64/128 maximum-load callback allocation/
 CPU tests. Packaging is not signing, notarization, installation or feature parity.
 
-## Native loop preview quick test (0.4.0)
+## Native loop preview quick test (0.4.2)
 
 Build Windows Standalone/VST3/CLAP with `-DAION_ENABLE_ASIO=ON`, then open the
 Standalone executable. In Options select the interface/ASIO driver and buffer size.
@@ -178,3 +178,17 @@ Overdub/substitute require speed 1x after the ramp settles; speed changes during
 recording or an active edit are rejected. The current fractional reader uses
 linear interpolation and is not a high-quality antialiasing resampler. Browser
 DSP waveform equivalence and listening/hardware validation remain pending.
+
+### Capture finalization preview (0.4.2)
+
+FINISH displays the existing SAVING label while a worker processes the take. New
+capture/edit entry waits for that job. Existing audio continues unchanged during an
+edit; its completed result replaces it at a callback block boundary. Stop prevents
+late autoplay; clear discards the result. A failed take reports its failure and
+keeps prior audio. This is asynchronous processing, not immediate sample-zero
+FINISH playback. Session recordings remain temporary and are not project storage.
+
+`ctest --test-dir build/windows -C Release --output-on-failure` runs the four
+component suites. Run `node tests/AudioParityAudit.cjs
+build/windows/Release/aion_reference_probe.exe` for the connected PCM gate; on Linux
+use `build/core/aion_reference_probe`. Do not skip this gate because components pass.

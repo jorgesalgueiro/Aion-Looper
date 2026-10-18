@@ -1,6 +1,6 @@
 # Aion-Looper — native JUCE migration
 
-Version 0.4.1 is a **native loop preview**, not a completed port or commercial release.
+Version 0.4.2 is a **native loop preview**, not a completed port or commercial release.
 See [ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
 [SDKS](docs/SDKS.md) and [PARITY](docs/PARITY.md).
 
@@ -8,7 +8,8 @@ See [ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
   VST3, CLAP, LV2, AU and AUv3 on supported platforms.
 - Twenty stereo loop slots now record, finish into playback, stop/restart, overdub,
   substitute, mute, adjust volume/feedback and clear through the C++ engine.
-- Audio uses a shared 64 MiB fixed-block pool allocated before processing. Capture,
+- Capture uses a 64 MiB fixed-block pool allocated before processing; immutable
+  clips and worker finalization also use memory outside the callback. Capture,
   editing and playback do not allocate/free in the callback. At 48 kHz this pool
   holds about 175 seconds across all tracks. Full memory finishes recording without
   overwriting another loop, and clear makes its blocks reusable.
@@ -61,3 +62,13 @@ Feature progression is now frozen on capture/overdub repair under `AGENTS.md`.
 Offline finalization kernels have unchanged-JS sample tests, but the native looper
 integration still fails its audio acceptance check. The capture-quality CI job
 keeps that gate visible; passing component tests do not authorize the next feature.
+
+Capture repair in 0.4.2: FINISH publishes SAVING while a worker applies the
+reference crossfade/DC/mixing path to a private result. Old PCM stays unchanged
+while editing and on processing failure. Only the audio owner commits completed
+clips at block boundaries; worker-only retirement keeps deletion off the callback.
+The connected manual PCM comparison now passes 126 mono/stereo cases / 965,826
+frames (tolerance 1e-6). The earlier failed raw-mixer fixture remains in the kernel
+suite. These latest results supersede the historical failing-gate notes above.
+Full browser envelopes/resampling, latency/sync, listening/hardware and remaining
+features are still outside this result. No other feature was added in this repair.

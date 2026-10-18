@@ -32,6 +32,8 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
    await ctx.mix(data,buffer(take,rate),offset,feedback);
    cases.push({action:'mix',base,take,rate,offset,feedback,fade:0.015,expected:[...data.getChannelData(0)]});
  }
+ // Retain the original 512-frame raw-mixer regression when broadening the live audit.
+ {const base=Array(512).fill(0.2),take=Array(512).fill(0.1),data=buffer(base,48000);await ctx.mix(data,buffer(take,48000),0,0.8);cases.push({action:'mix',base,take,rate:48000,offset:0,feedback:0.8,fade:0.015,expected:[...data.getChannelData(0)]});}
  const input=cases.map(c=>[c.action,c.base.length,c.take.length,c.rate,c.offset,c.feedback,c.fade,...c.base,...c.take].join(' ')).join('\n')+'\n';
  const result=spawnSync(process.argv[2],[],{input,encoding:'utf8',maxBuffer:64*1024*1024});assert.equal(result.status,0,result.stderr);
  const lines=result.stdout.trim().split(/\r?\n/);assert.equal(lines.length,cases.length);

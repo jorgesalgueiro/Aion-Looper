@@ -1,118 +1,100 @@
 # JavaScript/native parity audit — 2026-10-18
 
-**Verdict: full functionality and sound parity are NOT achieved.** The preserved
-interface is not evidence of equivalent DSP. Do not call the current application
-production-ready or a complete Ascii-Looper replacement.
+**0.4.2: committed manual capture/overdub/substitute PCM now passes its reference
+comparison. Full application sound/functionality parity is NOT established.**
+No other feature was added during this repair. Hardware/listening and the remaining
+items below are still acceptance work; the original interface remains the contract.
 
-## Sources and method
+## Reference and comparison scope
 
-Studied the unchanged `resources/ui/Modules/loopTracks.js` classes Loop,
-LoopManager, SoloManager and UIManager; `audioEngine.js` capture-boundary and
-circular mix routines; `main.js` input/keyboard/recording state; and the project,
-tracker, synth and effect module entry points against the C++/bridge surfaces.
-The checked-in runtime bytes are the same as `.reference/Ascii-Looper` where that
-checkout is available. Asset identity remains separately tested.
+The unchanged resources/ui loop, audio, main/input, project, tracker, synth and
+effect sources define the target. All 16 runtime files remain byte/SHA identical
+to the preserved reference. State setters/clear/mute/solo execute from the actual
+JS classes in a Node VM; browser/audio IO is stubbed, not the tested calculations.
+408 traces compare 8,160 native loop snapshots. Seeded state is fixture setup,
+not a reference browser recording integration test.
 
-`tests/ReferenceParity.cjs` executes the actual unchanged loop module in a Node
-VM. Browser DOM and audio IO are stubbed; the tested setters, clear, mute, solo
-and effective-volume getter are real reference methods. The C++ probe applies
-the same seeded traces and reports native state. 408 traces compare 8,160 loop
-snapshots, including fixed-seed randomized controls and solo/clear interactions.
-This proves only that subset of valid manual-mode state semantics. Seeded audio
-is fixture setup, not a test of the original recording/playback implementations.
-It does not validate rendering, MIDI, host automation or sample output.
+The offline DSP test executes unchanged crossfade/circular-mix functions plus the
+actual recorded-loop DC-removal block. It covers 472 cases / 396,284 samples with
+an unchanged 1e-6 tolerance. The earlier raw 512-frame 0.2+0.1 overdub regression
+is retained here, including its tapered boundary behavior.
 
-## Confirmed mismatches corrected in 0.4.1
+`AudioParityAudit.cjs` now drives the connected native path: record input frames,
+FINISH, wait for worker commit, optionally capture an offset overdub/substitution,
+FINISH and render the committed clip through center pan. The oracle applies the
+reference fresh-take crossfade then DC removal, or edit DC removal then crossfade
+and circular mix. 126 mono/stereo cases compare 965,826 frames at 8/48/96 kHz,
+lengths 1-48,001, feedback 0/0.8/1 and wrapped takes longer than the base. Maximum
+observed error is 7.395e-8; tolerance stays 1e-6. Both output channels are checked.
+Playback attack/release, browser resampling, latency correction, sync and hardware
+IO are explicitly outside this committed-PCM comparison.
 
-- `Loop.clear()` preserves explicit mute; native clear had reset it. The new JS
-  differential test fails before the correction and passes afterward.
-- `UIManager.setLoopPan()` truncates numeric values using parseInt. Native pan
-  now follows this for valid in-range input; nonfinite/out-of-range IPC remains
-  rejected. A fractional pan fixture compares the actual reference method.
-- Reference LoopManager owns one recording/overdub/substitute capture at a time.
-  Native core now rejects overlapping capture entry. Pressing another empty
-  card finishes the current capture; it requires a later press to start that
-  empty card. All 20 slots can still play together. New capture concurrency is
-  covered by C++ contract tests; this is not a browser capture integration test.
-- A zero-frame FINISH now releases capture into empty state, preventing a stranded
-  recorder when RECORD/FINISH arrive at the same sample boundary.
-- DEL ALL now uses the original confirmation text and sends no command on cancel.
-- STOP ALL cancels keyboard hold timers and unsent slider changes. Stop remains
-  available while another command awaits acknowledgement, and a stop requested
-  during that wait receives priority when the command completes.
+## Historical failure and repair
 
-## Sound comparison: a real failing acceptance gate
+0.4.1 directly overwrote playing PCM while recording an edit. The isolated raw
+mixer fixture differed in 102/512 frames (maximum error 0.0424264). Simply dropping
+that case or widening tolerance would have hidden the defect. Its regression now
+lives in the kernel layer; the expanded connected gate adds reference capture
+conditioning rather than comparing conditioned native audio to an unconditioned
+JS buffer.
 
-`tests/AudioParityAudit.cjs` executes the unchanged
-`AudioEngine.mixBuffersCircular()` against a native core overdub probe. The
-512-frame fixture (base 0.2, overdub 0.1, feedback 0.8, 48 kHz, center pan)
-finds **102 differing frames**, maximum absolute error **0.0424264**. This is
-an isolated circular-mix comparison: capture DC correction, capture crossfades,
-native fades and browser rendering are excluded. It is not a listening test.
-The diagnostic exits 1 on this mismatch and is deliberately not represented by
-passing state CTest results.
+0.4.2 records edits into a separate bounded take pool. A worker finalizes a private
+result; the old clip is immutable and audible until commit. Reference DC/fades,
+tapered mix and soft clipping now execute in this path. The audio owner commits
+at beginBlock and queues retired clip leases for worker-only deletion. A job pins
+its base independently, so clear before worker pickup cannot free that base.
+Stop prevents late autoplay, clear invalidates a revision, and rate reset joins
+the worker before changing storage. Allocation failure preserves old PCM exactly.
 
-The reference captures overdub separately, removes DC, fades its clip boundaries,
-then mixes on FINISH with tapered feedback/new-signal gains and soft clipping.
-Native currently writes feedback directly into PCM while capturing. This changes
-when layers become audible, boundary samples and clipping. Native recording also
-lacks the reference full-clip DC removal and zero-crossing boundary processing.
-Native gain ramps/rate resampling differ from browser DSP.
-The preview also serializes UI commands while waiting for acknowledgements; very
-rapid multi-button/key gestures are not yet proven equivalent to the reference. These need a bounded,
-preallocated capture/finalization transaction before a faithful port is possible;
-do not add a full-buffer allocation or unbounded scan to processBlock as a fix.
+Previously fixed state mismatches remain: clear preserves mute; pan truncates
+like parseInt; only one capture/finalization owns the recorder; zero-frame finish
+cannot strand it; DEL ALL asks the original confirmation; stop cancels hold timers
+and gets priority over unsent controls.
 
-## Remaining feature audit
+## Validation and limits
 
-| Reference area | Native status / acceptance gap |
+- Windows Release and Ubuntu Debug CTest pass 4/4, plus the separate connected
+  PCM gate. Existing queue/deadline, pan/rate/fade and 64/128 playback regressions
+  remain after committed clips are ready. FINISH-to-play worker latency is not
+  deterministic across block sizes; the reference also finalizes asynchronously.
+- Ownership tests cover immutable playback during capture, forced worker OOM,
+  old-PCM preservation, stop/clear/reset, full pool and 32 repeated canceled edits,
+  all 20 playback slots and observed audio-thread C++ new/delete=0. The allocation
+  watch is thread-local: worker allocations are intentional, not realtime failures.
+- AddressSanitizer/UBSan pass 4/4. ThreadSanitizer core tests pass with process-local
+  `setarch x86_64 -R`; its normal WSL launch failed with an address-map conflict.
+  No global ASLR or system security setting was changed.
+- Windows native WebView2 tests pass the original controls and a test-only SAVING
+  reply fixture. Stop All waits for the audio request acknowledgement. The initial
+  early-script fixture was ineffective under this WebView; the final fixture wraps
+  completion messages and restores the bridge. App output stays muted and no
+  microphone recording starts. This checks UI presentation, not physical capture.
+- Windows Standalone/VST3/CLAP build with ASIO enabled. The test/probe executables
+  are not runtime package contents. DAW loading/validators and physical ASIO/Topping,
+  JACK/CoreAudio, Apple/device/memory/listening acceptance remain pending.
+
+## Remaining feature and sound gaps
+
+| Area | Remaining work |
 | --- | --- |
-| Manual loop controls, pan, speed, mute/solo | Partial; state differential and core timing tests pass; sound differences above remain |
-| Global SUS, stutter, multiply, start offsets, merge, normalize, names | Unported |
-| Undo/redo, WAV import/export, master/input recording | Unported |
-| ALP audio/project persistence | Unported; native state saves parameters only and PCM is temporary |
-| Static/dynamic sync, count-in, cascade, metronome, latency correction | Unported; native sync remains OFF |
-| Drone synth, sampler, tracker, effects/presets | Unported; no matching C++ implementations exist |
-| MIDI learn, CC/note/PC, expression, gamepad, keyboard remapping | Unported; only fixed native keyboard gestures and MIDI pass-through exist |
-| Host transport / MIDI clock | Host observation only; complete clock/seek/loop behavior unported |
-| Input routing/mixing | Basic native stereo/monitor; reference multi-source mixing not ported |
-| Platform/driver/host acceptance | Windows binaries and WebView2 smoke tests; physical ASIO/Topping, DAW validators and Apple builds pending |
+| Capture timing/input | Latency compensation, multi-input routing, calibration, hardware duplex/underruns |
+| Browser playback equivalence | Attack/release, resampler/antialiasing and full browser-rendered audio fixtures |
+| Performance gestures | Rapid multi-key/button acknowledgement behavior needs wider integration coverage |
+| Loop features | SUS, stutter, multiply, start offsets, merge, normalize, names, undo/redo, WAV import/export |
+| Projects/master recording | ALP/PCM persistence and master/input recording unported; session audio remains temporary |
+| Timing | Static/dynamic sync, count-in, cascade, metronome and MIDI/host clock unported |
+| Instruments/effects | Drone, sampler, tracker, effects and preset DSP unported |
+| Controllers | MIDI learn, CC/note/PC/expression, gamepad and keyboard remapping unported |
 
 ## Reproduce
 
-Build the core with Node available before configuring. `ctest` then includes
-`js_native_state_parity` alongside asset identity and realtime core contracts.
-For Windows use the existing `build/windows-core/Release/aion_reference_probe.exe`;
-for Ubuntu use `build/core/aion_reference_probe`.
+Build the core with Node available before configuring, then run CTest and the
+separate audio acceptance command:
 
 ```
-node tests/ReferenceParity.cjs build/core/aion_reference_probe
 node tests/AudioParityAudit.cjs build/core/aion_reference_probe
 ```
 
-The second command currently MUST fail with parity=false; removing it or relaxing
-its tolerance would not fix sound parity. Native probe formatting and VM browser
-stubs are test-only and are not linked into the app. Core allocation tests cover
-C++ new/delete, not every allocator in JUCE/driver/browser code.
-
-## Current-feature repair gate — 2026-10-18
-
-The user requires fixing and retesting the current feature before adding another.
-Feature progression is frozen on capture/overdub. AGENTS.md records this policy.
-The capture-quality workflow runs component regressions and then the strict native
-looper audio diagnostic; it currently fails, without continue-on-error. This is
-an acceptance signal, not a claim of device/browser end-to-end validation.
-
-Added offline C++ kernels for the existing feature's DC removal, zero-crossing
-crossfade and tapered/soft-clipped circular mix. `js_native_dsp_kernels` executes
-unchanged JS DSP functions (and the actual captured-loop DC block) as the oracle.
-471 fixtures compare 395,772 samples over short/empty/long buffers, 8-192 kHz,
-multiple fades/feedback values, negative/wrapped offsets, soft clipping and takes
-longer than the base. Maximum observed sample error on Windows is 4.994e-9 against
-an unchanged 1e-6 tolerance. Windows and Ubuntu component CTest pass 4/4.
-
-These kernels are NOT connected to the application capture path yet and MUST NOT
-be called for whole clips on the audio callback. The unchanged native looper audio
-diagnostic still exits 1 with 102/512 mismatches. No new app feature or ready-build
-claim is made. Next work remains the ownership/finalization integration and its
-cancellation/exhaustion/timing tests; passing kernels alone cannot close the gate.
+On Windows use `build/windows/Release/aion_reference_probe.exe`. All acceptance
+steps must pass; passing state or kernels alone is insufficient. The CI capture
+workflow runs the same connected gate without continue-on-error. See AGENTS.md.

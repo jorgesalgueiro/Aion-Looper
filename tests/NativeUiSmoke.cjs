@@ -71,6 +71,13 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    await delay(150);
    const cancelled=await evaluate(`AionNative.request({operation:'snapshot'})`);assert.equal(cancelled.lastRequestId,before.lastRequestId,'DEL ALL cancellation must not send a command');
  }
+ // Presentation-only saving fixture: no microphone capture or test PCM enters the app.
+ await evaluate(`window.savedBackendEmit=__JUCE__.backend.emitByBackend;__JUCE__.backend.emitByBackend=function(event,payload){if(event==='__juce__complete'){const message=JSON.parse(payload);if(message.result?.tracks)message.result.tracks[0].state='finalizing';payload=JSON.stringify(message);}return window.savedBackendEmit.call(this,event,payload);}`);
+ for(let n=0;n<40;++n){if(await evaluate(`document.getElementById('loop-action-0').textContent==='SAVING'`))break;await delay(50);}
+ const saving=await evaluate(`({caption:document.getElementById('loop-action-0').textContent,disabled:document.getElementById('loop-action-0').disabled,undefined:document.getElementById('loopContainer').textContent.includes('undefined'),fixture:window.fixtureInstalled})`);
+ assert(saving.caption==='SAVING'&&saving.disabled&&!saving.undefined,JSON.stringify(saving));
+ await evaluate(`__JUCE__.backend.emitByBackend=window.savedBackendEmit;delete window.savedBackendEmit`);
+ for(let n=0;n<40;++n){if(await evaluate(`document.getElementById('loop-action-0').textContent==='RECORD'`))break;await delay(50);}
  const invalid=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:3})`);assert(!invalid.ok);
  const muted=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:0})`);assert(muted.ok);
  const expired=await evaluate(`AionNative.request({operation:'loop',action:'record',track:0,generation:${snapshot.generation||1},expiresAt:Date.now()-1000})`);assert(!expired.ok&&expired.error.includes('expired'));
@@ -81,9 +88,11 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    assert.equal(ack.lastRequestId,queued.requestId);assert(ack.rejected,'Empty-track play must be rejected by the audio owner');
  }
  if(snapshot.audioReady) {
+   const beforeStop=await evaluate(`AionNative.request({operation:'snapshot'})`);
    await evaluate(`document.getElementById('native-stop-all').click()`);
-   for(let n=0;n<40;++n){const ready=await evaluate(`!document.getElementById('native-stop-all').disabled`);if(ready)break;await delay(50);}
-   const stopped=await evaluate(`AionNative.request({operation:'snapshot'})`);assert(!stopped.rejected&&stopped.tracks.every(t=>t.state==='empty'));
+   let stopped;
+   for(let n=0;n<60;++n){stopped=await evaluate(`AionNative.request({operation:'snapshot'})`);if(stopped.lastRequestId>beforeStop.lastRequestId&&!stopped.rejected)break;await delay(50);}
+   assert(stopped.lastRequestId>beforeStop.lastRequestId&&!stopped.rejected&&stopped.tracks.every(t=>t.state==='empty'),JSON.stringify(stopped));
  }
  const dom=await evaluate(`({handlers:[...document.querySelectorAll('#loopContainer *')].flatMap(e=>[...e.attributes].filter(a=>/^on/i.test(a.name))).length,unsupported:[...document.querySelectorAll('#loopContainer button')].filter(e=>e.textContent.trim()==='UNDO').every(e=>e.disabled),hasAudioContext:!!window.state?.audioContext,master:document.getElementById('native-master').value})`);
  assert.equal(dom.handlers,0);assert(dom.unsupported&&!dom.hasAudioContext);assert.equal(Number(dom.master),0);

@@ -7,8 +7,8 @@ sound parity. Preserve original interface and functionality; new UI is limited
 to needed native audio/input/MIDI configuration using the original style.
 
 Current feature under repair: native capture/overdub finalization. Feature
-additions are frozen while the live sound comparison fails. The new offline DSP
-kernels are only a component of this work, not a completed app feature.
+additions are frozen while the live sound comparison fails. Offline DSP kernels are now connected through worker finalization. The committed
+PCM gate passes, but that result does not establish full browser/driver parity.
 
 Before advancing:
 
@@ -26,5 +26,7 @@ Before advancing:
    fails. Keep working on that feature. Do not label a build production-ready on
    the strength of unit tests; driver/DAW/platform validation is separate work.
 
-The existing audio diagnostic intentionally fails until the live native pipeline
-matches its reference comparison. See docs/REFERENCE_AUDIT.md for current limits.
+The native audio diagnostic is a hard acceptance gate. It now compares the
+connected manual capture/finalization pipeline; the old raw-mixer regression is
+retained in the kernel comparison. Do not infer full-feature or hardware parity
+from the committed-PCM subset. See docs/REFERENCE_AUDIT.md for current limits.

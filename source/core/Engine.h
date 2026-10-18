@@ -28,6 +28,7 @@ public:
     void setMonitoring(bool enabled) noexcept { monitoring = enabled; }
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
+    bool finalizationPending() const noexcept { return loops.finalizationPending(); }
     bool popView(EngineView& view) noexcept { return views.pop(view); }
     std::uint32_t generation() const noexcept { return epoch.load(std::memory_order_acquire); }
     void setTarget(float value) noexcept;

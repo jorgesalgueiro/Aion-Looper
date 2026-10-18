@@ -101,7 +101,7 @@
         clearAll.addEventListener('click', () => {if(window.confirm('Clear ALL loops and master recordings?')){keyboard.cancel();controls.clear();command('clearAll',0);}});
         const mainAction=id=>{
             selected=id;
-            const owner=snapshot.tracks.findIndex(t=>['recording','overdubbing','substituting'].includes(t.state));
+            const owner=snapshot.tracks.findIndex(t=>['recording','overdubbing','substituting','finalizing'].includes(t.state));
             if(snapshot.tracks[id].state==='empty'&&owner>=0&&owner!==id){command('finish',owner);return;}
             command(actionFor(snapshot.tracks[id]),id);
         };
@@ -151,15 +151,15 @@
             stopAll.disabled=!active;clearAll.disabled=!active||busy;
             if(document.activeElement!==autoPlay)autoPlay.checked=snapshot.autoPlayAfterRecord;
             document.getElementById('activeCount').textContent=`${snapshot.tracks.filter(t=>t.state!=='empty').length}/20`;
-            document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['recording','overdubbing','substituting'].includes(t.state))?'RECORDING':'READY';
-            const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)'};
+            document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['recording','overdubbing','substituting','finalizing'].includes(t.state))?'RECORDING':'READY';
+            const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)',finalizing:'[..]'};
             rows.forEach((r,i)=>{
                 const t=snapshot.tracks[i];r.row.className=`loop ${t.state}`;
                 r.row.querySelectorAll('[data-native-control]').forEach(e=>e.disabled=!active||(busy&&!e.matches('input[type=range]')));
-                r.main.disabled=!active||busy||(t.state==='empty'&&snapshot.freeFrames===0);
-                r.main.textContent=actionFor(t)==='substitute'?'REPLACE':actionFor(t).toUpperCase();r.main.setAttribute('aria-label',`Loop ${i+1}: ${r.main.textContent}`);r.main.title=r.main.getAttribute('aria-label');
+                r.main.disabled=!active||busy||t.state==='finalizing'||(t.state==='empty'&&snapshot.freeFrames===0);
+                r.main.textContent=t.state==='finalizing'?'SAVING':actionFor(t)==='substitute'?'REPLACE':actionFor(t).toUpperCase();r.main.setAttribute('aria-label',`Loop ${i+1}: ${r.main.textContent}`);r.main.title=r.main.getAttribute('aria-label');
                 r.row.querySelector(`#loop-state-symbol-${i}`).textContent=symbols[t.state];
-                r.row.querySelector(`#loop-state-text-${i}`).textContent=t.state.toUpperCase();
+                r.row.querySelector(`#loop-state-text-${i}`).textContent=t.state==='finalizing'?'SAVING':t.state.toUpperCase();
                 r.row.querySelector(`#loop-extra-info-${i}`).textContent=`${t.muted?'[MUTED] ':''}${t.length?`(${(t.length/snapshot.sampleRate/t.playbackRate).toFixed(1)}s)`:''}`;
                 if(document.activeElement!==r.volume)r.volume.value=t.volume;
                 if(document.activeElement!==r.feedback)r.feedback.value=t.feedback;
@@ -169,10 +169,10 @@
                 if(document.activeElement!==r.speed)r.speed.value=t.playbackRate;
                 r.row.querySelector(`#loop-pan-display-${i}`).textContent=t.pan;
                 r.row.querySelector(`#loop-speed-display-${i}`).textContent=`${t.playbackRate.toFixed(2)}x`;
-                const editing=['recording','overdubbing','substituting'].includes(t.state);
+                const editing=['recording','overdubbing','substituting','finalizing'].includes(t.state);
                 r.speed.disabled=!active||editing;r.half.disabled=!active||busy||editing||!t.length;
                 r.reset.disabled=!active||busy||editing||t.playbackRate===1;
-                r.retrigger.disabled=!active||busy||!t.length||t.state==='recording';
+                r.retrigger.disabled=!active||busy||!t.length||['recording','finalizing'].includes(t.state);
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
                 r.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
                 r.mute.textContent=t.muted?'UNM':'MUTE';r.mute.setAttribute('aria-pressed',String(t.muted));
@@ -188,6 +188,7 @@
             const db=value=>value>0?`${(20*Math.log10(value)).toFixed(1)} dBFS`:'-inf dBFS';
             document.getElementById('master-ascii-vu').textContent=`MASTER | ${db(snapshot.outputPeak)}`;
             status.textContent=error || (!active?'Waiting for audio. Enable the audio device or host processing.':
+                snapshot.tracks.some(t=>t.finalizationFailed)?'Take finalization failed; existing audio was kept.':
                 snapshot.poolFull?'Recording stopped: session audio memory is full. Clear a loop to free space.':
                 snapshot.audioReset?'Session audio cleared after a sample-rate change.':
                 `INPUT ${db(snapshot.inputPeak)} | OUTPUT ${db(snapshot.outputPeak)} | ${(snapshot.freeFrames/snapshot.sampleRate).toFixed(1)}s recording capacity remaining${busy?' | applying...':''}`);

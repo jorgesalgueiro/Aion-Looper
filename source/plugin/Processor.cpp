@@ -70,7 +70,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("lastRequestId", static_cast<juce::int64>(latest.lastRequestId));
         result->setProperty("rejected", latest.rejected); result->setProperty("poolFull", latest.poolFull);
         result->setProperty("audioReset", latest.audioReset);
-        const char* names[] = {"empty", "recording", "playing", "stopped", "overdubbing", "substituting"};
+        const char* names[] = {"empty", "recording", "playing", "stopped", "overdubbing", "substituting", "finalizing"};
         juce::Array<juce::var> tracks;
         for (const auto& t : latest.tracks) {
             auto* object = new juce::DynamicObject();
@@ -78,7 +78,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             object->setProperty("length", static_cast<int>(t.length)); object->setProperty("position", static_cast<int>(t.position));
             object->setProperty("pan", t.pan); object->setProperty("playbackRate", t.playbackRate);
             object->setProperty("volume", t.volume); object->setProperty("feedback", t.feedback);
-            object->setProperty("solo", t.solo); object->setProperty("muted", t.muted); object->setProperty("peak", t.peak);
+            object->setProperty("finalizationFailed", t.finalizationFailed); object->setProperty("solo", t.solo); object->setProperty("muted", t.muted); object->setProperty("peak", t.peak);
             tracks.add(juce::var(object));
         }
         result->setProperty("tracks", juce::var(tracks));
