@@ -1,4 +1,0 @@
-[
-  ["const wavBuffer = AudioEngine.bufferToWAV(loop.audioBuffer);", "const wavBuffer = await window.RustLooper.encodeWAVBuffer(loop.audioBuffer);"],
-  ["const wavBuffer = AudioEngine.bufferToWAV(sampler.buffer);", "const wavBuffer = await window.RustLooper.encodeWAVBuffer(sampler.buffer);"]
-]

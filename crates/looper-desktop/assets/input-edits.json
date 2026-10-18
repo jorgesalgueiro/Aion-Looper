@@ -1,6 +1,0 @@
-[
-  ["navigator.mediaDevices.getUserMedia(constraints)", "window.RustLooper.input.getStream(constraints)"],
-  ["input.source = ctx.createMediaStreamSource(stream);", "input.source = window.RustLooper.input.source(ctx, stream);"],
-  ["navigator.mediaDevices.enumerateDevices()", "window.RustLooper.input.devices()"],
-  ["if (deviceId) {", "if (deviceId && !deviceId.startsWith('native:')) {"]
-]

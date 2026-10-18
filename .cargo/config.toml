@@ -1,4 +1,0 @@
-# Optional project-local GNU toolchain: no Visual Studio installation needed.
-[target.x86_64-pc-windows-gnu]
-linker = "rust-lld"
-rustflags = ["-C", "linker-flavor=ld.lld", "-C", "link-self-contained=yes"]
