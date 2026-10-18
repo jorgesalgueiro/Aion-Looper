@@ -193,3 +193,26 @@ quantization or sync support. Auto-play after Rec is a cached APVTS boolean read
 at block boundaries. Clear-all recycles the bounded pool without freeing memory.
 Live volume/feedback inputs coalesce their latest values while another native
 command is awaiting acknowledgement; this queue is message-thread only.
+
+## Pan and varispeed (0.4.0)
+
+The loop graph's `_addPanControl` in the reference connects both stereo GainNodes
+to separate mono ChannelMerger inputs. Native output therefore computes
+`mono=(L+R)/2`, then `L=mono*cos(pan*pi/20)` and `R=mono*sin(pan*pi/20)`.
+This includes the original center attenuation. The downmix follows the
+[Web Audio channel mixing specification](https://www.w3.org/TR/webaudio-1.0/#channel-up-mixing-and-down-mixing);
+no Web Audio code runs in the native application. Stereo PCM in the pool is not
+modified by pan or mute. Gain endpoints ramp independently over 20 ms, as in the
+reference scheduled fades.
+
+Each track owns a double-precision source-frame phase, fractional linear reader
+and a bounded 20 ms rate ramp. Advance and wrap are per sample and independent
+of host block size. Only the published integer source position goes to the UI;
+source length remains unchanged and displayed duration divides by target rate.
+The original manual rate range and half/reset semantics are retained. Unity-speed
+overdub/substitute remain integer PCM writes; entry requires rate=1 with its ramp
+settled, snaps phase to the current source frame and crossfades the transition.
+Active capture rejects rate changes. Reference sync-dependent speed quantization
+is not implemented because native sync is still off. Linear interpolation can
+alias at increased rates; an antialiasing resampler and perceptual/browser audio
+fixtures are required before claiming commercial DSP parity.

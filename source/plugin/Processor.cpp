@@ -76,6 +76,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             auto* object = new juce::DynamicObject();
             object->setProperty("state", names[static_cast<unsigned>(t.state)]);
             object->setProperty("length", static_cast<int>(t.length)); object->setProperty("position", static_cast<int>(t.position));
+            object->setProperty("pan", t.pan); object->setProperty("playbackRate", t.playbackRate);
             object->setProperty("volume", t.volume); object->setProperty("feedback", t.feedback);
             object->setProperty("solo", t.solo); object->setProperty("muted", t.muted); object->setProperty("peak", t.peak);
             tracks.add(juce::var(object));
@@ -104,14 +105,14 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if (!id.isInt() || static_cast<int>(id) < 0 || static_cast<int>(id) >= static_cast<int>(aion::LoopBank::trackCount)
             || !generation.isInt() || static_cast<int>(generation) <= 0) return fail("Invalid track or audio generation");
         const auto actionName = request.getProperty("action", {}).toString();
-        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger"};
+        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed"};
         unsigned action = 0;
         for (; action < std::size(names) && actionName != names[action]; ++action) {}
         if (action == std::size(names)) return fail("Unknown looper action");
         const auto value = request.getProperty("value", 0);
         if (!(value.isDouble() || value.isInt())) return fail("Expected numeric action value");
         const double number = static_cast<double>(value);
-        if (!std::isfinite(number) || number < 0 || number > (actionName == "volume" ? 2 : 1)
+        if (!std::isfinite(number) || number < (actionName == "speed" ? 0.25 : 0.0) || number > (actionName == "pan" ? 10 : (actionName == "volume" || actionName == "speed" ? 2 : 1))
             || (actionName == "mute" && number != 0 && number != 1)) return fail("Action value outside range");
         const auto requestId = nextRequest + 1;
         if (!engine.enqueueLoop({static_cast<aion::LoopAction>(action), static_cast<std::uint32_t>(static_cast<int>(id)), requestId,

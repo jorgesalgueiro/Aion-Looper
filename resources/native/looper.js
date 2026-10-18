@@ -82,6 +82,7 @@
         }
         async function command(action, track, value=0) {
             if (busy || !enabled()) return;
+            if (['overdub','substitute'].includes(action) && snapshot.tracks[track].playbackRate!==1) {notify('Reset loop speed to 1.0x before overdub or substitute.');return;}
             busy=true; error=''; refresh();
             try {
                 const generation=snapshot.generation;
@@ -101,7 +102,7 @@
             action:id=>{selected=id;command(actionFor(snapshot.tracks[id]),id);},
             hold:id=>{const state=snapshot?.tracks[id].state;if(state==='stopped')command('clear',id);else if(state==='playing')command('stop',id);},
             mode:next=>{mode=mode===next?'normal':next;refresh();},
-            stop:()=>command('stopAll',0),retrigger:()=>command('retrigger',selected)
+            stop:()=>command('stopAll',0),retrigger:()=>command('retrigger',selected),halfSpeed:()=>{if(snapshot?.tracks[selected].length)queueControl('speed',selected,snapshot.tracks[selected].playbackRate===1?0.5:1);}
         });
         document.addEventListener('keydown',e=>keyboard.down(e));
         document.addEventListener('keyup',e=>keyboard.up(e));
@@ -118,6 +119,11 @@
                 const main=bind(row.querySelector(`#loop-action-${i}`),()=>command(actionFor(snapshot.tracks[i]),i));
                 const volume=bind(row.querySelector(`#loop-vol-slider-${i}`),e=>queueControl('volume',i,Number(e.target.value)),'input');
                 const feedback=bind(row.querySelector(`#loop-fbk-slider-${i}`),e=>queueControl('feedback',i,Number(e.target.value)),'input');
+                const pan=bind(row.querySelector(`#loop-pan-slider-${i}`),e=>queueControl('pan',i,Number(e.target.value)),'input');
+                const speed=bind(row.querySelector(`#loop-speed-slider-${i}`),e=>queueControl('speed',i,Number(e.target.value)),'input');
+                const half=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1/2'),()=>queueControl('speed',i,snapshot.tracks[i].playbackRate===1?0.5:1));
+                const reset=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1x'),()=>queueControl('speed',i,1));
+                speed.addEventListener('dblclick',()=>queueControl('speed',i,1));
                 const mute=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='MUTE'),()=>command('mute',i,snapshot.tracks[i].muted?0:1));
                 bind(row.querySelector('.loop-track-delete'),()=>command('clear',i));
                 const solo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='SOLO'),()=>command('solo',i));
@@ -125,7 +131,7 @@
                 feedback.addEventListener('dblclick',()=>queueControl('feedback',i,0.8));
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const canvas=row.querySelector('canvas');canvas.title='Playback position';
-                rows.push({row,main,volume,feedback,mute,solo,retrigger,canvas});wrapper.append(row);container.append(wrapper);
+                rows.push({row,main,volume,feedback,pan,speed,half,reset,mute,solo,retrigger,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
         function refresh() {
@@ -146,11 +152,18 @@
                 r.main.textContent=actionFor(t)==='substitute'?'REPLACE':actionFor(t).toUpperCase();r.main.setAttribute('aria-label',`Loop ${i+1}: ${r.main.textContent}`);r.main.title=r.main.getAttribute('aria-label');
                 r.row.querySelector(`#loop-state-symbol-${i}`).textContent=symbols[t.state];
                 r.row.querySelector(`#loop-state-text-${i}`).textContent=t.state.toUpperCase();
-                r.row.querySelector(`#loop-extra-info-${i}`).textContent=`${t.muted?'[MUTED] ':''}${t.length?`(${(t.length/snapshot.sampleRate).toFixed(1)}s)`:''}`;
+                r.row.querySelector(`#loop-extra-info-${i}`).textContent=`${t.muted?'[MUTED] ':''}${t.length?`(${(t.length/snapshot.sampleRate/t.playbackRate).toFixed(1)}s)`:''}`;
                 if(document.activeElement!==r.volume)r.volume.value=t.volume;
                 if(document.activeElement!==r.feedback)r.feedback.value=t.feedback;
                 r.row.querySelector(`#loop-vol-display-${i}`).textContent=t.volume>0?`${(20*Math.log10(t.volume)).toFixed(1)}dB`:'-inf';
                 r.row.querySelector(`#loop-fbk-display-${i}`).textContent=`${Math.round(t.feedback*100)}%`;
+                if(document.activeElement!==r.pan)r.pan.value=t.pan;
+                if(document.activeElement!==r.speed)r.speed.value=t.playbackRate;
+                r.row.querySelector(`#loop-pan-display-${i}`).textContent=t.pan;
+                r.row.querySelector(`#loop-speed-display-${i}`).textContent=`${t.playbackRate.toFixed(2)}x`;
+                const editing=['recording','overdubbing','substituting'].includes(t.state);
+                r.speed.disabled=!active||editing;r.half.disabled=!active||busy||editing||!t.length;
+                r.reset.disabled=!active||busy||editing||t.playbackRate===1;
                 r.retrigger.disabled=!active||busy||!t.length||t.state==='recording';
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
                 r.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';

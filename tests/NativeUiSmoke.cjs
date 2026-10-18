@@ -45,6 +45,13 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    await evaluate(`document.getElementById('loop-vol-slider-0').value='1';document.getElementById('loop-vol-slider-0').dispatchEvent(new Event('input'));`);
    for(let n=0;n<60;++n){edited=await evaluate(`AionNative.request({operation:'snapshot'})`);if(edited.tracks[0].volume===1)break;await delay(50);}
    for(let n=0;n<60;++n){if(await evaluate(`![...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='SOLO').disabled`))break;await delay(50);}
+   for(const [name,value,field] of [['pan',10,'pan'],['speed',0.5,'playbackRate'],['pan',5,'pan'],['speed',1,'playbackRate']]){
+     await evaluate(`document.getElementById('loop-${name}-slider-0').value='${value}';document.getElementById('loop-${name}-slider-0').dispatchEvent(new Event('input'))`);
+     let changed;
+     for(let n=0;n<60;++n){changed=await evaluate(`AionNative.request({operation:'snapshot'})`);if(changed.tracks[0][field]===value)break;await delay(50);}
+     assert.equal(changed.tracks[0][field],value,'Original '+name+' slider reaches audio owner');
+   }
+   for(let n=0;n<60;++n){if(await evaluate(`![...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='SOLO').disabled`))break;await delay(50);}
    await evaluate(`[...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='SOLO').click()`);
    for(let n=0;n<60;++n){edited=await evaluate(`AionNative.request({operation:'snapshot'})`);if(edited.tracks[0].solo)break;await delay(50);}
    assert(edited.tracks[0].solo,'Original SOLO reaches native engine');

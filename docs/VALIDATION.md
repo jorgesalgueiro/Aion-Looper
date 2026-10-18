@@ -114,3 +114,33 @@ scheduling. New Linux native wrappers, Apple builds, DAW validation and physical
 ASIO/Topping tests remain pending. Recorded PCM is still session-only; do not use
 this preview as project storage. Full original functionality and production
 readiness are not claimed.
+
+## Original pan and varispeed controls 0.4.0 — 2026-10-18
+
+- Original UI bytes remain unchanged. Existing Pan/Speed sliders, 1/2 and 1x
+  buttons, Speed double-click reset and H shortcut now route to C++ state. The
+  loop-card adapter takes pan/rate from native snapshots and displays effective
+  duration. Original varispeed overdub/substitute restriction is retained.
+- Native output uses the reference mono-fold/equal-power pan law, including center
+  attenuation. Stereo capture remains unmodified. Clear now resets loop controls
+  to reference volume=1, pan=5, speed=1 and feedback=0.8 defaults.
+- MSVC Release and Ubuntu/GCC Debug CTest pass 2/2. Core fixtures cover fractional
+  half-speed/wrap and double-speed reads, phase preservation, 20 ms monotonic pan
+  and rate integration, pan endpoints/center, bounds, edit restrictions and clear
+  defaults. A fractional 0.37x/2x fixture with pan/rate ramps produces identical
+  output at 64/128 block sizes and no observed core callback C++ new/delete.
+- Node tests pass original renderer identity, native pan/rate presentation and H
+  dispatch. Windows native WebView2 tests pass pan 10/5 and speed 0.5/1 changes
+  through original sliders to audio-owned snapshots, plus the preceding original
+  layout/control tests. Test audio stays muted, tracks empty and no microphone
+  recording starts. The dedicated test app closes after the checks.
+- Windows Release Standalone/VST3/CLAP build successfully with ASIO ON. Local
+  `dist/Aion-Looper-0.4.0-win64.zip` CRC/required artifacts/notices/docs checks pass.
+
+Limitations: the fractional reader currently uses linear interpolation and can
+alias when speeding up; it is not a commercial-quality antialiasing resampler.
+Direct browser/offline audio waveform comparison and listening/hardware tests are
+still pending. Pan intentionally follows the reference mono-fold stage, changing
+previous previews' stereo playback routing. PCM/project save, export, undo,
+synths, FX, MIDI learn and clock/host sync remain incomplete. New native Linux
+wrappers and Apple targets are not validated by this core-only Ubuntu run.

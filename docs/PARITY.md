@@ -9,6 +9,7 @@
 | Audio owner | 20-slot native looper, bounded pool, smoothed gain/mute, finite protection | Hardware/DAW audio, 64/128 stress and allocation instrumentation |
 | Host transport | BPM/PPQ/play observation | Meter/cycle/seek and sample-accurate scheduling/sync |
 | Loop recording/play/stop/overdub/substitute | Native manual timing; stereo input, exclusive solo, retrigger, clear-all, auto-play option | Reference behavioral fixtures, hardware and long-session tests |
+| Loop pan/varispeed | Native reference pan law, manual 0.25x-2x with phase/rate smoothing; half/reset | Antialiasing, browser audio comparison, sync ratios |
 | Loop editing/multiply/undo/export | Not ported | Reference PCM/state/UI fixtures |
 | Drone voices/sampler/tracker/FX | Not ported | Algorithm/timing/CPU and saved-state fixtures |
 | MIDI learn/FCB1010/Oxygen/HID | Designed, not implemented | Real hardware, reconnect/panic and learn matrix |

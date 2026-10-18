@@ -1,6 +1,6 @@
 # Aion-Looper — native JUCE migration
 
-Version 0.3.0 is a **native loop preview**, not a completed port or commercial release.
+Version 0.4.0 is a **native loop preview**, not a completed port or commercial release.
 See [ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
 [SDKS](docs/SDKS.md) and [PARITY](docs/PARITY.md).
 
@@ -42,3 +42,11 @@ preview toolbar has been removed. Original workspace/manual tabs and loop mode
 shortcuts are restored. SOLO, manual RTRG, DEL ALL, continuous volume/feedback and
 Auto-play after Rec now reach the C++ engine. Full reference parity remains work
 in progress; unported controls stay visible and disabled.
+
+Loop pan and varispeed now use the original controls: 0-10 pan, 0.25x-2x speed,
+1/2 toggle, 1x reset, double-click speed reset and H on the selected loop. Pan
+matches the reference mono-fold/equal-power stage; raw captured stereo PCM stays
+intact. Pan/rate changes ramp over 20 ms. DEL resets loop controls to their
+reference defaults. Overdub/substitute require unity speed, matching the reference.
+The current resampler uses linear interpolation; high-quality antialiasing and
+browser-rendered audio comparison remain release gates.

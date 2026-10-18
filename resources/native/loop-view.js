@@ -229,7 +229,7 @@ const effectColors = {
     }
     window.AionLoopMarkup = (snapshot, mode) => {
         state.globalOverdubMode = mode === 'overdub'; state.globalSubstituteMode = mode === 'substitute';
-        state.loops = snapshot.tracks.map(t => ({...t, duration: t.length / snapshot.sampleRate, playbackRate: 1, startDelay: 0, pan: 5,
+        state.loops = snapshot.tracks.map(t => ({...t, duration: t.length / snapshot.sampleRate, playbackRate: t.playbackRate ?? 1, startDelay: 0, pan: t.pan ?? 5,
             audioBuffer: t.length > 0, undoStack: [], redoStack: [], effects: {}, signalChain: 'QCATFODBVKZG', name: ''}));
         return state.loops.map((t, i) => UIManager.generateLoopHTML({...t, id:i}, i));
     };

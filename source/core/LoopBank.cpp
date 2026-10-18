@@ -30,14 +30,15 @@ void LoopBank::stop(Track& t) noexcept {
     if (t.info.state == LoopState::empty || t.info.state == LoopState::stopped) return;
     t.tail = t.last; t.tailRemaining = fadeLength;
     t.info.state = t.info.length ? LoopState::stopped : LoopState::empty;
-    t.info.position = 0;
+    t.info.position = 0; t.phase = 0;
 }
 void LoopBank::clear(Track& t) noexcept {
     stop(t);
     for (std::uint32_t i = 0; i < t.blockCount; ++i) freeBlocks[freeCount++] = t.blocks[i];
     if (soloTrack == static_cast<int>(&t - tracks.data())) soloTrack = -1;
     t.blockCount = 0;
-    t.info.state = LoopState::empty; t.info.length = t.info.position = 0;
+    (void) apply(LoopAction::pan, static_cast<std::uint32_t>(&t-tracks.data()), 5);
+    t.info = LoopView{}; t.phase = 0; t.rate = 1; t.rateRemaining = 0;
     if (freeCount) poolFull = false;
 }
 bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept {
@@ -48,21 +49,23 @@ bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept 
     switch (action) {
         case LoopAction::record:
             if (s != LoopState::empty || freeCount == 0) return false;
-            s = LoopState::recording; t.info.length = t.info.position = 0; poolFull = false; return true;
+            t.info.playbackRate = t.rate = 1; t.rateRemaining = 0;
+            s = LoopState::recording; t.info.length = t.info.position = 0; t.phase = 0; poolFull = false; return true;
         case LoopAction::finish:
             if (s == LoopState::recording && t.info.length) {
-                s = autoPlay ? LoopState::playing : LoopState::stopped; t.info.position = 0; blend(t); return true;
+                s = autoPlay ? LoopState::playing : LoopState::stopped; t.info.position = 0; t.phase = 0; blend(t); return true;
             }
             if (s == LoopState::overdubbing || s == LoopState::substituting) { s = LoopState::playing; blend(t); return true; }
             return false;
         case LoopAction::play:
             if (s != LoopState::stopped || !t.info.length) return false;
-            s = LoopState::playing; t.info.position = 0; t.tailRemaining = 0; blend(t); return true;
+            s = LoopState::playing; t.info.position = 0; t.phase = 0; t.tailRemaining = 0; blend(t); return true;
         case LoopAction::stop: stop(t); return true;
         case LoopAction::clear: clear(t); return true;
         case LoopAction::overdub:
         case LoopAction::substitute:
-            if (s != LoopState::playing) return false;
+            if (s != LoopState::playing || t.info.playbackRate != 1 || t.rateRemaining) return false;
+            t.phase = t.info.position; blend(t);
             s = action == LoopAction::overdub ? LoopState::overdubbing : LoopState::substituting;
             return true;
         case LoopAction::volume:
@@ -78,7 +81,27 @@ bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept 
             soloTrack = soloTrack == static_cast<int>(id) ? -1 : static_cast<int>(id); return true;
         case LoopAction::retrigger:
             if (!t.info.length || s == LoopState::recording) return false;
-            s = LoopState::playing; t.info.position = 0; t.tailRemaining = 0; blend(t); return true;
+            s = LoopState::playing; t.info.position = 0; t.phase = 0; t.tailRemaining = 0; blend(t); return true;
+        case LoopAction::pan: {
+            if (!std::isfinite(value) || value < 0 || value > 10) return false;
+            if (value == t.info.pan) return true;
+            t.info.pan = value;
+            // Reference GainNodes feed mono ChannelMerger inputs, at angle pan*pi/20.
+            const float angle = value * 0.15707963267948966f;
+            t.panTarget = {value == 10 ? 0.0f : std::cos(angle), value == 0 ? 0.0f : std::sin(angle)};
+            t.panRemaining = fadeLength * 4;
+            if (t.panRemaining) t.panIncrement = {(t.panTarget.left-t.panGain.left)/t.panRemaining,(t.panTarget.right-t.panGain.right)/t.panRemaining};
+            else t.panGain = t.panTarget;
+            return true;
+        }
+        case LoopAction::speed:
+            if (!std::isfinite(value) || value < 0.25f || value > 2 || s == LoopState::recording
+                || s == LoopState::overdubbing || s == LoopState::substituting) return false;
+            if (value == t.info.playbackRate) return true;
+            t.info.playbackRate = value; t.rateRemaining = fadeLength * 4;
+            if (t.rateRemaining) t.rateIncrement = (value-t.rate)/t.rateRemaining;
+            else t.rate = value;
+            return true;
         case LoopAction::clearAll:
         case LoopAction::stopAll: break;
     }
@@ -93,15 +116,24 @@ Stereo LoopBank::tick(Stereo input) noexcept {
         if (v.state == LoopState::recording) {
             if (v.length % blockFrames == 0) {
                 if (freeCount) t.blocks[t.blockCount++] = freeBlocks[--freeCount];
-                else { poolFull = true; v.state = v.length ? (autoPlay ? LoopState::playing : LoopState::stopped) : LoopState::empty; v.position = 0; blend(t); }
+                else { poolFull = true; v.state = v.length ? (autoPlay ? LoopState::playing : LoopState::stopped) : LoopState::empty; v.position = 0; t.phase = 0; blend(t); }
             }
             if (v.state == LoopState::recording) {
                 sample(t, v.length, 0) = input.left; sample(t, v.length, 1) = input.right; ++v.length;
             }
         }
+        if (t.rateRemaining && !audible(v.state)) {t.rate += t.rateIncrement;if (--t.rateRemaining == 0)t.rate = v.playbackRate;}
+        if (t.panRemaining) {
+            t.panGain.left += t.panIncrement.left; t.panGain.right += t.panIncrement.right;
+            if (--t.panRemaining == 0) t.panGain = t.panTarget;
+        }
         Stereo out{};
         if (audible(v.state) && v.length) {
-            out = {sample(t, v.position, 0), sample(t, v.position, 1)};
+            v.position = static_cast<std::uint32_t>(t.phase);
+            const auto next = v.position+1 == v.length ? 0 : v.position+1;
+            const float fraction = static_cast<float>(t.phase-v.position);
+            const float left = sample(t, v.position, 0), right = sample(t, v.position, 1);
+            out = {left+(sample(t,next,0)-left)*fraction, right+(sample(t,next,1)-right)*fraction};
             if (v.state == LoopState::overdubbing || v.state == LoopState::substituting) {
                 const float feedback = v.state == LoopState::substituting ? 0.0f : v.feedback;
                 sample(t, v.position, 0) = safe(out.left * feedback + input.left);
@@ -113,7 +145,10 @@ Stereo LoopBank::tick(Stereo input) noexcept {
                 out.right = t.blendFrom.right + (out.right - t.blendFrom.right) * progress;
             }
             t.last = out;
-            if (++v.position == v.length) { v.position = 0; blend(t); }
+            if (t.rateRemaining) {t.rate += t.rateIncrement;if (--t.rateRemaining == 0)t.rate = v.playbackRate;}
+            t.phase += t.rate;
+            if (t.phase >= v.length) { t.phase = std::fmod(t.phase, static_cast<double>(v.length)); blend(t); }
+            v.position = static_cast<std::uint32_t>(t.phase);
         } else if (t.tailRemaining) {
             const float progress = static_cast<float>(--t.tailRemaining) / static_cast<float>(fadeLength);
             out = {t.tail.left * progress, t.tail.right * progress};
@@ -123,7 +158,8 @@ Stereo LoopBank::tick(Stereo input) noexcept {
         const float desired = v.muted || excluded ? 0.0f : v.volume;
         const float step = fadeLength ? 1.0f / static_cast<float>(fadeLength * 4) : 2.0f;
         t.gain += std::clamp(desired - t.gain, -step, step);
-        out.left *= t.gain; out.right *= t.gain;
+        const float mono = (out.left+out.right)*0.5f;
+        out = {mono*t.panGain.left*t.gain, mono*t.panGain.right*t.gain};
         v.peak = std::max(v.peak, std::max(std::abs(out.left), std::abs(out.right)));
         mix.left += out.left; mix.right += out.right;
     }

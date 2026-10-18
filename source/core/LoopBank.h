@@ -5,12 +5,12 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger };
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed };
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
     std::uint32_t length = 0, position = 0;
-    float volume = 1, feedback = 0.8f, peak = 0;
+    float volume = 1, feedback = 0.8f, peak = 0, pan = 5, playbackRate = 1;
     bool muted = false, solo = false;
 };
 // Audio-owned fixed-block pool. Only prepare() allocates, while audio is stopped.
@@ -34,6 +34,11 @@ private:
         std::uint32_t blockCount = 0, blendRemaining = 0, tailRemaining = 0;
         Stereo last{}, blendFrom{}, tail{};
         float gain = 1;
+        double phase = 0;
+        float rate = 1, rateIncrement = 0;
+        std::uint32_t rateRemaining = 0, panRemaining = 0;
+        Stereo panGain{0.7071067811865475f, 0.7071067811865475f};
+        Stereo panTarget = panGain, panIncrement{};
     };
     float& sample(Track&, std::uint32_t frame, std::uint32_t channel) noexcept;
     void stop(Track&) noexcept;

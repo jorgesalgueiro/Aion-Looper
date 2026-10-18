@@ -115,7 +115,7 @@ compliance. Verify clock seeks/wraps, state restore, MIDI disconnect/panic, edit
 reopen, webview isolation, sanitizers and 64/128 maximum-load callback allocation/
 CPU tests. Packaging is not signing, notarization, installation or feature parity.
 
-## Native loop preview quick test (0.3.0)
+## Native loop preview quick test (0.4.0)
 
 Build Windows Standalone/VST3/CLAP with `-DAION_ENABLE_ASIO=ON`, then open the
 Standalone executable. In Options select the interface/ASIO driver and buffer size.
@@ -162,3 +162,19 @@ The Windows preview ZIP contains an EXE and plugin bundles, not an installer. It
 requires the Microsoft Visual C++ 2015-2022 x64 Redistributable and Evergreen
 WebView2 Runtime. The local MSVC build imports MSVCP140/VCRUNTIME140/140_1. SDKs,
 development libraries and browser profiles are not included in the runtime ZIP.
+
+### Native pan and speed (0.4.0)
+
+Use the existing Pan and Speed sliders. Speed ranges from 0.25x to 2x in manual
+mode. The 1/2 button (or H on the selected loop) toggles 1x to 0.5x and any other
+rate back to 1x. The 1x button and double-clicking Speed reset to unity. Select a
+loop by pressing its key or clicking inside its card. Rate changes preserve the
+playback phase and ramp for 20 ms. Pan uses the reference equal-power 0-10 law.
+The reference graph folds stereo to mono before its left/right pan gains; the
+native output now does the same, including the center attenuation. This changes
+the previous preview's stereo passthrough playback; captured PCM is still stereo.
+
+Overdub/substitute require speed 1x after the ramp settles; speed changes during
+recording or an active edit are rejected. The current fractional reader uses
+linear interpolation and is not a high-quality antialiasing resampler. Browser
+DSP waveform equivalence and listening/hardware validation remain pending.
