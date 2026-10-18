@@ -1,6 +1,6 @@
 # Aion-Looper — native JUCE migration
 
-Version 0.2.0 is a **native loop preview**, not a completed port or commercial release.
+Version 0.3.0 is a **native loop preview**, not a completed port or commercial release.
 See [ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
 [SDKS](docs/SDKS.md) and [PARITY](docs/PARITY.md).
 
@@ -35,3 +35,10 @@ resets and no observed callback C++ new/delete. See [VALIDATION](docs/VALIDATION
 for platform and browser checks and their limits. See [LICENSING](docs/LICENSING.md)
 before distribution. SDK caches, reference checkouts and build/user data are excluded
 from Git. The prior Rust migration remains aborted.
+
+The original layout is the UI contract. Native controls now occupy the existing
+PROJECT MENU, MASTER OUTPUT, INPUT MIXER and INPUT MAPPING areas; the separate
+preview toolbar has been removed. Original workspace/manual tabs and loop mode
+shortcuts are restored. SOLO, manual RTRG, DEL ALL, continuous volume/feedback and
+Auto-play after Rec now reach the C++ engine. Full reference parity remains work
+in progress; unported controls stay visible and disabled.

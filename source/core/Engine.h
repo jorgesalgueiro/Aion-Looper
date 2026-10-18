@@ -26,6 +26,7 @@ class Engine {
 public:
     void prepare(double sampleRate, std::uint32_t poolFrames = LoopBank::defaultFrames);
     void setMonitoring(bool enabled) noexcept { monitoring = enabled; }
+    void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
     bool popView(EngineView& view) noexcept { return views.pop(view); }
     std::uint32_t generation() const noexcept { return epoch.load(std::memory_order_acquire); }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(AionLooper VERSION 0.2.0 LANGUAGES C CXX)
+project(AionLooper VERSION 0.3.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -76,7 +76,7 @@ execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/too
     --source "${CMAKE_CURRENT_SOURCE_DIR}/resources/ui"
     --manifest "${CMAKE_CURRENT_SOURCE_DIR}/resources/reference-manifest.json"
     --output "${ui_archive}" COMMAND_ERROR_IS_FATAL ANY)
-juce_add_binary_data(AionUi NAMESPACE AionUi HEADER_NAME UiData.h SOURCES "${ui_archive}" resources/native/bridge.js resources/native/loop-view.js resources/native/looper.js)
+juce_add_binary_data(AionUi NAMESPACE AionUi HEADER_NAME UiData.h SOURCES "${ui_archive}" resources/native/bridge.js resources/native/loop-view.js resources/native/controls.js resources/native/looper.js)
 juce_add_plugin(AionLooper
     COMPANY_NAME "Jorge Salgueiro"
     COMPANY_WEBSITE "https://github.com/jorgesalgueiro/Aion-Looper"

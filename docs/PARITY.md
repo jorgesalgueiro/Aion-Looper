@@ -4,11 +4,11 @@
 | --- | --- | --- |
 | Original runtime assets | 16 files preserved with SHA256 | Automated byte identity checks |
 | Native build formats | CMake targets/platform guards configured | Compile/load/validate each OS+format |
-| Original UI runtime | Original loop-card markup with native controls; legacy audio JS blocked | Full view adapter and original interaction tests |
-| IPC/APVTS | Coherent snapshots, generation/expiry validation, loop commands, master/monitor APVTS; parameter XML only | Session/generation tests, gestures, automation/state stress |
+| Original UI runtime | Original loop cards, module placement, tabs and keyboard gestures; legacy audio JS blocked | Full view adapter and original interaction tests |
+| IPC/APVTS | Coherent snapshots, generation/expiry validation, loop commands, master/monitor/auto-play APVTS; parameter XML only | Session/generation tests, gestures, automation/state stress |
 | Audio owner | 20-slot native looper, bounded pool, smoothed gain/mute, finite protection | Hardware/DAW audio, 64/128 stress and allocation instrumentation |
 | Host transport | BPM/PPQ/play observation | Meter/cycle/seek and sample-accurate scheduling/sync |
-| Loop recording/play/stop/overdub/substitute | Native manual-timing implementation; record/read stereo input | Reference behavioral fixtures, hardware and long-session tests |
+| Loop recording/play/stop/overdub/substitute | Native manual timing; stereo input, exclusive solo, retrigger, clear-all, auto-play option | Reference behavioral fixtures, hardware and long-session tests |
 | Loop editing/multiply/undo/export | Not ported | Reference PCM/state/UI fixtures |
 | Drone voices/sampler/tracker/FX | Not ported | Algorithm/timing/CPU and saved-state fixtures |
 | MIDI learn/FCB1010/Oxygen/HID | Designed, not implemented | Real hardware, reconnect/panic and learn matrix |

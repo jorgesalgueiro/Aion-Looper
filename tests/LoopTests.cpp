@@ -63,6 +63,32 @@ void loopTests() {
     bank.apply(LoopAction::stop,0);
     for(int i=0;i<4;++i)near(bank.tick({}).left,0.125f*static_cast<float>(3-i),"stop release fade");
 
+    bank.prepare(8192,0);bank.setAutoPlay(false);
+    bank.apply(LoopAction::record,0);bank.tick({0.2f,0.3f});bank.apply(LoopAction::finish,0);
+    check(bank.view()[0].state==LoopState::stopped,"auto-play off finishes stopped");
+    near(bank.tick({}).left,0,"auto-play off is silent");
+    bank.apply(LoopAction::retrigger,0);near(bank.tick({}).left,0.2f,"retrigger starts stopped PCM");
+    bank.apply(LoopAction::stop,0);bank.apply(LoopAction::clear,0);bank.setAutoPlay(true);
+    bank.apply(LoopAction::record,0);bank.tick({0.1f,0.1f});bank.tick({0.4f,0.4f});bank.apply(LoopAction::finish,0);
+    bank.tick({});bank.apply(LoopAction::retrigger,0);near(bank.tick({}).left,0.1f,"retrigger resets exact phase");
+    bank.apply(LoopAction::record,1);bank.tick({0.2f,0.2f});bank.apply(LoopAction::finish,1);
+    watch=true;
+    bank.apply(LoopAction::solo,1);near(bank.tick({}).left,0.2f,"solo gates other tracks");
+    check(bank.view()[1].solo&&!bank.view()[0].solo,"solo snapshot");
+    bank.apply(LoopAction::clear,2);check(bank.view()[1].solo,"clearing another track preserves solo");
+    bank.apply(LoopAction::mute,0,1);bank.apply(LoopAction::solo,0);near(bank.tick({}).left,0,"solo respects explicit mute");
+    bank.apply(LoopAction::solo,0);near(bank.tick({}).left,0.2f,"unsolo restores other tracks without losing mute");
+    bank.apply(LoopAction::clearAll,0);near(bank.tick({}).left,0,"clear all silence");
+    check(bank.available()==8192&&!bank.view()[0].solo,"clear all recycles pool and solo");
+    watch=false;check(allocations.load()==0,"solo/retrigger/clear-all callback allocation/free");
+
+    bank.prepare(4096,0);bank.setAutoPlay(false);
+    bank.apply(LoopAction::record,0);bank.apply(LoopAction::record,1);bank.tick({0.2f,0.2f});
+    check(bank.view()[1].state==LoopState::empty,"simultaneous recording pool shortage leaves empty slot usable");
+    for(int i=1;i<=4096;++i)bank.tick({0.2f,0.2f});
+    check(bank.view()[0].state==LoopState::stopped,"full pool honors auto-play off");
+    check(bank.view()[0].length==4096,"full pool retains take with auto-play off");
+
     Engine a,b;a.prepare(8000,4096);b.prepare(8000,4096);a.setMonitoring(false);b.setMonitoring(false);a.setTarget(1);b.setTarget(1);
     const auto enqueue=[](Engine& e) {
         const LoopAction actions[]={LoopAction::record,LoopAction::finish,LoopAction::overdub,LoopAction::finish,LoopAction::stop,LoopAction::play,LoopAction::clear};

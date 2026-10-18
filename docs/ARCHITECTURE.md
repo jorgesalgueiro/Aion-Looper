@@ -175,3 +175,21 @@ inline handlers, enables only implemented controls and polls lossy snapshots.
 No original recorder, AudioContext, Worklet, MIDI or CDN script is executed. Project
 save/export and undo are visibly unavailable; the preview must not imply that DAW
 parameter XML contains recorded audio.
+
+## Reference UI contract (0.3.0)
+
+Original assets remain byte-identical and presentation is adapted externally.
+There is no separate native preview toolbar. Original session buttons, mode
+shortcuts, module placement and workspace/manual navigation are reused. Native
+input/monitor status lives inside INPUT MIXER and output volume inside MASTER
+OUTPUT. New configuration surfaces must use the original ASCII styles and stay
+limited to native audio/input/MIDI needs. Unported controls remain visible and
+disabled, with no substitute browser DSP.
+
+SOLO is audio-owned exclusive gating, preserving each loop's explicit mute and
+continuing the phase of excluded loops; clearing the selected solo cancels solo.
+RTRG restarts retained PCM at sample zero in manual timing. These are not host
+quantization or sync support. Auto-play after Rec is a cached APVTS boolean read
+at block boundaries. Clear-all recycles the bounded pool without freeing memory.
+Live volume/feedback inputs coalesce their latest values while another native
+command is awaiting acknowledgement; this queue is message-thread only.

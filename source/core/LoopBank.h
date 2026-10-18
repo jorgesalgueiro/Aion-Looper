@@ -5,13 +5,13 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute };
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger };
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
     std::uint32_t length = 0, position = 0;
     float volume = 1, feedback = 0.8f, peak = 0;
-    bool muted = false;
+    bool muted = false, solo = false;
 };
 // Audio-owned fixed-block pool. Only prepare() allocates, while audio is stopped.
 class LoopBank {
@@ -22,6 +22,7 @@ public:
     bool apply(LoopAction, std::uint32_t track, float value = 0) noexcept;
     Stereo tick(Stereo input) noexcept;
     void beginBlock() noexcept;
+    void setAutoPlay(bool enabled) noexcept { autoPlay = enabled; }
     std::array<LoopView, trackCount> view() const noexcept;
     std::uint32_t capacity() const noexcept { return totalBlocks * blockFrames; }
     std::uint32_t available() const noexcept { return freeCount * blockFrames; }
@@ -42,6 +43,7 @@ private:
     std::array<std::uint16_t, maxBlocks> freeBlocks{};
     std::vector<float> audio;
     std::uint32_t totalBlocks = 0, freeCount = 0, fadeLength = 240;
-    bool poolFull = false;
+    bool poolFull = false, autoPlay = true;
+    int soloTrack = -1;
 };
 }

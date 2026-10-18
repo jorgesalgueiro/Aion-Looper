@@ -33,6 +33,7 @@ juce::WebBrowserComponent::Options AionWebEditor::options(AionProcessor& process
         .withResourceProvider(resource)
         .withUserScript(juce::String::fromUTF8(AionUi::bridge_js, AionUi::bridge_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::loopview_js, AionUi::loopview_jsSize))
+        .withUserScript(juce::String::fromUTF8(AionUi::controls_js, AionUi::controls_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::looper_js, AionUi::looper_jsSize));
    #if JUCE_WINDOWS
     settings = settings.withBackend(juce::WebBrowserComponent::Options::Backend::webview2);

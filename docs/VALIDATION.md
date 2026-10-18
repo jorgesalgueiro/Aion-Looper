@@ -85,3 +85,32 @@ Linux native artifacts from 0.1.0 do not validate the new browser/processor code
 This preview is manual-timing and session-only: PCM is not serialized into DAW
 state/projects and is cleared on sample-rate changes. Undo/export, complete device
 routing, synths, tracker, FX, MIDI learn and full clock/host sync remain pending.
+
+## Reference interface restoration 0.3.0 — 2026-10-18
+
+- Removed the extra preview toolbar; session actions use original PROJECT MENU
+  buttons, output volume uses MASTER OUTPUT and native input uses INPUT MIXER.
+  Preserved original workspace/manual tabs, logo, stylesheet and loop-card markup.
+  All 16 reference runtime files still pass byte/SHA identity verification.
+- Added native exclusive SOLO with explicit mute preservation, manual-timing RTRG,
+  DEL ALL and APVTS Auto-play after Rec. Volume/feedback update continuously with
+  last-value coalescing while commands await the audio owner; feedback double-click
+  resets to 80%. Original mode keys `+`/`-`, digits/Shift+digits, Space, `/`, 600 ms
+  holds and blur/repeat/form-focus guards have automated coverage.
+- Windows MSVC Release and Ubuntu/GCC Debug core CTest pass 2/2. New regression
+  fixtures cover solo toggling/switching/mute restoration, clearing other tracks,
+  retrigger sample phase, auto-play off, pool exhaustion and simultaneous recording
+  shortage, clear-all pool recycling and no observed core callback C++ new/delete.
+- Windows Release Standalone, VST3 and CLAP build with ASIO ON. Native WebView2 tests
+  at 44.1 kHz pass layout placement, original tabs/mode keys, auto-play parameter,
+  final coalesced slider value and SOLO on/off audio-thread acknowledgements,
+  alongside previous parameter/expiry/20-card tests. Output remains muted and no
+  microphone recording is started. The dedicated test app closes afterward.
+- Windows ZIP `dist/Aion-Looper-0.3.0-win64.zip` includes these three formats,
+  documentation and primary notices. ZIP CRC and required artifact checks pass.
+
+This remains a partial migration. Sync is displayed OFF to match current manual
+scheduling. New Linux native wrappers, Apple builds, DAW validation and physical
+ASIO/Topping tests remain pending. Recorded PCM is still session-only; do not use
+this preview as project storage. Full original functionality and production
+readiness are not claimed.

@@ -23,6 +23,38 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert(await evaluate(`!document.getElementById('loopContainer').textContent.includes('undefined')`),'Missing renderer field');assert(!visible.text.includes('\u00c3'),'Garbled native status text');
  const snapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);assert(snapshot.ok&&snapshot.tracks.length===20);
  assert(snapshot.tracks.every(t=>t.state==='empty'),'Smoke test must not capture audio');
+ const layout=await evaluate(`({extraPanel:!!document.getElementById('native-mode'),masterInOriginal:!!document.querySelector('#mod-master #native-master'),inputInOriginal:!!document.querySelector('#mod-input #native-monitor'),stopInOriginal:!!document.querySelector('#mod-menu #native-stop-all'),syncOff:document.querySelector('input[name=syncMode][value=off]').checked})`);
+ assert(!layout.extraPanel&&layout.masterInOriginal&&layout.inputInOriginal&&layout.stopInOriginal&&layout.syncOff,JSON.stringify(layout));
+ await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'+',code:'Equal',bubbles:true}))`);
+ assert(await evaluate(`document.body.classList.contains('mode-overdub')`));
+ await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'-',code:'Minus',bubbles:true}))`);
+ assert(await evaluate(`document.body.classList.contains('mode-substitute')&&!document.body.classList.contains('mode-overdub')`));
+ await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'-',code:'Minus',bubbles:true}))`);
+ await evaluate(`document.querySelectorAll('.main-tab-btn')[1].click()`);
+ assert(await evaluate(`document.getElementById('ws-drone').classList.contains('active')`));
+ await evaluate(`document.querySelectorAll('.main-tab-btn')[0].click();document.querySelectorAll('.manual-tab-btn')[2].click()`);
+ assert(await evaluate(`document.getElementById('manual-pt').classList.contains('active')`));
+ await evaluate(`document.querySelectorAll('.manual-tab-btn')[0].click();document.getElementById('autoPlayAfterRecord').click()`);
+ assert.equal((await evaluate(`AionNative.request({operation:'snapshot'})`)).autoPlayAfterRecord,!snapshot.autoPlayAfterRecord);
+ await evaluate(`document.getElementById('autoPlayAfterRecord').click()`);
+ if(snapshot.audioReady){
+   await evaluate(`document.getElementById('loop-vol-slider-0').value='0.6';document.getElementById('loop-vol-slider-0').dispatchEvent(new Event('input'));document.getElementById('loop-vol-slider-0').value='0.7';document.getElementById('loop-vol-slider-0').dispatchEvent(new Event('input'));`);
+   let edited;
+   for(let n=0;n<60;++n){edited=await evaluate(`AionNative.request({operation:'snapshot'})`);if(Math.abs(edited.tracks[0].volume-0.7)<0.001)break;await delay(50);}
+   assert(Math.abs(edited.tracks[0].volume-0.7)<0.001,'Final coalesced slider value reaches audio owner');
+   await evaluate(`document.getElementById('loop-vol-slider-0').value='1';document.getElementById('loop-vol-slider-0').dispatchEvent(new Event('input'));`);
+   for(let n=0;n<60;++n){edited=await evaluate(`AionNative.request({operation:'snapshot'})`);if(edited.tracks[0].volume===1)break;await delay(50);}
+   for(let n=0;n<60;++n){if(await evaluate(`![...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='SOLO').disabled`))break;await delay(50);}
+   await evaluate(`[...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='SOLO').click()`);
+   for(let n=0;n<60;++n){edited=await evaluate(`AionNative.request({operation:'snapshot'})`);if(edited.tracks[0].solo)break;await delay(50);}
+   assert(edited.tracks[0].solo,'Original SOLO reaches native engine');
+   await delay(100);
+   for(let n=0;n<60;++n){if(await evaluate(`![...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='SOLO').disabled`))break;await delay(50);}
+   await evaluate(`[...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='SOLO').click()`);
+   for(let n=0;n<60;++n){edited=await evaluate(`AionNative.request({operation:'snapshot'})`);if(!edited.tracks[0].solo)break;await delay(50);}
+   assert(!edited.tracks[0].solo,'Original SOLO toggles off');
+ }
+
  const invalid=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:3})`);assert(!invalid.ok);
  const muted=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:0})`);assert(muted.ok);
  const expired=await evaluate(`AionNative.request({operation:'loop',action:'record',track:0,generation:${snapshot.generation||1},expiresAt:Date.now()-1000})`);assert(!expired.ok&&expired.error.includes('expired'));

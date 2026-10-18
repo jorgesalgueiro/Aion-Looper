@@ -16,7 +16,7 @@ void LoopBank::prepare(std::uint32_t frames, std::uint32_t fadeFrames) {
     freeCount = totalBlocks;
     for (std::uint32_t b = 0; b < totalBlocks; ++b) freeBlocks[b] = static_cast<std::uint16_t>(b);
     fadeLength = std::min(fadeFrames, 1920u);
-    poolFull = false;
+    poolFull = false; soloTrack = -1;
 }
 float& LoopBank::sample(Track& t, std::uint32_t frame, std::uint32_t channel) noexcept {
     const auto block = t.blocks[frame / blockFrames];
@@ -35,12 +35,14 @@ void LoopBank::stop(Track& t) noexcept {
 void LoopBank::clear(Track& t) noexcept {
     stop(t);
     for (std::uint32_t i = 0; i < t.blockCount; ++i) freeBlocks[freeCount++] = t.blocks[i];
+    if (soloTrack == static_cast<int>(&t - tracks.data())) soloTrack = -1;
     t.blockCount = 0;
     t.info.state = LoopState::empty; t.info.length = t.info.position = 0;
     if (freeCount) poolFull = false;
 }
 bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept {
     if (action == LoopAction::stopAll) { for (auto& t : tracks) stop(t); return true; }
+    if (action == LoopAction::clearAll) { for (auto& t : tracks) clear(t); return true; }
     if (id >= trackCount) return false;
     auto& t = tracks[id]; auto& s = t.info.state;
     switch (action) {
@@ -49,7 +51,7 @@ bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept 
             s = LoopState::recording; t.info.length = t.info.position = 0; poolFull = false; return true;
         case LoopAction::finish:
             if (s == LoopState::recording && t.info.length) {
-                s = LoopState::playing; t.info.position = 0; blend(t); return true;
+                s = autoPlay ? LoopState::playing : LoopState::stopped; t.info.position = 0; blend(t); return true;
             }
             if (s == LoopState::overdubbing || s == LoopState::substituting) { s = LoopState::playing; blend(t); return true; }
             return false;
@@ -72,6 +74,12 @@ bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept 
         case LoopAction::mute:
             if (value != 0 && value != 1) return false;
             t.info.muted = value != 0; return true;
+        case LoopAction::solo:
+            soloTrack = soloTrack == static_cast<int>(id) ? -1 : static_cast<int>(id); return true;
+        case LoopAction::retrigger:
+            if (!t.info.length || s == LoopState::recording) return false;
+            s = LoopState::playing; t.info.position = 0; t.tailRemaining = 0; blend(t); return true;
+        case LoopAction::clearAll:
         case LoopAction::stopAll: break;
     }
     return false;
@@ -85,7 +93,7 @@ Stereo LoopBank::tick(Stereo input) noexcept {
         if (v.state == LoopState::recording) {
             if (v.length % blockFrames == 0) {
                 if (freeCount) t.blocks[t.blockCount++] = freeBlocks[--freeCount];
-                else { poolFull = true; v.state = LoopState::playing; v.position = 0; blend(t); }
+                else { poolFull = true; v.state = v.length ? (autoPlay ? LoopState::playing : LoopState::stopped) : LoopState::empty; v.position = 0; blend(t); }
             }
             if (v.state == LoopState::recording) {
                 sample(t, v.length, 0) = input.left; sample(t, v.length, 1) = input.right; ++v.length;
@@ -111,7 +119,8 @@ Stereo LoopBank::tick(Stereo input) noexcept {
             out = {t.tail.left * progress, t.tail.right * progress};
             t.last = out;
         } else { t.last = {}; }
-        const float desired = v.muted ? 0.0f : v.volume;
+        const bool excluded = soloTrack >= 0 && soloTrack != static_cast<int>(&t - tracks.data());
+        const float desired = v.muted || excluded ? 0.0f : v.volume;
         const float step = fadeLength ? 1.0f / static_cast<float>(fadeLength * 4) : 2.0f;
         t.gain += std::clamp(desired - t.gain, -step, step);
         out.left *= t.gain; out.right *= t.gain;
@@ -122,7 +131,7 @@ Stereo LoopBank::tick(Stereo input) noexcept {
 }
 std::array<LoopView, LoopBank::trackCount> LoopBank::view() const noexcept {
     std::array<LoopView, trackCount> result{};
-    for (std::uint32_t i = 0; i < trackCount; ++i) result[i] = tracks[i].info;
+    for (std::uint32_t i = 0; i < trackCount; ++i) { result[i] = tracks[i].info; result[i].solo = soloTrack == static_cast<int>(i); }
     return result;
 }
 }

@@ -21,3 +21,21 @@ cards=context.window.AionLoopMarkup(snapshot,'substitute');assert(cards[0].inclu
 snapshot.tracks[0].state='recording';cards=context.window.AionLoopMarkup(snapshot,'normal');assert(cards[0].includes('Loop 1: FINISH'));
 for(const file of ['bridge.js','looper.js'])new vm.Script(fs.readFileSync(path.join(root,'resources/native',file),'utf8'),{filename:file});
 console.log('PASS: original loop markup retained, 20 cards, record/finish/overdub/substitute presentation, native script syntax');
+
+const callbacks=new Map(),events=[];
+const keyboardContext={window:{},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),keyboardContext);
+let timerId=0;
+const keyboard=new keyboardContext.window.AionPerformance({track:()=>({}),action:i=>events.push(['action',i]),hold:i=>events.push(['hold',i]),mode:m=>events.push(['mode',m]),stop:()=>events.push(['stop']),retrigger:()=>events.push(['retrigger'])},{set:fn=>{callbacks.set(++timerId,fn);return timerId;},clear:id=>callbacks.delete(id)});
+const key=(code,key,extra={})=>({code,key,target:{tagName:'BODY'},preventDefault(){},...extra});
+keyboard.down(key('Digit1','1'));assert.deepEqual(events.pop(),['action',0]);
+keyboard.down(key('Digit1','1',{repeat:true}));assert.equal(events.length,0);
+keyboard.up(key('Digit1','!'));assert.equal(callbacks.size,0);
+keyboard.down(key('Digit0',')',{shiftKey:true}));assert.deepEqual(events.pop(),['action',19]);
+[...callbacks.values()][0]();assert.deepEqual(events.pop(),['hold',19]);
+keyboard.up(key('Digit0','0'));assert.equal(callbacks.size,0);
+for(const e of [key('Equal','+'),key('Minus','-'),key('Space',' '),key('Slash','/')])keyboard.down(e);
+assert.deepEqual(events.splice(0),[['mode','overdub'],['mode','substitute'],['stop'],['retrigger']]);
+keyboard.down(key('Digit2','2',{target:{tagName:'INPUT'}}));keyboard.down(key('Digit2','2',{ctrlKey:true}));assert.equal(events.length,0);
+keyboard.down(key('Digit3','3'));keyboard.cancel();assert.equal(callbacks.size,0);
+console.log('PASS: reference keyboard loop keys, shifted bank, modes, stop, retrigger, long-press, repeat/focus/blur guards');

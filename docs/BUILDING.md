@@ -115,15 +115,25 @@ compliance. Verify clock seeks/wraps, state restore, MIDI disconnect/panic, edit
 reopen, webview isolation, sanitizers and 64/128 maximum-load callback allocation/
 CPU tests. Packaging is not signing, notarization, installation or feature parity.
 
-## Native loop preview quick test (0.2.0)
+## Native loop preview quick test (0.3.0)
 
 Build Windows Standalone/VST3/CLAP with `-DAION_ENABLE_ASIO=ON`, then open the
 Standalone executable. In Options select the interface/ASIO driver and buffer size.
 Enable input with JUCE's Unmute Input control. The native input meter should respond.
-Raise OUTPUT to a suitable level; INPUT MONITOR is optional and defaults off.
-Use LOOPS to reach the original cards: RECORD, FINISH, STOP and PLAY use native DSP.
-Select OVERDUB or SUBSTITUTE mode before pressing a playing loop's main button;
-FINISH exits that capture mode. Feedback defaults to 80%. STOP ALL stops the bank.
+Raise VOLUME in the original MASTER OUTPUT panel; MONITOR in INPUT MIXER is
+optional and defaults off. The original loop cards use native DSP: RECORD,
+FINISH, STOP and PLAY. Press `+` to toggle global overdub or `-` to toggle
+substitute, then press a playing loop's main button; FINISH exits that capture
+mode. Feedback defaults to 80% and double-click resets it. The original STOP ALL
+and DEL ALL buttons act on the bank. SOLO is exclusive and preserves explicit
+mutes; RTRG restarts a loop in the current manual-timing mode.
+
+Keys 1-0 address loops 1-10; Shift+1-0 address 11-20. Holding a loop key for
+600 ms stops a playing loop or clears a stopped loop, matching the reference
+press/release behavior. Space stops all and `/` retriggers the selected loop.
+Shortcuts ignore text/form focus, repeats and Ctrl/Alt/Meta combinations; lost
+focus cancels hold timers. Auto-play after Rec now controls whether FINISH starts
+playback or leaves the take stopped. Native sync remains OFF until implemented.
 
 Use headphones/direct monitoring as appropriate for the physical setup. Session
 recordings are temporary: DAW/project state currently stores parameters, not PCM.
@@ -140,7 +150,7 @@ Close other preview test instances first.
 
 ```powershell
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=9234'
-$preview = Start-Process 'build/windows/AionLooper_artefacts/Release/Standalone/Aion-Looper.exe' -PassThru
+$preview = Start-Process 'build/windows/AionLooper_artefacts/Release/Standalone/Aion-Looper.exe' -WindowStyle Hidden -PassThru
 Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 node tests/NativeUiSmoke.cjs
 $preview.CloseMainWindow()
