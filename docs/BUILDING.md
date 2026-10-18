@@ -209,3 +209,14 @@ node tests/NormalizationParity.cjs build/core/aion_reference_probe
 
 On Windows use `build/windows/Release/aion_reference_probe.exe`. These tests
 execute the unchanged reference DSP, not a reimplementation of the JS oracle.
+
+
+The incremental core suite includes `js_native_reverse`, comparing original JS
+source selection/PCM with native reverse playback. To inspect its scoped report:
+
+```sh
+node tests/ReverseParity.cjs build/core/aion_reference_probe
+```
+
+Use the existing standalone build for interactive checks during migration.
+Routine feature changes do not require a version bump or new ZIP/plugin package.

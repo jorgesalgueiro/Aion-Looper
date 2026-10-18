@@ -70,3 +70,13 @@ undo or persistent audio storage. Rapid performance commands now queue in order;
 Stop cancels unsent work and survives a pause in the same audio configuration.
 Unsent ordinary actions expire after three seconds, and sliders coalesce their
 pending values. The original UI files remain unchanged.
+
+
+Development follow-up: the original **Rvers** checkbox now reaches C++. As in the
+reference, it changes direction on the next play/retrigger and leaves the current
+source alone. PCM storage stays forward; reversed playback reads the immutable
+clip in reverse order without allocating a reversed copy in the callback. If NORM
+changes the stored clip during reversed playback, the old source is retained
+until restart/stop, matching the reference's independent reversed buffer. Other
+effect controls remain unported. This source build extends 0.4.3; old ZIPs do not
+contain these follow-ups. Only the incremental standalone test build is updated.

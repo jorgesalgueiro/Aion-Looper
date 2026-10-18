@@ -7,7 +7,8 @@ sound parity. Preserve original interface and functionality; new UI is limited
 to needed native audio/input/MIDI configuration using the original style.
 
 Latest accepted work: native capture/overdub finalization, ordered frontend
-performance commands and the original NORM action. Offline DSP and connected
+performance commands, the original NORM action (including its no-op envelope
+repair) and the loop Rvers control. Offline DSP and connected
 committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.

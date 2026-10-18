@@ -150,6 +150,10 @@ void loopTests(){
   check(engine.enqueueLoop({A::speed,0,4,generation,frame+301,0.37f}),"sample deadline fractional rate");
   check(engine.enqueueLoop({A::pan,0,5,generation,frame+617,10}),"sample deadline pan");
   check(engine.enqueueLoop({A::speed,0,6,generation,frame+1001,2}),"sample deadline double rate");
+  check(engine.enqueueLoop({A::reverse,0,7,generation,frame+1201,1}),"sample deadline reverse toggle");
+  check(engine.enqueueLoop({A::retrigger,0,8,generation,frame+1233,0}),"sample deadline reverse retrigger");
+  check(engine.enqueueLoop({A::reverse,0,9,generation,frame+1500,0}),"sample deadline forward toggle");
+  check(engine.enqueueLoop({A::retrigger,0,10,generation,frame+1701,0}),"sample deadline forward retrigger");
  };
  ready(engine64);ready(engine128);
  std::vector<float> left64(2048),right64(2048),left128(2048),right128(2048);

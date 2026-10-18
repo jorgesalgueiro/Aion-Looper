@@ -81,3 +81,9 @@ assert(cards[0].includes('0.50x')&&cards[0].includes('value="10"'),'Original pan
  retry.enqueue(()=>'fail');retry.enqueue(()=>'recovered');await settle();assert.deepEqual(recovered,['recovered']);
  console.log('PASS: rapid gestures ordered by acknowledged state, slider coalescing, priority Stop, pause/resume, expiry, generation reset, bounded queue, close and rejection recovery');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+// Reuse the exact original reverse checkbox markup with native requested state.
+snapshot.tracks[0].reverse=true;cards=context.window.AionLoopMarkup(snapshot,'normal');
+assert(/type="checkbox" checked id="loop-0-reverse"/.test(cards[0]));
+snapshot.tracks[0].reverse=false;cards=context.window.AionLoopMarkup(snapshot,'normal');
+assert(/type="checkbox"  id="loop-0-reverse"/.test(cards[0]));

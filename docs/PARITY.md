@@ -10,6 +10,7 @@
 | Host transport | BPM/PPQ/play observation | Meter/cycle/seek and sample-accurate scheduling/sync |
 | Loop recording/play/stop/overdub/substitute | Single capture owner and worker reference finalization; committed manual PCM comparison passes | Reference behavioral fixtures, hardware and long-session tests |
 | Loop pan/varispeed | Native reference pan law, manual 0.25x-2x with phase/rate smoothing; half/reset | Antialiasing, browser audio comparison, sync ratios |
+| Loop reverse | Original Rvers toggle; requested direction latches on play/retrigger; independent reversed source retained across NORM | Reference source PCM and state tests; hardware/browser rendering remain separate |
 | Loop normalization | Immutable worker NORM with shared stereo peak; unchanged-JS PCM/threshold tests | Hardware/listening, full browser playback and long-session stress |
 | Loop editing/multiply/undo/export | Other editing features not ported | Reference PCM/state/UI fixtures |
 | Drone voices/sampler/tracker/FX | Not ported | Algorithm/timing/CPU and saved-state fixtures |

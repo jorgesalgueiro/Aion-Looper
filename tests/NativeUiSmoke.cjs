@@ -63,6 +63,19 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  }
 
  if(snapshot.audioReady){
+   // Original Rvers checkbox changes requested direction even before a take exists.
+   const beforeReverse=await evaluate(`AionNative.request({operation:'snapshot'})`);
+   await evaluate(`document.getElementById('loop-0-reverse').click()`);
+   let reverseAck;
+   for(let n=0;n<60;++n){reverseAck=await evaluate(`AionNative.request({operation:'snapshot'})`);if(reverseAck.lastRequestId>beforeReverse.lastRequestId&&reverseAck.tracks[0].reverse)break;await delay(50);}
+   assert(reverseAck.tracks[0].reverse&&!reverseAck.rejected,'Original Rvers reaches native owner');
+   for(let n=0;n<40;++n){if(await evaluate(`document.getElementById('loop-0-reverse').checked`))break;await delay(50);}
+   assert(await evaluate(`document.getElementById('loop-0-reverse').checked`),'Reverse checkbox reflects acknowledged native state');
+   await evaluate(`document.getElementById('loop-0-reverse').click()`);
+   for(let n=0;n<60;++n){reverseAck=await evaluate(`AionNative.request({operation:'snapshot'})`);if(!reverseAck.tracks[0].reverse)break;await delay(50);}
+   assert(!reverseAck.tracks[0].reverse,'Original Rvers resets to forward');
+   const invalidReverse=await evaluate(`AionNative.request({operation:'loop',action:'reverse',track:0,value:0.5,generation:${snapshot.generation},expiresAt:Date.now()+3000})`);
+   assert(!invalidReverse.ok,'Reverse IPC rejects nonboolean values');
    // Two same-turn clicks used to lose the second gesture during RPC acknowledgement.
    await delay(150);
    const beforeBurst=await evaluate(`AionNative.request({operation:'snapshot'})`);

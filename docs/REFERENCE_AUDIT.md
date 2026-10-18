@@ -3,7 +3,8 @@
 **0.4.3 (capture gate established in 0.4.2): committed manual capture/overdub/substitute PCM now passes its reference
 comparison. Full application sound/functionality parity is NOT established.**
 After the capture and command-ordering gates passed, NORM was added as a separate
-worker transaction. Hardware/listening and the remaining items below still need
+worker transaction. After its live no-op repair passed, the original Rvers control
+was ported and compared separately. Hardware/listening and the remaining items below still need
 acceptance work; the original interface remains the contract.
 
 ## Reference and comparison scope
@@ -12,7 +13,7 @@ The unchanged resources/ui loop, audio, main/input, project, tracker, synth and
 effect sources define the target. All 16 runtime files remain byte/SHA identical
 to the preserved reference. State setters/clear/mute/solo execute from the actual
 JS classes in a Node VM; browser/audio IO is stubbed, not the tested calculations.
-408 traces compare 8,160 native loop snapshots. Seeded state is fixture setup,
+508 traces compare 10,160 native loop snapshots (the original 408 traces are retained, with 100 reverse/clear traces appended). Seeded state is fixture setup,
 not a reference browser recording integration test.
 
 The offline DSP test executes unchanged crossfade/circular-mix functions plus the
@@ -56,6 +57,29 @@ current playback envelope. A failing paired-playback regression exposed a fade
 restart on repeated NORM. Worker publication now carries the changed flag, and
 the regression checks exact stereo output during attack, steady playback and wrap.
 See VALIDATION.md for the repair and test-build scope; older ZIPs predate it.
+
+## Reverse source acceptance
+
+The next feature is the original Rvers checkbox. Actual unchanged Loop.toggleEffect
+and AudioGraph.build/retrigger methods execute in the comparison VM; audio nodes
+are IO stubs. The source buffer comes from the unchanged getReversedBuffer method.
+The native path uses reverse sample indices on immutable forward PCM, with no
+allocation/copy on the audio callback. Requested direction applies to the next
+play/retrigger, never immediately to the currently playing source.
+
+The JS source is an independent copy when reversed. Normalization changes stored
+forward PCM but cannot mutate that playing copy. Native normalization therefore
+retains the old raw clip lease while a reversed source is playing, and releases it
+on restart/stop/clear/reset. A completed overdub/substitution restarts using the
+current requested direction and the newly committed stored PCM.
+
+30 mono/stereo cases at 8/48/96 kHz and lengths 1/4/17/512/4097 compare 201,918
+rendered frames with tolerance 1e-6. The fixture covers pending toggles, retrigger,
+wrap, normalization/source independence, quarter/half/fractional/double rates,
+and wrapped overdub/substitution. Maximum Windows error is 1.029e-7. The fractional
+read comparison uses a linear interpolation model on the actual JS source samples;
+it does not establish Web Audio resampler, envelope or scheduled-start equivalence.
+The original capture and NORM fixtures and thresholds remain intact.
 
 ## Historical failure and repair
 

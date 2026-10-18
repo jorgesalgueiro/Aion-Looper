@@ -285,3 +285,26 @@ Stop suppresses playback; prepare joins before resetting storage. Failed worker
 allocation keeps the old clip. Full scans, copies and allocation/deletion remain
 off the callback. Like other jobs, this can temporarily require a second resident
 clip; the existing peak transient memory budget already accounts for that copy.
+
+
+### Reverse source identity
+
+LoopView.reverse is the requested direction. Track.activeReverse is latched only
+when a source starts/retriggers. The read maps source indices i and next(i) to
+length-1-i and length-1-next(i), then uses the existing fractional interpolation,
+wrap blend, pan and gain paths. The stored capture/edit PCM is never reversed.
+
+When NORM replaces stored PCM while a reversed source is active, ownership of the
+old audio clip lease transfers to Track.reverseHold. This preserves the reference
+Web Audio reversed-buffer snapshot without a callback copy/allocation. Subsequent
+NORM jobs still edit the current stored clip, while playback reads reverseHold.
+The next play/retrigger, successful capture/edit restart, Stop, Clear and stopped
+prepare release the hold through the existing worker retirement queue. Job base
+leases remain independent, so Clear during a worker operation remains safe.
+
+There is at most one held source per slot. These holds can add up to one extra
+resident PCM budget (64 MiB at the default capacity) to the previous nominal
+working set; allocator/JUCE/WebView and deferred retirement also consume memory.
+Do not treat the earlier capture-pool size or transient estimates as a hard
+process-memory cap. Twenty held sources and Clear All are exercised under the
+callback allocation watch and sanitizers. No reverse caches grow with toggles.

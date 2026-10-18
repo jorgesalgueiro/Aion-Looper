@@ -10,13 +10,13 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize };
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse };
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
     std::uint32_t length = 0, position = 0;
     float volume = 1, feedback = 0.8f, peak = 0, pan = 5, playbackRate = 1;
-    bool muted = false, solo = false, finalizationFailed = false;
+    bool muted = false, solo = false, finalizationFailed = false, reverse = false;
 };
 // Audio owns capture blocks/state; the worker borrows pinned takes and owns immutable clips.
 // Capture storage is allocated in prepare; clip allocation/deletion stays off the callback.
@@ -48,6 +48,8 @@ private:
     struct Track {
         LoopView info{};
         Clip* clip = nullptr; // Immutable samples; one audio lease plus any in-flight job lease.
+        Clip* reverseHold = nullptr; // Old raw clip backing a playing reversed source after NORM.
+        bool activeReverse = false;
         std::uint64_t revision = 0;
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
@@ -90,6 +92,7 @@ private:
     void stop(Track&) noexcept;
     void clear(Track&) noexcept;
     void blend(Track&) noexcept;
+    void restartSource(Track&) noexcept;
     bool hasCapture() const noexcept;
     std::array<Track, trackCount> tracks{};
     std::array<std::uint16_t, maxBlocks> freeBlocks{};

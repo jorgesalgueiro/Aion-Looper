@@ -310,3 +310,49 @@ capture audits retain 126 cases / 965,826 frames with maximum error 7.395e-8 at
 unchanged 1e-6 tolerance. The corrected fixture also passes Ubuntu ASan/UBSan and
 ThreadSanitizer core tests (process-local setarch invocation as above). Hardware,
 DAW and full browser playback equivalence remain outside these results.
+
+
+## Original Rvers control (2026-10-18, development source follow-up)
+
+Capture, NORM and the repeated-NORM envelope regression passed their gates before
+this feature began. The original loop Rvers checkbox now drives a native boolean
+command. It latches direction on the next play/retrigger, retaining the current
+source while a toggle is pending. Stored PCM remains forward. Reversed reads use
+source indices rather than an audio-thread copy or reverse allocation.
+
+Reference interaction matters: getReversedBuffer makes an independent source
+copy. NORM changes stored PCM while that playing reversed copy remains unchanged.
+The native engine transfers the old clip lease into a single held source per slot
+until restart/stop/clear/reset, with worker-only destruction. Successful edit
+finalization restarts using the requested direction. Failure keeps previous PCM
+and active source/phase. No extra UI or other DSP effect was enabled.
+
+Validation:
+
+- Windows Release and Ubuntu core CTest pass 7/7, including the new reverse gate.
+  The original 408 state traces remain, with 100 reverse/clear traces appended:
+  508 traces / 10,160 snapshots compare the actual unchanged Loop/UI methods.
+- Reverse PCM: 30 mono/stereo cases / 201,918 frames at 8/48/96 kHz, lengths
+  1/4/17/512/4097. Actual unchanged toggle and graph build/retrigger routines run
+  with audio-node IO stubs; source samples come from getReversedBuffer. Maximum
+  Windows absolute error 1.029e-7, tolerance unchanged at 1e-6. Cases cover pending
+  toggles, forward/reverse restarts, wrap, NORM source identity, fractional rates,
+  and wrapped overdub/substitution. Fractional reads use an explicit linear model;
+  this is not a browser-resampler/envelope/scheduled-start integration test.
+- Core lifecycle/allocation tests include capture autoplay, stop/play, retained
+  reverse PCM after NORM, forced NORM/edit allocation failure, current source/phase
+  preservation, Stop during finalization, 32 cancel/clear cycles, prepare reset,
+  20 simultaneous held sources and full resident budget. No callback C++ new/delete
+  is observed. Timestamped reverse toggles/retriggers also preserve exact output
+  across 64/128 blocks, including normalized clips. Earlier regressions remain.
+- The unchanged capture PCM audit passes on Windows and Ubuntu: 126 cases /
+  965,826 frames, max error 7.395e-8, tolerance unchanged at 1e-6.
+- Ubuntu ASan/UBSan core and ThreadSanitizer core tests pass. ThreadSanitizer uses
+  the previously documented process-local setarch invocation; no global settings
+  are changed. Both compile the final failure/Stop cases.
+- Windows native WebView2 smoke passes Rvers on/off acknowledgements and checkbox
+  reflection, strict boolean IPC validation, original controls and no legacy
+  AudioContext. Test output stays muted and no microphone recording starts.
+- Only the incremental Windows Standalone test app is rebuilt. No package,
+  plugin-format build or version bump is produced. Existing ZIPs predate these
+  follow-ups. Hardware/DAW/Apple validation and full application parity are pending.

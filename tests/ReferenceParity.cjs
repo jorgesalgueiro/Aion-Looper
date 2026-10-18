@@ -16,16 +16,19 @@ globalThis.perform=(operation,id,value)=>{
  if(operation==='feedback')UIManager.setLoopFeedback(id,value);
  if(operation==='pan')UIManager.setLoopPan(id,value);
  if(operation==='speed')UIManager.setLoopSpeed(id,value);
+ if(operation==='reverse'){if(loop.effects.reverse!==!!value)loop.toggleEffect('reverse');}
  if(operation==='mute'){if(loop.muted!==!!value)LoopManager.toggleMute(id);}
  if(operation==='solo')SoloManager.toggleSolo(id);
  if(operation==='clear')loop.clear();
- return state.loops.map(l=>({volume:l.volume,feedback:l.feedback,pan:l.pan,speed:l.playbackRate,muted:l.muted,solo:state.soloState.active&&state.soloState.loopId===l.id,effective:l.effectiveVolume}));
+ return state.loops.map(l=>({volume:l.volume,feedback:l.feedback,pan:l.pan,speed:l.playbackRate,muted:l.muted,solo:state.soloState.active&&state.soloState.loopId===l.id,effective:l.effectiveVolume,reverse:l.effects.reverse}));
 };`,context);
 const commands=[['seed',0,0],['mute',0,1],['clear',0,0],['seed',1,0],['solo',1,0],['clear',2,0],['solo',1,0],['pan',3,3.9]];
 let seed=4711;const random=n=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed%n;};
 for(let i=0;i<400;++i){const action=['volume','feedback','pan','speed','mute','solo','clear'][random(7)],id=random(20);const value=action==='pan'?random(11):action==='speed'?[0.25,0.5,1,2][random(4)]:action==='volume'?random(201)/100:action==='feedback'?random(101)/100:random(2);commands.push([action,id,value]);}
+// Retain all earlier traces and append reverse toggles/clear on every slot.
+for(let id=0;id<20;++id)commands.push(['reverse',id,1],['reverse',id,1],['reverse',id,0],['reverse',id,1],['clear',id,0]);
 const expected=commands.map(c=>context.perform(...c));
 const run=spawnSync(process.argv[2],[],{input:commands.map(c=>c.join(' ')).join('\n')+'\n',encoding:'utf8',maxBuffer:4*1024*1024});
 assert.equal(run.status,0,run.stderr);const lines=run.stdout.trim().split(/\r?\n/);assert.equal(lines.length,commands.length);
-for(let n=0;n<commands.length;++n){const values=lines[n].split(' ').map(Number);assert.equal(values[0],1,'rejected '+commands[n]);const soloActive=expected[n].some(t=>t.solo);for(let i=0;i<20;++i){const actual=values.slice(1+i*6,7+i*6),oracle=expected[n][i],want=[oracle.volume,oracle.feedback,oracle.pan,oracle.speed,+oracle.muted,+oracle.solo];for(let f=0;f<6;++f)assert(Math.abs(actual[f]-want[f])<1e-6,`JS/native mismatch after ${n} ${commands[n]} track ${i} field ${f}: ${actual[f]} vs ${want[f]}`);const effective=actual[4]||(soloActive&&!actual[5])?0:actual[0];assert(Math.abs(effective-oracle.effective)<1e-6,'effective mute/solo volume');}}
-console.log(`PASS: ${commands.length} traces / ${commands.length*20} loop snapshots match unchanged JS setters, mute, clear and solo. Browser rendering/audio capture are outside this oracle.`);
+for(let n=0;n<commands.length;++n){const values=lines[n].split(' ').map(Number);assert.equal(values[0],1,'rejected '+commands[n]);const soloActive=expected[n].some(t=>t.solo);for(let i=0;i<20;++i){const actual=values.slice(1+i*7,8+i*7),oracle=expected[n][i],want=[oracle.volume,oracle.feedback,oracle.pan,oracle.speed,+oracle.muted,+oracle.solo,+oracle.reverse];for(let f=0;f<7;++f)assert(Math.abs(actual[f]-want[f])<1e-6,`JS/native mismatch after ${n} ${commands[n]} track ${i} field ${f}: ${actual[f]} vs ${want[f]}`);const effective=actual[4]||(soloActive&&!actual[5])?0:actual[0];assert(Math.abs(effective-oracle.effective)<1e-6,'effective mute/solo volume');}}
+console.log(`PASS: ${commands.length} traces / ${commands.length*20} loop snapshots match unchanged JS setters, mute, clear, solo and reverse. Browser rendering/audio capture are outside this oracle.`);
