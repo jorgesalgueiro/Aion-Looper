@@ -216,3 +216,18 @@ Active capture rejects rate changes. Reference sync-dependent speed quantization
 is not implemented because native sync is still off. Linear interpolation can
 alias at increased rates; an antialiasing resampler and perceptual/browser audio
 fixtures are required before claiming commercial DSP parity.
+
+## Reference acceptance gates (0.4.1)
+
+Single capture ownership follows LoopManager; all 20 slots still play together.
+Clear preserves explicit mute as the reference does. Empty capture finalization
+releases ownership without stranding the recorder. State parity now uses actual
+unchanged JS classes, with VM stubs restricted to browser/audio IO.
+
+State and sound acceptance are distinct. `AudioParityAudit.cjs` currently fails
+against the unchanged circular mixer. Future capture processing must record into
+preallocated take storage, transfer ownership for non-realtime finalization,
+apply reference DC/crossfade/mix/clipping routines off the callback, and commit
+an immutable result at an audio block boundary. Old PCM must survive exhaustion,
+cancellation and reset. Undo/export/project persistence should use the same
+ownership mechanism. This describes required work, not an implemented pipeline.

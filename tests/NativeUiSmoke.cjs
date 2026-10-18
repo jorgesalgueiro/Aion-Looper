@@ -62,6 +62,15 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    assert(!edited.tracks[0].solo,'Original SOLO toggles off');
  }
 
+ if(snapshot.audioReady){
+   for(let n=0;n<60;++n){if(await evaluate(`![...document.querySelectorAll('#mod-menu button')].find(b=>b.textContent.trim()==='DEL ALL').disabled`))break;await delay(50);}
+   const before=await evaluate(`AionNative.request({operation:'snapshot'})`);
+   await evaluate(`window.savedConfirm=window.confirm;window.confirmCalled=0;window.confirm=()=>{window.confirmCalled++;return false;};[...document.querySelectorAll('#mod-menu button')].find(b=>b.textContent.trim()==='DEL ALL').click();window.confirm=window.savedConfirm;delete window.savedConfirm;`);
+   assert.equal(await evaluate(`window.confirmCalled`),1,'Original confirmation must be shown before cancellation');
+   await evaluate(`delete window.confirmCalled`);
+   await delay(150);
+   const cancelled=await evaluate(`AionNative.request({operation:'snapshot'})`);assert.equal(cancelled.lastRequestId,before.lastRequestId,'DEL ALL cancellation must not send a command');
+ }
  const invalid=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:3})`);assert(!invalid.ok);
  const muted=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:0})`);assert(muted.ok);
  const expired=await evaluate(`AionNative.request({operation:'loop',action:'record',track:0,generation:${snapshot.generation||1},expiresAt:Date.now()-1000})`);assert(!expired.ok&&expired.error.includes('expired'));

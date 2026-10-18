@@ -15,6 +15,8 @@ constexpr float centre = 0.7071067811865475f;
 void loopTests() {
     using namespace aion;
     LoopBank bank; bank.prepare(8192, 0);
+    check(bank.apply(LoopAction::record,0)&&bank.apply(LoopAction::finish,0),"zero-frame finish accepts and releases capture");
+    check(bank.view()[0].state==LoopState::empty,"zero-frame finish cannot strand recorder");
     check(!bank.apply(LoopAction::play, 0), "empty track cannot play");
     check(!bank.apply(LoopAction::record, 20), "track index bounds");
     check(bank.apply(LoopAction::record, 0), "record starts");
@@ -48,9 +50,7 @@ void loopTests() {
 
     bank.prepare(20*4096,0);
     watch=true;
-    for(unsigned i=0;i<20;++i) check(bank.apply(LoopAction::record,i),"all 20 track slots record");
-    bank.tick({0.01f,0.02f});
-    for(unsigned i=0;i<20;++i) bank.apply(LoopAction::finish,i);
+    for(unsigned i=0;i<20;++i) {check(bank.apply(LoopAction::record,i),"all 20 slots record sequentially");bank.tick({0.01f,0.02f});bank.apply(LoopAction::finish,i);}
     out=bank.tick({});near(out.left,0.3f*centre,"20-track sum");near(out.right,0.3f*centre,"20-track stereo sum");
     bank.apply(LoopAction::mute,0,1);out=bank.tick({});near(out.left,0.285f*centre,"mute excludes track");
     for(int frame=0;frame<8192;++frame)bank.tick({});
@@ -84,8 +84,8 @@ void loopTests() {
     watch=false;check(allocations.load()==0,"solo/retrigger/clear-all callback allocation/free");
 
     bank.prepare(4096,0);bank.setAutoPlay(false);
-    bank.apply(LoopAction::record,0);bank.apply(LoopAction::record,1);bank.tick({0.2f,0.2f});
-    check(bank.view()[1].state==LoopState::empty,"simultaneous recording pool shortage leaves empty slot usable");
+    bank.apply(LoopAction::record,0);check(!bank.apply(LoopAction::record,1),"reference single capture owner");bank.tick({0.2f,0.2f});
+    check(bank.view()[1].state==LoopState::empty,"rejected concurrent capture leaves empty slot usable");
     for(int i=1;i<=4096;++i)bank.tick({0.2f,0.2f});
     check(bank.view()[0].state==LoopState::stopped,"full pool honors auto-play off");
     check(bank.view()[0].length==4096,"full pool retains take with auto-play off");

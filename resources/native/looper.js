@@ -69,9 +69,10 @@
         mapping.innerHTML='<div class="mapping-tabs"><button class="tab-btn active">Keyboard</button></div><div class="mapping-scroll-container"><table class="mapping-table">'+Array.from({length:20},(_,i)=>`<tr><td>Loop ${i+1}</td><td>${i<10?'':'Shift+'}${(i+1)%10}</td></tr>`).join('')+'<tr><td>Global OD</td><td>+</td></tr><tr><td>Global SUB</td><td>-</td></tr><tr><td>STOP ALL</td><td>Space</td></tr><tr><td>Retrigger selected loop</td><td>/</td></tr></table></div>';
         document.getElementById('midiStatus').textContent='Native MIDI mapping is not ported yet.';
         let selected=0;
+        let urgentStop=false;
         const controls = new Map();
         const queueControl=(action,track,value)=>{if(!enabled())return;controls.set(`${track}:${action}`,{action,track,value});drainControls();};
-        const drainControls=()=>{if(busy||!controls.size)return;const [key,c]=controls.entries().next().value;controls.delete(key);command(c.action,c.track,c.value);};
+        const drainControls=()=>{if(busy)return;if(urgentStop){urgentStop=false;command('stopAll',0);return;}if(!controls.size)return;const [key,c]=controls.entries().next().value;controls.delete(key);command(c.action,c.track,c.value);};
         const enabled = () => snapshot?.audioReady && Date.now()-advancedAt < 1000;
         const actionFor = t => t.state === 'empty' ? 'record' : t.state === 'stopped' ? 'play'
             : t.state === 'playing' ? (mode === 'normal' ? 'stop' : mode) : 'finish';
@@ -95,14 +96,21 @@
         master.addEventListener('input', () => {output.querySelector('#native-master-value').textContent=Number(master.value).toFixed(2);setParameter('masterGain',Number(master.value));});
         monitor.addEventListener('change', () => setParameter('inputMonitor',monitor.checked?1:0));
         autoPlay.addEventListener('change',()=>setParameter('autoPlayAfterRecord',autoPlay.checked?1:0));
-        stopAll.addEventListener('click', () => command('stopAll',0));
-        clearAll.addEventListener('click', () => command('clearAll',0));
+        const stopSession=()=>{keyboard.cancel();controls.clear();urgentStop=true;drainControls();};
+        stopAll.addEventListener('click', stopSession);
+        clearAll.addEventListener('click', () => {if(window.confirm('Clear ALL loops and master recordings?')){keyboard.cancel();controls.clear();command('clearAll',0);}});
+        const mainAction=id=>{
+            selected=id;
+            const owner=snapshot.tracks.findIndex(t=>['recording','overdubbing','substituting'].includes(t.state));
+            if(snapshot.tracks[id].state==='empty'&&owner>=0&&owner!==id){command('finish',owner);return;}
+            command(actionFor(snapshot.tracks[id]),id);
+        };
         const keyboard = new window.AionPerformance({
             track:id=>snapshot?.tracks[id],
-            action:id=>{selected=id;command(actionFor(snapshot.tracks[id]),id);},
+            action:id=>mainAction(id),
             hold:id=>{const state=snapshot?.tracks[id].state;if(state==='stopped')command('clear',id);else if(state==='playing')command('stop',id);},
             mode:next=>{mode=mode===next?'normal':next;refresh();},
-            stop:()=>command('stopAll',0),retrigger:()=>command('retrigger',selected),halfSpeed:()=>{if(snapshot?.tracks[selected].length)queueControl('speed',selected,snapshot.tracks[selected].playbackRate===1?0.5:1);}
+            stop:stopSession,retrigger:()=>command('retrigger',selected),halfSpeed:()=>{if(snapshot?.tracks[selected].length)queueControl('speed',selected,snapshot.tracks[selected].playbackRate===1?0.5:1);}
         });
         document.addEventListener('keydown',e=>keyboard.down(e));
         document.addEventListener('keyup',e=>keyboard.up(e));
@@ -116,7 +124,7 @@
                 stripHandlers(row);
                 row.querySelectorAll('button,input,select,textarea').forEach(e => {e.disabled=true;e.title='Unavailable in this preview';});
                 const bind=(element,callback,event='click') => {element.dataset.nativeControl='true';element.title=element.getAttribute('aria-label')||element.textContent.trim();element.addEventListener(event,callback);return element;};
-                const main=bind(row.querySelector(`#loop-action-${i}`),()=>command(actionFor(snapshot.tracks[i]),i));
+                const main=bind(row.querySelector(`#loop-action-${i}`),()=>mainAction(i));
                 const volume=bind(row.querySelector(`#loop-vol-slider-${i}`),e=>queueControl('volume',i,Number(e.target.value)),'input');
                 const feedback=bind(row.querySelector(`#loop-fbk-slider-${i}`),e=>queueControl('feedback',i,Number(e.target.value)),'input');
                 const pan=bind(row.querySelector(`#loop-pan-slider-${i}`),e=>queueControl('pan',i,Number(e.target.value)),'input');
@@ -140,7 +148,7 @@
             if(document.activeElement!==master)master.value=snapshot.masterGain;
             if(document.activeElement!==monitor)monitor.checked=snapshot.inputMonitor;
             output.querySelector('#native-master-value').textContent=snapshot.masterGain===0?'MUTED':snapshot.masterGain.toFixed(2);
-            stopAll.disabled=clearAll.disabled=!active||busy;
+            stopAll.disabled=!active;clearAll.disabled=!active||busy;
             if(document.activeElement!==autoPlay)autoPlay.checked=snapshot.autoPlayAfterRecord;
             document.getElementById('activeCount').textContent=`${snapshot.tracks.filter(t=>t.state!=='empty').length}/20`;
             document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['recording','overdubbing','substituting'].includes(t.state))?'RECORDING':'READY';
@@ -188,7 +196,7 @@
             try {
                 const reply=await rpc({operation:'snapshot'});if(!reply.ok)throw Error(reply.error || 'State unavailable');
                 if(!alive)return;
-                if(snapshot && reply.generation!==snapshot.generation)controls.clear();
+                if(snapshot && reply.generation!==snapshot.generation){controls.clear();urgentStop=false;}
                 if(reply.frame!==lastFrame || reply.generation!==snapshot?.generation){lastFrame=reply.frame;advancedAt=Date.now();}
                 snapshot=reply;
                 if(!rows.length)createRows(reply);

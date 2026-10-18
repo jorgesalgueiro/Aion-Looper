@@ -144,3 +144,27 @@ still pending. Pan intentionally follows the reference mono-fold stage, changing
 previous previews' stereo playback routing. PCM/project save, export, undo,
 synths, FX, MIDI learn and clock/host sync remain incomplete. New native Linux
 wrappers and Apple targets are not validated by this core-only Ubuntu run.
+
+## Direct reference audit 0.4.1 — 2026-10-18
+
+- New `js_native_state_parity` CTest runs actual unchanged JS methods against a
+  C++ probe: 408 commands / 8,160 loop snapshots. Windows MSVC Release and Ubuntu
+  GCC Debug CTest pass 3/3, including asset identity and realtime contracts.
+- The reference test first reproduced mute loss on clear and now passes after
+  correction. Fractional pan truncation, exclusive capture entry, zero-frame finish
+  and keyboard/stop/clear UI handling were corrected; original assets stay intact.
+- Windows Release Standalone/VST3/CLAP compile with ASIO ON. Native WebView2 smoke
+  tests pass original controls plus DEL ALL cancellation without sending a clear
+  command. The dedicated app remains muted, never records microphone input and
+  closes after testing.
+- **Sound parity FAILS:** `node tests/AudioParityAudit.cjs <probe>` exits 1, with
+  102/512 mismatched samples and maximum error 0.0424264117 in an isolated native
+  overdub/reference circular-mix fixture. This is not hidden by the three passing
+  CTest tests. See `REFERENCE_AUDIT.md` for fixture scope and unported features.
+- The local Windows 0.4.1 ZIP includes the audit document. Runtime artifacts and
+  ZIP integrity are checked; tests/probe/development files are not runtime payloads.
+
+This audit does not establish full functionality or acoustic equivalence. The
+next DSP acceptance work requires preallocated capture/finalization transactions,
+reference DC/boundary processing, tapered/soft-clipped overdub, and broader
+browser-rendered audio fixtures. Apple/DAW/hardware testing remains pending.

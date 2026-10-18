@@ -1,6 +1,6 @@
 # Aion-Looper — native JUCE migration
 
-Version 0.4.0 is a **native loop preview**, not a completed port or commercial release.
+Version 0.4.1 is a **native loop preview**, not a completed port or commercial release.
 See [ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
 [SDKS](docs/SDKS.md) and [PARITY](docs/PARITY.md).
 
@@ -50,3 +50,9 @@ intact. Pan/rate changes ramp over 20 ms. DEL resets loop controls to their
 reference defaults. Overdub/substitute require unity speed, matching the reference.
 The current resampler uses linear interpolation; high-quality antialiasing and
 browser-rendered audio comparison remain release gates.
+
+The [reference audit](docs/REFERENCE_AUDIT.md) now records verified state parity
+and remaining differences. Actual unchanged JS methods are compared to native
+state in CTest when Node is available. The separate audio diagnostic currently
+fails: native overdub boundary processing and capture finalization do not yet
+match reference sound. Passing state/UI tests must not be presented as DSP parity.

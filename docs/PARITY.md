@@ -8,7 +8,7 @@
 | IPC/APVTS | Coherent snapshots, generation/expiry validation, loop commands, master/monitor/auto-play APVTS; parameter XML only | Session/generation tests, gestures, automation/state stress |
 | Audio owner | 20-slot native looper, bounded pool, smoothed gain/mute, finite protection | Hardware/DAW audio, 64/128 stress and allocation instrumentation |
 | Host transport | BPM/PPQ/play observation | Meter/cycle/seek and sample-accurate scheduling/sync |
-| Loop recording/play/stop/overdub/substitute | Native manual timing; stereo input, exclusive solo, retrigger, clear-all, auto-play option | Reference behavioral fixtures, hardware and long-session tests |
+| Loop recording/play/stop/overdub/substitute | Partial native manual timing with single capture owner; capture finalization and overdub audio differ from JS | Reference behavioral fixtures, hardware and long-session tests |
 | Loop pan/varispeed | Native reference pan law, manual 0.25x-2x with phase/rate smoothing; half/reset | Antialiasing, browser audio comparison, sync ratios |
 | Loop editing/multiply/undo/export | Not ported | Reference PCM/state/UI fixtures |
 | Drone voices/sampler/tracker/FX | Not ported | Algorithm/timing/CPU and saved-state fixtures |
@@ -20,3 +20,5 @@
 | Commercial distribution | Not ready | Licensing, signing, installers, validation and complete parity |
 
 This phase makes no production-readiness or completed feature-parity claim.
+
+See `REFERENCE_AUDIT.md`: unchanged-JS state traces pass, but the strict overdub audio diagnostic currently fails. These are separate acceptance gates.

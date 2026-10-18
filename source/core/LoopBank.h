@@ -44,6 +44,7 @@ private:
     void stop(Track&) noexcept;
     void clear(Track&) noexcept;
     void blend(Track&) noexcept;
+    bool hasCapture() const noexcept;
     std::array<Track, trackCount> tracks{};
     std::array<std::uint16_t, maxBlocks> freeBlocks{};
     std::vector<float> audio;

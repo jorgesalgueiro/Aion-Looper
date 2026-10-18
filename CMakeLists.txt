@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(AionLooper VERSION 0.4.0 LANGUAGES C CXX)
+project(AionLooper VERSION 0.4.1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -42,6 +42,12 @@ if(BUILD_TESTING)
     add_executable(aion_core_tests tests/CoreTests.cpp tests/LoopTests.cpp)
     target_link_libraries(aion_core_tests PRIVATE aion_core Threads::Threads)
     add_test(NAME core_realtime_contract COMMAND aion_core_tests)
+    find_program(AION_NODE_EXECUTABLE NAMES node nodejs)
+    if(AION_NODE_EXECUTABLE)
+        add_executable(aion_reference_probe tests/ReferenceProbe.cpp)
+        target_link_libraries(aion_reference_probe PRIVATE aion_core)
+        add_test(NAME js_native_state_parity COMMAND "${AION_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/ReferenceParity.cjs" "$<TARGET_FILE:aion_reference_probe>")
+    endif()
 endif()
 if(NOT AION_BUILD_PLUGIN)
     return() # Offline, JUCE-free DSP/queue tests.
@@ -123,7 +129,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     juce_link_with_embedded_linux_subprocess(AionLooper)
 endif()
 install(FILES README.md docs/ARCHITECTURE.md docs/BUILDING.md docs/PARITY.md
-    docs/LICENSING.md docs/VALIDATION.md docs/SDKS.md DESTINATION share/doc/Aion-Looper)
+    docs/LICENSING.md docs/VALIDATION.md docs/SDKS.md docs/REFERENCE_AUDIT.md DESTINATION share/doc/Aion-Looper)
 # Primary source notices accompany local preview packages; the full release inventory
 # remains a separate gate documented in LICENSING.md.
 set(notice_dir share/licenses/Aion-Looper)

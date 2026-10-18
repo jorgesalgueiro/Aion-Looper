@@ -38,7 +38,8 @@ void LoopBank::clear(Track& t) noexcept {
     if (soloTrack == static_cast<int>(&t - tracks.data())) soloTrack = -1;
     t.blockCount = 0;
     (void) apply(LoopAction::pan, static_cast<std::uint32_t>(&t-tracks.data()), 5);
-    t.info = LoopView{}; t.phase = 0; t.rate = 1; t.rateRemaining = 0;
+    const bool muted = t.info.muted; // Reference clear() keeps the explicit mute flag.
+    t.info = LoopView{}; t.info.muted = muted; t.phase = 0; t.rate = 1; t.rateRemaining = 0;
     if (freeCount) poolFull = false;
 }
 bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept {
@@ -48,10 +49,11 @@ bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept 
     auto& t = tracks[id]; auto& s = t.info.state;
     switch (action) {
         case LoopAction::record:
-            if (s != LoopState::empty || freeCount == 0) return false;
+            if (s != LoopState::empty || freeCount == 0 || hasCapture()) return false;
             t.info.playbackRate = t.rate = 1; t.rateRemaining = 0;
             s = LoopState::recording; t.info.length = t.info.position = 0; t.phase = 0; poolFull = false; return true;
         case LoopAction::finish:
+            if (s == LoopState::recording && !t.info.length) { clear(t); return true; }
             if (s == LoopState::recording && t.info.length) {
                 s = autoPlay ? LoopState::playing : LoopState::stopped; t.info.position = 0; t.phase = 0; blend(t); return true;
             }
@@ -64,7 +66,7 @@ bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept 
         case LoopAction::clear: clear(t); return true;
         case LoopAction::overdub:
         case LoopAction::substitute:
-            if (s != LoopState::playing || t.info.playbackRate != 1 || t.rateRemaining) return false;
+            if (s != LoopState::playing || hasCapture() || t.info.playbackRate != 1 || t.rateRemaining) return false;
             t.phase = t.info.position; blend(t);
             s = action == LoopAction::overdub ? LoopState::overdubbing : LoopState::substituting;
             return true;
@@ -84,6 +86,7 @@ bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept 
             s = LoopState::playing; t.info.position = 0; t.phase = 0; t.tailRemaining = 0; blend(t); return true;
         case LoopAction::pan: {
             if (!std::isfinite(value) || value < 0 || value > 10) return false;
+            value = std::trunc(value); // UIManager.setLoopPan uses parseInt.
             if (value == t.info.pan) return true;
             t.info.pan = value;
             // Reference GainNodes feed mono ChannelMerger inputs, at angle pan*pi/20.
@@ -105,6 +108,11 @@ bool LoopBank::apply(LoopAction action, std::uint32_t id, float value) noexcept 
         case LoopAction::clearAll:
         case LoopAction::stopAll: break;
     }
+    return false;
+}
+bool LoopBank::hasCapture() const noexcept {
+    for (const auto& t : tracks)
+        if (t.info.state == LoopState::recording || t.info.state == LoopState::overdubbing || t.info.state == LoopState::substituting) return true;
     return false;
 }
 void LoopBank::beginBlock() noexcept { for (auto& t : tracks) t.info.peak = 0; }

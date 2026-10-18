@@ -1,4 +1,4 @@
-name: Core realtime contract
+name: Core contract and partial reference state parity
 on: [push, pull_request]
 jobs:
   core:
