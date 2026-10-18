@@ -54,6 +54,12 @@ cmake --install build/windows --config Release --prefix dist/windows
 cpack --config build/windows/CPackConfig.cmake -C Release -B dist -G ZIP
 ```
 
+After a version bump, verify Windows file metadata matches CMake's project version:
+
+```powershell
+(Get-Item 'build/windows/AionLooper_artefacts/Release/Standalone/Aion-Looper.exe').VersionInfo | Select-Object FileVersion,ProductVersion
+```
+
 The WebView2 SDK version above is the version recommended by pinned JUCE's
 FindWebView2.cmake. Users also require the Evergreen WebView2 Runtime. The CMake
 option selects WebView2 explicitly, preventing legacy Internet Explorer fallback.
@@ -192,3 +198,14 @@ FINISH playback. Session recordings remain temporary and are not project storage
 component suites. Run `node tests/AudioParityAudit.cjs
 build/windows/Release/aion_reference_probe.exe` for the connected PCM gate; on Linux
 use `build/core/aion_reference_probe`. Do not skip this gate because components pass.
+
+
+The core CTest suite also runs frontend command-ordering tests and the connected
+NORM comparison when Node is available. For detailed normalization PCM results:
+
+```sh
+node tests/NormalizationParity.cjs build/core/aion_reference_probe
+```
+
+On Windows use `build/windows/Release/aion_reference_probe.exe`. These tests
+execute the unchanged reference DSP, not a reimplementation of the JS oracle.

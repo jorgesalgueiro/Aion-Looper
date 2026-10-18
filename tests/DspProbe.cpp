@@ -13,6 +13,7 @@ int main(){
   bool ok=true;
   if(action=="dc")aion::reference::removeDc(base);
   else if(action=="fade")ok=aion::reference::crossfade(base,rate,fade);
+  else if(action=="normalize"){(void)aion::reference::normalize(base,take);base.insert(base.end(),take.begin(),take.end());}
   else if(action=="mix")ok=aion::reference::mixCircular(base,take,rate,offset,feedback);
   else return 2;
   std::cout<<ok<<std::setprecision(9);for(float sample:base)std::cout<<' '<<sample;std::cout<<'\n';

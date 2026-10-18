@@ -145,10 +145,11 @@
                 bind(row.querySelector('.loop-track-delete'),()=>command('clear',i));
                 const solo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='SOLO'),()=>command('solo',i));
                 const retrigger=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='RTRG'),()=>command('retrigger',i));
+                const normalize=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='NORM'),()=>command('normalize',i));
                 feedback.addEventListener('dblclick',()=>queueControl('feedback',i,0.8));
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const canvas=row.querySelector('canvas');canvas.title='Playback position';
-                rows.push({row,main,volume,feedback,pan,speed,half,reset,mute,solo,retrigger,canvas});wrapper.append(row);container.append(wrapper);
+                rows.push({row,main,volume,feedback,pan,speed,half,reset,mute,solo,retrigger,normalize,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
         function refresh() {
@@ -182,6 +183,7 @@
                 r.speed.disabled=!active||editing;r.half.disabled=!active||editing||!t.length;
                 r.reset.disabled=!active||editing||t.playbackRate===1;
                 r.retrigger.disabled=!active||!t.length||['recording','finalizing'].includes(t.state);
+                r.normalize.disabled=!active||!t.length||!['playing','stopped'].includes(t.state)||snapshot.tracks.some(t=>['recording','overdubbing','substituting','finalizing'].includes(t.state));
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
                 r.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
                 r.mute.textContent=t.muted?'UNM':'MUTE';r.mute.setAttribute('aria-pressed',String(t.muted));

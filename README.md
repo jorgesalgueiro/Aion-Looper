@@ -1,6 +1,6 @@
 # Aion-Looper — native JUCE migration
 
-Version 0.4.2 is a **native loop preview**, not a completed port or commercial release.
+Version 0.4.3 is a **native loop preview**, not a completed port or commercial release.
 See [ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
 [SDKS](docs/SDKS.md) and [PARITY](docs/PARITY.md).
 
@@ -52,23 +52,21 @@ reference defaults. Overdub/substitute require unity speed, matching the referen
 The current resampler uses linear interpolation; high-quality antialiasing and
 browser-rendered audio comparison remain release gates.
 
-The [reference audit](docs/REFERENCE_AUDIT.md) now records verified state parity
-and remaining differences. Actual unchanged JS methods are compared to native
-state in CTest when Node is available. The separate audio diagnostic currently
-fails: native overdub boundary processing and capture finalization do not yet
-match reference sound. Passing state/UI tests must not be presented as DSP parity.
+The [reference audit](docs/REFERENCE_AUDIT.md) records actual unchanged-JS state
+and DSP comparisons and their limits. Capture/overdub/substitute finalization now
+passes its connected manual PCM gate: 126 mono/stereo cases / 965,826 frames at
+1e-6 tolerance. FINISH publishes SAVING while a worker applies reference
+crossfade/DC/mixing to a private result. Failed edits preserve the original PCM;
+block-boundary ownership transfer and worker retirement keep scans/allocation/
+deletion off the audio callback. This establishes committed-PCM parity for that
+path; browser envelopes/resampling, latency/sync and hardware remain unverified.
 
-Feature progression is now frozen on capture/overdub repair under `AGENTS.md`.
-Offline finalization kernels have unchanged-JS sample tests, but the native looper
-integration still fails its audio acceptance check. The capture-quality CI job
-keeps that gate visible; passing component tests do not authorize the next feature.
-
-Capture repair in 0.4.2: FINISH publishes SAVING while a worker applies the
-reference crossfade/DC/mixing path to a private result. Old PCM stays unchanged
-while editing and on processing failure. Only the audio owner commits completed
-clips at block boundaries; worker-only retirement keeps deletion off the callback.
-The connected manual PCM comparison now passes 126 mono/stereo cases / 965,826
-frames (tolerance 1e-6). The earlier failed raw-mixer fixture remains in the kernel
-suite. These latest results supersede the historical failing-gate notes above.
-Full browser envelopes/resampling, latency/sync, listening/hardware and remaining
-features are still outside this result. No other feature was added in this repair.
+0.4.3 adds the original NORM action: linked stereo peak normalization runs as an
+immutable worker transaction, preserving playback phase, volume/pan/rate/mute,
+and stopped/playing intent. Clear/reset cancel the result; allocation failure
+keeps the prior clip. NORM is unavailable during capture or another pending edit.
+The original near-silence and near-unity thresholds are retained. It does not add
+undo or persistent audio storage. Rapid performance commands now queue in order;
+Stop cancels unsent work and survives a pause in the same audio configuration.
+Unsent ordinary actions expire after three seconds, and sliders coalesce their
+pending values. The original UI files remain unchanged.

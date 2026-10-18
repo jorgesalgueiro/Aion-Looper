@@ -233,3 +233,47 @@ smoke additionally clicks MUTE twice within one JavaScript turn and requires bot
 audio-owner acknowledgements and the original final mute state. It passes with
 muted output and no recording. Windows core/state/DSP and committed PCM gates pass;
 Ubuntu core/state/DSP, committed PCM and frontend gates also pass. Original UI assets remain untouched.
+
+
+## 0.4.3: original NORM action (2026-10-18)
+
+The current capture and command-ordering gates passed before this feature began.
+NORM now uses the original button, shared stereo peak ratio and reference silence/
+unity thresholds. Its full scan and copy run on the worker, with immutable source
+leases and block-boundary commit. Live phase and control values are retained;
+Stop prevents late playback, and clear/reset cancel the private result. This is
+available on playing/stopped clips while the single capture/worker slot is free.
+No audio persistence or undo was added.
+
+- Windows Release and Ubuntu core CTest: 6/6. Existing capture/reference state
+  regressions remain; frontend commands and connected normalization are now CTest
+  entries. The latest phase and normalized 64/128 regressions also pass on Ubuntu.
+- Kernel unchanged-JS comparison: 544 cases / 507,428 samples, max absolute error
+  4.994e-9 at unchanged 1e-6 tolerance. This retains all earlier mixer cases and
+  adds 72 linked-stereo normalization threshold fixtures.
+- Connected normalization: 42 mono/stereo cases / 321,942 frames, lengths
+  1-48,001, 8/48/96 kHz. Windows max error 6.135e-8 at tolerance 1e-6. The oracle
+  executes unchanged reference capture conditioning followed by normalizeBuffer;
+  the native probe records, finalizes, normalizes asynchronously and renders PCM.
+- Lifecycle tests: idempotence, live phase, stopped intent, controls/mute, full
+  resident budget, worker allocation-failure rollback, 32 clear cancellations,
+  reset, empty/active-capture rejection and normalized 64/128 playback. Audio
+  thread C++ new/delete watch remains zero; worker allocation is intentional.
+- Ubuntu AddressSanitizer/UBSan: 6/6. ThreadSanitizer core tests pass using
+  process-local `setarch x86_64 -R`; no race report or global ASLR change.
+- Native Windows WebView2: the original NORM is disabled for empty/saving slots.
+  A restored snapshot-only clip fixture enables it and verifies its IPC reaches
+  the real audio owner, which correctly rejects the absent clip. Rapid double
+  MUTE, existing controls, muted output and no legacy AudioContext checks pass.
+  The smoke test does not capture a microphone or establish hardware audio parity.
+- Windows Standalone, VST3 and CLAP targets build with ASIO enabled. Physical
+  drivers/listening, host validators and Apple/mobile targets remain unverified.
+
+
+The unchanged connected capture audit also passes after the NORM integration on
+Windows and Ubuntu: 126 cases / 965,826 frames, max error 7.395e-8 at tolerance
+1e-6. Package validation caught stale Windows 0.2.0 resource metadata. CMake now
+adds JUCE's generated Info.txt dependency to its resource rule; incremental rebuild
+regenerates it, and Standalone/VST3 file properties now report 0.4.3. The Windows
+ZIP is regenerated from those binaries and checked for CRC integrity, required
+formats, current documentation and exclusion of intermediate/test artifacts.

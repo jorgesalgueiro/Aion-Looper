@@ -85,6 +85,18 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert(saving.caption==='SAVING'&&saving.disabled&&!saving.undefined,JSON.stringify(saving));
  await evaluate(`__JUCE__.backend.emitByBackend=window.savedBackendEmit;delete window.savedBackendEmit`);
  for(let n=0;n<40;++n){if(await evaluate(`document.getElementById('loop-action-0').textContent==='RECORD'`))break;await delay(50);}
+ assert(await evaluate(`[...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='NORM').disabled`),'Empty loop normalization stays disabled');
+ if(snapshot.audioReady){
+   // Present a clip only in snapshots to verify binding/IPC; the real core remains empty.
+   await evaluate(`window.savedBackendEmit=__JUCE__.backend.emitByBackend;__JUCE__.backend.emitByBackend=function(event,payload){if(event==='__juce__complete'){const message=JSON.parse(payload);if(message.result?.tracks){message.result.tracks[0].state='playing';message.result.tracks[0].length=512;}payload=JSON.stringify(message);}return window.savedBackendEmit.call(this,event,payload);}`);
+   for(let n=0;n<40;++n){if(await evaluate(`![...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='NORM').disabled`))break;await delay(50);}
+   const beforeNorm=await evaluate(`AionNative.request({operation:'snapshot'})`);
+   await evaluate(`[...document.querySelectorAll('#loop-0 button')].find(b=>b.textContent==='NORM').click()`);
+   let normAck;
+   for(let n=0;n<40;++n){normAck=await evaluate(`AionNative.request({operation:'snapshot'})`);if(normAck.lastRequestId>beforeNorm.lastRequestId)break;await delay(50);}
+   assert(normAck.lastRequestId>beforeNorm.lastRequestId&&normAck.rejected,'NORM binding reaches audio owner, which rejects the fixture-only clip');
+   await evaluate(`__JUCE__.backend.emitByBackend=window.savedBackendEmit;delete window.savedBackendEmit`);
+ }
  const invalid=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:3})`);assert(!invalid.ok);
  const muted=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:0})`);assert(muted.ok);
  const expired=await evaluate(`AionNative.request({operation:'loop',action:'record',track:0,generation:${snapshot.generation||1},expiresAt:Date.now()-1000})`);assert(!expired.ok&&expired.error.includes('expired'));

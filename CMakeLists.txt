@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(AionLooper VERSION 0.4.2 LANGUAGES C CXX)
+project(AionLooper VERSION 0.4.3 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -46,11 +46,13 @@ if(BUILD_TESTING)
     add_test(NAME core_realtime_contract COMMAND aion_core_tests)
     find_program(AION_NODE_EXECUTABLE NAMES node nodejs)
     if(AION_NODE_EXECUTABLE)
+        add_test(NAME native_frontend_commands COMMAND "${AION_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/FrontendTests.cjs")
         add_executable(aion_dsp_probe tests/DspProbe.cpp)
         target_link_libraries(aion_dsp_probe PRIVATE aion_core)
         add_test(NAME js_native_dsp_kernels COMMAND "${AION_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/ReferenceDspParity.cjs" "$<TARGET_FILE:aion_dsp_probe>")
         add_executable(aion_reference_probe tests/ReferenceProbe.cpp)
         target_link_libraries(aion_reference_probe PRIVATE aion_core)
+        add_test(NAME js_native_normalization COMMAND "${AION_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/NormalizationParity.cjs" "$<TARGET_FILE:aion_reference_probe>")
         add_test(NAME js_native_state_parity COMMAND "${AION_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/ReferenceParity.cjs" "$<TARGET_FILE:aion_reference_probe>")
     endif()
 endif()
@@ -101,6 +103,15 @@ juce_add_plugin(AionLooper
     NEEDS_WEB_BROWSER TRUE NEEDS_WEBVIEW2 TRUE
     MICROPHONE_PERMISSION_ENABLED TRUE MICROPHONE_PERMISSION_TEXT "Record audio into Aion-Looper."
     COPY_PLUGIN_AFTER_BUILD FALSE)
+# JUCE's rc rule omits Info.txt as a dependency: incremental version bumps can
+# otherwise leave Windows file properties at the first configured version.
+if(WIN32 AND TARGET AionLooper_rc_lib)
+    get_target_property(aion_generated_dir AionLooper JUCE_GENERATED_SOURCES_DIRECTORY)
+    get_target_property(aion_info_file AionLooper JUCE_INFO_FILE)
+    add_custom_command(OUTPUT "${aion_generated_dir}/AionLooper_resources.rc"
+        APPEND DEPENDS "${aion_info_file}")
+endif()
+
 target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/ui/WebEditor.cpp)
 target_include_directories(AionLooper PRIVATE source)
 target_compile_definitions(AionLooper PUBLIC

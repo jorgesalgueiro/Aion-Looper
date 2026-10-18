@@ -272,3 +272,16 @@ FINISH-to-play delay. Existing 64/128 playback/pan/rate command regressions rema
 Audio new/delete instrumentation now watches the simulated callback thread via
 thread-local state; worker allocations are legitimate and are tested separately
 with forced failure, ASan/UBSan and TSan.
+
+
+### Native normalization transaction (0.4.3)
+
+NORM reuses the single immutable-clip job slot with a retained base lease and zero
+capture blocks. The worker clones both planar channels, finds their shared peak
+and applies the reference normalization ratio. The audio owner swaps only a
+completed clip pointer at beginBlock, retaining current phase and playback intent,
+and applies the existing short transition blend. Clear invalidates its revision;
+Stop suppresses playback; prepare joins before resetting storage. Failed worker
+allocation keeps the old clip. Full scans, copies and allocation/deletion remain
+off the callback. Like other jobs, this can temporarily require a second resident
+clip; the existing peak transient memory budget already accounts for that copy.

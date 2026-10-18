@@ -5,6 +5,14 @@
 #include <cstdint>
 #include <numbers>
 namespace aion::reference {
+bool normalize(std::span<float> left,std::span<float> right) noexcept {
+    double peak=0;
+    for(auto channel:{left,right})for(float value:channel)peak=std::max(peak,std::abs(static_cast<double>(value)));
+    if(peak<=0.0001||std::abs(peak-1.0)<=0.0001)return false;
+    const double ratio=1.0/peak;
+    for(auto channel:{left,right})for(float& value:channel)value=static_cast<float>(static_cast<double>(value)*ratio);
+    return true;
+}
 void removeDc(std::span<float> data) noexcept {
     if(data.empty())return;
     double sum=0;for(float sample:data)sum+=sample;

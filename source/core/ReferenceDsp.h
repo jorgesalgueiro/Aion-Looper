@@ -3,6 +3,7 @@
 #include <span>
 namespace aion::reference {
 // Offline finalization kernels. Full-clip scans MUST NOT run in processBlock.
+bool normalize(std::span<float> left, std::span<float> right) noexcept;
 void removeDc(std::span<float> data) noexcept;
 bool crossfade(std::span<float> data, double sampleRate, double seconds = 0.015) noexcept;
 bool mixCircular(std::span<float> base, std::span<const float> take, double sampleRate,

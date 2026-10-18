@@ -23,6 +23,8 @@ int main(int argc,char**) {
         else if(operation=="record")accepted=bank.apply(A::record,id);
         else if(operation=="finish")accepted=bank.apply(A::finish,id);
         else if(operation=="overdub")accepted=bank.apply(A::overdub,id);
+        else if(operation=="normalize")accepted=bank.apply(A::normalize,id);
+        else if(operation=="stop")accepted=bank.apply(A::stop,id);
         else if(operation=="retrigger")accepted=bank.apply(A::retrigger,id);
         else if(operation=="tick")output=bank.tick({value,right});
         else if(operation=="volume")accepted=bank.apply(A::volume,id,value);

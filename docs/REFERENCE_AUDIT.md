@@ -1,9 +1,10 @@
 # JavaScript/native parity audit — 2026-10-18
 
-**0.4.2: committed manual capture/overdub/substitute PCM now passes its reference
+**0.4.3 (capture gate established in 0.4.2): committed manual capture/overdub/substitute PCM now passes its reference
 comparison. Full application sound/functionality parity is NOT established.**
-No other feature was added during this repair. Hardware/listening and the remaining
-items below are still acceptance work; the original interface remains the contract.
+After the capture and command-ordering gates passed, NORM was added as a separate
+worker transaction. Hardware/listening and the remaining items below still need
+acceptance work; the original interface remains the contract.
 
 ## Reference and comparison scope
 
@@ -15,7 +16,7 @@ JS classes in a Node VM; browser/audio IO is stubbed, not the tested calculation
 not a reference browser recording integration test.
 
 The offline DSP test executes unchanged crossfade/circular-mix functions plus the
-actual recorded-loop DC-removal block. It covers 472 cases / 396,284 samples with
+actual recorded-loop DC-removal block. It covers 544 cases (including 72 stereo normalization threshold fixtures) with
 an unchanged 1e-6 tolerance. The earlier raw 512-frame 0.2+0.1 overdub regression
 is retained here, including its tapered boundary behavior.
 
@@ -28,6 +29,26 @@ lengths 1-48,001, feedback 0/0.8/1 and wrapped takes longer than the base. Maxim
 observed error is 7.395e-8; tolerance stays 1e-6. Both output channels are checked.
 Playback attack/release, browser resampling, latency correction, sync and hardware
 IO are explicitly outside this committed-PCM comparison.
+
+## NORM comparison scope
+
+The unchanged AudioEngine.normalizeBuffer scans both channels for one maximum,
+then applies the same double-precision ratio with Float32 writes to each channel.
+Its 0.0001 silence/unity thresholds are unchanged. Kernel tests include asymmetric
+channels, silence, threshold neighbors, tiny buffers and peaks above unity.
+A separate connected gate runs reference capture conditioning then NORM against
+native record/FINISH/worker-normalize/render for 42 mono/stereo cases, three sample
+rates and lengths 1-48,001. The capture audit remains unchanged, preserving all
+its earlier cases. Playback envelopes and browser resampling remain excluded.
+
+The old clip stays audible until commit. NORM keeps source phase and controls;
+Stop/clear/reset and worker allocation failure follow the same cancellation and
+rollback rules as capture edits. Stopped clips never autoplay. Only one worker
+transaction/capture may run at a time, so NORM rejects active capture/finalization.
+No extra capture blocks are reserved, but a private immutable result temporarily
+uses additional memory. Unit tests cover live phase, repeated/idempotent NORM,
+failed allocation, 32 clear cancellations, reset, empty/capturing rejection and
+normalized playback at 64/128 samples. No physical listening claim follows.
 
 ## Historical failure and repair
 
@@ -79,8 +100,8 @@ and gets priority over unsent controls.
 | --- | --- |
 | Capture timing/input | Latency compensation, multi-input routing, calibration, hardware duplex/underruns |
 | Browser playback equivalence | Attack/release, resampler/antialiasing and full browser-rendered audio fixtures |
-| Performance gestures | Rapid multi-key/button acknowledgement behavior needs wider integration coverage |
-| Loop features | SUS, stutter, multiply, start offsets, merge, normalize, names, undo/redo, WAV import/export |
+| Performance gestures | Ordered/coalesced bounded queue now tested; broader physical multi-controller integration remains |
+| Loop features | SUS, stutter, multiply, start offsets, merge, names, undo/redo, WAV import/export |
 | Projects/master recording | ALP/PCM persistence and master/input recording unported; session audio remains temporary |
 | Timing | Static/dynamic sync, count-in, cascade, metronome and MIDI/host clock unported |
 | Instruments/effects | Drone, sampler, tracker, effects and preset DSP unported |

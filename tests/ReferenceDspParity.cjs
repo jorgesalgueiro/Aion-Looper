@@ -13,6 +13,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  vm.runInContext(`const state={audioContext:{state:'running'}};
  globalThis.fade=(buffer,seconds)=>AudioEngine.seamlessLoopCrossfade(buffer,seconds);
  globalThis.mix=(base,take,offset,feedback)=>AudioEngine.mixBuffersCircular(base,take,offset,feedback);
+ globalThis.normalize=buffer=>AudioEngine.normalizeBuffer(buffer);
  globalThis.dc=finalBuffer=>{${loops.slice(start,end)}};`,ctx);
  const cases=[];let randomSeed=17;
  const random=()=>{randomSeed=(Math.imul(randomSeed,1664525)+1013904223)>>>0;return randomSeed/0x100000000;};
@@ -34,6 +35,13 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  }
  // Retain the original 512-frame raw-mixer regression when broadening the live audit.
  {const base=Array(512).fill(0.2),take=Array(512).fill(0.1),data=buffer(base,48000);await ctx.mix(data,buffer(take,48000),0,0.8);cases.push({action:'mix',base,take,rate:48000,offset:0,feedback:0.8,fade:0.015,expected:[...data.getChannelData(0)]});}
+ // Stereo-linked normalization: keep channel balance and the original threshold behavior.
+ for(const length of [0,1,4,17,512,4097])for(const peak of [0,0.000099,0.0001,0.000101,0.2,0.99989,0.99995,1,1.00005,1.00011,2,8]){
+   const base=Float32Array.from(Array.from({length},(_,i)=>i%2?-peak:peak));
+   const take=Float32Array.from(Array.from({length},(_,i)=>i%2?peak*0.13:-peak*0.4));
+   const channels=[base.slice(),take.slice()];ctx.normalize({numberOfChannels:2,getChannelData:c=>channels[c]});
+   cases.push({action:'normalize',base:[...base],take:[...take],rate:48000,offset:0,feedback:0,fade:0,expected:[...channels[0],...channels[1]]});
+ }
  const input=cases.map(c=>[c.action,c.base.length,c.take.length,c.rate,c.offset,c.feedback,c.fade,...c.base,...c.take].join(' ')).join('\n')+'\n';
  const result=spawnSync(process.argv[2],[],{input,encoding:'utf8',maxBuffer:64*1024*1024});assert.equal(result.status,0,result.stderr);
  const lines=result.stdout.trim().split(/\r?\n/);assert.equal(lines.length,cases.length);

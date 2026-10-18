@@ -46,7 +46,10 @@ void LoopBank::workerLoop() noexcept {
             try {
                 auto output=std::make_unique<Clip>();
                 output->length=job.edit?job.base->length:job.length;
-                for(unsigned c=0;c<2;++c){
+                if(job.normalize){
+                    output->channels=job.base->channels;
+                    (void)reference::normalize(output->channels[0],output->channels[1]);
+                } else for(unsigned c=0;c<2;++c){
                     std::vector<float> take(job.length);
                     for(std::uint32_t i=0;i<job.length;++i)
                         take[i]=audio[(static_cast<std::size_t>(job.blocks[i/blockFrames])*blockFrames+i%blockFrames)*2+c];
@@ -88,7 +91,7 @@ void LoopBank::acceptResult() noexcept {
         const bool play=track.finalPlay&&(job.edit||autoPlay);
         track.info.state=track.clip?(play?LoopState::playing:LoopState::stopped):LoopState::empty;
         if(!track.clip)track.info.length=0;
-        if(result){track.phase=0;track.info.position=0;blend(track);}
+        if(result){if(!job.normalize){track.phase=0;track.info.position=0;}blend(track);}
     }else retire(result);
     result=nullptr;jobState.store(0,std::memory_order_release);
 }
@@ -102,7 +105,7 @@ bool LoopBank::finish(Track& track) noexcept {
     if(finalizationPending())return false;
     job.blocks=track.blocks;job.blockCount=track.blockCount;job.length=track.captureLength;
     job.track=static_cast<std::uint32_t>(&track-tracks.data());job.revision=track.revision;
-    job.edit=track.info.state!=LoopState::recording;job.base=track.clip;
+    job.normalize=false;job.edit=track.info.state!=LoopState::recording;job.base=track.clip;
     if(job.edit)job.base->leases.fetch_add(1,std::memory_order_relaxed);
     job.feedback=track.info.state==LoopState::substituting?0.0:track.info.feedback;job.offset=track.captureOffset;
     track.blockCount=0;track.captureLength=0;track.finalPlay=true;track.playWhileFinalizing=job.edit;
@@ -160,6 +163,13 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(value!=0&&value!=1)return false;
             t.info.muted=value!=0;return true;
         case LoopAction::solo:soloTrack=soloTrack==static_cast<int>(id)?-1:static_cast<int>(id);return true;
+        case LoopAction::normalize:
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped)||hasCapture())return false;
+            job.blockCount=0;job.length=t.clip->length;job.offset=0;job.track=id;job.revision=t.revision;
+            job.base=t.clip;job.edit=true;job.normalize=true;
+            job.base->leases.fetch_add(1,std::memory_order_relaxed);
+            t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         case LoopAction::retrigger:
             if(!t.clip||capturing(s)||s==LoopState::finalizing)return false;
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;blend(t);return true;
@@ -242,8 +252,8 @@ Stereo LoopBank::tick(Stereo input) noexcept {
     return mix;
 }
 std::array<LoopView,LoopBank::trackCount> LoopBank::view() const noexcept {
-    std::array<LoopView,trackCount> result{};
-    for(std::uint32_t i=0;i<trackCount;++i){result[i]=tracks[i].info;result[i].solo=soloTrack==static_cast<int>(i);}
-    return result;
+    std::array<LoopView,trackCount> views{};
+    for(std::uint32_t i=0;i<trackCount;++i){views[i]=tracks[i].info;views[i].solo=soloTrack==static_cast<int>(i);}
+    return views;
 }
 }
