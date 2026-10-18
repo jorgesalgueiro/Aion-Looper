@@ -549,3 +549,54 @@ pointer/key holds/releases and audio-owner acknowledgements, master gain zero.
 Logs are `build/mouse-final.log`, `build/mouse-regression-windows.log`,
 `build/mouse-regression-ubuntu.log`, `build/mouse-audio-audit.log`, and
 `build/mouse-native-smoke.log`; build logs are local, not committed artifacts.
+
+
+### Held main-action audio-loss repair (2026-10-18)
+
+The next real native-PCM regression reproduced data loss: with sync OFF, holding
+STOP for 850 ms first stopped the playing loop, then the 600 ms hold timer saw
+`stopped` and sent CLEAR. The test expected a stopped clip but received `empty`,
+length zero, with the entire capture budget returned. This is recorded in
+`build/hold-before-fix.log`. Earlier presentation fixtures always reported
+`playing`, so they could not detect that transition.
+
+The controller now captures the state before the short action and passes it
+through both the normal hold timer and delayed-release fallback. The queued hold
+also checks the latest acknowledged state. A playing/stopping gesture can cut
+playback but cannot become CLEAR after stopping. FINISH, arm/cancel, queued cancel
+and a short fixed recording that auto-completes while still held cannot act on
+their later playing/stopped state. Existing stopped-track clear intent and active
+playback cut intent remain available under compatible starting/current states;
+DEL remains the explicit delete action. No DSP, audio-thread or original asset
+changes are involved.
+
+The original `LoopManager.handleAction(..., 'long')` body runs unchanged in the
+frontend gate for stopped/playing/stopping clear/cut intent. Its separate original
+input timer also reads mutable current state; this repair intentionally prevents
+that hazard instead of reproducing destructive behavior. The state-origin guard
+has 121 start/current-state checks, plus timer and delayed-release origin tests.
+Real native-PCM mouse/keyboard acceptance retains every prior case and adds held
+STOP (mouse and actual CDP keyboard input), FINISH with auto-play, queued CANCEL,
+and RECORD with a 100 ms STATIC take. Both 64- and 128-sample runs pass and check
+that PCM length/playback survives, rather than merely checking command counts.
+
+Only the existing Standalone and optional test host are incrementally rebuilt.
+No new packages, version bump or additional migrated feature are included.
+Physical TOPPING/ASIO, listening and DAW/Apple/mobile validation remain pending.
+
+Held-gesture results: Windows CTest 10/10 (122.95s), Ubuntu CTest 10/10
+(187.94s), and the final extended frontend/original-long-action oracle passes
+on both platforms. Windows connected PCM audit passes 126 cases / 965,826
+compared samples, maximum error 7.394757495227111e-8 with tolerance 1e-6.
+The 64/128 real native-PCM suite passes (`build/hold-mouse.log`). The rebuilt
+Standalone smoke passes at 44.1 kHz (`build/hold-native-smoke-final.log`), with
+no browser exceptions/legacy audio context and master muted. The first smoke
+attempt recorded lost pointer capture before the hold threshold while another
+GUI test was active; its timer correctly cancelled and the two-command assertion
+failed. The isolated rerun passes without loosening that assertion. Run GUI
+input suites serially; independent headless regressions may run concurrently.
+
+The final Ubuntu connected PCM audit also passes all 126 cases / 965,826 compared
+samples with the same maximum error 7.394757495227111e-8 and unchanged 1e-6
+tolerance (`build/hold-ubuntu.log`). All required gates are green for this
+message-thread hold-safety repair; physical-device acceptance is still separate.

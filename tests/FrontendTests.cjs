@@ -57,6 +57,19 @@ delayedKeyboard.press(2,'Digit3');heldClock+=1000;delayedKeyboard.cancel();asser
 const strictBrowserTimers={window:{},setTimeout:function(){'use strict';if(this?.set)throw new TypeError('Illegal invocation');return 1;},clearTimeout:function(){'use strict';if(this?.clear)throw new TypeError('Illegal invocation');}};
 vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),strictBrowserTimers);
 const browserKeys=new strictBrowserTimers.window.AionPerformance({track:()=>({}),action(){},hold(){}});browserKeys.press(0,'mouse');browserKeys.release('mouse');browserKeys.press(0,'mouse');browserKeys.cancel();assert.equal(browserKeys.presses.size,0,'Browser timer receiver and release cleanup');
+// Cross-product guards against timer callbacks observing unrelated later states.
+const phases=['empty','armed','recording','playing','stopped','overdubbing','substituting','finalizing','multiplying','queued','stopping'];
+const holdPairs=new Map([
+ ['stopped:stopped','clear'],['stopped:playing','stopImmediate'],['stopped:stopping','stopImmediate'],
+ ['playing:playing','stopImmediate'],['playing:stopping','stopImmediate'],
+ ['stopping:playing','stopImmediate'],['stopping:stopping','stopImmediate']
+]);
+for(const start of phases)for(const end of phases)assert.equal(keyboardContext.window.AionPerformance.holdAction(start,end),holdPairs.get(`${start}:${end}`)||null,`Hold ${start} -> ${end}`);
+let origin='recording',originNow=0;const heldOrigins=[],originTimers=new Map();let originTimer=0;
+const originKeys=new keyboardContext.window.AionPerformance({track:()=>({state:origin}),action(){origin='playing';},hold:(id,start)=>heldOrigins.push(start)},{set:fn=>{originTimers.set(++originTimer,fn);return originTimer;},clear:id=>originTimers.delete(id),now:()=>originNow});
+originKeys.press(0,'pointer:origin');[...originTimers.values()][0]();originKeys.release('pointer:origin');
+origin='queued';originKeys.press(0,'Digit1');origin='stopped';originNow=650;originKeys.release('Digit1');
+assert.deepEqual(heldOrigins,['recording','queued'],'Timer and delayed-release paths retain the state before the short action');
 console.log('PASS: reference keyboard loop keys, shifted bank, modes, stop, retrigger, long-press, repeat/focus/blur guards');
 
 snapshot.tracks[0]={...snapshot.tracks[0],pan:10,playbackRate:0.5};
@@ -65,6 +78,20 @@ assert(cards[0].includes('0.50x')&&cards[0].includes('value="10"'),'Original pan
 
 // Exercise the same scheduler shipped in the native editor, with delayed audio acknowledgements.
 (async()=>{
+ // Execute the original long-action handler, retaining its safe clear/cut semantics.
+ // The native guard intentionally blocks the inherited playing -> stopped -> clear
+ // escalation caused by the separate short-action timer, rather than changing DSP.
+ const actionStart=original.indexOf('    static async handleAction('),actionEnd=original.indexOf('\n    }',actionStart)+6;
+ assert(actionStart>=0&&actionEnd>actionStart,'Original main action method found');
+ for(const phase of ['stopped','playing','stopping']) {
+   const referenceCalls=[],loop={state:phase,playRequest:0,clear:()=>referenceCalls.push('clear'),stop:()=>referenceCalls.push('stopImmediate')};
+   const handler=vm.runInNewContext('('+original.slice(actionStart,actionEnd).replace('static async handleAction','async function')+')',{
+     state:{loops:[loop]},AudioEngine:{resume:async()=>true},EffectManager:{setActiveTab(){}},window:{}
+   });
+   await handler.call({transportGeneration:0},0,'long');
+   assert.equal(referenceCalls[0],keyboardContext.window.AionPerformance.holdAction(phase,phase),'Unchanged-JS long-action intent: '+phase);
+ }
+ console.log('PASS: unchanged-JS long-action clear/cut intent, 121 native hold-state pairs, latched timer/release origins');
  const Queue=keyboardContext.window.AionCommandQueue;
  let ready=true,clock=0,release,state='empty';const sent=[],errors=[];
  const queue=new Queue({ready:()=>ready,now:()=>clock,notify:e=>errors.push(e),run:async c=>{

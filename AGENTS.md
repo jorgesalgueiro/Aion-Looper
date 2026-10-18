@@ -60,3 +60,9 @@ snapshot fixtures or physical devices. Preserve header/state-text short actions
 and exclude nested controls/waveform/main-button bubbling. This gate supplements
 NativeUiSmoke and unchanged-JS DSP/sync gates; it does not establish hardware or
 Standalone driver/input-gate acceptance. Do not install/package the test host.
+
+Hold safety: latch the track state before the short action, and retain it through
+both timer and delayed-release paths to the queued resolver. A playing STOP must
+never turn into CLEAR after reaching stopped; FINISH/CANCEL/auto-completed RECORD
+must not act on their later state. Retain the real native-PCM held-gesture cases
+at 64/128; frozen playing-state fixtures alone missed this destructive regression.

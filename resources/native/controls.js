@@ -36,19 +36,26 @@
         constructor(actions, timers = {set:(fn,delay)=>setTimeout(fn,delay), clear:id=>clearTimeout(id)}) {
             this.actions=actions;this.timers=timers;this.now=timers.now||(()=>globalThis.performance?.now?.()??Date.now());this.presses=new Map();
         }
+        // A stop/finish/cancel gesture must not become a delete or a new stop
+        // merely because its short action changed the track before the timer ran.
+        static holdAction(initialState,currentState) {
+            if(initialState==='stopped'&&currentState==='stopped')return 'clear';
+            return ['stopped','playing','stopping'].includes(initialState)&&['playing','stopping'].includes(currentState)?'stopImmediate':null;
+        }
         press(id,key) {
-            if(this.presses.has(key)||!this.actions.track(id))return;
-            const press={id,start:this.now(),fired:false,timer:null};this.presses.set(key,press);
+            if(this.presses.has(key))return;
+            const track=this.actions.track(id);if(!track)return;
+            const press={id,initialState:track.state,start:this.now(),fired:false,timer:null};this.presses.set(key,press);
             this.actions.action(id);
             if(!this.presses.has(key))return;
-            press.timer=this.timers.set(()=>{if(this.presses.get(key)===press&&!press.fired){press.fired=true;this.actions.hold(id);}},600);
+            press.timer=this.timers.set(()=>{if(this.presses.get(key)===press&&!press.fired){press.fired=true;this.actions.hold(id,press.initialState);}},600);
         }
         release(key,cancel=false) {
             const press=this.presses.get(key);if(!press)return;
             this.timers.clear(press.timer);this.presses.delete(key);
             // Background WebViews may defer a timer. A real >=600ms release
             // still performs one hold; cancellation/blur never invents one.
-            if(!cancel&&!press.fired&&this.now()-press.start>=600)this.actions.hold(press.id);
+            if(!cancel&&!press.fired&&this.now()-press.start>=600)this.actions.hold(press.id,press.initialState);
         }
         down(event) {
             const target=event.target;

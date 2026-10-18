@@ -439,3 +439,14 @@ never invents a hold. The subsequent browser click is ignored for real pointer
 presses, while keyboard/assistive click activation still works. Original timeline
 marker rendering is reused, and visual count-in pulses the existing master module.
 The frontend submits intent; sample deadlines and capture state live in C++.
+
+
+Held main gestures latch their starting state before dispatching the short action.
+The hold timer and delayed-release recovery both pass that state to the queued
+hold resolver, which additionally checks the latest acknowledged state. This
+prevents STOP -> stopped -> CLEAR, FINISH -> playing -> STOP, queued CANCEL ->
+stopped -> CLEAR, and short STATIC RECORD -> playing -> STOP escalation. The
+original current-state input timer could cause these transitions; the native
+adapter preserves safe long-action clear/cut intent without inheriting audio
+loss. This changes only message-thread gesture routing; core timing/PCM remains
+unchanged. Regression acceptance includes real captured PCM at 64/128 blocks.

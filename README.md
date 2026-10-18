@@ -132,3 +132,8 @@ short action, as in Ascii-Looper. The main button supports press/release outside
 its bounds without duplicating the action; clicks on nested controls or the
 waveform do not toggle recording. Hardware-free real-mouse/native-PCM acceptance
 instructions are in [BUILDING](docs/BUILDING.md#hardware-free-mouse-acceptance-windows).
+
+Holding the main STOP button/key now preserves the recorded loop after stopping.
+Holding FINISH, CANCEL or a short automatically completed STATIC recording also
+keeps the resulting audio/state; a delayed hold cannot turn the gesture into an
+unintended clear or stop. Use the original DEL button to delete a loop.

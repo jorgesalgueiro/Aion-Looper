@@ -281,3 +281,8 @@ owned host is closed. A port already in use is an error. The optional target is
 excluded from default builds and is never installed or packaged. This supplements
 `NativeUiSmoke.cjs` (port 9234); it does not validate physical device routing,
 OS audio scheduling, monitoring latency, or the Standalone wrapper's input gate.
+
+Run `TestMouseWorkflow.ps1` and `NativeUiSmoke.cjs` serially. Concurrent native
+GUI windows can lose OS pointer capture/focus even with CDP focus emulation;
+a cancelled hold must not be mistaken for an uninterrupted hold. Headless CTest
+and audio comparisons can run independently alongside either GUI suite.

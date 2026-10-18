@@ -140,7 +140,7 @@
         const keyboard = new window.AionPerformance({
             track:id=>snapshot?.tracks[id],
             action:id=>mainAction(id),
-            hold:id=>scheduler.enqueue(()=>{const state=snapshot.tracks[id].state;return state==='stopped'?{action:'clear',track:id,value:0}:['playing','stopping'].includes(state)?{action:'stopImmediate',track:id,value:0}:null;}),
+            hold:(id,initialState)=>scheduler.enqueue(()=>{const action=window.AionPerformance.holdAction(initialState,snapshot.tracks[id].state);return action?{action,track:id,value:0}:null;}),
             mode:next=>{mode=mode===next?'normal':next;refresh();},
             history:redo=>restoreHistory(redo),
             multiply:()=>multiply(selected),
