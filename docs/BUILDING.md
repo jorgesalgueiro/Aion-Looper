@@ -114,3 +114,41 @@ CLAP validator and `auval`; add their pinned versions/results to CI before claim
 compliance. Verify clock seeks/wraps, state restore, MIDI disconnect/panic, editor
 reopen, webview isolation, sanitizers and 64/128 maximum-load callback allocation/
 CPU tests. Packaging is not signing, notarization, installation or feature parity.
+
+## Native loop preview quick test (0.2.0)
+
+Build Windows Standalone/VST3/CLAP with `-DAION_ENABLE_ASIO=ON`, then open the
+Standalone executable. In Options select the interface/ASIO driver and buffer size.
+Enable input with JUCE's Unmute Input control. The native input meter should respond.
+Raise OUTPUT to a suitable level; INPUT MONITOR is optional and defaults off.
+Use LOOPS to reach the original cards: RECORD, FINISH, STOP and PLAY use native DSP.
+Select OVERDUB or SUBSTITUTE mode before pressing a playing loop's main button;
+FINISH exits that capture mode. Feedback defaults to 80%. STOP ALL stops the bank.
+
+Use headphones/direct monitoring as appropriate for the physical setup. Session
+recordings are temporary: DAW/project state currently stores parameters, not PCM.
+Export and undo remain disabled. Changing sample rate clears session audio; changing
+buffer size at the same rate retains PCM but stops playback. These are preview
+limits, not completed reference parity.
+
+### Native WebView2 UI smoke test
+
+With Node.js 22+ installed, start a dedicated test instance and use its temporary
+loopback debugger port. This test keeps output muted, never records microphone
+input, checks visible loop controls and exercises parameter validation/Stop All.
+Close other preview test instances first.
+
+```powershell
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=9234'
+$preview = Start-Process 'build/windows/AionLooper_artefacts/Release/Standalone/Aion-Looper.exe' -PassThru
+Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+node tests/NativeUiSmoke.cjs
+$preview.CloseMainWindow()
+```
+
+Screenshots are written under `build/`. Ordinary launches do not enable the debugger.
+
+The Windows preview ZIP contains an EXE and plugin bundles, not an installer. It
+requires the Microsoft Visual C++ 2015-2022 x64 Redistributable and Evergreen
+WebView2 Runtime. The local MSVC build imports MSVCP140/VCRUNTIME140/140_1. SDKs,
+development libraries and browser profiles are not included in the runtime ZIP.

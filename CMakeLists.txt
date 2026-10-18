@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(AionLooper VERSION 0.1.0 LANGUAGES C CXX)
+project(AionLooper VERSION 0.2.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -28,7 +28,7 @@ if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
 endif()
 option(AION_BUILD_AUV3 "Build AUv3 with Apple's Xcode generator" ${auv3_default})
 option(AION_BUILD_LV2 "Build JUCE's native LV2 wrapper" ${linux_desktop})
-add_library(aion_core STATIC source/core/Engine.cpp)
+add_library(aion_core STATIC source/core/Engine.cpp source/core/LoopBank.cpp)
 target_include_directories(aion_core PUBLIC source)
 if(MSVC)
     target_compile_options(aion_core PRIVATE /W4 /permissive-)
@@ -39,7 +39,7 @@ if(BUILD_TESTING)
     find_package(Threads REQUIRED)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
     add_test(NAME original_ui_bytes COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/AssetTests.py")
-    add_executable(aion_core_tests tests/CoreTests.cpp)
+    add_executable(aion_core_tests tests/CoreTests.cpp tests/LoopTests.cpp)
     target_link_libraries(aion_core_tests PRIVATE aion_core Threads::Threads)
     add_test(NAME core_realtime_contract COMMAND aion_core_tests)
 endif()
@@ -76,7 +76,7 @@ execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/too
     --source "${CMAKE_CURRENT_SOURCE_DIR}/resources/ui"
     --manifest "${CMAKE_CURRENT_SOURCE_DIR}/resources/reference-manifest.json"
     --output "${ui_archive}" COMMAND_ERROR_IS_FATAL ANY)
-juce_add_binary_data(AionUi NAMESPACE AionUi HEADER_NAME UiData.h SOURCES "${ui_archive}" resources/native/bridge.js)
+juce_add_binary_data(AionUi NAMESPACE AionUi HEADER_NAME UiData.h SOURCES "${ui_archive}" resources/native/bridge.js resources/native/loop-view.js resources/native/looper.js)
 juce_add_plugin(AionLooper
     COMPANY_NAME "Jorge Salgueiro"
     COMPANY_WEBSITE "https://github.com/jorgesalgueiro/Aion-Looper"
@@ -124,6 +124,28 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 install(FILES README.md docs/ARCHITECTURE.md docs/BUILDING.md docs/PARITY.md
     docs/LICENSING.md docs/VALIDATION.md docs/SDKS.md DESTINATION share/doc/Aion-Looper)
+# Primary source notices accompany local preview packages; the full release inventory
+# remains a separate gate documented in LICENSING.md.
+set(notice_dir share/licenses/Aion-Looper)
+install(FILES resources/ui/LICENSE DESTINATION ${notice_dir} RENAME Ascii-Looper-GPL-2.0.txt)
+install(FILES "${juce_SOURCE_DIR}/LICENSE.md" DESTINATION ${notice_dir} RENAME JUCE-LICENSE.md)
+if(AION_BUILD_CLAP)
+    install(FILES "${clap_juce_extensions_SOURCE_DIR}/LICENSE.md" DESTINATION ${notice_dir} RENAME CLAP-extension-LICENSE.txt)
+    install(FILES "${clap_juce_extensions_SOURCE_DIR}/clap-libs/clap/LICENSE" DESTINATION ${notice_dir} RENAME CLAP-SDK-LICENSE.txt)
+    install(FILES "${clap_juce_extensions_SOURCE_DIR}/clap-libs/clap-helpers/LICENSE" DESTINATION ${notice_dir} RENAME CLAP-helpers-LICENSE.txt)
+endif()
+if(AION_BUILD_VST3)
+    install(FILES "${juce_SOURCE_DIR}/modules/juce_audio_processors_headless/format_types/VST3_SDK/LICENSE.txt"
+        DESTINATION ${notice_dir} RENAME VST3-SDK-LICENSE.txt)
+endif()
+if(AION_ENABLE_ASIO AND NOT AION_ASIO_SDK)
+    install(FILES "${juce_SOURCE_DIR}/modules/juce_audio_devices/native/asio/LICENSE.txt"
+        DESTINATION ${notice_dir} RENAME ASIO-headers-LICENSE.txt)
+endif()
+if(WIN32 AND EXISTS "${WebView2_root_dir}/LICENSE.txt")
+    install(FILES "${WebView2_root_dir}/LICENSE.txt" DESTINATION ${notice_dir} RENAME WebView2-LICENSE.txt)
+    install(FILES "${WebView2_root_dir}/NOTICE.txt" DESTINATION ${notice_dir} RENAME WebView2-NOTICE.txt)
+endif()
 foreach(format Standalone VST3 CLAP AU AUv3 LV2)
     if(TARGET AionLooper_${format})
         get_target_property(artifact AionLooper_${format} JUCE_PLUGIN_ARTEFACT_FILE)

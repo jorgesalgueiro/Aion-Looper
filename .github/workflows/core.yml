@@ -8,3 +8,4 @@ jobs:
       - run: cmake --preset core
       - run: cmake --build --preset core
       - run: ctest --preset core
+      - run: node tests/FrontendTests.cjs

@@ -1,0 +1,51 @@
+const fs=require('node:fs');
+const path=require('node:path');
+const output=path.resolve(__dirname,'../build');
+fs.mkdirSync(output,{recursive:true});
+const assert=require('node:assert/strict');
+let debugSocket;
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+(async()=>{
+ let target;
+ for(let n=0;n<80;++n){try{const list=await(await fetch('http://127.0.0.1:9234/json')).json();target=list.find(t=>t.type==='page'&&t.url.includes('juce.backend'));if(target)break;}catch{}await delay(250);}
+ assert(target,'Native WebView2 page not found');
+ const ws=debugSocket=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.addEventListener('open',r,{once:true});ws.addEventListener('error',j,{once:true});});
+ let seq=0;const requests=new Map();
+ ws.addEventListener('message',event=>{const reply=JSON.parse(event.data);if(reply.id&&requests.has(reply.id)){requests.get(reply.id)(reply);requests.delete(reply.id);}});
+ const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;const timer=setTimeout(()=>{requests.delete(id);reject(Error('CDP timeout '+method));},10000);requests.set(id,reply=>{clearTimeout(timer);reply.error?reject(Error(JSON.stringify(reply.error))):resolve(reply.result);});ws.send(JSON.stringify({id,method,params}));});
+ const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
+ await call('Runtime.enable');
+ let info;
+ for(let n=0;n<60;++n){info=await evaluate(`({cards:document.querySelectorAll('#loopContainer > div').length,status:document.getElementById('native-status')?.textContent,native:typeof window.AionNative?.request})`);if(info.cards===20)break;await delay(150);}
+ assert.equal(info.cards,20,JSON.stringify(info));assert.equal(info.native,'function');
+ const visible=await evaluate(`({overlay:!!document.getElementById('startOverlay'),text:document.getElementById('native-status').textContent,mainVisible:document.getElementById('native-master').getBoundingClientRect().height>0})`);
+ assert(!visible.overlay&&visible.mainVisible,JSON.stringify(visible));
+ assert(await evaluate(`!document.getElementById('loopContainer').textContent.includes('undefined')`),'Missing renderer field');assert(!visible.text.includes('\u00c3'),'Garbled native status text');
+ const snapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);assert(snapshot.ok&&snapshot.tracks.length===20);
+ assert(snapshot.tracks.every(t=>t.state==='empty'),'Smoke test must not capture audio');
+ const invalid=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:3})`);assert(!invalid.ok);
+ const muted=await evaluate(`AionNative.request({operation:'setParameter',id:'masterGain',value:0})`);assert(muted.ok);
+ const expired=await evaluate(`AionNative.request({operation:'loop',action:'record',track:0,generation:${snapshot.generation||1},expiresAt:Date.now()-1000})`);assert(!expired.ok&&expired.error.includes('expired'));
+ if(snapshot.audioReady){
+   const queued=await evaluate(`AionNative.request({operation:'loop',action:'play',track:0,generation:${snapshot.generation},expiresAt:Date.now()+3000})`);assert(queued.ok&&queued.queued);
+   let ack;
+   for(let n=0;n<40;++n){ack=await evaluate(`AionNative.request({operation:'snapshot'})`);if(ack.lastRequestId===queued.requestId)break;await delay(50);}
+   assert.equal(ack.lastRequestId,queued.requestId);assert(ack.rejected,'Empty-track play must be rejected by the audio owner');
+ }
+ if(snapshot.audioReady) {
+   await evaluate(`document.getElementById('native-stop-all').click()`);
+   for(let n=0;n<40;++n){const ready=await evaluate(`!document.getElementById('native-stop-all').disabled`);if(ready)break;await delay(50);}
+   const stopped=await evaluate(`AionNative.request({operation:'snapshot'})`);assert(!stopped.rejected&&stopped.tracks.every(t=>t.state==='empty'));
+ }
+ const dom=await evaluate(`({handlers:[...document.querySelectorAll('#loopContainer *')].flatMap(e=>[...e.attributes].filter(a=>/^on/i.test(a.name))).length,unsupported:[...document.querySelectorAll('#loopContainer button')].filter(e=>e.textContent.trim()==='UNDO').every(e=>e.disabled),hasAudioContext:!!window.state?.audioContext,master:document.getElementById('native-master').value})`);
+ assert.equal(dom.handlers,0);assert(dom.unsupported&&!dom.hasAudioContext);assert.equal(Number(dom.master),0);
+ await evaluate(`document.documentElement.style.scrollBehavior='auto';window.scrollTo({top:0,behavior:'instant'})`);
+ const screenshot=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(path.join(output,'native-looper-top.png'),Buffer.from(screenshot.data,'base64'));
+ await evaluate(`document.getElementById('loopContainer').scrollIntoView({behavior:'instant',block:'start'})`);await delay(150);
+ const hit=await evaluate(`(()=>{const b=document.getElementById('loop-action-0'),r=b.getBoundingClientRect();return {visible:r.top>=0&&r.bottom<=innerHeight,hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===b,disabled:b.disabled,rect:{x:r.x,y:r.y,w:r.width,h:r.height},under:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML.slice(0,500)};})()`);
+ assert(hit.visible&&hit.hit,JSON.stringify(hit));if(snapshot.audioReady)assert(!hit.disabled,'Record control is disabled');
+ const loops=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(path.join(output,'native-looper-cards.png'),Buffer.from(loops.data,'base64'));
+ console.log('PASS: native WebView2, 20 original loop cards, IPC snapshots/parameter validation, expired-command rejection, '+(snapshot.audioReady?'audio-owner acknowledgements':'audio inactive')+', disabled unported controls, no legacy audio context');
+ console.log(JSON.stringify({frame:snapshot.frame,sampleRate:snapshot.sampleRate,dom,info}));
+ ws.close();
+})().catch(e=>{console.error(e);debugSocket?.close();process.exitCode=1;});

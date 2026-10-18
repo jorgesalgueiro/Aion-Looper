@@ -15,4 +15,10 @@
   identity or SDK redistribution permission is assumed or purchased here.
 
 Upstream facts: https://github.com/juce-framework/JUCE/blob/9.0.4/LICENSE.md and
-https://github.com/free-audio/clap-juce-extensions/blob/main/LICENSE.
+https://github.com/free-audio/clap-juce-extensions/blob/main/LICENSE.md.
+
+Local preview packages include the original UI, JUCE, CLAP/extension/helpers, VST3
+and applicable bundled ASIO/WebView2 primary notices under `share/licenses`.
+This is not the completed third-party dependency audit or a commercial licensing
+clearance; the release gates above still apply. The extracted loop presentation
+methods in `resources/native/loop-view.js` retain their reference provenance.

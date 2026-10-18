@@ -31,7 +31,9 @@ juce::WebBrowserComponent::Options AionWebEditor::options(AionProcessor& process
         .withNativeIntegrationEnabled()
         .withNativeFunction("aionRequest", [&processor](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion done) { done(processor.request(args)); })
         .withResourceProvider(resource)
-        .withUserScript(juce::String::fromUTF8(AionUi::bridge_js, AionUi::bridge_jsSize));
+        .withUserScript(juce::String::fromUTF8(AionUi::bridge_js, AionUi::bridge_jsSize))
+        .withUserScript(juce::String::fromUTF8(AionUi::loopview_js, AionUi::loopview_jsSize))
+        .withUserScript(juce::String::fromUTF8(AionUi::looper_js, AionUi::looper_jsSize));
    #if JUCE_WINDOWS
     settings = settings.withBackend(juce::WebBrowserComponent::Options::Backend::webview2);
    #endif

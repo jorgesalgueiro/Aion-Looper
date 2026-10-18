@@ -1,0 +1,104 @@
+#include "core/Engine.h"
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+#include <limits>
+#include <vector>
+#include <atomic>
+extern std::atomic<bool> watch;
+extern std::atomic<int> allocations;
+namespace {
+void check(bool ok, const char* message) { if (!ok) { std::cerr << message << '\n'; std::exit(1); } }
+void near(float a, float b, const char* message) { check(std::abs(a-b) < 0.00001f, message); }
+}
+void loopTests() {
+    using namespace aion;
+    LoopBank bank; bank.prepare(8192, 0);
+    check(!bank.apply(LoopAction::play, 0), "empty track cannot play");
+    check(!bank.apply(LoopAction::record, 20), "track index bounds");
+    check(bank.apply(LoopAction::record, 0), "record starts");
+    watch = true;
+    for (int i = 0; i < 4; ++i) { auto out=bank.tick({0.25f, 0.5f}); near(out.left,0,"record does not double-monitor"); }
+    check(bank.apply(LoopAction::finish,0),"record finishes into playback");
+    for(int i=0;i<12;++i) {auto out=bank.tick({});near(out.left,0.25f,"left wraps exactly");near(out.right,0.5f,"right retained");}
+    check(bank.apply(LoopAction::overdub,0),"overdub begins");
+    for(int i=0;i<4;++i) bank.tick({0.1f,0.1f});
+    check(bank.apply(LoopAction::finish,0),"overdub ends");
+    auto out=bank.tick({}); near(out.left,0.3f,"overdub applies 80 percent feedback");near(out.right,0.5f,"stereo overdub");
+    check(bank.view()[0].length==4,"overdub preserves length");
+    check(bank.apply(LoopAction::substitute,0),"substitute begins");
+    for(int i=0;i<4;++i) bank.tick({0.6f,-0.4f});
+    bank.apply(LoopAction::finish,0);out=bank.tick({});near(out.left,0.6f,"substitute replaces old PCM");near(out.right,-0.4f,"substitute stereo");
+    bank.apply(LoopAction::stop,0);out=bank.tick({});near(out.left,0,"stop output");
+    bank.apply(LoopAction::play,0);out=bank.tick({});near(out.left,0.6f,"restart replays retained audio");
+    bank.apply(LoopAction::clear,0);check(bank.available()==8192,"clear recycles fixed pool blocks");
+    bank.apply(LoopAction::record,0);bank.tick({std::numeric_limits<float>::infinity(),0.1f});
+    bank.apply(LoopAction::finish,0);out=bank.tick({});near(out.left,0,"nonfinite capture sanitized");near(out.right,0.1f,"short rerecord ignores old tail");
+    watch = false;
+    check(allocations.load()==0,"record/play/overdub/substitute/clear must not allocate or free");
+
+    bank.prepare(4096,0);bank.apply(LoopAction::record,0);
+    for(int i=0;i<4096;++i) bank.tick({0.25f,0.5f});
+    out=bank.tick({1,1});check(bank.exhausted(),"pool exhaustion reported");
+    near(out.left,0.25f,"pool exhaustion preserves captured PCM");
+    check(bank.view()[0].length==4096,"pool exhaustion exact length");
+    check(!bank.apply(LoopAction::record,1),"full pool rejects another recording");
+    bank.apply(LoopAction::clear,0);check(bank.apply(LoopAction::record,1),"capacity reusable after clear");
+
+    bank.prepare(20*4096,0);
+    watch=true;
+    for(unsigned i=0;i<20;++i) check(bank.apply(LoopAction::record,i),"all 20 track slots record");
+    bank.tick({0.01f,0.02f});
+    for(unsigned i=0;i<20;++i) bank.apply(LoopAction::finish,i);
+    out=bank.tick({});near(out.left,0.2f,"20-track sum");near(out.right,0.4f,"20-track stereo sum");
+    bank.apply(LoopAction::mute,0,1);out=bank.tick({});near(out.left,0.19f,"mute excludes track");
+    for(int frame=0;frame<8192;++frame)bank.tick({});
+    bank.apply(LoopAction::stopAll,0);near(bank.tick({}).left,0,"stop all");
+    watch=false;check(allocations.load()==0,"20-track callback allocation/free");
+
+    bank.prepare(4096,4);bank.apply(LoopAction::record,0);
+    for(int i=0;i<8;++i)bank.tick({0.5f,0.5f});
+    bank.apply(LoopAction::finish,0);
+    for(int i=0;i<4;++i)near(bank.tick({}).left,0.125f*static_cast<float>(i+1),"play attack fade");
+    bank.apply(LoopAction::stop,0);
+    for(int i=0;i<4;++i)near(bank.tick({}).left,0.125f*static_cast<float>(3-i),"stop release fade");
+
+    Engine a,b;a.prepare(8000,4096);b.prepare(8000,4096);a.setMonitoring(false);b.setMonitoring(false);a.setTarget(1);b.setTarget(1);
+    const auto enqueue=[](Engine& e) {
+        const LoopAction actions[]={LoopAction::record,LoopAction::finish,LoopAction::overdub,LoopAction::finish,LoopAction::stop,LoopAction::play,LoopAction::clear};
+        const std::uint64_t deadlines[]={8,24,32,40,48,64,80};
+        for(unsigned i=0;i<7;++i)check(e.enqueueLoop({actions[i],0,i+1,e.generation(),deadlines[i],0}),"enqueue sample-deadline action");
+    };
+    enqueue(a);enqueue(b);
+    std::vector<float> al(512,0.25f),ar(512,0.5f),bl=al,br=ar;
+    watch=true;
+    for(int i=0;i<512;i+=64){float* data[]={al.data()+i,ar.data()+i};a.process(data,2,64);}
+    for(int i=0;i<512;i+=128){float* data[]={bl.data()+i,br.data()+i};b.process(data,2,128);}
+    watch=false;
+    check(allocations.load()==0,"engine looper callback allocation/free");
+    check(al==bl&&ar==br,"loop command timing invariant across 64/128 blocks");
+    check(al[23]==0&&al[24]>0,"finish command exact sample boundary");
+    check(al.back()==0,"clear release reaches silence");
+    EngineView snapshot{};while(a.popView(snapshot)){};
+    check(snapshot.lastRequestId==7&&!snapshot.rejected,"audio command acknowledgement");
+    const auto generation=a.generation();a.prepare(8000,4096);
+    check(!a.enqueueLoop({LoopAction::record,0,8,generation,0,0}),"stale generation rejected");
+
+    for(unsigned i=0;i<255;++i)check(a.enqueueLoop({LoopAction::stop,0,i+10,a.generation(),0,0}),"bounded command queue capacity");
+    check(!a.enqueueLoop({LoopAction::stop,0,999,a.generation(),0,0}),"command queue overflow rejects");
+    float silent[64]{};float* silence[]={silent};
+    a.process(silence,1,64);check(a.popView(snapshot)&&snapshot.lastRequestId==137,"128 command/block execution budget");
+    a.process(silence,1,64);check(a.popView(snapshot)&&snapshot.lastRequestId==264,"overflow backlog retained for next block");
+    b.prepare(8000,4096);b.setTarget(1);
+    check(b.enqueueLoop({LoopAction::record,0,10,b.generation(),0,0}),"record before reprepare");
+    check(b.enqueueLoop({LoopAction::finish,0,11,b.generation(),8,0}),"finish before reprepare");
+    float samples[16];for(auto& v:samples)v=0.2f;float* mono[]={samples};b.process(mono,1,16);
+    b.prepare(8000,4096);b.setTarget(1);
+    check(b.enqueueLoop({LoopAction::play,0,12,b.generation(),0,0}),"same-rate reprepare retains loop");
+    for(auto& v:samples)v=0;b.process(mono,1,16);check(samples[0]>0,"retained PCM replays");
+    while(b.popView(snapshot)){};
+    check(snapshot.tracks[0].length==8&&!snapshot.audioReset,"same-rate lifecycle preserves audio");
+    b.prepare(16000,4096);b.process(mono,1,16);while(b.popView(snapshot)){};
+    check(snapshot.tracks[0].state==LoopState::empty&&snapshot.audioReset,"rate change reset explicitly reported");
+    std::cout<<"PASS: native stereo record/play/stop/overdub/substitute, 20 tracks, bounded pool reuse/exhaustion, fades, deadline invariance, generation checks, no callback new/delete\n";
+}

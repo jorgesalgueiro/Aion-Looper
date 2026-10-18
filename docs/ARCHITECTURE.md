@@ -141,3 +141,37 @@ not full-rate PCM or cloned recording buffers. Meter publication is lossy and bo
 
 Do not label this a commercial release until every PARITY row has fixtures and host/
 hardware validation. No Rust binary or code from the aborted migration is resurrected.
+
+## Native loop milestone (0.2.0)
+
+`LoopBank` uses 2,048 preallocated blocks of 4,096 stereo frames (64 MiB), shared
+among 20 track slots. Metadata/free stacks are fixed arrays. The audio owner alone
+acquires/recycles blocks; recording never resizes a vector. Free-space exhaustion
+finishes the captured loop into playback and publishes a memory-full flag. Stored
+samples are guarded to +/-8 for finite headroom; the output guard is +/-1. Overdub
+uses stored PCM * feedback + input (default 80%); substitute replaces it. Edits become
+audible on the next pass, independently of optional input monitoring. Start/wrap
+blends and stop tails avoid abrupt boundary jumps; volume/mute move per sample.
+
+Typed loop commands carry track, action, value, request ID, generation and optional
+absolute sample deadline. GUI commands apply at the next audio callback. The queue
+has 255 entries, executes at most 128 commands/block and rejects overflow. A prepare
+increments generation; stale commands are rejected. Only the message thread drains
+snapshot queues; prepare never acts as a second consumer. Same-rate prepare retains
+PCM and stops transport. Rate changes currently clear session PCM and report that
+reset; resampling/project persistence are not implemented yet.
+
+Native RPC adds `snapshot` and `loop {action, track, value, generation, expiresAt}`.
+`expiresAt` is a short UNIX-millisecond deadline checked on the message thread, so
+an old UI event cannot start recording after a long message-thread stall. Accepted
+commands remain queued during an audio pause and acknowledge through a coherent
+snapshot once processing resumes. The GUI permits one outstanding loop action;
+there is no optimistic audio-state mutation. Protocol version remains 1.
+
+Four pure presentation methods and effect colours are copied from the original
+reference into `loop-view.js`; tests compare the method text (line endings normalized).
+The generated cards retain the original controls and CSS. The adapter removes
+inline handlers, enables only implemented controls and polls lossy snapshots.
+No original recorder, AudioContext, Worklet, MIDI or CDN script is executed. Project
+save/export and undo are visibly unavailable; the preview must not imply that DAW
+parameter XML contains recorded audio.
