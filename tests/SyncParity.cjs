@@ -4,7 +4,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  const root=path.resolve(__dirname,'..');
  const buffer=(count,length,rate)=>{const channels=Array.from({length:count},()=>new Float32Array(length));return {length,duration:length/rate,sampleRate:rate,numberOfChannels:count,getChannelData:c=>channels[c],copyToChannel:(d,c)=>channels[c].set(d)};};
  const timers=new Map();let timerId=0;
- const audio={state:'running',currentTime:0,sampleRate:8000,baseLatency:0,outputLatency:0,destination:{},createBuffer:buffer,createAnalyser:()=>({fftSize:512,disconnect(){}})};
+ const audio={state:'running',currentTime:0,sampleRate:8000,baseLatency:0,outputLatency:0,destination:{},createBuffer:buffer,createOscillator:()=>({frequency:{value:0},connect(){},start(){},stop(){}}),createGain:()=>({gain:{value:0},connect(){}}),createAnalyser:()=>({fftSize:512,disconnect(){}})};
  const ctx={window:{},document:{createElement:()=>({}),head:{appendChild(){}},getElementById:()=>null},effects:{},FACTORY_EFFECTS:{},console,audio,
  setTimeout:(fn,delay)=>{timers.set(++timerId,{fn,delay});return timerId;},clearTimeout:id=>timers.delete(id),
  InputManager:{getRecordingNode:()=>({channelCount:2,connect(){},disconnect(){}})},EffectManager:{setActiveTab(){}},
@@ -15,7 +15,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  AudioEngine.resume=async()=>true;
  for(const name of ['updateLoop','updateStatus','updateExportButtons','updateLoopDisplays'])UIManager[name]=()=>{};
  UIManager.generateWaveformPeaks=()=>[];
- globalThis.reset=(mode,bpm,num,bars,countIn=false)=>{state.syncMode=mode;state.syncEnabled=mode!=='off';state.bpm=bpm;state.timeSig.num=num;state.bars=bars;state.loopLength=60/bpm*num*bars;state.countIn.visual=countIn;state.isRecording=false;state.isFinishingRecording=false;state.recordingTimeout=null;state.recordingStartTimeout=null;state.loopRecorder=null;state.recordingLoopId=-1;state.loops=Array.from({length:20},(_,i)=>new Loop(i));};
+ globalThis.reset=(mode,bpm,num,bars,countIn=false,countInAudio=false)=>{state.syncMode=mode;state.syncEnabled=mode!=='off';state.bpm=bpm;state.timeSig.num=num;state.bars=bars;state.loopLength=60/bpm*num*bars;state.countIn.visual=countIn;state.countIn.audio=countInAudio;state.isRecording=false;state.isFinishingRecording=false;state.recordingTimeout=null;state.recordingStartTimeout=null;state.loopRecorder=null;state.recordingLoopId=-1;state.loops=Array.from({length:20},(_,i)=>new Loop(i));};
  globalThis.start=()=>LoopManager.startRecording(0);
  globalThis.stop=()=>LoopManager.stopRecording();
  globalThis.current=()=>state.loops[0];
@@ -70,11 +70,11 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   cases++;
  }
  // Reference arm/count-in/cancel timing across the original default and uneven meters.
- for(const [bpm,num,bars,den] of [[120,4,2,4],[137.5,3,1,8],[93.75,7,2,8],[600,1,1,4]])for(const rate of [8000,48000])for(const countIn of [false,true])for(const fraction of [0,0.97]){
+ for(const [bpm,num,bars,den] of [[120,4,2,4],[137.5,3,1,8],[93.75,7,2,8],[600,1,1,4]])for(const rate of [8000,48000])for(const countIn of [false,true])for(const countInAudio of [false,true])for(const fraction of [0,0.97]){
   const tap=Math.max(1,Math.floor(60/bpm*num*bars*rate*fraction));
-  timers.clear();audio.sampleRate=rate;audio.currentTime=tap/rate;ctx.reset('static',bpm,num,bars,countIn);await ctx.start();
+  timers.clear();audio.sampleRate=rate;audio.currentTime=tap/rate;ctx.reset('static',bpm,num,bars,countIn,countInAudio);await ctx.start();
   const deadline=Math.ceil(ctx.current().graph.startTime*rate);
-  const commands=[`prepare 1048576 ${rate}`,`sync 1 ${bpm} ${num} ${bars} ${countIn?1:0} ${den}`,`advance ${tap} 0`,'record 0 0','transport 0 0','finish 0 0',`advance ${deadline-tap+128} 0`,'transport 0 0'];
+  const commands=[`prepare 1048576 ${rate}`,`sync 1 ${bpm} ${num} ${bars} ${countIn?1:0} ${den} ${countInAudio?1:0}`,`advance ${tap} 0`,'record 0 0','transport 0 0','finish 0 0',`advance ${deadline-tap+128} 0`,'transport 0 0'];
   const rows=runProbe(commands);assert.equal(rows[4][1],8);assert(Math.abs(rows[4][4]-deadline)<=1,`Reference count-in deadline ${rows[4][4]} vs ${deadline}`);assert.equal(rows[7][1],0,'Canceled arm must not resurrect');snapshots+=2;cases++;
  }
  let rateChecks=0;

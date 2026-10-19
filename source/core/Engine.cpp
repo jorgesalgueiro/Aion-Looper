@@ -10,7 +10,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     if (preparedRate != rate || loops.capacity() != std::clamp(poolFrames / LoopBank::blockFrames, 1u, LoopBank::maxBlocks) * LoopBank::blockFrames)
         loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005), rate);
     else (void) loops.apply(LoopAction::stopAll, 0);
-    loops.resetTimeline();metronome.prepare(rate);preparedRate = rate;
+    loops.resetTimeline();metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     frame = 0; gain = target = increment = 0.0f; remaining = 0;
@@ -48,6 +48,15 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
         while (hasPendingLoop && pendingLoop.frame <= frame && loopApplied < 128) {
             lastRequestId = pendingLoop.requestId;
             rejected = pendingLoop.generation != generation() || !loops.apply(pendingLoop.action, pendingLoop.track, pendingLoop.value);
+            if(!rejected){
+                const auto action=pendingLoop.action;
+                if(action==LoopAction::record){
+                    const double start=loops.armedStartSeconds(pendingLoop.track);
+                    if(start>=0){const auto settings=loops.syncView().settings;countInTrack=pendingLoop.track;
+                        countIn.schedule(static_cast<double>(frame)/preparedRate,start,settings.bpm,settings.numerator,settings.countInAudio,settings.countIn);}
+                }else if(action==LoopAction::stopAll||action==LoopAction::clearAll||
+                    (pendingLoop.track==countInTrack&&(action==LoopAction::finish||action==LoopAction::stop||action==LoopAction::stopImmediate||action==LoopAction::clear)))countIn.cancel();
+            }
             ++loopApplied; hasPendingLoop = loopCommands.pop(pendingLoop);
         }
         const float left = count > 0 && channels[0] && std::isfinite(channels[0][i]) ? channels[0][i] : 0.0f;
@@ -56,7 +65,7 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
         const auto loopOutput = loops.tick({left, right});
         // Monitor-only, like the original direct-to-destination worklet: never
         // feed clicks to capture, and keep its volume independent of MASTER.
-        const float click=metronome.tick(frame);
+        const float click=metronome.tick(frame)+countIn.tick(frame);
         if (remaining > 0) { gain += increment; if (--remaining == 0) gain = target; }
         for (int c = 0; c < count; ++c) {
             if (channels[c] == nullptr) continue;
@@ -71,6 +80,6 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
     }
     // Telemetry is lossy by design; never wait when the editor is closed/slow.
     (void) meters.push({frame, peak});
-    (void) views.push({loops.view(), frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak});
+    (void) views.push({loops.view(), frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame)});
 }
 }

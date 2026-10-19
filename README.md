@@ -105,7 +105,7 @@ pending.
 
 Development follow-up: the main **arm / record / play** workflow now uses a
 native sample clock, with the original OFF / STATIC / DYNAMIC controls, BPM,
-bars, meter fields, visual count-in, timeline and main loop buttons.
+bars, meter fields, independent VISUAL/SOUND count-in, timeline and main loop buttons.
 
 - Choose the audio device/input in Options and Unmute Input, then raise MASTER
   VOLUME to hear playback. A missing native input now reports an explicit error.
@@ -122,8 +122,12 @@ bars, meter fields, visual count-in, timeline and main loop buttons.
 
 The browser timer receiver bug that stranded held keys/pointers is fixed, with
 real WebView2 press/release/hold regressions. This increment uses the internal
-Master BPM grid. Loop-source sync, DAW/MIDI clock following, audible metronome /
-count-in, latency calibration and pre-tap snapping remain pending. Recording
+Master BPM grid. Continuous metronome and static SOUND count-in render in C++,
+bypass MASTER and stay out of internal loop capture. SOUND plays 100ms triangle
+cues in the final bar (440 Hz, then 880 Hz on the final beat). VISUAL and SOUND
+independently request the same lead-in; CANCEL, DEL and STOP ALL cancel pending
+cues. OFF and DYNAMIC start immediately. Loop-source sync, DAW/MIDI clock following,
+latency calibration and pre-tap snapping remain pending. Recording
 settings are latched for the active take. Audio/projects are still session-only.
 Only the current standalone test app is rebuilt; no new ZIP or version is made.
 

@@ -30,7 +30,7 @@ private:
     std::atomic<float>* master = nullptr;
     std::atomic<float>* monitor = nullptr;
     std::atomic<float>* autoPlay = nullptr;
-    std::atomic<float> *syncMode=nullptr,*syncBpm=nullptr,*syncBars=nullptr,*syncNum=nullptr,*syncDen=nullptr,*countIn=nullptr;
+    std::atomic<float> *syncMode=nullptr,*syncBpm=nullptr,*syncBars=nullptr,*syncNum=nullptr,*syncDen=nullptr,*countIn=nullptr,*countInAudio=nullptr;
     std::atomic<float> *metroEnabled=nullptr,*metroVolume=nullptr;
     aion::EngineView latest{}; // Message-thread cached, coherent audio snapshot.
     // Session labels belong to the message thread, never the audio callback.

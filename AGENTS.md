@@ -11,7 +11,7 @@ performance commands, the original NORM action (including its no-op envelope
 repair), the loop Rvers control, per-loop/global Undo/Redo, and original MULT
 capture/doubling, and the internal Master BPM static/dynamic arm-record-play
 workflow with unified mouse/keyboard gestures, native session naming and the
-continuous monitor-only metronome. Offline DSP and connected
+continuous monitor-only metronome and static SOUND/VISUAL count-in. Offline DSP and connected
 committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.
@@ -100,5 +100,18 @@ worklet PCM and connected Engine checks. Keep zero callback new/delete, exact
 stereo/64/128, MASTER bypass, loop-capture exclusion and separate MASTER/OUTPUT
 metering. N must preserve repeat/text-entry guards and rapid toggles must use
 the native value. Keep standalone UI click volume at zero during smoke tests;
-use the hardware-free host for actual audible-PCM verification. SOUND count-in,
-physical drivers, DAW/MIDI and Apple platforms remain separate acceptance work.
+use the hardware-free host for actual audible-PCM verification. Physical drivers,
+DAW/MIDI and Apple platforms remain separate acceptance work.
+
+Static count-in must retain js_native_countin, the expanded unchanged-JS arm/grid
+checks and TestCountInUi.ps1's actual OfflineAudioContext sound oracle. Do not
+replace browser pitch-band blending/full-wave normalization with a Nyquist-only
+peak-normalized triangle: it failed actual sound parity. Keep the 4e-5 analytical
+and actual-browser peak limits and <=1e-4 relative browser RMS, all rate/tempo
+cases, fixed stereo/64/128 and zero callback new/delete. Wavetables belong to
+prepare-time storage, not large stack frames. Keep SOUND/VISUAL independent,
+static-only, latched at arm, excluded from MASTER/meter/internal capture, with
+all cancellation/reset barriers and unrelated/rejected command protection.
+Preserve real mouse SOUND/cancel checks in both block-size workflows. Actual
+browser acceptance currently covers WebView2; other engines/hardware remain
+separate work. Never create a product AudioContext for native sound.

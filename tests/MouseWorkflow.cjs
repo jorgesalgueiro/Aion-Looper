@@ -61,6 +61,18 @@ let socket;
     await wait(s=>!s.metronomeEnabled&&s.outputPeak===0,'N stops native metronome without a click tail');
     assert.equal((await snapshot()).lastRequestId,metroBefore.lastRequestId+1,'Only STOP ALL dispatches an audio transport command');
     await evaluate(`document.getElementById('metronomeVol').value='0.5';document.getElementById('metronomeVol').dispatchEvent(new Event('input',{bubbles:true}));`);
+    // Actual original SOUND checkbox and real output, with no physical device.
+    await parameter('#bpmInput',240);await mode('static');
+    await click('#countInAudio');await wait(s=>s.countInAudio&&!s.countInVisual,'SOUND-only lead-in');
+    for(const cancel of ['#loop-action-0','#native-stop-all']){
+        await click('#loop-action-0');await state('armed');
+        const heard=await wait(s=>s.tracks[0].state==='armed'&&s.outputPeak>0.01,'Audible native SOUND before capture');
+        assert.equal(heard.masterPeak,0,'SOUND excluded from MASTER meter');assert.equal(heard.countInFlash,0,'SOUND does not enable VISUAL');
+        await click(cancel);await state('empty');
+        await delay(150);for(let n=0;n<20;++n){const stopped=await snapshot();assert.equal(stopped.outputPeak,0,'Cancel leaves no delayed SOUND');assert.equal(stopped.countInFlash,0);assert.equal(stopped.tracks[0].state,'empty');await delay(50);}
+    }
+    await click('#countInAudio');await wait(s=>!s.countInAudio,'SOUND disabled');
+    await parameter('#bpmInput',120);await mode('off');
     // Header and button are interchangeable, including release outside the button.
     await exactlyOne(()=>click('#loop-state-text-0'),'Header starts actual recording');
     await state('recording');await delay(220);

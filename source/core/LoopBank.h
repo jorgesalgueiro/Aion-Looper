@@ -49,6 +49,7 @@ public:
     void configureSync(SyncSettings settings) noexcept;
     void resetTimeline() noexcept { frame=0;sync.reset(rate); }
     SyncView syncView() const noexcept {return sync.view(frame);}
+    double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
 private:
     struct Clip {
         std::atomic<std::uint32_t> leases{1};
@@ -65,7 +66,7 @@ private:
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
         SyncMode recordMode=SyncMode::off;
-        double recordBarFrames=0,recordOrigin=0;
+        double recordBarFrames=0,recordOrigin=0,recordStartSeconds=0;
         std::uint32_t plannedFrames=0,recordPrefix=0;
         std::uint64_t startAt=0,endAt=0;
         std::array<std::uint16_t, maxBlocks> blocks{};

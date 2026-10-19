@@ -94,9 +94,9 @@
             es:['Borrar un loop: mantén STOP durante 4 segundos','Mantén pulsado continuamente el botón principal STOP o la tecla asignada durante 4 s para borrar el loop y su historial Undo/Redo. Soltar antes de 4 s conserva el audio. El tiempo empieza al pulsar, no al detenerse la reproducción.','Un toque breve detiene o programa la parada con sync. Mantener durante 600 ms corta inmediatamente la reproducción pendiente sin borrar audio. Sigue pulsando hasta 4 s para borrar, en cualquier modo sync. DEL cancela las acciones pendientes de esa pista y la borra, incluso mientras guarda.','Solo una pulsación iniciada en STOP o STOP NOW permite borrar al mantener. Mantener PLAY, FINISH, CANCEL o RECORD no borra el loop. La cabecera y el estado solo ejecutan la acción breve. Soltar antes de 4 s, cancelar la captura del puntero, perder el foco o STOP ALL cancela el borrado pendiente, incluso si espera en la cola. Borrar una pista o cambiar la configuración de audio también cancela sus pulsaciones antiguas.'],
             pt:['Apagar um loop: manter STOP durante 4 segundos','Mantém continuamente o botão principal STOP ou a tecla atribuída durante 4 s para apagar o loop e o histórico Undo/Redo. Soltar antes de 4 s mantém o áudio. O tempo conta desde que primes, não desde que a reprodução para.','Um toque breve para a reprodução ou agenda a paragem com sync. Manter durante 600 ms corta imediatamente a reprodução pendente sem apagar áudio. Continua a premir até 4 s para apagar, em qualquer modo sync. DEL cancela as ações pendentes dessa pista e apaga-a, mesmo durante a gravação dos dados.','Só uma pressão iniciada em STOP ou STOP NOW permite apagar ao manter. Manter PLAY, FINISH, CANCEL ou RECORD não apaga o loop. O cabeçalho e o estado só executam a ação breve. Soltar antes de 4 s, cancelar a captura do ponteiro, perder o foco ou STOP ALL cancela a eliminação pendente, mesmo em espera na fila. Apagar uma pista ou mudar a configuração de áudio também cancela as pressões antigas.']
         };
-        holdManual.en.push('Metronome: use Metro[N]ome or N. Its VOLUME is independent of MASTER and its sound is excluded from internal loop recording. The SOUND count-in option is not ported yet.');
-        holdManual.es.push('Metrónomo: usa Metro[N]ome o N. Su VOLUME es independiente de MASTER y su sonido no se incluye en la grabación interna de loops. La opción de cuenta previa SOUND aún no está migrada.');
-        holdManual.pt.push('Metrónomo: usa Metro[N]ome ou N. O seu VOLUME é independente de MASTER e o som não entra na gravação interna dos loops. A opção de contagem prévia SOUND ainda não está migrada.');
+        holdManual.en.push('Metronome: use Metro[N]ome or N. Its VOLUME is independent of MASTER and its sound is excluded from internal loop recording. Static recording: SOUND plays a 100 ms triangle cue on each beat of the final bar, with a higher final cue. Cues bypass MASTER and stay out of internal loop recordings; CANCEL, DEL and STOP ALL silence pending cues. VISUAL and SOUND independently request the same lead-in. OFF and DYNAMIC start immediately.');
+        holdManual.es.push('Metrónomo: usa Metro[N]ome o N. Su VOLUME es independiente de MASTER y su sonido no se incluye en la grabación interna de loops. En grabación STATIC, SOUND reproduce tonos de 100 ms en el último compás, con un tono final más agudo. No pasan por MASTER ni entran en los loops. CANCEL, DEL y STOP ALL cancelan los tonos pendientes. VISUAL y SOUND son independientes; OFF y DYNAMIC empiezan de inmediato.');
+        holdManual.pt.push('Metrónomo: usa Metro[N]ome ou N. O seu VOLUME é independente de MASTER e o som não entra na gravação interna dos loops. Na gravação STATIC, SOUND toca sinais de 100 ms no último compasso, com o último sinal mais agudo. Não passam por MASTER nem entram nos loops. CANCEL, DEL e STOP ALL cancelam os sinais pendentes. VISUAL e SOUND são independentes; OFF e DYNAMIC começam de imediato.');
         for(const [language,copy] of Object.entries(holdManual)){
             const note=document.createElement('div');note.id=`native-hold-manual-${language}`;
             for(const [index,text] of copy.entries()){const line=document.createElement(index?'p':'h4');line.textContent=text;note.append(line);}
@@ -105,7 +105,7 @@
 
 
         const syncModes=[...document.querySelectorAll('input[name=syncMode]')];
-        const timingControls={syncBpm:document.getElementById('bpmInput'),syncBars:document.getElementById('numBars'),syncNum:document.getElementById('timeSigNum'),syncDen:document.getElementById('timeSigDen'),countInVisual:document.getElementById('countInVisual')};
+        const timingControls={syncBpm:document.getElementById('bpmInput'),syncBars:document.getElementById('numBars'),syncNum:document.getElementById('timeSigNum'),syncDen:document.getElementById('timeSigDen'),countInVisual:document.getElementById('countInVisual'),countInAudio:document.getElementById('countInAudio')};
         syncModes.forEach((radio,index)=>{enable(radio);radio.addEventListener('change',()=>{if(radio.checked)setParameter('syncMode',index);});});
         for(const [id,element] of Object.entries(timingControls)){enable(element);element.addEventListener('change',()=>setParameter(id,element.type==='checkbox'?(element.checked?1:0):Number(element.value)));}
         for(const [id,min,max] of [['syncBpm',10,999],['syncBars',1,64],['syncNum',1,32],['syncDen',1,32]]){timingControls[id].min=min;timingControls[id].max=max;}
@@ -326,11 +326,10 @@
             document.getElementById('loopLength').textContent=`${snapshot.gridLength.toFixed(2)}s`;
             document.getElementById('playhead').style.left=snapshot.syncMode===0?'0%':`${snapshot.gridPosition*100}%`;
             const armed=snapshot.tracks.find(t=>t.state==='armed');
-            const beats=armed?(armed.scheduledFrame-snapshot.syncFrame)/snapshot.sampleRate/(60/snapshot.syncBpm):0;
-            const pulse=active&&snapshot.countInVisual&&beats>0&&beats<=snapshot.syncNum&&Math.ceil(beats)-beats<0.15/(60/snapshot.syncBpm);
+            const pulse=active&&snapshot.countInFlash;
             const masterModule=document.getElementById('mod-master');
-            masterModule.style.borderColor=pulse?(beats<=1?'#f00':'#ff0'):'';
-            masterModule.style.boxShadow=pulse?`0 0 10px ${beats<=1?'#f00':'#ff0'}`:'';
+            masterModule.style.borderColor=pulse?(pulse===2?'#f00':'#ff0'):'';
+            masterModule.style.boxShadow=pulse?`0 0 10px ${pulse===2?'#f00':'#ff0'}`:'';
             const db=value=>value>0?`${(20*Math.log10(value)).toFixed(1)} dBFS`:'-inf dBFS';
             document.getElementById('master-ascii-vu').textContent=`MASTER | ${db(snapshot.masterPeak??snapshot.outputPeak)}`;
             status.textContent=error || (!active?'Waiting for audio. Enable the audio device or host processing.':

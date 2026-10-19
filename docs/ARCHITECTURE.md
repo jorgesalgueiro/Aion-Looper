@@ -475,3 +475,17 @@ wait cannot block clearing. Other tracks retain their relative order, and a
 command already dispatched still completes before CLEAR. Original 128-item
 capacity, expiry and generation validation remain. Global STOP ALL discards all
 unsent work as before. No audio-thread or preserved reference asset changes occur.
+
+
+Static SOUND count-in (2026-10-19): `SyncSettings::countInAudio` is independent
+of the existing VISUAL flag. Either requests the reference 75%-bar minimum lead.
+The accepted record command transfers the exact fractional target time to a
+bounded audio-owned `CountIn` schedule (at most 32 cues). Timing, BPM, meter and
+flags latch at arm time; subsequent checkbox/grid changes apply to the next arm.
+100ms 440/880 Hz triangle cues enter device output after MASTER, following loop
+input capture; MASTER metering excludes them. Audio-owned 150ms flash telemetry
+updates the existing master module without browser audio or musical timers.
+Same-track CANCEL/STOP/DEL and global STOP ALL/DEL ALL cancel cues; reprepare
+cancels them too. Unrelated or rejected actions preserve the accepted schedule.
+The two persistent wavetables allocate and populate in prepare, not process.
+No project PCM persistence or external/DAW clock acceptance is implied.

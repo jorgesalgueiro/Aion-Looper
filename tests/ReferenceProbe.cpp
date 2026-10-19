@@ -20,7 +20,7 @@ int main(int argc,char**) {
         else if(operation=="prepare")bank.prepare(id,0,value);
         else if(operation=="advance") {for(unsigned i=0;i<id;++i)output=bank.tick({});}
         else if(operation=="autoplay")bank.setAutoPlay(value!=0);
-        else if(operation=="sync") {unsigned bars=2,countIn=0,den=4;(void)(input>>bars>>countIn>>den);bank.configureSync({static_cast<aion::SyncMode>(id),value,bars,static_cast<unsigned>(right),den,countIn!=0});}
+        else if(operation=="sync") {unsigned bars=2,countIn=0,den=4,audio=0;(void)(input>>bars>>countIn>>den>>audio);bank.configureSync({static_cast<aion::SyncMode>(id),value,bars,static_cast<unsigned>(right),den,countIn!=0,audio!=0});}
         else if(operation=="transport") {const auto t=bank.view()[id];const auto clock=bank.syncView();std::cout<<1<<' '<<static_cast<unsigned>(t.state)<<' '<<t.length<<' '<<t.position<<' '<<t.scheduledFrame<<' '<<t.stopPending<<' '<<bank.available()<<' '<<clock.frame<<' '<<std::setprecision(15)<<clock.origin<<' '<<clock.loopSeconds<<' '<<t.effectiveRate<<'\n';continue;}
         else if(operation=="stopImmediate")accepted=bank.apply(A::stopImmediate,id);
         else if(operation=="wait")accepted=wait();

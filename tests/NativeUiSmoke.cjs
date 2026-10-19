@@ -31,6 +31,11 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert(!layout.extraPanel&&layout.masterInOriginal&&layout.inputInOriginal&&layout.stopInOriginal&&layout.syncEnabled&&layout.syncMode===['off','static','dynamic'][snapshot.syncMode],JSON.stringify(layout));
  // Exercise the original sync controls through APVTS and coherent audio snapshots.
  const timingBefore=await evaluate(`AionNative.request({operation:'snapshot'})`);
+ assert(await evaluate(`!document.getElementById('countInAudio').disabled`),'Original SOUND checkbox enabled');
+ await evaluate(`document.getElementById('countInAudio').click()`);
+ for(let n=0;n<40;++n){if((await evaluate(`AionNative.request({operation:'snapshot'})`)).countInAudio!==timingBefore.countInAudio)break;await delay(50);}
+ assert.equal((await evaluate(`AionNative.request({operation:'snapshot'})`)).countInAudio,!timingBefore.countInAudio,'Original SOUND control reaches native owner');
+ assert(!(await evaluate(`AionNative.request({operation:'setParameter',id:'countInAudio',value:2})`)).ok,'SOUND rejects nonboolean values');
  for(const [id,value,property] of [['bpmInput',137.5,'syncBpm'],['numBars',1,'syncBars'],['timeSigNum',3,'syncNum'],['timeSigDen',8,'syncDen']]){
    await evaluate(`document.getElementById('${id}').value='${value}';document.getElementById('${id}').dispatchEvent(new Event('change'))`);
    let timed;for(let n=0;n<60;++n){timed=await evaluate(`AionNative.request({operation:'snapshot'})`);if(timed[property]===value)break;await delay(50);}assert.equal(timed[property],value,'Original timing field reaches native owner: '+id);
@@ -39,7 +44,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    await evaluate(`document.querySelector('input[name=syncMode][value=${mode}]').click()`);
    let timed;for(let n=0;n<60;++n){timed=await evaluate(`AionNative.request({operation:'snapshot'})`);if(timed.syncMode===['off','static','dynamic'].indexOf(mode))break;await delay(50);}assert.equal(timed.syncMode,['off','static','dynamic'].indexOf(mode));await delay(100);assert.equal(await evaluate(`document.getElementById('markers').children.length`),mode==='off'?0:3,'Original shared-grid beat markers');if(mode==='off')assert.equal(await evaluate(`document.getElementById('playhead').style.left`),'0%','OFF keeps the original timeline playhead at zero');
  }
- for(const id of ['syncBpm','syncBars','syncNum','syncDen','syncMode','countInVisual'])assert((await evaluate(`AionNative.request({operation:'setParameter',id:'${id}',value:${JSON.stringify(timingBefore[id])=== 'true'?1:JSON.stringify(timingBefore[id])==='false'?0:JSON.stringify(timingBefore[id])}})`)).ok);
+ for(const id of ['syncBpm','syncBars','syncNum','syncDen','syncMode','countInVisual','countInAudio'])assert((await evaluate(`AionNative.request({operation:'setParameter',id:'${id}',value:${JSON.stringify(timingBefore[id])=== 'true'?1:JSON.stringify(timingBefore[id])==='false'?0:JSON.stringify(timingBefore[id])}})`)).ok);
  assert(!(await evaluate(`AionNative.request({operation:'setParameter',id:'syncBpm',value:0})`)).ok);
  assert(!(await evaluate(`AionNative.request({operation:'setParameter',id:'syncBars',value:1.5})`)).ok);
  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'+',code:'Equal',bubbles:true}))`);

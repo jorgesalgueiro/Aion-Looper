@@ -278,8 +278,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             s=LoopState::recording;poolFull=false;
             if(t.recordMode==SyncMode::fixed){
                 double start=sync.nextGridSeconds(frame);
-                if(sync.settings.countIn&&start-static_cast<double>(frame)/rate<sync.barFrames()/rate*0.75)start+=sync.barFrames()/rate;
-                t.startAt=SyncClock::deadline(start*rate);
+                if((sync.settings.countIn||sync.settings.countInAudio)&&start-static_cast<double>(frame)/rate<sync.barFrames()/rate*0.75)start+=sync.barFrames()/rate;
+                t.recordStartSeconds=start;t.startAt=SyncClock::deadline(start*rate);
                 // The unchanged extractor floors (targetTime - firstWorkletTime)*rate.
                 // Preserve the preceding sample(s) when that falls before the
                 // first deadline sample, including floating-point integer edges.

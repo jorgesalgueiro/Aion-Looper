@@ -10,6 +10,7 @@ struct SyncSettings {
     double bpm=120;
     unsigned bars=2,numerator=4,denominator=4;
     bool countIn=true;
+    bool countInAudio=false;
 };
 struct SyncView {
     SyncSettings settings{};

@@ -30,6 +30,7 @@ AionProcessor::AionProcessor()
           std::make_unique<juce::AudioParameterInt>(juce::ParameterID{"syncNum",1},"Beats per bar",1,32,4),
           std::make_unique<juce::AudioParameterInt>(juce::ParameterID{"syncDen",1},"Time signature denominator",1,32,4),
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"countInVisual",1},"Visual count-in",true),
+          std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"countInAudio",1},"Sound count-in",false),
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"metronomeEnabled",1},"Metronome",false),
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"metronomeVolume",1},"Metronome volume",juce::NormalisableRange<float>{0,2},0.5f)}) {
     metroEnabled=parameters.getRawParameterValue("metronomeEnabled");metroVolume=parameters.getRawParameterValue("metronomeVolume");
@@ -38,7 +39,7 @@ AionProcessor::AionProcessor()
     autoPlay = parameters.getRawParameterValue("autoPlayAfterRecord");
     syncMode=parameters.getRawParameterValue("syncMode");syncBpm=parameters.getRawParameterValue("syncBpm");
     syncBars=parameters.getRawParameterValue("syncBars");syncNum=parameters.getRawParameterValue("syncNum");
-    syncDen=parameters.getRawParameterValue("syncDen");countIn=parameters.getRawParameterValue("countInVisual");
+    syncDen=parameters.getRawParameterValue("syncDen");countIn=parameters.getRawParameterValue("countInVisual");countInAudio=parameters.getRawParameterValue("countInAudio");
 }
 void AionProcessor::prepareToPlay(double rate, int) { engine.prepare(rate); }
 bool AionProcessor::isBusesLayoutSupported(const BusesLayout& b) const {
@@ -56,7 +57,7 @@ void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuff
     engine.setMetronome(metroEnabled->load()>=0.5f,metroVolume->load());
     engine.setAutoPlay(autoPlay->load(std::memory_order_relaxed) >= 0.5f);
     engine.configureSync({static_cast<aion::SyncMode>(static_cast<unsigned>(syncMode->load())),syncBpm->load(),
-        static_cast<unsigned>(syncBars->load()),static_cast<unsigned>(syncNum->load()),static_cast<unsigned>(syncDen->load()),countIn->load()>=0.5f});
+        static_cast<unsigned>(syncBars->load()),static_cast<unsigned>(syncNum->load()),static_cast<unsigned>(syncDen->load()),countIn->load()>=0.5f,countInAudio->load()>=0.5f});
     engine.transport = {};
     if (auto* head = getPlayHead()) if (auto position = head->getPosition()) {
         engine.transport.hostValid = true;
@@ -122,6 +123,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("syncMode",static_cast<int>(timing.settings.mode));result->setProperty("syncBpm",timing.settings.bpm);
         result->setProperty("syncBars",static_cast<int>(timing.settings.bars));result->setProperty("syncNum",static_cast<int>(timing.settings.numerator));
         result->setProperty("syncDen",static_cast<int>(timing.settings.denominator));result->setProperty("countInVisual",timing.settings.countIn);
+        result->setProperty("countInAudio",timing.settings.countInAudio);result->setProperty("countInFlash",static_cast<int>(latest.countInFlash));
         result->setProperty("gridLength",timing.loopSeconds);result->setProperty("barLength",timing.barSeconds);
         result->setProperty("gridPosition",timing.position);result->setProperty("syncFrame",static_cast<juce::int64>(timing.frame));
         juce::Array<juce::var> tracks;
@@ -155,7 +157,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("ok",true);result->setProperty("enabled",next);
     } else if (operation == "setParameter") {
         const auto id = request.getProperty("id", {}).toString();
-        const bool boolean=id=="inputMonitor"||id=="autoPlayAfterRecord"||id=="countInVisual"||id=="metronomeEnabled";
+        const bool boolean=id=="inputMonitor"||id=="autoPlayAfterRecord"||id=="countInVisual"||id=="countInAudio"||id=="metronomeEnabled";
         const bool integral=id=="syncMode"||id=="syncBars"||id=="syncNum"||id=="syncDen";
         if(!boolean&&!integral&&id!="masterGain"&&id!="syncBpm"&&id!="metronomeVolume")return fail("Unknown parameter");
         const auto value = request.getProperty("value", {});

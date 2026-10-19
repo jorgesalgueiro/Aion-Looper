@@ -961,3 +961,80 @@ static/dynamic, hold deletion and naming cases. Logs: `build/metronome-routing-w
 `build/metronome-routing-audio.log`, `build/metronome-native-smoke.log`, and
 `build/metronome-mouse.log`. Only existing app/test targets were rebuilt. No
 version bump, ZIP, installer or plugin package was generated.
+
+
+## Static audible count-in — 2026-10-19
+
+The existing SOUND checkbox now controls native static-recording cues. VISUAL
+and SOUND independently request the same minimum lead; OFF/DYNAMIC still begin
+immediately. The complete unchanged `LoopManager.scheduleCountIn` determines
+cue time, 50ms scheduling guard, last-bar restriction, 440/880 Hz pitches, gain
+0.5, 100ms audio duration and 150ms visual events. Cues latch at accepted arm time.
+Native cancellation deliberately improves on abandoned browser timers: same-track
+CANCEL/STOP/DEL, STOP ALL, DEL ALL and prepare/reset silence pending cues. No new
+panel or original UI asset changes. The supplied ASCII logo remains intact.
+
+The initial Nyquist-only triangle failed an actual OfflineAudioContext sound
+comparison (8.39% relative RMS at 8 kHz). The repaired oscillator preserves
+pitch-band blending and full-wave normalization, using an independently written
+Fourier/table implementation; no browser DSP dependency was added to the product.
+The model was checked against Chromium's published periodic-wave behavior:
+[PeriodicWaveImpl](https://chromium.googlesource.com/chromium/src/third_party/+/c2ac657807607652f7a91204ded7f1c506bb98f5/blink/renderer/modules/webaudio/periodic_wave.cc).
+Only two fixed-pitch wavetables are needed. Tables allocate/populate in prepare;
+scheduling, mixing, metering, visual telemetry and cancellation allocate nothing.
+A Windows stack overflow exposed by the core fixtures was repaired by keeping
+these persistent tables off the stack; callback allocation guards remain zero.
+
+`js_native_countin` retains 46 cases / 2,139,650 compared samples at 8, 44.1, 48,
+96 and 384 kHz. It executes the complete unchanged scheduler, verifies original
+destination routing/gain/type, compares native PCM to a separate harmonic model,
+and exercises the actual Engine at 64/128. The 4e-5 absolute interpolation limit
+was set before testing and retained. Final maximum error: 2.03997e-5. Connected
+cases include fractional BPM, SOUND-only extra-bar lead, overlapping voices and
+VISUAL-only silence; original arm/grid/cancel comparisons independently validate
+the recording target. The existing `js_native_sync` coverage is retained and
+expanded to every independent SOUND/VISUAL flag combination.
+
+`tests/CountInWebAudio.cjs` renders the unchanged scheduler in an actual WebView2
+OfflineAudioContext (test-only). Twelve sample-rate/tempo combinations cover
+8/44.1/48/96 kHz, 120/137.3/999 BPM, fractional starts, both pitches and overlapping
+voices. After repair the worst relative RMS error is 1.82165e-5 (0.001822%), and
+maximum absolute error is 1.43946e-5. The initial coarse sound gate was tightened
+to relative RMS <=1e-4 (0.01%) and absolute error <=4e-5; no failed case was removed.
+This establishes numeric browser-rendered cue agreement within those tolerances,
+not bit identity across browser engines or physical driver/listening acceptance.
+
+Native core tests additionally verify exact stereo and 64/128 equality, a cue
+that overlaps actual recording but is absent from committed PCM, MASTER/meter
+bypass, all cancellation barriers, rejected/unrelated commands, latched controls,
+OFF/DYNAMIC immediate capture, reset, finite controls and zero callback new/delete.
+The native WebView gate toggles the original SOUND checkbox and rejects invalid
+boolean values without opening capture. The hardware-free mouse gate hears real
+SOUND PCM with MASTER at zero and checks actual CANCEL/STOP ALL for delayed cues.
+
+Reproduce after building the existing app/probes/test host:
+
+```powershell
+ctest --test-dir build/windows -C Release --output-on-failure
+node tests/AudioParityAudit.cjs build/windows/Release/aion_reference_probe.exe
+./tools/TestCountInUi.ps1
+./tools/TestMouseWorkflow.ps1
+```
+
+No version bump, ZIP, installer or plugin package is generated for this feature.
+
+Final acceptance: Windows Release CTest 12/12 (143.95s), Ubuntu CTest 12/12
+(212.69s), Ubuntu ASan/UBSan core 1/1 (5.81s), native WebView2 UI and the stricter
+12-case actual-browser waveform gate, and complete hardware-free mouse workflows
+at both 64/128 all pass. The connected capture/overdub/substitute audit retains
+126 cases / 965,826 samples, maximum error 7.39476e-8 at the unchanged 1e-6 limit.
+Original UI byte identity also passes. At very high BPM native flashes retain
+the latest cue for 150ms rather than allowing a stale browser reset timer to
+clear a newer flash; the unchanged scheduler's cue requests are preserved.
+
+Logs: `build/countin-windows.log`, `build/countin-ubuntu-final.log`,
+`build/countin-asan.log`, `build/countin-ui-final.log`, `build/countin-mouse.log`
+and `build/countin-audio-audit.log`. Only the existing Windows standalone and
+necessary test targets were rebuilt. Physical drivers, DAW/plugin lifecycle,
+Apple/iOS, external MIDI sync and remaining application parity are not accepted
+by these gates.

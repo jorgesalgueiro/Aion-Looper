@@ -2,6 +2,7 @@
 #include "core/SpscQueue.h"
 #include "core/LoopBank.h"
 #include "core/Metronome.h"
+#include "core/CountIn.h"
 #include <cstdint>
 namespace aion {
 struct GainCommand { std::uint64_t frame; float gain; };
@@ -24,6 +25,7 @@ struct EngineView {
     SyncView sync{};
     bool metronomeFlash=false;
     float masterPeak=0;
+    unsigned countInFlash=0;
 };
 // Audio owner only for prepare/process/target/transport. The message thread is
 // the sole producer of commands; the message thread alone consumes meters.
@@ -47,6 +49,8 @@ public:
 private:
     LoopBank loops;
     Metronome metronome;
+    CountIn countIn;
+    std::uint32_t countInTrack=0;
     SpscQueue<LoopCommand, 256> loopCommands;
     SpscQueue<EngineView, 8> views;
     std::atomic<std::uint32_t> epoch{0};
