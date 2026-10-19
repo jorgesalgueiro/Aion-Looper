@@ -10,7 +10,8 @@ Latest accepted work: native capture/overdub finalization, ordered frontend
 performance commands, the original NORM action (including its no-op envelope
 repair), the loop Rvers control, per-loop/global Undo/Redo, and original MULT
 capture/doubling, and the internal Master BPM static/dynamic arm-record-play
-workflow with unified mouse/keyboard gestures. Offline DSP and connected
+workflow with unified mouse/keyboard gestures, native session naming and the
+continuous monitor-only metronome. Offline DSP and connected
 committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.
@@ -86,3 +87,18 @@ all local main/history/control/hold commands; global actions remain unscoped.
 Preserve other-track order, in-flight acknowledgements, the queue bound/expiry,
 and global STOP ALL priority. Retain real native PCM deferred-DEL/no-resurrection
 acceptance and scoped priority/cancellation unit tests.
+
+
+Session names are metadata: keep them ahead of ordinary audio/finalization waits,
+after panic/deletion barriers, coalesced per track and retained on STOP ALL.
+DEL supersedes older local names; DEL ALL clears old work and acknowledges before
+names typed afterwards. Preserve the original name handlers, UTF-8 validation,
+reload/clear lifecycle, metadata-only capacity protection and native race tests.
+
+The continuous metronome must retain js_native_metronome's complete unchanged
+worklet PCM and connected Engine checks. Keep zero callback new/delete, exact
+stereo/64/128, MASTER bypass, loop-capture exclusion and separate MASTER/OUTPUT
+metering. N must preserve repeat/text-entry guards and rapid toggles must use
+the native value. Keep standalone UI click volume at zero during smoke tests;
+use the hardware-free host for actual audible-PCM verification. SOUND count-in,
+physical drivers, DAW/MIDI and Apple platforms remain separate acceptance work.

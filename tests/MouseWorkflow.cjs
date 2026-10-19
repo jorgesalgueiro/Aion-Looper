@@ -45,6 +45,22 @@ let socket;
     await parameter('#bpmInput',120);await parameter('#numBars',1);await parameter('#timeSigNum',4);
     await click('#countInVisual');
     await mode('off');
+    // The original click bypasses MASTER, but never loop capture. No device is open.
+    const metroBefore=await snapshot();assert.equal(metroBefore.masterGain,0);
+    await evaluate(`document.getElementById('metronomeVol').value='0.35';document.getElementById('metronomeVol').dispatchEvent(new Event('input',{bubbles:true}));`);
+    await click('#metronomeBtn');
+    const metroSound=await wait(s=>s.metronomeEnabled&&Math.abs(s.metronomeVolume-0.35)<0.001&&s.outputPeak>0.005,'Native metronome audible with MASTER muted');
+    assert.equal(metroSound.masterPeak,0,'Native MASTER meter excludes the monitor click');
+    for(let n=0;n<25;++n){assert((await evaluate(`document.getElementById('master-ascii-vu').textContent`)).includes('-inf'),'Original MASTER display excludes the audible click');await delay(25);}
+
+    assert.equal((await snapshot()).lastRequestId,metroBefore.lastRequestId,'Metronome is independent of loop commands');
+    await click('#native-stop-all');await wait(s=>s.metronomeEnabled&&s.outputPeak>0.005,'STOP ALL preserves the original metronome');
+    await evaluate(`document.activeElement?.blur()`);
+    await call('Input.dispatchKeyEvent',{type:'keyDown',code:'KeyN',key:'n',windowsVirtualKeyCode:78});
+    await call('Input.dispatchKeyEvent',{type:'keyUp',code:'KeyN',key:'n',windowsVirtualKeyCode:78});
+    await wait(s=>!s.metronomeEnabled&&s.outputPeak===0,'N stops native metronome without a click tail');
+    assert.equal((await snapshot()).lastRequestId,metroBefore.lastRequestId+1,'Only STOP ALL dispatches an audio transport command');
+    await evaluate(`document.getElementById('metronomeVol').value='0.5';document.getElementById('metronomeVol').dispatchEvent(new Event('input',{bubbles:true}));`);
     // Header and button are interchangeable, including release outside the button.
     await exactlyOne(()=>click('#loop-state-text-0'),'Header starts actual recording');
     await state('recording');await delay(220);

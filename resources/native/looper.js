@@ -52,9 +52,13 @@
         const status = input.querySelector('#native-status');
         const master = output.querySelector('#native-master'), monitor = input.querySelector('#native-monitor');
         const autoPlay = document.getElementById('autoPlayAfterRecord');
+        const metroButton=document.getElementById('metronomeBtn'),metroVolume=document.getElementById('metronomeVol'),metroLabel=metroButton.textContent.trim();
         const globalUndo=document.getElementById('btnGlobalUndo'),globalRedo=document.getElementById('btnGlobalRedo');
         const enable = element => {element.disabled=false;element.title=element.getAttribute('aria-label')||element.textContent.trim();};
-        [master,monitor,autoPlay].forEach(enable);
+        [master,monitor,autoPlay,metroButton,metroVolume].forEach(enable);
+        const toggleMetronome=async()=>{try{const reply=await rpc({operation:'toggleMetronome'});if(!reply.ok)throw Error(reply.error||'Metronome unavailable');}catch(e){notify(e.message);}};
+        metroButton.addEventListener('click',toggleMetronome);
+        metroVolume.addEventListener('input',()=>{document.getElementById('metroVolDisplay').textContent=Number(metroVolume.value).toFixed(2);setParameter('metronomeVolume',Number(metroVolume.value));});
         const bindTabs=(buttonClass,panelClass,ids)=>{
             const buttons=[...document.querySelectorAll(buttonClass)];
             buttons.forEach((button,i)=>{enable(button);button.addEventListener('click',()=>{
@@ -71,6 +75,9 @@
             es:['Borrar un loop: mantén STOP durante 4 segundos','Mantén pulsado continuamente el botón principal STOP o la tecla asignada durante 4 s para borrar el loop y su historial Undo/Redo. Soltar antes de 4 s conserva el audio. El tiempo empieza al pulsar, no al detenerse la reproducción.','Un toque breve detiene o programa la parada con sync. Mantener durante 600 ms corta inmediatamente la reproducción pendiente sin borrar audio. Sigue pulsando hasta 4 s para borrar, en cualquier modo sync. DEL cancela las acciones pendientes de esa pista y la borra, incluso mientras guarda.','Solo una pulsación iniciada en STOP o STOP NOW permite borrar al mantener. Mantener PLAY, FINISH, CANCEL o RECORD no borra el loop. La cabecera y el estado solo ejecutan la acción breve. Soltar antes de 4 s, cancelar la captura del puntero, perder el foco o STOP ALL cancela el borrado pendiente, incluso si espera en la cola. Borrar una pista o cambiar la configuración de audio también cancela sus pulsaciones antiguas.'],
             pt:['Apagar um loop: manter STOP durante 4 segundos','Mantém continuamente o botão principal STOP ou a tecla atribuída durante 4 s para apagar o loop e o histórico Undo/Redo. Soltar antes de 4 s mantém o áudio. O tempo conta desde que primes, não desde que a reprodução para.','Um toque breve para a reprodução ou agenda a paragem com sync. Manter durante 600 ms corta imediatamente a reprodução pendente sem apagar áudio. Continua a premir até 4 s para apagar, em qualquer modo sync. DEL cancela as ações pendentes dessa pista e apaga-a, mesmo durante a gravação dos dados.','Só uma pressão iniciada em STOP ou STOP NOW permite apagar ao manter. Manter PLAY, FINISH, CANCEL ou RECORD não apaga o loop. O cabeçalho e o estado só executam a ação breve. Soltar antes de 4 s, cancelar a captura do ponteiro, perder o foco ou STOP ALL cancela a eliminação pendente, mesmo em espera na fila. Apagar uma pista ou mudar a configuração de áudio também cancela as pressões antigas.']
         };
+        holdManual.en.push('Metronome: use Metro[N]ome or N. Its VOLUME is independent of MASTER and its sound is excluded from internal loop recording. The SOUND count-in option is not ported yet.');
+        holdManual.es.push('Metrónomo: usa Metro[N]ome o N. Su VOLUME es independiente de MASTER y su sonido no se incluye en la grabación interna de loops. La opción de cuenta previa SOUND aún no está migrada.');
+        holdManual.pt.push('Metrónomo: usa Metro[N]ome ou N. O seu VOLUME é independente de MASTER e o som não entra na gravação interna dos loops. A opção de contagem prévia SOUND ainda não está migrada.');
         for(const [language,copy] of Object.entries(holdManual)){
             const note=document.createElement('div');note.id=`native-hold-manual-${language}`;
             for(const [index,text] of copy.entries()){const line=document.createElement(index?'p':'h4');line.textContent=text;note.append(line);}
@@ -85,7 +92,7 @@
         for(const [id,min,max] of [['syncBpm',10,999],['syncBars',1,64],['syncNum',1,32],['syncDen',1,32]]){timingControls[id].min=min;timingControls[id].max=max;}
 
         const mapping=document.getElementById('keyMappingUI');
-        mapping.innerHTML='<div class="mapping-tabs"><button class="tab-btn active">Keyboard</button></div><div class="mapping-scroll-container"><table class="mapping-table">'+Array.from({length:20},(_,i)=>`<tr><td>Loop ${i+1}</td><td>${i<10?'':'Shift+'}${(i+1)%10}</td></tr>`).join('')+'<tr><td>Global OD</td><td>+</td></tr><tr><td>Global SUB</td><td>-</td></tr><tr><td>STOP ALL</td><td>Space</td></tr><tr><td>Retrigger selected loop</td><td>/</td></tr><tr><td>Multiply selected loop</td><td>&#92;</td></tr></table></div>';
+        mapping.innerHTML='<div class="mapping-tabs"><button class="tab-btn active">Keyboard</button></div><div class="mapping-scroll-container"><table class="mapping-table">'+Array.from({length:20},(_,i)=>`<tr><td>Loop ${i+1}</td><td>${i<10?'':'Shift+'}${(i+1)%10}</td></tr>`).join('')+'<tr><td>Global OD</td><td>+</td></tr><tr><td>Global SUB</td><td>-</td></tr><tr><td>STOP ALL</td><td>Space</td></tr><tr><td>Metronome</td><td>N</td></tr><tr><td>Retrigger selected loop</td><td>/</td></tr><tr><td>Multiply selected loop</td><td>&#92;</td></tr></table></div>';
         document.getElementById('midiStatus').textContent='Native MIDI mapping is not ported yet.';
         let selected=0;
         const enabled = () => snapshot?.audioReady && Date.now()-advancedAt < 1000;
@@ -172,6 +179,7 @@
             mode:next=>{mode=mode===next?'normal':next;refresh();},
             history:redo=>restoreHistory(redo),
             multiply:()=>multiply(selected),
+            metronome:toggleMetronome,
             stop:stopSession,retrigger:()=>command('retrigger',selected),halfSpeed:()=>halfSpeed(selected)
         });
         document.addEventListener('keydown',e=>keyboard.down(e));
@@ -235,6 +243,11 @@
             if(document.activeElement!==master)master.value=snapshot.masterGain;
             if(document.activeElement!==monitor)monitor.checked=snapshot.inputMonitor;
             output.querySelector('#native-master-value').textContent=snapshot.masterGain===0?'MUTED':snapshot.masterGain.toFixed(2);
+            const metroOn=!!snapshot.metronomeEnabled,metroFlash=metroOn&&!!snapshot.metronomeFlash;
+            metroButton.textContent=metroOn?`${metroLabel} [ON]`:metroLabel;metroButton.setAttribute('aria-pressed',String(metroOn));
+            metroButton.style.color=metroOn?(metroFlash?'#000':'#0f0'):'inherit';metroButton.style.borderColor=metroOn?'#0f0':'currentColor';metroButton.style.backgroundColor=metroFlash?'#0f0':'transparent';
+            if(document.activeElement!==metroVolume)metroVolume.value=snapshot.metronomeVolume??0.5;
+            document.getElementById('metroVolDisplay').textContent=Number(snapshot.metronomeVolume??0.5).toFixed(2);
             stopAll.disabled=!active;clearAll.disabled=!active||busy;
             const historyAvailable=id=>Number.isInteger(id)&&id>=0&&['playing','stopped'].includes(snapshot.tracks[id]?.state);
             globalUndo.disabled=!active||!historyAvailable(snapshot.nextUndo);
@@ -300,7 +313,7 @@
             masterModule.style.borderColor=pulse?(beats<=1?'#f00':'#ff0'):'';
             masterModule.style.boxShadow=pulse?`0 0 10px ${beats<=1?'#f00':'#ff0'}`:'';
             const db=value=>value>0?`${(20*Math.log10(value)).toFixed(1)} dBFS`:'-inf dBFS';
-            document.getElementById('master-ascii-vu').textContent=`MASTER | ${db(snapshot.outputPeak)}`;
+            document.getElementById('master-ascii-vu').textContent=`MASTER | ${db(snapshot.masterPeak??snapshot.outputPeak)}`;
             status.textContent=error || (!active?'Waiting for audio. Enable the audio device or host processing.':
                 snapshot.tracks.some(t=>t.stopPending)?'Recording: finish scheduled at the next bar. Press FINISH again to stop now.':
                 armed?`Armed: recording starts in ${Math.max(0,(armed.scheduledFrame-snapshot.syncFrame)/snapshot.sampleRate).toFixed(2)}s. Press CANCEL to disarm.`:

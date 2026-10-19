@@ -229,6 +229,33 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    for(let n=0;n<60;++n){stopped=await evaluate(`AionNative.request({operation:'snapshot'})`);if(stopped.lastRequestId>beforeStop.lastRequestId&&!stopped.rejected)break;await delay(50);}
    assert(stopped.lastRequestId>beforeStop.lastRequestId&&!stopped.rejected&&stopped.tracks.every(t=>t.state==='empty'),JSON.stringify(stopped));
  }
+ // Standalone metronome controls are tested at zero click volume (no physical sound).
+ const metroBefore=await evaluate(`AionNative.request({operation:'snapshot'})`);
+ assert.equal(typeof metroBefore.metronomeEnabled,'boolean');
+ assert((await evaluate(`AionNative.request({operation:'setParameter',id:'syncBpm',value:120})`)).ok);
+ assert((await evaluate(`AionNative.request({operation:'setParameter',id:'metronomeEnabled',value:0})`)).ok);
+ await evaluate(`document.getElementById('metronomeVol').value='0';document.getElementById('metronomeVol').dispatchEvent(new Event('input',{bubbles:true}));document.activeElement?.blur();`);
+ const metroWait=async predicate=>{let value;for(let n=0;n<100;++n){value=await evaluate(`AionNative.request({operation:'snapshot'})`);if(predicate(value))return value;await delay(25);}assert.fail('Metronome snapshot '+JSON.stringify(value));};
+ await metroWait(s=>s.metronomeVolume===0);
+ for(const [id,value] of [['metronomeEnabled',0.5],['metronomeVolume',-0.1],['metronomeVolume',2.01],['metronomeVolume','bad']])assert(!(await evaluate(`AionNative.request(${JSON.stringify({operation:'setParameter',id,value})})`)).ok,'Invalid metronome control rejected');
+ assert(await evaluate(`!document.getElementById('metronomeBtn').disabled&&!document.getElementById('metronomeVol').disabled`));
+ await evaluate(`document.getElementById('metronomeBtn').click()`);await metroWait(s=>s.metronomeEnabled);
+ if(snapshot.audioReady)await metroWait(s=>s.metronomeFlash);
+ await call('Input.dispatchKeyEvent',{type:'keyDown',code:'KeyN',key:'n',windowsVirtualKeyCode:78});
+ await call('Input.dispatchKeyEvent',{type:'keyUp',code:'KeyN',key:'n',windowsVirtualKeyCode:78});await metroWait(s=>!s.metronomeEnabled);
+ // All same-turn clicks must toggle the native value, not an old snapshot.
+ await evaluate(`document.getElementById('metronomeBtn').click();document.getElementById('metronomeBtn').click();document.getElementById('metronomeBtn').click();`);await metroWait(s=>s.metronomeEnabled);
+ await evaluate(`document.querySelector('#loop-0 .track-name').focus()`);
+ await call('Input.dispatchKeyEvent',{type:'keyDown',code:'KeyN',key:'n',windowsVirtualKeyCode:78});
+ await call('Input.dispatchKeyEvent',{type:'keyUp',code:'KeyN',key:'n',windowsVirtualKeyCode:78});await delay(100);
+ assert((await evaluate(`AionNative.request({operation:'snapshot'})`)).metronomeEnabled,'Typing N never toggles the metronome');
+ await evaluate(`document.activeElement.blur();document.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyN',key:'n',repeat:true,bubbles:true}))`);await delay(100);
+ assert((await evaluate(`AionNative.request({operation:'snapshot'})`)).metronomeEnabled,'Held N does not repeat');
+ await evaluate(`document.getElementById('metronomeBtn').click()`);await metroWait(s=>!s.metronomeEnabled&&!s.metronomeFlash);
+ await delay(100);assert.equal(await evaluate(`document.getElementById('metronomeBtn').style.backgroundColor`),'transparent','Disabled flash clears');
+ assert.equal((await evaluate(`AionNative.request({operation:'snapshot'})`)).lastRequestId,metroBefore.lastRequestId,'Metronome never sends loop transport actions');
+ await evaluate(`document.getElementById('metronomeVol').value='0.5';document.getElementById('metronomeVol').dispatchEvent(new Event('input',{bubbles:true}));`);await metroWait(s=>s.metronomeVolume===0.5);
+ assert((await evaluate(`AionNative.request({operation:'setParameter',id:'syncBpm',value:${metroBefore.syncBpm}})`)).ok);
  // Labels use the original input and stay in C++ across a browser/editor reload.
  const label='Voz 1 + baixo Á 😀 <tag> " &';
  await evaluate(`(()=>{const e=document.querySelector('#loop-0 .track-name');if(e.disabled)throw Error('Name field is disabled');e.focus();})()`);

@@ -10,7 +10,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     if (preparedRate != rate || loops.capacity() != std::clamp(poolFrames / LoopBank::blockFrames, 1u, LoopBank::maxBlocks) * LoopBank::blockFrames)
         loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005), rate);
     else (void) loops.apply(LoopAction::stopAll, 0);
-    loops.resetTimeline();preparedRate = rate;
+    loops.resetTimeline();metronome.prepare(rate);preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     frame = 0; gain = target = increment = 0.0f; remaining = 0;
@@ -33,8 +33,10 @@ bool Engine::enqueueLoop(LoopCommand command) noexcept {
 }
 void Engine::process(float* const* channels, int count, int frames) noexcept {
     if (count < 0 || frames < 0 || (count > 0 && channels == nullptr)) return;
-    float peak = 0.0f, inputPeak = 0.0f;
+    float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
     loops.beginBlock();
+    const auto metroClock=loops.syncView();
+    metronome.configure(static_cast<float>(metroClock.settings.bpm),static_cast<float>(metroClock.origin/preparedRate),metroClock.settings.numerator);
     int loopApplied = 0;
     int applied = 0; // Bound work even when many past-due commands arrive together.
     for (int i = 0; i < frames; ++i, ++frame) {
@@ -52,18 +54,23 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
         const float right = count > 1 && channels[1] && std::isfinite(channels[1][i]) ? channels[1][i] : left;
         inputPeak = std::max(inputPeak, std::max(std::abs(left), std::abs(right)));
         const auto loopOutput = loops.tick({left, right});
+        // Monitor-only, like the original direct-to-destination worklet: never
+        // feed clicks to capture, and keep its volume independent of MASTER.
+        const float click=metronome.tick(frame);
         if (remaining > 0) { gain += increment; if (--remaining == 0) gain = target; }
         for (int c = 0; c < count; ++c) {
             if (channels[c] == nullptr) continue;
             const float value = std::isfinite(channels[c][i]) ? channels[c][i] : 0.0f;
             const float loopValue = c == 0 ? loopOutput.left : (c == 1 ? loopOutput.right : 0.0f);
-            const double scaled = (static_cast<double>(monitoring ? value : 0.0f) + loopValue) * gain;
+            const double mainScaled=(static_cast<double>(monitoring ? value : 0.0f)+loopValue)*gain;
+            masterPeak=std::max(masterPeak,std::abs(static_cast<float>(std::clamp(mainScaled,-1.0,1.0))));
+            const double scaled=mainScaled+(c<2?click:0.0f);
             channels[c][i] = static_cast<float>(std::clamp(scaled, -1.0, 1.0));
             peak = std::max(peak, std::abs(channels[c][i]));
         }
     }
     // Telemetry is lossy by design; never wait when the editor is closed/slow.
     (void) meters.push({frame, peak});
-    (void) views.push({loops.view(), frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView()});
+    (void) views.push({loops.view(), frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak});
 }
 }

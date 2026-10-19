@@ -1,6 +1,7 @@
 #pragma once
 #include "core/SpscQueue.h"
 #include "core/LoopBank.h"
+#include "core/Metronome.h"
 #include <cstdint>
 namespace aion {
 struct GainCommand { std::uint64_t frame; float gain; };
@@ -21,6 +22,8 @@ struct EngineView {
     bool rejected = false, poolFull = false, audioReset = false;
     int nextUndo=-1,nextRedo=-1;
     SyncView sync{};
+    bool metronomeFlash=false;
+    float masterPeak=0;
 };
 // Audio owner only for prepare/process/target/transport. The message thread is
 // the sole producer of commands; the message thread alone consumes meters.
@@ -29,6 +32,7 @@ public:
     void prepare(double sampleRate, std::uint32_t poolFrames = LoopBank::defaultFrames);
     void configureSync(SyncSettings settings) noexcept {loops.configureSync(settings);}
     void setMonitoring(bool enabled) noexcept { monitoring = enabled; }
+    void setMetronome(bool enabled,float volume) noexcept {metronome.setEnabled(enabled);metronome.setVolume(volume);}
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
     bool finalizationPending() const noexcept { return loops.finalizationPending(); }
@@ -42,6 +46,7 @@ public:
     Transport transport{}; // Audio-owned; never read directly from the editor.
 private:
     LoopBank loops;
+    Metronome metronome;
     SpscQueue<LoopCommand, 256> loopCommands;
     SpscQueue<EngineView, 8> views;
     std::atomic<std::uint32_t> epoch{0};

@@ -99,6 +99,7 @@
             if(this.presses.has(key))return;
             if(event.key==='+' || event.code==='NumpadAdd') {event.preventDefault();this.actions.mode('overdub');return;}
             if(event.key==='-' || event.code==='NumpadSubtract') {event.preventDefault();this.actions.mode('substitute');return;}
+            if(event.code==='KeyN'){event.preventDefault();this.actions.metronome?.();return;}
             if(event.code==='Space') {event.preventDefault();this.actions.stop();return;}
             if(event.key==='/' || event.code==='NumpadDivide') {event.preventDefault();this.actions.retrigger();return;}
             if(event.key==='\\') {event.preventDefault();this.actions.multiply?.();return;}

@@ -896,3 +896,68 @@ unchanged tolerance 1e-6 (`build/names-priority-audio.log`). Only the existing
 Standalone and optional host were rebuilt; no package or version bump. This is
 session naming/bridge acceptance with synthetic input, not driver, DAW, Apple
 platform or complete application acceptance.
+
+
+### Native continuous metronome (2026-10-19)
+
+The existing Metro[N]ome button, VOLUME slider and N shortcut now control native
+C++ DSP through APVTS. The original worklet's 1000 Hz beat / 2000 Hz bar accents,
+11.3ms exponential decay, 0.001 envelope cutoff, phase wrap and grid-index start/
+stop behavior are preserved. OFF/STATIC/DYNAMIC use the existing internal Master
+BPM grid; enabling between beats waits for a boundary, and disabling resets the
+envelope immediately. STOP ALL leaves the separately enabled metronome running,
+as in the reference. Rapid toggles read the native boolean on the message thread
+instead of toggling an old frontend snapshot. Text-entry and repeat guards apply
+to N. Audio-owned 100ms flash telemetry drives the original button colours.
+
+The unchanged MetronomeScheduler.init method is executed with node IO stubs to
+check its direct-to-destination routing. The native click is likewise added only
+to monitor output, after MASTER gain, and never fed to LoopBank capture. MASTER
+metering excludes it; the actual OUTPUT meter includes it. This distinction was
+added during routing review before acceptance. Output still uses the native
+engine's existing [-1,1] protection. Original worklet raw output at VOLUME >1 is
+compared separately from that protected Engine output. Existing EN/ES/PT manual
+addenda explain the independent volume and recording exclusion.
+
+The new js_native_metronome gate runs the complete unchanged injected worklet
+with Float32 parameter/output arrays, without substituting a reimplementation.
+It covers 8/44.1/48/96 kHz, 64/128 partitions, uneven meters, positive/negative/
+future origins, long absolute frame positions, fractional/999 BPM, volume 0/2,
+start/stop/restart, decay/phase wrap and per-sample BPM/origin arrays. Four
+additional connected Engine cases compare actual stereo output with that same
+worklet fed the Engine's master-clock telemetry, including tempo/meter changes,
+all internal sync modes and final output protection. The clock itself retains
+its separate unchanged-JS sync gate; this additional comparison verifies its
+connection to metronome DSP, not browser UI scheduling or host/driver timing.
+
+The realtime gate checks exact stereo and 64/128 output invariance, sample-grid
+boundaries, accent frequency, mute/stop behavior, finite controls and callback
+new/delete guards. A real Engine records 4096 silent input frames while its
+metronome is audible with MASTER muted, then replays the committed take with the
+metronome off and MASTER on: output must remain exactly zero. MASTER telemetry
+must also remain zero while actual OUTPUT telemetry shows the click.
+
+Native standalone UI checks use zero click volume to avoid physical sound, while
+checking button/N, burst toggles, text/repeat guards, invalid parameters, flash
+reset and slider round trips. The hardware-free production processor/editor host
+checks audible PCM with MASTER muted, independent volume, MASTER display routing,
+STOP ALL continuity and N stop at both 64/128, retaining prior looper/sync/naming
+cases. All 16 original assets and copied markup methods stay unchanged.
+
+This feature is the continuous internal metronome. The separate triangle-wave
+SOUND count-in remains disabled/unported, as do DAW/MIDI/loop-source clock sync.
+Project/PCM persistence and hardware/Apple/DAW acceptance are not implied.
+
+Acceptance passes: Windows CTest 11/11 (140.10s), Ubuntu CTest 11/11 (201.96s).
+Metronome comparison: 29 cases, including 4 connected Engine cases, 3,011,808
+samples, maximum absolute error 4.995727609369283e-9 at unchanged tolerance 1e-6.
+All prior committed recording/overdub comparisons pass (126 cases, 965,826
+samples, maximum error 7.394757495227111e-8, same 1e-6 tolerance). Native UI smoke
+passes at 44.1 kHz with no legacy AudioContext/inline handlers; the production
+processor/editor synthetic mouse workflow passes at both 64 and 128 samples,
+including metronome output/metering/N/STOP ALL and all retained main-loop,
+static/dynamic, hold deletion and naming cases. Logs: `build/metronome-routing-windows.log`,
+`build/metronome-routing-ubuntu.log`, `build/metronome-parity-connected.log`,
+`build/metronome-routing-audio.log`, `build/metronome-native-smoke.log`, and
+`build/metronome-mouse.log`. Only existing app/test targets were rebuilt. No
+version bump, ZIP, installer or plugin package was generated.
