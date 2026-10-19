@@ -92,6 +92,16 @@ let socket;
     assert.equal(immediatelyCleared.lastRequestId,beforeDeferredClear.lastRequestId+1,'Only explicit DEL dispatches');
     await delay(3200);assert.equal((await snapshot()).tracks[0].state,'empty','Cancelled deferred record cannot resurrect the deleted loop');
     await click('#loop-action-0');await state('recording');await delay(180);await click('#loop-action-0');await state('playing');
+    // The 4s STOP gesture must clear just like DEL, even behind another track's
+    // finalization wait, and discard an unsent record belonging to this track.
+    await call('Input.dispatchKeyEvent',{type:'keyDown',code:'Digit1',key:'1',windowsVirtualKeyCode:49});await state('stopped');
+    await pauseDispatch();await delay(2800);
+    await evaluate(`window.pausedHoldQueue.enqueue(()=>AionCommandQueue.wait,{track:1});window.pausedHoldQueue.enqueue(()=>({action:'record',track:0,value:0}),{track:0});`);
+    await resumeDispatch();await delay(1400);
+    await call('Input.dispatchKeyEvent',{type:'keyUp',code:'Digit1',key:'1',windowsVirtualKeyCode:49});
+    await wait(s=>s.tracks[0].state==='empty','Held STOP bypasses another track finalization wait',1200);
+    await delay(3200);assert.equal((await snapshot()).tracks[0].state,'empty','Held STOP discards a queued replacement recording');
+    await click('#loop-action-0');await state('recording');await delay(180);await click('#loop-action-0');await state('playing');
     const beforeHold=await snapshot();
     await click('#loop-action-0',{hold:3800});
     const kept=await state('stopped');assert.equal(kept.tracks[0].length,beforeHold.tracks[0].length,'Releasing STOP before 4s keeps PCM');

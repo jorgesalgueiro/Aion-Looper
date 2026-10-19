@@ -754,3 +754,40 @@ panels, pointer/key/generation checks, no legacy AudioContext/inline handlers,
 master gain zero. Earlier failure remains in before-fix logs. The existing app
 and optional host are rebuilt; no ZIP, version bump or plugin package is made.
 These are synthetic-input/bridge checks, not physical driver/DAW acceptance.
+
+
+### Held STOP deletion priority and stale holds (2026-10-19)
+
+The four-second STOP deletion still used an ordinary FIFO command after DEL
+received scoped priority. A production-binding regression and the previous
+Windows binary both reproduce the difference: another track's finalization wait
+keeps a real 19,200-frame loop stopped beyond the deletion acceptance window.
+The native failure is retained in `build/held-clear-before-fix.log`. Only frontend
+dispatch is fault-injected; snapshots, captured PCM and audio callbacks are real.
+
+An eligible four-second deletion now supersedes unsent actions for its track and
+bypasses ordinary waits using the existing scoped-clear queue path. At dispatch,
+it rechecks cancellation and current state, then invalidates all older holds on
+that track before sending CLEAR. This prevents a second held key from later
+operating on a replacement take. Other-track actions, panic priority, in-flight
+acknowledgements, queue bounds/expiry, the 600ms cut and 4000ms deletion threshold
+are retained. An invalid/cancelled gesture cannot flush pending actions.
+
+Tests execute the actual production erase binding, rather than a copied handler:
+other-track waits, discarded local records, overlapping holds, released tokens,
+blur before dispatch and ineligible origins/current states are covered. The real
+native mouse/keyboard PCM workflow adds held STOP behind a different track's
+wait, then checks that an unsent recording cannot resurrect the deleted loop.
+All prior boundary, blur, DEL, rapid record/finish/play and static/dynamic cases
+remain. No DSP, original UI asset, version or package changes are needed.
+
+Acceptance: Windows CTest 10/10 (124.27s), Ubuntu CTest 10/10 (184.27s),
+plus the expanded production-binding frontend test on Ubuntu. The connected PCM
+audit passes 126 cases / 965,826 samples, maximum absolute error
+7.394757495227111e-8 at unchanged 1e-6 tolerance. All native mouse/keyboard PCM
+cases pass at 64 and 128 samples (`build/held-clear-mouse.log`); Standalone UI
+smoke passes at 44.1 kHz (`build/held-clear-native-smoke.log`), with 20 original
+cards, no legacy AudioContext/inline handlers and master gain zero. The original
+asset byte gate passes. Only the existing Standalone and optional test host were
+rebuilt; no ZIP or plugin package was produced. Physical driver, listening and
+DAW validation remain outside this synthetic-input/bridge acceptance.

@@ -139,6 +139,34 @@ assert(cards[0].includes('0.50x')&&cards[0].includes('value="10"'),'Original pan
  activeKeys.press(0,'Digit1');activeKeys.press(1,'Digit2');activeKeys.cancelTrack(0);
  assert.equal(activeTimers.size,2);assert.equal(activeKeys.presses.size,1);assert(activeKeys.presses.has('Digit2'));activeKeys.cancel();assert.equal(activeTimers.size,0);
 
+ // Exercise the production erase binding: a held STOP is a real track clear.
+ const looperSource=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const eraseBinding=looperSource.slice(looperSource.indexOf('            erase:'),looperSource.indexOf('            mode:next'));
+ let eraseReady=false,eraseTime=0;const eraseSent=[];
+ const eraseQueue=new Queue({ready:()=>eraseReady,notify(){},run:async c=>eraseSent.push(c)});
+ const eraseContext={window:keyboardContext.window,scheduler:eraseQueue,snapshot:{tracks:[{state:'playing'}]}};
+ const productionErase=vm.runInNewContext('({'+eraseBinding+'}).erase',eraseContext);
+ const eraseKeys=new Performance({track:()=>({state:'playing'}),action(){},hold(){},erase:productionErase},{set:()=>1,clear(){},now:()=>eraseTime});
+ eraseContext.keyboard=eraseKeys;
+ eraseKeys.press(0,'Digit1');const oldHold=eraseKeys.presses.get('Digit1').valid;
+ eraseKeys.press(0,'Numpad1');const overlappingHold=eraseKeys.presses.get('Numpad1').valid;
+ eraseQueue.enqueue(()=>Queue.wait,{track:1});eraseQueue.enqueue(()=>({action:'record',track:0}),{track:0});
+ eraseTime=4000;eraseKeys.release('Digit1');eraseReady=true;await eraseQueue.pump();await settle();
+ assert.equal(eraseSent.length,1,'Four-second STOP bypasses finalization and supersedes old track actions');
+ assert.equal(eraseSent[0].action,'clear');assert.equal(oldHold(),false,'Committed hold deletion invalidates old track holds');
+ assert.equal(overlappingHold(),false,'Deletion also invalidates a second physical hold on the same track');
+ assert.equal(eraseKeys.presses.size,0,'Deleting a track clears all its active timers');
+ assert.equal(eraseQueue.items.length,1,'Another track wait is retained');
+ eraseReady=false;eraseKeys.press(0,'Digit1');eraseTime+=4000;eraseKeys.release('Digit1');eraseKeys.cancel();
+ eraseReady=true;await eraseQueue.pump();await settle();assert.equal(eraseSent.length,1,'Blur still cancels a promoted hold deletion');
+ // An ineligible or already-cancelled gesture must not discard valid queued work.
+ eraseQueue.reset();eraseReady=false;eraseQueue.enqueue(()=>'keep',{track:0});
+ eraseContext.snapshot.tracks[0].state='recording';productionErase(0,'playing',()=>true);
+ eraseContext.snapshot.tracks[0].state='playing';productionErase(0,'playing',()=>false);
+ productionErase(0,'recording',()=>true);
+ assert.equal(eraseQueue.items.length,1,'Invalid hold deletion leaves accepted actions intact');
+ eraseReady=true;await eraseQueue.pump();await settle();assert.equal(eraseSent.at(-1),'keep');
+
  // Keep an already-accepted rapid gesture while the worker finalizes PCM.
  let finalizing=true;const deferredSent=[],deferredErrors=[];let deferredTime=0;
  const deferred=new Queue({ready:()=>true,now:()=>deferredTime,notify:e=>deferredErrors.push(e),run:async c=>deferredSent.push(c)});

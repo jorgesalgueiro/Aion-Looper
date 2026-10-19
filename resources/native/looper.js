@@ -154,7 +154,17 @@
             canDelete:id=>snapshot?.tracks[id]?.state==='stopping'||(snapshot?.tracks[id]?.state==='playing'&&mode==='normal'),
             action:id=>mainAction(id),
             hold:(id,initialState,valid)=>scheduler.enqueue(()=>{if(!valid())return null;const action=window.AionPerformance.holdAction(initialState,snapshot.tracks[id].state);return action?{action,track:id,value:0}:null;},{track:id}),
-            erase:(id,initialState,valid)=>scheduler.enqueue(()=>{if(!valid())return null;const action=window.AionPerformance.deleteAction(initialState,snapshot.tracks[id].state);return action?{action,track:id,value:0}:null;},{track:id}),
+            erase:(id,initialState,valid)=>{
+                if(!valid()||!window.AionPerformance.deleteAction(initialState,snapshot.tracks[id].state))return;
+                scheduler.enqueue(()=>{
+                    if(!valid())return null;
+                    const action=window.AionPerformance.deleteAction(initialState,snapshot.tracks[id].state);
+                    if(!action)return null;
+                    // Once deletion commits, no older hold may touch a replacement take.
+                    keyboard.cancelTrack(id);
+                    return {action,track:id,value:0};
+                },{track:id,clearTrack:true});
+            },
             mode:next=>{mode=mode===next?'normal':next;refresh();},
             history:redo=>restoreHistory(redo),
             multiply:()=>multiply(selected),
