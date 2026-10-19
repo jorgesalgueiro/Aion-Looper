@@ -79,3 +79,10 @@ Accepted rapid main gestures must not disappear if their resolver sees finalizin
 Keep them in FIFO order using the wait sentinel, original expiry and polling;
 priority STOP ALL must still discard deferred actions. Keep the retained native
 rapid record/finish/play case and deterministic finalization wait/panic checks.
+
+DEL must supersede all unsent actions owned by that track and bypass deferred
+finalization waits, including waits on other tracks. Keep track ownership on
+all local main/history/control/hold commands; global actions remain unscoped.
+Preserve other-track order, in-flight acknowledgements, the queue bound/expiry,
+and global STOP ALL priority. Retain real native PCM deferred-DEL/no-resurrection
+acceptance and scoped priority/cancellation unit tests.

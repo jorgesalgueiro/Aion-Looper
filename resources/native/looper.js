@@ -67,9 +67,9 @@
         bindTabs('.manual-tab-btn','.manual-content',['manual-en','manual-es','manual-pt']);
         // Native manual addendum; preserved reference assets remain byte-identical.
         const holdManual={
-            en:['Delete a bad loop: hold STOP for 4 seconds','Press and continuously hold the main STOP button or assigned number key for 4 s to delete the loop and its Undo/Redo history. Releasing before 4 s keeps the audio. The four seconds start on the initial press, not when playback stops.','A quick tap stops playback or schedules its stop when sync is enabled. Holding for 600 ms cuts pending playback immediately, without deleting audio. Keep holding until 4 s to delete, in any sync mode. DEL deletes directly.','Only a press that starts on STOP or STOP NOW can hold-to-delete. Holding PLAY, FINISH, CANCEL or RECORD never deletes the resulting loop. Header/state-text clicks are short actions only. Releasing before 4 s, cancelling pointer capture, losing focus or STOP ALL cancels a pending deletion, even while it is queued. Clearing a track or changing audio configuration also cancels its old holds.'],
-            es:['Borrar un loop: mantén STOP durante 4 segundos','Mantén pulsado continuamente el botón principal STOP o la tecla asignada durante 4 s para borrar el loop y su historial Undo/Redo. Soltar antes de 4 s conserva el audio. El tiempo empieza al pulsar, no al detenerse la reproducción.','Un toque breve detiene o programa la parada con sync. Mantener durante 600 ms corta inmediatamente la reproducción pendiente sin borrar audio. Sigue pulsando hasta 4 s para borrar, en cualquier modo sync. DEL borra directamente.','Solo una pulsación iniciada en STOP o STOP NOW permite borrar al mantener. Mantener PLAY, FINISH, CANCEL o RECORD no borra el loop. La cabecera y el estado solo ejecutan la acción breve. Soltar antes de 4 s, cancelar la captura del puntero, perder el foco o STOP ALL cancela el borrado pendiente, incluso si espera en la cola. Borrar una pista o cambiar la configuración de audio también cancela sus pulsaciones antiguas.'],
-            pt:['Apagar um loop: manter STOP durante 4 segundos','Mantém continuamente o botão principal STOP ou a tecla atribuída durante 4 s para apagar o loop e o histórico Undo/Redo. Soltar antes de 4 s mantém o áudio. O tempo conta desde que primes, não desde que a reprodução para.','Um toque breve para a reprodução ou agenda a paragem com sync. Manter durante 600 ms corta imediatamente a reprodução pendente sem apagar áudio. Continua a premir até 4 s para apagar, em qualquer modo sync. DEL apaga diretamente.','Só uma pressão iniciada em STOP ou STOP NOW permite apagar ao manter. Manter PLAY, FINISH, CANCEL ou RECORD não apaga o loop. O cabeçalho e o estado só executam a ação breve. Soltar antes de 4 s, cancelar a captura do ponteiro, perder o foco ou STOP ALL cancela a eliminação pendente, mesmo em espera na fila. Apagar uma pista ou mudar a configuração de áudio também cancela as pressões antigas.']
+            en:['Delete a bad loop: hold STOP for 4 seconds','Press and continuously hold the main STOP button or assigned number key for 4 s to delete the loop and its Undo/Redo history. Releasing before 4 s keeps the audio. The four seconds start on the initial press, not when playback stops.','A quick tap stops playback or schedules its stop when sync is enabled. Holding for 600 ms cuts pending playback immediately, without deleting audio. Keep holding until 4 s to delete, in any sync mode. DEL cancels the track’s unsent actions and clears it, including while saving.','Only a press that starts on STOP or STOP NOW can hold-to-delete. Holding PLAY, FINISH, CANCEL or RECORD never deletes the resulting loop. Header/state-text clicks are short actions only. Releasing before 4 s, cancelling pointer capture, losing focus or STOP ALL cancels a pending deletion, even while it is queued. Clearing a track or changing audio configuration also cancels its old holds.'],
+            es:['Borrar un loop: mantén STOP durante 4 segundos','Mantén pulsado continuamente el botón principal STOP o la tecla asignada durante 4 s para borrar el loop y su historial Undo/Redo. Soltar antes de 4 s conserva el audio. El tiempo empieza al pulsar, no al detenerse la reproducción.','Un toque breve detiene o programa la parada con sync. Mantener durante 600 ms corta inmediatamente la reproducción pendiente sin borrar audio. Sigue pulsando hasta 4 s para borrar, en cualquier modo sync. DEL cancela las acciones pendientes de esa pista y la borra, incluso mientras guarda.','Solo una pulsación iniciada en STOP o STOP NOW permite borrar al mantener. Mantener PLAY, FINISH, CANCEL o RECORD no borra el loop. La cabecera y el estado solo ejecutan la acción breve. Soltar antes de 4 s, cancelar la captura del puntero, perder el foco o STOP ALL cancela el borrado pendiente, incluso si espera en la cola. Borrar una pista o cambiar la configuración de audio también cancela sus pulsaciones antiguas.'],
+            pt:['Apagar um loop: manter STOP durante 4 segundos','Mantém continuamente o botão principal STOP ou a tecla atribuída durante 4 s para apagar o loop e o histórico Undo/Redo. Soltar antes de 4 s mantém o áudio. O tempo conta desde que primes, não desde que a reprodução para.','Um toque breve para a reprodução ou agenda a paragem com sync. Manter durante 600 ms corta imediatamente a reprodução pendente sem apagar áudio. Continua a premir até 4 s para apagar, em qualquer modo sync. DEL cancela as ações pendentes dessa pista e apaga-a, mesmo durante a gravação dos dados.','Só uma pressão iniciada em STOP ou STOP NOW permite apagar ao manter. Manter PLAY, FINISH, CANCEL ou RECORD não apaga o loop. O cabeçalho e o estado só executam a ação breve. Soltar antes de 4 s, cancelar a captura do ponteiro, perder o foco ou STOP ALL cancela a eliminação pendente, mesmo em espera na fila. Apagar uma pista ou mudar a configuração de áudio também cancela as pressões antigas.']
         };
         for(const [language,copy] of Object.entries(holdManual)){
             const note=document.createElement('div');note.id=`native-hold-manual-${language}`;
@@ -91,20 +91,20 @@
         const enabled = () => snapshot?.audioReady && Date.now()-advancedAt < 1000;
         const scheduler = new window.AionCommandQueue({ready:enabled,
             run:c=>sendCommand(c.action,c.track,c.value),notify:message=>notify(message)});
-        const command=(action,track,value=0)=>scheduler.enqueue(()=>({action,track,value}));
+        const command=(action,track,value=0)=>scheduler.enqueue(()=>({action,track,value}),{track:action==='clearAll'?null:track,clearTrack:action==='clear'});
         const restoreHistory=(redo,id=null)=>scheduler.enqueue(()=>{
             const target=id??snapshot[redo?'nextRedo':'nextUndo'],t=snapshot.tracks[target];
             // Original empty history is a no-op. Resolve at dispatch so a rapid
             // repeated gesture uses the last acknowledged depth, not stale UI.
             if(!t?.[redo?'redoCount':'undoCount']||!['playing','stopped'].includes(t.state))return null;
             return {action:redo?(id===null?'redoGlobal':'redo'):(id===null?'undoGlobal':'undo'),track:id??0,value:0};
-        });
+        },{track:id});
         const multiply=id=>scheduler.enqueue(()=>{
             const t=snapshot.tracks[id];
             return t.length&&['playing','stopped','multiplying'].includes(t.state)?{action:'multiply',track:id,value:0}:null;
-        });
-        const halfSpeed=id=>scheduler.enqueue(()=>snapshot.tracks[id].length?{action:'speed',track:id,value:snapshot.tracks[id].playbackRate===1?0.5:1}:null);
-        const queueControl=(action,track,value)=>{if(enabled())scheduler.enqueue(()=>({action,track,value}),{key:`${track}:${action}`});};
+        },{track:id});
+        const halfSpeed=id=>scheduler.enqueue(()=>snapshot.tracks[id].length?{action:'speed',track:id,value:snapshot.tracks[id].playbackRate===1?0.5:1}:null,{track:id});
+        const queueControl=(action,track,value)=>{if(enabled())scheduler.enqueue(()=>({action,track,value}),{key:`${track}:${action}`,track});};
         const actionFor = t => t.state === 'empty' ? 'record' : t.state === 'stopped' ? 'play'
             : ['queued','stopping'].includes(t.state)?'stop'
             : t.state === 'playing' ? (mode === 'normal' ? 'stop' : mode) : 'finish';
@@ -147,14 +147,14 @@
                     return {action:'finish',track:owner,value:0};
                 }
                 return {action:t.state==='playing'?(requestedMode==='normal'?'stop':requestedMode):actionFor(t),track:id,value:0};
-            });
+            },{track:id});
         };
         const keyboard = new window.AionPerformance({
             track:id=>snapshot?.tracks[id],
             canDelete:id=>snapshot?.tracks[id]?.state==='stopping'||(snapshot?.tracks[id]?.state==='playing'&&mode==='normal'),
             action:id=>mainAction(id),
-            hold:(id,initialState,valid)=>scheduler.enqueue(()=>{if(!valid())return null;const action=window.AionPerformance.holdAction(initialState,snapshot.tracks[id].state);return action?{action,track:id,value:0}:null;}),
-            erase:(id,initialState,valid)=>scheduler.enqueue(()=>{if(!valid())return null;const action=window.AionPerformance.deleteAction(initialState,snapshot.tracks[id].state);return action?{action,track:id,value:0}:null;}),
+            hold:(id,initialState,valid)=>scheduler.enqueue(()=>{if(!valid())return null;const action=window.AionPerformance.holdAction(initialState,snapshot.tracks[id].state);return action?{action,track:id,value:0}:null;},{track:id}),
+            erase:(id,initialState,valid)=>scheduler.enqueue(()=>{if(!valid())return null;const action=window.AionPerformance.deleteAction(initialState,snapshot.tracks[id].state);return action?{action,track:id,value:0}:null;},{track:id}),
             mode:next=>{mode=mode===next?'normal':next;refresh();},
             history:redo=>restoreHistory(redo),
             multiply:()=>multiply(selected),
@@ -192,13 +192,13 @@
                 const half=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1/2'),()=>halfSpeed(i));
                 const reset=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1x'),()=>queueControl('speed',i,1));
                 speed.addEventListener('dblclick',()=>queueControl('speed',i,1));
-                const mute=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='MUTE'),()=>scheduler.enqueue(()=>({action:'mute',track:i,value:snapshot.tracks[i].muted?0:1})));
+                const mute=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='MUTE'),()=>scheduler.enqueue(()=>({action:'mute',track:i,value:snapshot.tracks[i].muted?0:1}),{track:i}));
                 bind(row.querySelector('.loop-track-delete'),()=>{keyboard.cancelTrack(i);command('clear',i);});
                 const solo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='SOLO'),()=>command('solo',i));
                 const retrigger=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='RTRG'),()=>command('retrigger',i));
                 const undo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='UNDO'),()=>restoreHistory(false,i));
                 const redo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='REDO'),()=>restoreHistory(true,i));
-                const reverse=bind(row.querySelector(`#loop-${i}-reverse`),()=>scheduler.enqueue(()=>({action:'reverse',track:i,value:snapshot.tracks[i].reverse?0:1})),'change');
+                const reverse=bind(row.querySelector(`#loop-${i}-reverse`),()=>scheduler.enqueue(()=>({action:'reverse',track:i,value:snapshot.tracks[i].reverse?0:1}),{track:i}),'change');
                 const mult=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='MULT'),()=>multiply(i));
                 mult.title='Multiply [\\] — press to capture, press again to extend. No input = double.';
                 const normalize=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='NORM'),()=>command('normalize',i));

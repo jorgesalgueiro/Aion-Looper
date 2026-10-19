@@ -82,6 +82,16 @@ let socket;
     await call('Input.dispatchKeyEvent',{type:'keyUp',code:'Digit1',key:'1',windowsVirtualKeyCode:49});
     const protectedTake=await state('playing');assert.equal(protectedTake.tracks[0].length,replacement.tracks[0].length,'DEL cancels stale holds before a replacement take');
     await wait(s=>s.outputPeak>0.02,'Replacement PCM survives the previous gesture deadline');
+    // Seed a finalization wait in the actual frontend FIFO, without changing
+    // snapshots or PCM. DEL must cancel unsent actions and clear immediately.
+    await evaluate(`window.savedClearPump=AionCommandQueue.prototype.pump;AionCommandQueue.prototype.pump=function(){window.clearTestQueue=this;return window.savedClearPump.call(this);};`);
+    for(let n=0;n<60;++n){if(await evaluate(`!!window.clearTestQueue`))break;await delay(25);}
+    await evaluate(`AionCommandQueue.prototype.pump=window.savedClearPump;window.clearTestQueue.enqueue(()=>AionCommandQueue.wait,{track:0});window.clearTestQueue.enqueue(()=>({action:'record',track:0,value:0}),{track:0});delete window.savedClearPump;delete window.clearTestQueue;`);
+    const beforeDeferredClear=await snapshot();await click('#loop-0 .loop-track-delete');
+    const immediatelyCleared=await wait(s=>s.tracks[0].state==='empty','DEL bypasses finalization wait',1200);
+    assert.equal(immediatelyCleared.lastRequestId,beforeDeferredClear.lastRequestId+1,'Only explicit DEL dispatches');
+    await delay(3200);assert.equal((await snapshot()).tracks[0].state,'empty','Cancelled deferred record cannot resurrect the deleted loop');
+    await click('#loop-action-0');await state('recording');await delay(180);await click('#loop-action-0');await state('playing');
     const beforeHold=await snapshot();
     await click('#loop-action-0',{hold:3800});
     const kept=await state('stopped');assert.equal(kept.tracks[0].length,beforeHold.tracks[0].length,'Releasing STOP before 4s keeps PCM');

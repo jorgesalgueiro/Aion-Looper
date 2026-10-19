@@ -147,6 +147,26 @@ assert(cards[0].includes('0.50x')&&cards[0].includes('value="10"'),'Original pan
  finalizing=false;await deferred.pump();await settle();assert.deepEqual(deferredSent,['play','after-play'],'Third tap dispatches after finalization');
  finalizing=true;deferred.enqueue(()=>Queue.wait);deferredTime=4000;await deferred.pump();assert.equal(deferred.items.length,0);assert(deferredErrors.some(e=>e.includes('expired')),'Deferred gestures retain original expiry');
  deferred.enqueue(()=>Queue.wait);deferred.enqueue(()=>'panic',{stop:true});await settle();assert.equal(deferredSent.at(-1),'panic');assert.equal(deferred.items.length,0,'Panic removes deferred gestures');
+ // DEL must supersede unsent gestures, including a finalization wait.
+ const clearSent=[];const clearQueue=new Queue({ready:()=>true,notify(){},run:async c=>clearSent.push(c)});
+ clearQueue.enqueue(()=>Queue.wait,{track:0});clearQueue.enqueue(()=>'stale-record',{track:0});
+ clearQueue.enqueue(()=>'clear-0',{track:0,clearTrack:true});await clearQueue.pump();await settle();
+ assert.deepEqual(clearSent,['clear-0'],'DEL must cancel its deferred gesture and dispatch immediately');
+ let scopedReady=false;const scopedSent=[],scopedErrors=[];
+ const scoped=new Queue({ready:()=>scopedReady,notify:e=>scopedErrors.push(e),run:async c=>scopedSent.push(c)});
+ scoped.enqueue(()=>Queue.wait,{track:1});scoped.enqueue(()=>'keep-1',{track:1});
+ scoped.enqueue(()=>'discard-0',{track:0});scoped.enqueue(()=>'global');
+ scoped.enqueue(()=>'clear-0',{track:0,clearTrack:true});scopedReady=true;await scoped.pump();await settle();
+ assert.deepEqual(scopedSent,['clear-0'],'Clear bypasses a different track wait');assert.equal(scoped.items.length,3,'Other track/global actions retained');
+ scoped.items[0].resolve=()=>null;await scoped.pump();await settle();assert.deepEqual(scopedSent,['clear-0','keep-1','global'],'Unaffected actions retain order');
+ scopedReady=false;scoped.enqueue(()=>'panic',{stop:true});scoped.enqueue(()=>'clear-2',{track:2,clearTrack:true});scopedReady=true;await scoped.pump();await settle();
+ assert.deepEqual(scopedSent.slice(-2),['panic','clear-2'],'Global panic precedes a track clear');
+ scoped.enqueue(()=>'invalid-clear',{clearTrack:true});assert.equal(scopedSent.at(-1),'clear-2');assert(scopedErrors.some(e=>e.includes('valid track')));
+ // Already-dispatched work completes; clear then removes later work on that track.
+ let finishActive;const activeSent=[];const inFlight=new Queue({ready:()=>true,notify(){},run:async c=>{activeSent.push(c);if(c==='active')await new Promise(r=>finishActive=r);}});
+ inFlight.enqueue(()=>'active',{track:0});inFlight.enqueue(()=>'stale',{track:0});inFlight.enqueue(()=>'other',{track:1});inFlight.enqueue(()=>'clear',{track:0,clearTrack:true});
+ assert.deepEqual(activeSent,['active']);finishActive();await settle();assert.deepEqual(activeSent,['active','clear','other'],'Clear follows in-flight work without replaying stale actions');
+
  const gesture=()=>queue.enqueue(()=>state==='empty'?'record':state==='record'?'finish':'play');
  gesture();gesture();gesture();
  assert.deepEqual(sent,['record'],'Only one command can await acknowledgement');

@@ -719,3 +719,38 @@ and before-build logs. No audio tolerance/case is removed to obtain these passes
 Only the existing Standalone and optional test host are rebuilt; no ZIP, version
 bump or plugin package is produced. Physical input/driver/DAW acceptance remains
 separate from these synthetic-input and bridge checks.
+
+
+### Deferred DEL cancellation and priority (2026-10-19)
+
+Audit of the finalization wait found DEL queued behind that wait. The unchanged
+original DEL calls loop.clear directly. The native regression is reproduced both
+in the frontend queue and in the prior binary: a controlled frontend wait holds
+a real playing 18,176-frame clip; clicking DEL leaves it playing beyond the 1.2s
+acceptance window (`build/deferred-clear-before-fix.log`). The test injects only
+a queue wait and an unsent record intent, not fake snapshots/PCM or a DSP worker.
+
+Local intents now carry track ownership. Explicit DEL removes that track's unsent
+main/control/history/hold intents and dispatches before ordinary waits, while
+retaining global STOP ALL priority and other tracks' relative order. In-flight
+commands finish before CLEAR. Queue capacity (128), expiration (3s), validity
+predicates and C++/DSP are unchanged. Unscoped/non-integer clear requests are rejected without
+flushing global actions. The EN/ES/PT manual addendum documents DEL cancellation.
+
+Unit tests cover a same-track wait, a different-track wait, retained local/global
+actions, global panic precedence, invalid scope and in-flight acknowledgement.
+Real 64/128 PCM tests retain every previous gesture case and add prompt DEL while
+a scoped wait is present, exact request count, and no loop resurrection after the
+old queue deadline. Existing DSP/state gates and original byte checks are retained.
+
+Acceptance passes: Windows CTest 10/10 (123.89s), Ubuntu CTest 10/10 (194.07s),
+connected PCM audit 126 cases / 965,826 samples, maximum absolute error
+7.394757495227111e-8 with unchanged 1e-6 tolerance. Full native mouse/keyboard
+PCM cases pass at both 64 and 128 samples (`build/deferred-clear-final-mouse.log`),
+including prompt scoped DEL, no deferred re-record after 3s, and all retained
+four-second deletion/cancellation/rapid-play cases. Standalone smoke passes at
+44.1 kHz (`build/deferred-clear-native-smoke.log`): 20 original cards, manual
+panels, pointer/key/generation checks, no legacy AudioContext/inline handlers,
+master gain zero. Earlier failure remains in before-fix logs. The existing app
+and optional host are rebuilt; no ZIP, version bump or plugin package is made.
+These are synthetic-input/bridge checks, not physical driver/DAW acceptance.

@@ -8,14 +8,20 @@
             Object.assign(this,{ready,run,notify,now,limit});
             this.items=[]; this.active=false; this.closed=false;
         }
-        enqueue(resolve, {key=null, stop=false}={}) {
+        enqueue(resolve, {key=null, stop=false, track=null, clearTrack=false}={}) {
             if(this.closed)return;
+            if(clearTrack&&(!Number.isInteger(track)||track<0)){this.notify('Track clear requires a valid track.');return;}
             if(stop)this.items=[];
-            // Stop remains first even when controls arrive while audio is paused.
+            else if(clearTrack)this.items=this.items.filter(item=>item.track!==track);
             if(key)this.items=this.items.filter(item=>item.key!==key);
             if(this.items.length>=this.limit){this.notify('Too many pending actions; wait for audio processing.');return;}
-            const item={resolve,key,stop,deadline:this.now()+3000};
-            if(stop)this.items.unshift(item);else this.items.push(item);
+            const item={resolve,key,stop,track,clearTrack,deadline:this.now()+3000};
+            if(stop)this.items.unshift(item);
+            else if(clearTrack){
+                // Clear bypasses finalization waits, after existing panic/clears.
+                const firstOrdinary=this.items.findIndex(queued=>!queued.stop&&!queued.clearTrack);
+                this.items.splice(firstOrdinary<0?this.items.length:firstOrdinary,0,item);
+            }else this.items.push(item);
             this.pump();
         }
         async pump() {

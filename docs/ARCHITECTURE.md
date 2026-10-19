@@ -466,3 +466,12 @@ sentinel. Pump puts the same item back at the head and yields; the next snapshot
 poll retries. This preserves rapid record/finish/play ordering without spinning,
 new timers or changed expiry. Priority STOP ALL removes unsent/deferred gestures.
 The SAVING control's original appearance/disabled state remains unchanged.
+
+Each local queued intent carries its track ID; global actions are unscoped.
+Explicit DEL first cancels the track's hold epoch, then enqueues a scoped clear.
+Admission removes that track's unsent intents and places CLEAR ahead of ordinary
+FIFO work, after any pending STOP ALL/earlier scoped clears. Thus a finalization
+wait cannot block clearing. Other tracks retain their relative order, and a
+command already dispatched still completes before CLEAR. Original 128-item
+capacity, expiry and generation validation remain. Global STOP ALL discards all
+unsent work as before. No audio-thread or preserved reference asset changes occur.
