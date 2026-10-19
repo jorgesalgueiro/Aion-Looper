@@ -181,14 +181,15 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if (!id.isInt() || static_cast<int>(id) < 0 || static_cast<int>(id) >= static_cast<int>(aion::LoopBank::trackCount)
             || !generation.isInt() || static_cast<int>(generation) <= 0) return fail("Invalid track or audio generation");
         const auto actionName = request.getProperty("action", {}).toString();
-        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply", "stopImmediate", "startDelay", "applyStart", "quantizeStart"};
+        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply", "stopImmediate", "startDelay", "applyStart", "quantizeStart", "nudgeStart"};
         unsigned action = 0;
         for (; action < std::size(names) && actionName != names[action]; ++action) {}
         if (action == std::size(names)) return fail("Unknown looper action");
         const auto value = request.getProperty("value", 0);
         if (!(value.isDouble() || value.isInt())) return fail("Expected numeric action value");
         const double number = static_cast<double>(value);
-        if (!std::isfinite(number) || number < (actionName == "speed" ? 0.25 : 0.0) || number > (actionName == "pan" ? 10 : (actionName == "volume" || actionName == "speed" ? 2 : 1))
+        if (!std::isfinite(number) || number < (actionName == "nudgeStart" ? -1.0 : actionName == "speed" ? 0.25 : 0.0) || number > (actionName == "pan" ? 10 : (actionName == "volume" || actionName == "speed" ? 2 : 1))
+            || (actionName == "nudgeStart" && number != -1 && number != 1)
             || ((actionName == "mute" || actionName == "reverse") && number != 0 && number != 1)) return fail("Action value outside range");
         if(actionName=="record"&&!inputAvailable(*this))return fail("No native input: enable an input device and Unmute Input in Options, or route audio from the host.");
         const auto requestId = nextRequest + 1;

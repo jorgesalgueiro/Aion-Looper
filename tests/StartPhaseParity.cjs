@@ -27,6 +27,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  vm.runInContext(`state.bpm=120;state.bars=1;state.timeSig={num:4};state.masterStartTime=0;state.loopLength=2;
  globalThis.setDelay=value=>UIManager.setLoopStartDelay(0,value);
  globalThis.configure=(mode,bpm,origin,num)=>{state.syncEnabled=mode!==0;state.syncMode=mode===1?'static':mode===2?'dynamic':'off';state.bpm=bpm;state.masterStartTime=origin;state.timeSig.num=num;state.loopLength=60/bpm*num;state.loops[0].originalBpm=120;};
+ globalThis.nudge=direction=>UIManager.nudgeLoopStart(0,direction);
  globalThis.quantize=()=>UIManager.quantizeLoopStart(0);
  globalThis.delayValue=()=>state.loops[0].startDelay;
  globalThis.applyPhase=()=>state.loops[0].restart(audio.currentTime+0.05);
@@ -35,7 +36,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  globalThis.phaseSolo=value=>{state.loops[0].isMutedBySolo=value;};
  globalThis.phaseSpeed=value=>{state.loops[0].playbackRate=value;};
  `,context);
- let cases=0,samples=0,maximum=0;
+ let cases=0,samples=0,maximum=0,nudges=0,tinyWraps=0;
  for(const mono of [true,false])for(const sampleRate of [8000,48000,96000])for(const length of [1,17,512,4097,20003]){
   audio.currentTime=0;vm.runInContext('state.syncEnabled=false;state.bpm=120;',context);
   const raw=[Array.from({length},(_,i)=>Math.fround(0.12+0.4*Math.sin(i*0.11))),Array.from({length},(_,i)=>Math.fround(-0.08+0.2*Math.cos(i*0.073)))];
@@ -73,6 +74,22 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
     render(7);
    }
    if(pending.length)render(pending.at(-1).at-frame+147);
+   // Preserve Q coverage above and compare the unchanged original nudge handler.
+   for(const [delay,direction] of [[0,-1],[1,1],[0.217,1],[0.993,1],[0.001,-1],[0.5,-1]]){
+    context.setDelay(delay);commands.push(`delay 0 ${delay}`);audio.currentTime=frame/sampleRate;
+    context.nudge(direction);const raw=context.delayValue();let value=raw;
+    if(raw<0||raw>1){
+     // Intentional native repair: original handler can leave invalid offsets on
+     // tiny clips. Validate the raw reference state, then audition the intended
+     // wrapped phase through unchanged setter/restart/AudioGraph methods.
+     value=((raw%1)+1)%1;context.setDelay(value);context.applyPhase();tinyWraps++;
+    }
+    metadata.push({row:commands.length,value});commands.push(`nudge 0 ${direction}`);nudges++;
+    const target=(audio.currentTime+0.05)*sampleRate,nearest=Math.round(target),deadline=Math.abs(target-nearest)<=4*Number.EPSILON*Math.max(1,Math.abs(target))?nearest:Math.ceil(target);
+    pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate+(deadline-target)*context.rate())%length+length)%length});
+    render(7);
+   }
+   render(pending.at(-1).at-frame+147);
    // Two future sources must both render, even when released within 50ms.
    for(const delay of [0.2,0.8]){
     audio.currentTime=frame/sampleRate;context.setDelay(delay);commands.push(`delay 0 ${delay}`);context.applyPhase();commands.push('apply 0 0');
@@ -89,9 +106,9 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   commands.push('solo 1 0');context.phaseSolo(false);excluded=false;render(47);
   const result=spawnSync(process.argv[2],[],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:32*1024*1024});assert.equal(result.status,0,result.stderr);const rows=result.stdout.trim().split(/\r?\n/);assert.equal(rows.length,commands.length);
   rows.forEach((r,i)=>assert.equal(Number(r.split(' ')[0]),1,'Rejected '+commands[i]));
-  for(const check of metadata)assert(Math.abs(Number(rows[check.row].split(' ')[3])-check.value)<=1e-14,'Q metadata matches unchanged JS');
+  for(const check of metadata)assert(Math.abs(Number(rows[check.row].split(' ')[3])-check.value)<=1e-14,'Q/nudge metadata matches reference or documented tiny-clip wrap');
   for(const check of checks){const row=rows[check.row].split(' ').map(Number);for(const value of row.slice(6)){const error=Math.abs(value-check.expected);maximum=Math.max(maximum,error);assert(error<=1e-6,`Start phase ${mono}/${sampleRate}/${length}, frame ${row[1]}: ${value} vs ${check.expected}`);}samples++;}
   cases++;
  }
- console.log(JSON.stringify({result:'PASS',cases,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:'Unchanged UI setter/Q, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 50ms timing; linear interpolation, browser playback envelopes/resampling excluded'}));
+ console.log(JSON.stringify({result:'PASS',cases,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:'Unchanged UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 50ms timing; linear interpolation, browser playback envelopes/resampling excluded'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

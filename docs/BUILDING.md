@@ -286,3 +286,10 @@ Run `TestMouseWorkflow.ps1` and `NativeUiSmoke.cjs` serially. Concurrent native
 GUI windows can lose OS pointer capture/focus even with CDP focus emulation;
 a cancelled hold must not be mistaken for an uninterrupted hold. Headless CTest
 and audio comparisons can run independently alongside either GUI suite.
+
+The existing `tools/TestMouseWorkflow.ps1` gate now also clicks both original
+Start nudge buttons against real captured PCM at 64/128 samples. The existing
+`tools/TestCountInUi.ps1` runner additionally runs `tests/NudgeWebAudio.cjs` to
+reproduce the tiny-clip negative-offset browser failure and verify playable
+wrapped offsets, before the native bridge/empty-loop/invalid-direction smoke.
+These use the incremental build and require no additional package or install.

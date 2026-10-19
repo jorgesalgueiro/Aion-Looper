@@ -12,6 +12,8 @@ try {
     $env:WEBVIEW2_USER_DATA_FOLDER = $savedProfile
     & node (Join-Path $repo 'tests/CountInWebAudio.cjs')
     if ($LASTEXITCODE -ne 0) { throw 'Original WebAudio count-in sound comparison failed.' }
+    & node (Join-Path $repo 'tests/NudgeWebAudio.cjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Tiny-clip WebAudio nudge regression failed.' }
     & node (Join-Path $repo 'tests/NativeUiSmoke.cjs')
     if ($LASTEXITCODE -ne 0) { throw 'Native UI smoke failed.' }
 } finally {

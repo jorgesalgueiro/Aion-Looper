@@ -96,6 +96,14 @@ let socket;
     const quantized=await wait(s=>Math.abs(s.tracks[0].startDelay-snapped)<1e-14&&s.tracks[0].phaseApplyFrame===0,'Mouse Q phase applied');
     assert.equal(quantized.tracks[0].length,phased.tracks[0].length);assert.equal(quantized.tracks[0].state,'playing');assert(!quantized.rejected);
     await wait(s=>s.outputPeak>0.02,'Quantized PCM keeps playing');
+    for(const direction of [-1,1]){
+        const before=await snapshot();let expected=before.tracks[0].startDelay+direction*((60/before.syncBpm/16)/(before.tracks[0].length/before.sampleRate));
+        if(expected<0)expected+=1;if(expected>1)expected-=1;if(expected<0||expected>1)expected=((expected%1)+1)%1;
+        await exactlyOne(()=>click(`#loop-0 [aria-label="Nudge loop start ${direction<0?'left':'right'}"]`),'Original nudge sends one command');
+        const nudged=await wait(s=>Math.abs(s.tracks[0].startDelay-expected)<1e-14&&s.tracks[0].phaseApplyFrame===0,'Mouse nudge applied');
+        assert.equal(nudged.tracks[0].state,'playing');assert.equal(nudged.tracks[0].length,before.tracks[0].length);assert(!nudged.rejected);
+        await wait(s=>s.outputPeak>0.02,'Nudged PCM keeps playing');
+    }
     await evaluate(`(()=>{const e=document.getElementById('loop-start-slider-0');e.value=0;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await wait(s=>s.tracks[0].startDelay===0&&s.tracks[0].phaseApplyFrame===0,'Restore zero phase');
 
@@ -248,6 +256,6 @@ let socket;
     assert(rapidAfter.tracks[0].length>0&&!rapidAfter.rejected,'Rapid mouse sequence commits real audio');
     await delay(750);assert.equal((await snapshot()).lastRequestId,rapidAfter.lastRequestId,'Released mouse gestures leave no delayed hold');
     assert.deepEqual(await evaluate('window.mouseErrors'),[],'No browser gesture exceptions');
-    console.log('PASS: real mouse/header arm, cancel, record, native PCM playback, Start drag/Q, nested-control isolation, STATIC queued play/stop and DYNAMIC finish/second tap, auto-play off, rapid record/finish/play, held STOP quick-deletes; FINISH/CANCEL/RECORD preserve PCM; no device opened');
+    console.log('PASS: real mouse/header arm, cancel, record, native PCM playback, Start drag/Q/nudges, nested-control isolation, STATIC queued play/stop and DYNAMIC finish/second tap, auto-play off, rapid record/finish/play, held STOP quick-deletes; FINISH/CANCEL/RECORD preserve PCM; no device opened');
     ws.close();
 })().catch(e=>{console.error(e);socket?.close();process.exitCode=1;});

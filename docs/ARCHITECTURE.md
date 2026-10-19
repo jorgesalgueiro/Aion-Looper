@@ -496,4 +496,9 @@ then rounds the phase to that grid (JavaScript positive half-up semantics).
 It retains endpoint 1, the short-clip no-op and the stopped-loop guard. Playing
 clips use the existing 50 ms future-source FIFO with reverse/sync latching; a
 full FIFO rejects Q atomically, preserving the prior phase. No clip copies,
-allocations or locks are needed. Nudge remains separate migration work.
+allocations or locks are needed. The original left/right nudges dispatch `nudgeStart` with exact direction -1/+1.
+The audio owner uses recorded duration and current BPM for a 1/64-note step.
+It preserves single-wrap arithmetic/endpoints and repairs multi-cycle tiny clips
+with bounded modulo wrapping. Successful nudges share the same future-source FIFO;
+failed edits restore metadata. Message-thread validation permits negative values
+only for the signed nudge action, and rejects zero/fractional directions.

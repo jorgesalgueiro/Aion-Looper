@@ -12,7 +12,7 @@ repair), the loop Rvers control, per-loop/global Undo/Redo, and original MULT
 capture/doubling, and the internal Master BPM static/dynamic arm-record-play
 workflow with unified mouse/keyboard gestures, native session naming and the
 continuous monitor-only metronome, static SOUND/VISUAL count-in and the original
-Start slider/Q button. Offline DSP and connected
+Start slider/Q/nudge buttons. Offline DSP and connected
 committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.
@@ -125,7 +125,7 @@ Do not replace the fixed FIFO with a single pending restart: it loses accepted
 releases within 50ms. Preserve cancellation epochs on panic/DEL/reset and source
 ownership changes, bounded overflow rejection, metadata-only dragging and the
 stopped/empty release guard. Retain zero callback new/delete, full-pool controls,
-Engine stereo/64/128 checks and actual native slider drag/PCM tests. Nudge and
+Engine stereo/64/128 checks and actual native slider drag/PCM tests. Full
 bit identity of browser transition envelopes are separate work. Preserve the
 user's local logo edits when staging controller changes; avoid blanket formatting.
 
@@ -133,3 +133,11 @@ Q acceptance must retain the unchanged quantizeLoopStart handler and existing
 Start PCM coverage. Keep short-duration no-ops, positive half-up rounding, endpoint
 1, current-BPM/recorded-duration math, stopped/empty guards and atomic metadata
 rollback on FIFO exhaustion. Retain real native Q mouse checks at 64/128.
+
+Nudge acceptance retains unchanged nudgeLoopStart in the Start PCM oracle and all
+previous slider/Q coverage. Preserve exact signed IPC directions, current BPM /
+recorded-duration steps, single-wrap arithmetic and endpoints, stopped/empty
+no-ops, atomic FIFO rollback and panic/DEL cancellation. Multi-cycle tiny clips
+are intentionally repaired to [0,1]; document that distinction from reference
+parity. NudgeWebAudio.cjs reproduces the original negative-offset RangeError and
+checks wrapped playback. Retain actual mouse and bridge checks at 64/128.

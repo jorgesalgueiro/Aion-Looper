@@ -1169,3 +1169,64 @@ and no product AudioContext (`build/q-acceptance-ui.log`). No new package/versio
 Hardware ASIO/listening, DAW/plugin lifecycle, other browser engines, Apple/iOS,
 full browser playback envelopes and complete application parity remain separate
 acceptance work. This completes the documented Q scope only.
+
+## Original Start nudges — 2026-10-19
+
+The original < and > buttons now dispatch one native `nudgeStart` command with
+exact direction -1/+1. The audio owner computes a 1/64-note step using current
+BPM and recorded duration (independent of playback speed), then uses the accepted
+50 ms source FIFO. Normal single-wrap arithmetic, endpoint 1, reverse/sync latches,
+stopped/empty guards and failed-edit rollback are retained. No audio copies,
+callback allocations or locks are added. Original markup/assets/logo are retained;
+existing EN/ES/PT manual panels document the controls.
+
+The unchanged JS handler only wraps once. On clips shorter than one nudge this can
+leave negative or >1 metadata/source offsets. Native nudges deliberately repair
+those cases into [0,1]. The PCM oracle distinguishes the repair: it reads the
+unchanged handler's raw state, then auditions the intended wrapped phase through
+the unchanged setter/restart/AudioGraph pipeline. This is normal-behavior parity
+plus a documented tiny-clip repair, not a claim of identical invalid-offset browser
+playback. Existing slider/Q and rapid/solo tests remain covered.
+
+The expanded comparison passes 30 mono/stereo, 8/48/96 kHz, 1/17/512/4097/20003-frame
+fixtures in OFF/static/dynamic modes with reverse/fractional rates: 540 nudges,
+288 tiny-wrap repairs and 1,822,480 compared samples; maximum absolute error
+6.21776e-8 at the unchanged 1e-6 limit (metadata 1e-14). Core checks add invalid
+directions/tracks, full FIFO rollback, endpoint/wrap math, 100 rapid tiny nudges,
+panic cancellation and Engine exact stereo/64/128 with and without Q/nudges.
+
+The first actual-pointer run exposed IPC rejecting -1 before assigning a request
+ID (`build/nudge-mouse.log`). The message-thread validator now accepts exactly -1
+or +1 for nudgeStart while retaining other action bounds; malformed directions
+are explicitly tested. A new stopped-loop core fixture initially used an incorrect
+range for its configured 999 BPM; its expected value was replaced by the exact
+reference formula, preserving tight tolerance. No audio/reference tolerance was
+loosened or failing case removed.
+
+Connected native capture/finalization/playback audits pass on Windows and Ubuntu:
+126 cases / 965,826 samples, max error 7.39476e-8 at 1e-6
+(`build/nudge-audio-windows.log`, `build/nudge-audio-ubuntu.log`).
+
+Final realtime core regressions pass after the fixture correction on Windows
+(25.45s) and Ubuntu (2.35s): `build/nudge-core-final-windows.log` and
+`build/nudge-core-final-ubuntu.log`. ASan/UBSan core plus expanded Start/Q/nudge
+PCM pass 2/2 (147.04s), retaining the exact same cases/tolerances
+(`build/nudge-asan-tests.log`).
+
+The full Windows/Ubuntu CTest runs pass the other 12/13 gates (178.06s / 310.78s);
+the sole initial failure was the corrected core fixture described above. Its
+separate final core reruns pass on both systems, so all 13 gates have passing
+results for the final test coverage. Full logs: `build/nudge-windows-tests.log`,
+`build/nudge-ubuntu-tests.log`; the retained failure is explained rather than hidden.
+
+Final Windows Standalone/test host builds succeed. Actual original-button mouse
+and real PCM workflows pass 64 and 128 samples, retaining Q/Start, main gestures,
+static/dynamic sync and 4s STOP cases (`build/nudge-mouse-final.log`). Standalone
+WebView2 passes signed/invalid nudge IPC, empty guards, original layout/logo and
+no product AudioContext. Actual OfflineAudioContext reproduces the original raw
+phase -13.488882352941175 throwing RangeError; wrapped phase 0.5111176470588248
+renders finite PCM with peak 0.25. All 12 unchanged count-in WebAudio comparisons
+also pass (`build/nudge-ui-final.log`); frontend checks pass separately
+(`build/nudge-frontend-final.log`). No package/version changes. Hardware/DAW,
+Apple platforms, full browser transition envelopes and complete application
+parity remain separate acceptance work. Only the documented nudge scope is accepted.

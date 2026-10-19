@@ -352,6 +352,20 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             return true;
         }
         case LoopAction::startDelay:return setStartDelay(id,value);
+        case LoopAction::nudgeStart: {
+            if(value!=-1&&value!=1)return false;
+            if(!t.clip||!t.info.length)return true;
+            const double previous=t.info.startDelay;
+            double phase=previous+value*((60.0/sync.settings.bpm/16.0)/(t.info.length/rate));
+            // Preserve the reference's single-wrap arithmetic and endpoints.
+            if(phase<0)phase+=1;
+            if(phase>1)phase-=1;
+            // A nudge can span many cycles on a tiny clip. Keep it playable.
+            if(phase<0||phase>1){phase=std::fmod(phase,1.0);if(phase<0)phase+=1;}
+            t.info.startDelay=phase;
+            if(apply(LoopAction::applyStart,id))return true;
+            t.info.startDelay=previous;return false;
+        }
         case LoopAction::quantizeStart: {
             if(!t.clip||!t.info.length)return true;
             // Original Q uses recorded duration, not varispeed-adjusted duration.
