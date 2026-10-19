@@ -3,6 +3,7 @@
     'use strict';
     // Message-thread only. Resolve gestures against the latest acknowledged state.
     window.AionCommandQueue = class {
+        static wait = Symbol('waitForState');
         constructor({ready, run, notify, now=Date.now, limit=128}) {
             Object.assign(this,{ready,run,notify,now,limit});
             this.items=[]; this.active=false; this.closed=false;
@@ -24,7 +25,11 @@
                 while(!this.closed && this.ready() && this.items.length) {
                     const item=this.items.shift();
                     if(!item.stop && this.now()>item.deadline){this.notify('Pending action expired before audio resumed.');continue;}
-                    try {const command=item.resolve();if(command)await this.run(command);}
+                    try {
+                        const command=item.resolve();
+                        if(command===window.AionCommandQueue.wait){this.items.unshift(item);break;}
+                        if(command)await this.run(command);
+                    }
                     catch(error){this.notify(error.message);}
                 }
             } finally {this.active=false;}
@@ -34,7 +39,7 @@
     };
     window.AionPerformance = class {
         constructor(actions, timers = {set:(fn,delay)=>setTimeout(fn,delay), clear:id=>clearTimeout(id)}) {
-            this.actions=actions;this.timers=timers;this.now=timers.now||(()=>globalThis.performance?.now?.()??Date.now());this.presses=new Map();
+            this.actions=actions;this.timers=timers;this.now=timers.now||(()=>globalThis.performance?.now?.()??Date.now());this.presses=new Map();this.epoch=0;this.trackEpoch=new Map();
         }
         // Cut at 600ms; only an uninterrupted STOP held for 4s may delete.
         static holdAction(initialState,currentState) {
@@ -47,14 +52,16 @@
             if(this.presses.has(key))return;
             const track=this.actions.track(id);if(!track)return;
             const press={id,initialState:track.state,canDelete:this.actions.canDelete?.(id)??['playing','stopping'].includes(track.state),start:this.now(),fired:false,erased:false,timer:null,eraseTimer:null};this.presses.set(key,press);
+            const epoch=this.epoch,revision=this.trackEpoch.get(id)||0;
+            press.valid=()=>!press.cancelled&&epoch===this.epoch&&revision===(this.trackEpoch.get(id)||0);
             this.actions.action(id);
             if(!this.presses.has(key))return;
-            press.timer=this.timers.set(()=>{if(this.presses.get(key)===press&&!press.fired){press.fired=true;this.actions.hold(id,press.initialState);}},600);
+            press.timer=this.timers.set(()=>{if(this.presses.get(key)===press&&!press.fired){press.fired=true;this.actions.hold(id,press.initialState,press.valid);}},600);
             const erase=()=>{
                 if(this.presses.get(key)!==press||press.erased)return;
                 const remaining=4000-(this.now()-press.start);
                 if(remaining>0){press.eraseTimer=this.timers.set(erase,remaining);return;}
-                press.erased=true;if(press.canDelete)this.actions.erase?.(id,press.initialState);
+                press.erased=true;if(press.canDelete)this.actions.erase?.(id,press.initialState,press.valid);
             };
             press.eraseTimer=this.timers.set(erase,4000);
         }
@@ -62,9 +69,10 @@
             const press=this.presses.get(key);if(!press)return;
             this.timers.clear(press.timer);this.timers.clear(press.eraseTimer);this.presses.delete(key);
             // Delayed browser timers recover once on release, never on cancellation.
+            if(cancel)press.cancelled=true;
             const elapsed=this.now()-press.start;
-            if(!cancel&&!press.fired&&elapsed>=600)this.actions.hold(press.id,press.initialState);
-            if(!cancel&&!press.erased&&press.canDelete&&elapsed>=4000)this.actions.erase?.(press.id,press.initialState);
+            if(!cancel&&!press.fired&&elapsed>=600)this.actions.hold(press.id,press.initialState,press.valid);
+            if(!cancel&&!press.erased&&press.canDelete&&elapsed>=4000)this.actions.erase?.(press.id,press.initialState,press.valid);
         }
         down(event) {
             const target=event.target;
@@ -91,6 +99,10 @@
             const key=event.code || event.key;
             this.release(key);
         }
-        cancel() {for(const press of this.presses.values()){this.timers.clear(press.timer);this.timers.clear(press.eraseTimer);}this.presses.clear();}
+        cancelTrack(id) {
+            this.trackEpoch.set(id,(this.trackEpoch.get(id)||0)+1);
+            for(const [key,press] of this.presses)if(press.id===id)this.release(key,true);
+        }
+        cancel() {++this.epoch;for(const press of this.presses.values()){this.timers.clear(press.timer);this.timers.clear(press.eraseTimer);}this.presses.clear();}
     };
 })();

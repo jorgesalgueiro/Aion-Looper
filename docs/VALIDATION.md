@@ -659,3 +659,63 @@ Standalone WebView2 pointer/key/manual smoke at 44.1 kHz
 instructions in all three original manual panels, 20 original cards, no legacy
 AudioContext/inline handlers, and master muted. Tests run serially and all owned
 GUI hosts close. The existing Standalone is updated; no package is generated.
+
+
+### Queued hold cancellation audit (2026-10-19)
+
+Both a frontend queue regression and the previous native binary reproduce a
+failure: after a four-second STOP queues deletion, blur cleared only active timers;
+the pending resolver later deleted PCM anyway. The real test pauses only frontend
+queue dispatch, captures real synthetic-input PCM, holds STOP for 4.2s, blurs and
+resumes dispatch. The old binary reports empty/length zero instead of the expected
+stopped clip (`build/queued-hold-before-build.log`). No snapshot/PCM fixtures are
+used. This is distinct from the intentional four-second deletion feature.
+
+Global and per-track validity epochs now survive normal release and are checked
+by queued cut/delete resolvers at dispatch. Blur/reset/STOP ALL invalidates all
+old holds, DEL invalidates that track, and audio-generation changes cancel active
+and queued holds before new configuration state is used. Ordinary uncancelled
+four-second release still authorizes a queued deletion. Already-dispatched audio
+commands are not retractable; cancellation is guaranteed before dispatch.
+
+Tests retain old four-second cases, and add paused queue + blur PCM preservation,
+clear/re-record while the original key remains held beyond its deadline, queued
+normal release/cancel/pointer/track/other-track cases and per-track timer cleanup.
+Native smoke injects a generation notification and checks the real controller
+clears active presses and invalidates a saved queued-action token; it does not
+reset the physical audio driver or claim driver reset acceptance. Only frontend routing and
+manual text change. Original assets, DSP tolerances and C++ processing are intact.
+
+The first repaired-native run preserved PCM but exposed an incorrect test state
+expectation: pausing dispatch for 4.2s also expires the short STOP under the
+existing 3s queue limit, so playback should continue. That same paused-input case
+is retained with an unchanged input stream and exact PCM/request-count checks;
+no command should dispatch. A second case acknowledges STOP before pausing and
+then requires a stopped, replayable clip with no later deletion. Neither case
+removes the original failure or changes an audio tolerance.
+
+The next full native run passed the new cancellation cases but failed the retained
+rapid record/finish/play gate: the third request was resolved while the worker
+reported finalizing and silently dropped. The stopped 5,952-frame clip remained,
+but PLAY never reached the core. This timing race is now repaired in production:
+an accepted main gesture waits in the bounded FIFO until finalization finishes,
+retaining its original 3s expiry. Polling retries without spinning; priority panic
+still removes waiting gestures. The failing rapid native case stays unchanged,
+with deterministic wait/order/expiry/panic unit coverage added.
+
+Final results: Windows CTest 10/10 (120.98s), Ubuntu CTest 10/10 (193.07s),
+and final queue wait/order/expiry/panic + cancellation frontend checks pass on
+both platforms. Connected native capture audit passes 126 cases / 965,826
+compared samples, max error 7.394757495227111e-8 with unchanged 1e-6 tolerance
+(`build/queued-hold-audio.log`).
+
+The retained full real mouse/keyboard/PCM suite passes at 64 and 128 samples
+(`build/queued-hold-final-mouse-v3.log`), including both queued blur variants,
+clear/re-record protection, 4s deletion and rapid finalization taps. Standalone
+smoke passes at 44.1 kHz (`build/queued-hold-native-smoke.log`), including the
+injected generation notification, 20 original cards, all manual panels and
+strict pointer/key checks. Earlier native failures are retained in the v1/v2
+and before-build logs. No audio tolerance/case is removed to obtain these passes.
+Only the existing Standalone and optional test host are rebuilt; no ZIP, version
+bump or plugin package is produced. Physical input/driver/DAW acceptance remains
+separate from these synthetic-input and bridge checks.

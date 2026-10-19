@@ -68,3 +68,14 @@ cancellation/lost capture and STOP ALL cancel deletion; delayed release may
 recover a >=4000ms deletion once. PLAY/FINISH/CANCEL/RECORD origins never delete.
 Retain 3999/4000ms boundary tests, early/deferred timers, and actual PCM mouse/
 keyboard checks at 64/128. Document the distinction in existing EN/ES/PT manuals.
+
+Queued holds must remain cancellable after leaving the pressed-key map. Pass a
+validity predicate to queued cut/delete resolvers and check it at dispatch.
+Global blur/reset/STOP ALL invalidates all epochs; DEL invalidates that track's
+old holds before clearing. Normal >=4s release keeps an uncancelled queued delete
+valid. Retain real PCM paused-dispatch/blur and clear/re-record regressions.
+
+Accepted rapid main gestures must not disappear if their resolver sees finalizing.
+Keep them in FIFO order using the wait sentinel, original expiry and polling;
+priority STOP ALL must still discard deferred actions. Keep the retained native
+rapid record/finish/play case and deterministic finalization wait/panic checks.

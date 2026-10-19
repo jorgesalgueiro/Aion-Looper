@@ -31,6 +31,8 @@ let socket;
         if(outside)await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:1190,y:790,button:'left',buttons:1});
         await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:outside?1190:rect.x,y:outside?790:rect.y,button:'left',clickCount:1});
     };
+    const pauseDispatch=()=>evaluate(`window.savedHoldPump=AionCommandQueue.prototype.pump;window.pauseHoldQueue=true;AionCommandQueue.prototype.pump=function(){window.pausedHoldQueue=this;if(window.pauseHoldQueue)return;return window.savedHoldPump.call(this);};`);
+    const resumeDispatch=()=>evaluate(`(async()=>{const queue=window.pausedHoldQueue,pump=window.savedHoldPump;AionCommandQueue.prototype.pump=pump;delete window.pauseHoldQueue;delete window.pausedHoldQueue;delete window.savedHoldPump;await pump.call(queue);})()`);
     const parameter=async (selector,value)=>{
         await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     };
@@ -50,6 +52,36 @@ let socket;
     let playing=await state('playing');assert(playing.tracks[0].length>4800,'Real captured PCM committed');
     await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await wait(s=>s.outputPeak>0.02,'Captured PCM renders through production processor');
+    // Pause only frontend dispatch, preserving real core PCM and audio callbacks.
+    // A deletion queued at 4s must be discarded if focus is then lost.
+    const beforeBlur=await snapshot();
+    await pauseDispatch();
+    await call('Input.dispatchKeyEvent',{type:'keyDown',code:'Digit1',key:'1',windowsVirtualKeyCode:49});await delay(4200);
+    await evaluate(`window.dispatchEvent(new Event('blur'))`);
+    await call('Input.dispatchKeyEvent',{type:'keyUp',code:'Digit1',key:'1',windowsVirtualKeyCode:49});
+    await resumeDispatch();
+    // The short STOP has expired after the queue's existing 3s limit. Retain
+    // this case: the uncancelled deletion used to erase the still-playing clip.
+    const afterBlur=await state('playing');assert.equal(afterBlur.tracks[0].length,beforeBlur.tracks[0].length,'Blur invalidates queued deletion, preserving actual PCM');
+    await delay(200);assert.equal((await snapshot()).lastRequestId,beforeBlur.lastRequestId,'Expired short STOP and cancelled hold send no commands');
+    await wait(s=>s.outputPeak>0.02,'PCM retained after cancelling queued deletion');
+    // Also cover an acknowledged STOP: only hold commands wait behind dispatch.
+    const beforeAckBlur=await snapshot();
+    await call('Input.dispatchKeyEvent',{type:'keyDown',code:'Digit1',key:'1',windowsVirtualKeyCode:49});await state('stopped');
+    await pauseDispatch();await delay(4200);await evaluate(`window.dispatchEvent(new Event('blur'))`);
+    await call('Input.dispatchKeyEvent',{type:'keyUp',code:'Digit1',key:'1',windowsVirtualKeyCode:49});await resumeDispatch();
+    const acknowledged=await state('stopped');assert.equal(acknowledged.tracks[0].length,beforeAckBlur.tracks[0].length,'Cancelled queued delete preserves an already-stopped clip');
+    assert.equal(acknowledged.lastRequestId,beforeAckBlur.lastRequestId+1,'Acknowledged short STOP remains the only command');
+    await click('#loop-action-0');await state('playing');await wait(s=>s.outputPeak>0.02,'Stopped PCM still replays after cancellation');
+    // Clear/re-record while the physical key remains held: an old STOP cannot
+    // delete the replacement take when its original 4s deadline arrives.
+    await call('Input.dispatchKeyEvent',{type:'keyDown',code:'Digit1',key:'1',windowsVirtualKeyCode:49});await state('stopped');
+    await click('#loop-0 .loop-track-delete');await state('empty');
+    await click('#loop-action-0');await state('recording');await delay(180);await click('#loop-action-0');
+    const replacement=await state('playing');await delay(4200);
+    await call('Input.dispatchKeyEvent',{type:'keyUp',code:'Digit1',key:'1',windowsVirtualKeyCode:49});
+    const protectedTake=await state('playing');assert.equal(protectedTake.tracks[0].length,replacement.tracks[0].length,'DEL cancels stale holds before a replacement take');
+    await wait(s=>s.outputPeak>0.02,'Replacement PCM survives the previous gesture deadline');
     const beforeHold=await snapshot();
     await click('#loop-action-0',{hold:3800});
     const kept=await state('stopped');assert.equal(kept.tracks[0].length,beforeHold.tracks[0].length,'Releasing STOP before 4s keeps PCM');

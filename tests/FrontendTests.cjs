@@ -115,6 +115,38 @@ assert(cards[0].includes('0.50x')&&cards[0].includes('value="10"'),'Original pan
    sent.push(c);await new Promise(r=>release=r);state=c;
  }});
  const settle=async()=>{for(let i=0;i<8;++i)await Promise.resolve();};
+ // A hold that has entered the message queue must still be cancellable.
+ let holdReady=false,holdTime=0;const heldSent=[];
+ const heldQueue=new Queue({ready:()=>holdReady,notify(){},run:async c=>heldSent.push(c)});
+ const heldPerformance=new Performance({track:()=>({state:'playing'}),action(){},hold(){},erase:(id,start,valid)=>heldQueue.enqueue(()=>!valid||valid()?'clear':null)},{set:()=>1,clear(){},now:()=>holdTime});
+ heldPerformance.press(0,'mouse');holdTime=4000;heldPerformance.release('mouse');heldPerformance.cancel();
+ holdReady=true;await heldQueue.pump();await settle();
+ assert.deepEqual(heldSent,[],'Blur after a 4s release must invalidate a deletion still waiting in the queue');
+ for(const cancellation of ['none','blur','pointer','track','otherTrack']) {
+   let runnable=false,time=0;const dispatched=[];
+   const pendingQueue=new Queue({ready:()=>runnable,notify(){},run:async c=>dispatched.push(c)});
+   const pendingKeys=new Performance({track:()=>({state:'playing'}),action(){},hold:(id,start,valid)=>pendingQueue.enqueue(()=>valid()?'cut':null),erase:(id,start,valid)=>pendingQueue.enqueue(()=>valid()?'clear':null)},{set:()=>1,clear(){},now:()=>time});
+   pendingKeys.press(0,'mouse');time=4000;pendingKeys.release('mouse',cancellation==='pointer');
+   if(cancellation==='blur')pendingKeys.cancel();
+   if(cancellation==='track')pendingKeys.cancelTrack(0);
+   if(cancellation==='otherTrack')pendingKeys.cancelTrack(1);
+   runnable=true;await pendingQueue.pump();await settle();
+   assert.deepEqual(dispatched,['none','otherTrack'].includes(cancellation)?['cut','clear']:[],'Queued hold cancellation: '+cancellation);
+ }
+ // A track clear invalidates old holds without cancelling another track's hold.
+ const activeTimers=new Map();let activeId=0;
+ const activeKeys=new Performance({track:()=>({state:'playing'}),action(){},hold(){},erase(){}},{set:fn=>{activeTimers.set(++activeId,fn);return activeId;},clear:id=>activeTimers.delete(id)});
+ activeKeys.press(0,'Digit1');activeKeys.press(1,'Digit2');activeKeys.cancelTrack(0);
+ assert.equal(activeTimers.size,2);assert.equal(activeKeys.presses.size,1);assert(activeKeys.presses.has('Digit2'));activeKeys.cancel();assert.equal(activeTimers.size,0);
+
+ // Keep an already-accepted rapid gesture while the worker finalizes PCM.
+ let finalizing=true;const deferredSent=[],deferredErrors=[];let deferredTime=0;
+ const deferred=new Queue({ready:()=>true,now:()=>deferredTime,notify:e=>deferredErrors.push(e),run:async c=>deferredSent.push(c)});
+ deferred.enqueue(()=>finalizing?Queue.wait:'play');deferred.enqueue(()=>'after-play');
+ await deferred.pump();assert.deepEqual(deferredSent,[]);assert.equal(deferred.items.length,2,'Finalizing retains original order without spinning');
+ finalizing=false;await deferred.pump();await settle();assert.deepEqual(deferredSent,['play','after-play'],'Third tap dispatches after finalization');
+ finalizing=true;deferred.enqueue(()=>Queue.wait);deferredTime=4000;await deferred.pump();assert.equal(deferred.items.length,0);assert(deferredErrors.some(e=>e.includes('expired')),'Deferred gestures retain original expiry');
+ deferred.enqueue(()=>Queue.wait);deferred.enqueue(()=>'panic',{stop:true});await settle();assert.equal(deferredSent.at(-1),'panic');assert.equal(deferred.items.length,0,'Panic removes deferred gestures');
  const gesture=()=>queue.enqueue(()=>state==='empty'?'record':state==='record'?'finish':'play');
  gesture();gesture();gesture();
  assert.deepEqual(sent,['record'],'Only one command can await acknowledgement');

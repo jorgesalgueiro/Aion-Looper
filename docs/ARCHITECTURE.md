@@ -451,3 +451,18 @@ once on release only if the full threshold elapsed. Cancellation/blur/STOP ALL
 clear both timers and never recover deletion. Original EN/ES/PT manual panels
 explain this policy, which supersedes the old 600ms quick-delete threshold.
 Only message-thread routing changes; DSP and sample scheduling are unchanged.
+
+Queued hold commands carry a message-thread validity predicate capturing a global
+interaction epoch and per-track epoch. Dispatch checks validity immediately before
+producing a command. Cancel/blur/STOP ALL and audio-generation changes invalidate
+global epochs, including holds already released into the queue. Pointer cancellation
+invalidates its press; DEL increments only that track's epoch and cancels its active
+presses before enqueuing CLEAR. Ordinary >=4s release retains authorization until
+cancelled or dispatched, so a delayed but valid deletion still works. These tokens
+cannot retract a command already sent to the audio owner. No C++/DSP changes occur.
+
+An accepted main gesture resolving during finalization returns the queue wait
+sentinel. Pump puts the same item back at the head and yields; the next snapshot
+poll retries. This preserves rapid record/finish/play ordering without spinning,
+new timers or changed expiry. Priority STOP ALL removes unsent/deferred gestures.
+The SAVING control's original appearance/disabled state remains unchanged.
