@@ -36,26 +36,35 @@
         constructor(actions, timers = {set:(fn,delay)=>setTimeout(fn,delay), clear:id=>clearTimeout(id)}) {
             this.actions=actions;this.timers=timers;this.now=timers.now||(()=>globalThis.performance?.now?.()??Date.now());this.presses=new Map();
         }
-        // A stop/finish/cancel gesture must not become a delete or a new stop
-        // merely because its short action changed the track before the timer ran.
+        // Cut at 600ms; only an uninterrupted STOP held for 4s may delete.
         static holdAction(initialState,currentState) {
-            if(initialState==='stopped'&&currentState==='stopped')return 'clear';
             return ['stopped','playing','stopping'].includes(initialState)&&['playing','stopping'].includes(currentState)?'stopImmediate':null;
+        }
+        static deleteAction(initialState,currentState) {
+            return ['playing','stopping'].includes(initialState)&&['playing','stopping','stopped'].includes(currentState)?'clear':null;
         }
         press(id,key) {
             if(this.presses.has(key))return;
             const track=this.actions.track(id);if(!track)return;
-            const press={id,initialState:track.state,start:this.now(),fired:false,timer:null};this.presses.set(key,press);
+            const press={id,initialState:track.state,canDelete:this.actions.canDelete?.(id)??['playing','stopping'].includes(track.state),start:this.now(),fired:false,erased:false,timer:null,eraseTimer:null};this.presses.set(key,press);
             this.actions.action(id);
             if(!this.presses.has(key))return;
             press.timer=this.timers.set(()=>{if(this.presses.get(key)===press&&!press.fired){press.fired=true;this.actions.hold(id,press.initialState);}},600);
+            const erase=()=>{
+                if(this.presses.get(key)!==press||press.erased)return;
+                const remaining=4000-(this.now()-press.start);
+                if(remaining>0){press.eraseTimer=this.timers.set(erase,remaining);return;}
+                press.erased=true;if(press.canDelete)this.actions.erase?.(id,press.initialState);
+            };
+            press.eraseTimer=this.timers.set(erase,4000);
         }
         release(key,cancel=false) {
             const press=this.presses.get(key);if(!press)return;
-            this.timers.clear(press.timer);this.presses.delete(key);
-            // Background WebViews may defer a timer. A real >=600ms release
-            // still performs one hold; cancellation/blur never invents one.
-            if(!cancel&&!press.fired&&this.now()-press.start>=600)this.actions.hold(press.id,press.initialState);
+            this.timers.clear(press.timer);this.timers.clear(press.eraseTimer);this.presses.delete(key);
+            // Delayed browser timers recover once on release, never on cancellation.
+            const elapsed=this.now()-press.start;
+            if(!cancel&&!press.fired&&elapsed>=600)this.actions.hold(press.id,press.initialState);
+            if(!cancel&&!press.erased&&press.canDelete&&elapsed>=4000)this.actions.erase?.(press.id,press.initialState);
         }
         down(event) {
             const target=event.target;
@@ -82,6 +91,6 @@
             const key=event.code || event.key;
             this.release(key);
         }
-        cancel() {for(const press of this.presses.values())this.timers.clear(press.timer);this.presses.clear();}
+        cancel() {for(const press of this.presses.values()){this.timers.clear(press.timer);this.timers.clear(press.eraseTimer);}this.presses.clear();}
     };
 })();

@@ -600,3 +600,62 @@ The final Ubuntu connected PCM audit also passes all 126 cases / 965,826 compare
 samples with the same maximum error 7.394757495227111e-8 and unchanged 1e-6
 tolerance (`build/hold-ubuntu.log`). All required gates are green for this
 message-thread hold-safety repair; physical-device acceptance is still separate.
+
+
+### User correction: hold-to-delete is intentional (2026-10-18)
+
+The user clarified that holding STOP after it stops a playing loop is the intended
+way to discard a bad take. This supersedes the previous interpretation that this
+transition was a bug. Restore playback-origin/current-stopped CLEAR while keeping
+initial-state guards on FINISH/CANCEL/auto-completed RECORD. The UI retains its
+original layout; a native addendum appears at the start of each original manual
+panel (English, Spanish, Portuguese). Reference source bytes remain untouched.
+
+The manual explicitly covers 600 ms, mouse main button and assigned keyboard key,
+short tap versus hold, Undo/Redo history loss, sync waiting/cut versus already
+stopped/delete, DEL, and header/state text being short-action only. The original
+JS long-action oracle and 121 state pairs are updated to accept intentional
+playback-to-stopped deletion. Real 64/128 tests now require actual PCM deletion
+from both held mouse STOP and held keyboard STOP while retaining FINISH/CANCEL/
+RECORD preservation cases. Native smoke verifies all three manual panels contain
+the addendum. This is a gesture/manual correction; no DSP code or new feature is
+introduced, and no package/version/plugin build is needed.
+
+
+### Four-second STOP deletion (2026-10-19; supersedes 600ms deletion)
+
+The user explicitly requests audio deletion only after holding STOP for 4 seconds.
+Keep the 600ms playback cut as a separate action that cannot clear PCM. A second
+4000ms timer deletes only for STOP/STOP NOW starting states; the current-state
+resolver also rejects unrelated later states. Release/blur/pointer cancellation/
+STOP ALL clear both timers. Monotonic elapsed time guards early callbacks and
+recovers deferred deletion at most once on a >=4000ms release. PLAY/FINISH/CANCEL/
+RECORD remain excluded even if their resulting state contains a completed clip.
+
+The original long-action handler remains the clear/cut intent oracle, with the
+user-requested four-second timing as an explicit override. Unit tests exercise
+599/600/850/3999/4000/4001ms releases, early 3999ms timer rescheduling, exactly-once
+release after timer firing, and cancellation/blur after a delayed deadline.
+A mock initially retained executed timer entries (unlike browser timers); the
+mock now removes one-shot entries on invocation, preserving cleanup assertions.
+Native PCM tests check a 3.8s STOP release retains the clip after the deadline,
+4.2s mouse/key STOP holds delete, and >4s FINISH/CANCEL/RECORD holds retain PCM.
+Existing EN/ES/PT manual addenda document 4 s deletion versus 600 ms cut, history
+loss, all sync modes and cancellation. Original assets remain byte-identical.
+
+Four-second gate results: Windows CTest 10/10 (125.66s), Ubuntu CTest 10/10
+(190.66s). The final frontend suite also passes independently on both platforms
+including STOP eligibility captured before a mode change: an OVERDUB/REPLACE
+press cannot become a deletion by changing global mode during the hold. This
+is a frontend gesture/manual correction with unchanged C++/DSP; the previously
+passed connected PCM audit remains the DSP baseline. No new audio feature is
+advanced and no ZIP/version/plugin package is created. Final GUI acceptance is
+recorded separately below after the rebuilt controller is exercised serially.
+
+Final GUI acceptance passes on the rebuilt controller: real mouse/keyboard native
+PCM tests at both 64 and 128 samples (`build/four-second-final-mouse.log`), then
+Standalone WebView2 pointer/key/manual smoke at 44.1 kHz
+(`build/four-second-native-smoke.log`). The latter verifies the 4 s / 600 ms
+instructions in all three original manual panels, 20 original cards, no legacy
+AudioContext/inline handlers, and master muted. Tests run serially and all owned
+GUI hosts close. The existing Standalone is updated; no package is generated.

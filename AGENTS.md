@@ -61,8 +61,10 @@ and exclude nested controls/waveform/main-button bubbling. This gate supplements
 NativeUiSmoke and unchanged-JS DSP/sync gates; it does not establish hardware or
 Standalone driver/input-gate acceptance. Do not install/package the test host.
 
-Hold safety: latch the track state before the short action, and retain it through
-both timer and delayed-release paths to the queued resolver. A playing STOP must
-never turn into CLEAR after reaching stopped; FINISH/CANCEL/auto-completed RECORD
-must not act on their later state. Retain the real native-PCM held-gesture cases
-at 64/128; frozen playing-state fixtures alone missed this destructive regression.
+User-confirmed hold behavior (2026-10-19): delete only after 4 seconds of an
+uninterrupted press that starts on STOP/STOP NOW (mouse or assigned key).
+600ms cuts playback but must never delete. Release before 4000ms, blur, pointer
+cancellation/lost capture and STOP ALL cancel deletion; delayed release may
+recover a >=4000ms deletion once. PLAY/FINISH/CANCEL/RECORD origins never delete.
+Retain 3999/4000ms boundary tests, early/deferred timers, and actual PCM mouse/
+keyboard checks at 64/128. Document the distinction in existing EN/ES/PT manuals.

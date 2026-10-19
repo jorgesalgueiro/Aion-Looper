@@ -65,6 +65,18 @@
         };
         bindTabs('.main-tab-btn','.workspace-panel',['ws-loops','ws-drone','ws-tracker','ws-live']);
         bindTabs('.manual-tab-btn','.manual-content',['manual-en','manual-es','manual-pt']);
+        // Native manual addendum; preserved reference assets remain byte-identical.
+        const holdManual={
+            en:['Delete a bad loop: hold STOP for 4 seconds','Press and continuously hold the main STOP button or assigned number key for 4 s to delete the loop and its Undo/Redo history. Releasing before 4 s keeps the audio. The four seconds start on the initial press, not when playback stops.','A quick tap stops playback or schedules its stop when sync is enabled. Holding for 600 ms cuts pending playback immediately, without deleting audio. Keep holding until 4 s to delete, in any sync mode. DEL deletes directly.','Only a press that starts on STOP or STOP NOW can hold-to-delete. Holding PLAY, FINISH, CANCEL or RECORD never deletes the resulting loop. Header/state-text clicks are short actions only. Releasing, cancelling pointer capture, losing focus or STOP ALL cancels a pending deletion.'],
+            es:['Borrar un loop: mantén STOP durante 4 segundos','Mantén pulsado continuamente el botón principal STOP o la tecla asignada durante 4 s para borrar el loop y su historial Undo/Redo. Soltar antes de 4 s conserva el audio. El tiempo empieza al pulsar, no al detenerse la reproducción.','Un toque breve detiene o programa la parada con sync. Mantener durante 600 ms corta inmediatamente la reproducción pendiente sin borrar audio. Sigue pulsando hasta 4 s para borrar, en cualquier modo sync. DEL borra directamente.','Solo una pulsación iniciada en STOP o STOP NOW permite borrar al mantener. Mantener PLAY, FINISH, CANCEL o RECORD no borra el loop. La cabecera y el estado solo ejecutan la acción breve. Soltar, cancelar la captura del puntero, perder el foco o STOP ALL cancela el borrado pendiente.'],
+            pt:['Apagar um loop: manter STOP durante 4 segundos','Mantém continuamente o botão principal STOP ou a tecla atribuída durante 4 s para apagar o loop e o histórico Undo/Redo. Soltar antes de 4 s mantém o áudio. O tempo conta desde que primes, não desde que a reprodução para.','Um toque breve para a reprodução ou agenda a paragem com sync. Manter durante 600 ms corta imediatamente a reprodução pendente sem apagar áudio. Continua a premir até 4 s para apagar, em qualquer modo sync. DEL apaga diretamente.','Só uma pressão iniciada em STOP ou STOP NOW permite apagar ao manter. Manter PLAY, FINISH, CANCEL ou RECORD não apaga o loop. O cabeçalho e o estado só executam a ação breve. Soltar, cancelar a captura do ponteiro, perder o foco ou STOP ALL cancela a eliminação pendente.']
+        };
+        for(const [language,copy] of Object.entries(holdManual)){
+            const note=document.createElement('div');note.id=`native-hold-manual-${language}`;
+            for(const [index,text] of copy.entries()){const line=document.createElement(index?'p':'h4');line.textContent=text;note.append(line);}
+            const panel=document.getElementById(`manual-${language}`);panel.insertBefore(note,panel.querySelector('h4'));
+        }
+
 
         const syncModes=[...document.querySelectorAll('input[name=syncMode]')];
         const timingControls={syncBpm:document.getElementById('bpmInput'),syncBars:document.getElementById('numBars'),syncNum:document.getElementById('timeSigNum'),syncDen:document.getElementById('timeSigDen'),countInVisual:document.getElementById('countInVisual')};
@@ -139,8 +151,10 @@
         };
         const keyboard = new window.AionPerformance({
             track:id=>snapshot?.tracks[id],
+            canDelete:id=>snapshot?.tracks[id]?.state==='stopping'||(snapshot?.tracks[id]?.state==='playing'&&mode==='normal'),
             action:id=>mainAction(id),
             hold:(id,initialState)=>scheduler.enqueue(()=>{const action=window.AionPerformance.holdAction(initialState,snapshot.tracks[id].state);return action?{action,track:id,value:0}:null;}),
+            erase:(id,initialState)=>scheduler.enqueue(()=>{const action=window.AionPerformance.deleteAction(initialState,snapshot.tracks[id].state);return action?{action,track:id,value:0}:null;}),
             mode:next=>{mode=mode===next?'normal':next;refresh();},
             history:redo=>restoreHistory(redo),
             multiply:()=>multiply(selected),

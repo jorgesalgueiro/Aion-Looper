@@ -60,7 +60,7 @@ const browserKeys=new strictBrowserTimers.window.AionPerformance({track:()=>({})
 // Cross-product guards against timer callbacks observing unrelated later states.
 const phases=['empty','armed','recording','playing','stopped','overdubbing','substituting','finalizing','multiplying','queued','stopping'];
 const holdPairs=new Map([
- ['stopped:stopped','clear'],['stopped:playing','stopImmediate'],['stopped:stopping','stopImmediate'],
+ ['stopped:playing','stopImmediate'],['stopped:stopping','stopImmediate'],
  ['playing:playing','stopImmediate'],['playing:stopping','stopImmediate'],
  ['stopping:playing','stopImmediate'],['stopping:stopping','stopImmediate']
 ]);
@@ -70,6 +70,23 @@ const originKeys=new keyboardContext.window.AionPerformance({track:()=>({state:o
 originKeys.press(0,'pointer:origin');[...originTimers.values()][0]();originKeys.release('pointer:origin');
 origin='queued';originKeys.press(0,'Digit1');origin='stopped';originNow=650;originKeys.release('Digit1');
 assert.deepEqual(heldOrigins,['recording','queued'],'Timer and delayed-release paths retain the state before the short action');
+// Boundary tests use elapsed monotonic time, including deferred/early timers.
+const Performance=keyboardContext.window.AionPerformance;
+for(const initial of phases)for(const current of phases)assert.equal(Performance.deleteAction(initial,current),['playing','stopping'].includes(initial)&&['playing','stopping','stopped'].includes(current)?'clear':null);
+for(const duration of [599,600,850,3999,4000,4001]) {
+ let clock=0;const calls=[];
+ const gesture=new Performance({track:()=>({state:'playing'}),action(){},hold:()=>calls.push('cut'),erase:()=>calls.push('delete')},{set:()=>1,clear(){},now:()=>clock});
+ gesture.press(0,'mouse');clock=duration;gesture.release('mouse');gesture.release('mouse');
+ assert.deepEqual(calls,duration<600?[]:duration<4000?['cut']:['cut','delete'],'Release boundary '+duration);
+}
+let modeClock=0,modeDelete=0,deleteAllowed=false;
+const modePress=new Performance({track:()=>({state:'playing'}),canDelete:()=>deleteAllowed,action(){deleteAllowed=true;},hold(){},erase(){modeDelete++;}},{set:()=>1,clear(){},now:()=>modeClock});
+modePress.press(0,'mouse');modeClock=5000;modePress.release('mouse');assert.equal(modeDelete,0,'OVERDUB/REPLACE intent cannot become delete if mode changes during a hold');
+let deleteClock=0;const deleteTimers=new Map(),deleteCalls=[];let deleteId=0;
+const deleteKeys=new Performance({track:()=>({state:'playing'}),action(){},hold(){},erase:()=>deleteCalls.push('delete')},{set:(fn,delay)=>{const id=++deleteId;deleteTimers.set(id,{fn:()=>{deleteTimers.delete(id);fn();},delay});return id;},clear:id=>deleteTimers.delete(id),now:()=>deleteClock});
+deleteKeys.press(0,'mouse');const earlyDelete=[...deleteTimers.values()].find(t=>t.delay===4000);deleteClock=3999;earlyDelete.fn();assert.deepEqual(deleteCalls,[],'No deletion at 3999ms even if timer fires early');
+deleteClock=4000;[...deleteTimers.values()].find(t=>t.delay===1).fn();deleteKeys.release('mouse');assert.deepEqual(deleteCalls,['delete'],'4s timer/release deletes once');assert.equal(deleteTimers.size,0);
+for(const cancel of [false,true]){deleteClock=0;deleteKeys.press(0,'mouse');deleteClock=5000;if(cancel)deleteKeys.cancel();else deleteKeys.release('mouse',true);assert.equal(deleteCalls.length,1,'Blur/cancel never recovers deletion');assert.equal(deleteTimers.size,0);}
 console.log('PASS: reference keyboard loop keys, shifted bank, modes, stop, retrigger, long-press, repeat/focus/blur guards');
 
 snapshot.tracks[0]={...snapshot.tracks[0],pan:10,playbackRate:0.5};
@@ -79,8 +96,8 @@ assert(cards[0].includes('0.50x')&&cards[0].includes('value="10"'),'Original pan
 // Exercise the same scheduler shipped in the native editor, with delayed audio acknowledgements.
 (async()=>{
  // Execute the original long-action handler, retaining its safe clear/cut semantics.
- // The native guard intentionally blocks the inherited playing -> stopped -> clear
- // escalation caused by the separate short-action timer, rather than changing DSP.
+ // Playback holds retain the user-confirmed quick-delete workflow; recording and
+ // cancellation holds remain scoped to their original gesture.
  const actionStart=original.indexOf('    static async handleAction('),actionEnd=original.indexOf('\n    }',actionStart)+6;
  assert(actionStart>=0&&actionEnd>actionStart,'Original main action method found');
  for(const phase of ['stopped','playing','stopping']) {
@@ -89,7 +106,7 @@ assert(cards[0].includes('0.50x')&&cards[0].includes('value="10"'),'Original pan
      state:{loops:[loop]},AudioEngine:{resume:async()=>true},EffectManager:{setActiveTab(){}},window:{}
    });
    await handler.call({transportGeneration:0},0,'long');
-   assert.equal(referenceCalls[0],keyboardContext.window.AionPerformance.holdAction(phase,phase),'Unchanged-JS long-action intent: '+phase);
+   assert.equal(referenceCalls[0],phase==='stopped'?keyboardContext.window.AionPerformance.deleteAction('playing','stopped'):keyboardContext.window.AionPerformance.holdAction(phase,phase),'Unchanged-JS clear/cut intent with user-requested 4s delete: '+phase);
  }
  console.log('PASS: unchanged-JS long-action clear/cut intent, 121 native hold-state pairs, latched timer/release origins');
  const Queue=keyboardContext.window.AionCommandQueue;

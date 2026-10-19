@@ -19,6 +19,8 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  let info;
  for(let n=0;n<60;++n){info=await evaluate(`({cards:document.querySelectorAll('#loopContainer > div').length,status:document.getElementById('native-status')?.textContent,native:typeof window.AionNative?.request})`);if(info.cards===20)break;await delay(150);}
  assert.equal(info.cards,20,JSON.stringify(info));assert.equal(info.native,'function');
+ const manual=await evaluate(`['en','es','pt'].map(language=>({language,text:document.getElementById('native-hold-manual-'+language)?.textContent,parent:document.getElementById('native-hold-manual-'+language)?.parentElement.id}))`);
+ assert(manual.every(m=>m.text?.includes('4 s')&&m.text.includes('600 ms')&&m.text.includes('Undo/Redo')&&m.text.includes('FINISH')&&m.parent==='manual-'+m.language),'Quick-delete instructions must be in all three original manual panels: '+JSON.stringify(manual));
  const visible=await evaluate(`({overlay:!!document.getElementById('startOverlay'),text:document.getElementById('native-status').textContent,mainVisible:document.getElementById('native-master').getBoundingClientRect().height>0})`);
  assert(!visible.overlay&&visible.mainVisible,JSON.stringify(visible));
  assert(await evaluate(`!document.getElementById('loopContainer').textContent.includes('undefined')`),'Missing renderer field');assert(!visible.text.includes('\u00c3'),'Garbled native status text');

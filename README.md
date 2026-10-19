@@ -116,7 +116,8 @@ bars, meter fields, visual count-in, timeline and main loop buttons.
 - DYNAMIC records immediately. FINISH normally waits for the next bar; a second
   FINISH stops now. As in the reference, the last 50ms of a bar finish immediately
   and short takes are retained rather than padded to a whole bar.
-- A synced short STOP waits for the grid; another STOP or a 600ms hold cuts now.
+- A synced short STOP waits for the grid; another STOP cuts now. A 600ms hold
+  cuts without deleting. Keep holding STOP for 4 seconds to delete (see below).
   Space / STOP ALL cancels queued starts and finishes capture without late autoplay.
 
 The browser timer receiver bug that stranded held keys/pointers is fixed, with
@@ -133,7 +134,10 @@ its bounds without duplicating the action; clicks on nested controls or the
 waveform do not toggle recording. Hardware-free real-mouse/native-PCM acceptance
 instructions are in [BUILDING](docs/BUILDING.md#hardware-free-mouse-acceptance-windows).
 
-Holding the main STOP button/key now preserves the recorded loop after stopping.
-Holding FINISH, CANCEL or a short automatically completed STATIC recording also
-keeps the resulting audio/state; a delayed hold cannot turn the gesture into an
-unintended clear or stop. Use the original DEL button to delete a loop.
+Hold STOP to delete (intentional): continuously hold a playing loop's main STOP
+button or assigned number key for **4 seconds**, measured from the initial press.
+The tap stops/schedules stopping; 600ms cuts playback but keeps audio. Only the
+4-second hold deletes the loop and its Undo/Redo history, regardless of sync mode.
+Releasing earlier, losing focus/pointer capture or STOP ALL cancels deletion.
+PLAY/FINISH/CANCEL/RECORD holds never delete. DEL deletes directly. The in-app
+English, Spanish and Portuguese manuals explain these rules.

@@ -442,11 +442,12 @@ The frontend submits intent; sample deadlines and capture state live in C++.
 
 
 Held main gestures latch their starting state before dispatching the short action.
-The hold timer and delayed-release recovery both pass that state to the queued
-hold resolver, which additionally checks the latest acknowledged state. This
-prevents STOP -> stopped -> CLEAR, FINISH -> playing -> STOP, queued CANCEL ->
-stopped -> CLEAR, and short STATIC RECORD -> playing -> STOP escalation. The
-original current-state input timer could cause these transitions; the native
-adapter preserves safe long-action clear/cut intent without inheriting audio
-loss. This changes only message-thread gesture routing; core timing/PCM remains
-unchanged. Regression acceptance includes real captured PCM at 64/128 blocks.
+Two message-thread timers separate the 600ms playback cut from the user-requested
+4000ms deletion. Only STOP/STOP NOW origins can delete; PLAY/FINISH/CANCEL/RECORD
+cannot. At dispatch the queued resolver additionally checks current state.
+Monotonic elapsed time prevents early deletion if a timer fires before 4000ms;
+an early callback reschedules the remaining interval. Deferred timers recover
+once on release only if the full threshold elapsed. Cancellation/blur/STOP ALL
+clear both timers and never recover deletion. Original EN/ES/PT manual panels
+explain this policy, which supersedes the old 600ms quick-delete threshold.
+Only message-thread routing changes; DSP and sample scheduling are unchanged.
