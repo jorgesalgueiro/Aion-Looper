@@ -47,7 +47,9 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
         if (!hasPendingLoop) hasPendingLoop = loopCommands.pop(pendingLoop);
         while (hasPendingLoop && pendingLoop.frame <= frame && loopApplied < 128) {
             lastRequestId = pendingLoop.requestId;
-            rejected = pendingLoop.generation != generation() || !loops.apply(pendingLoop.action, pendingLoop.track, pendingLoop.value);
+            rejected = pendingLoop.generation != generation() ||
+                !(pendingLoop.action==LoopAction::startDelay?loops.setStartDelay(pendingLoop.track,pendingLoop.value):
+                  loops.apply(pendingLoop.action,pendingLoop.track,static_cast<float>(pendingLoop.value)));
             if(!rejected){
                 const auto action=pendingLoop.action;
                 if(action==LoopAction::record){

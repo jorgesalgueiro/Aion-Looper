@@ -18,6 +18,7 @@
 | Loop names | Original name fields, C++ message-thread session labels on all 20 tracks; Unicode, Enter-to-blur, editor reload and acknowledged deletion | Temporary session metadata; project persistence/export remains unported; 4096 UTF-8 byte IPC limit |
 | Continuous metronome | Native port of original worklet, sample-grid accents/decay, existing button/N/volume/flash, independent monitor output excluded from loop capture and MASTER meter | Unchanged-worklet and connected Engine PCM, 64/128 and native UI gates; DAW/MIDI clock remains separate |
 | Static SOUND / VISUAL count-in | Original checkboxes; audio-owned 440/880 Hz triangle cues, 100ms sound/150ms flash, independent MASTER bypass and capture exclusion; cancellation and latched timing | Unchanged scheduler + original arm/grid, analytical waveform and actual WebView2 WebAudio PCM gates; physical listening/driver latency remains separate |
+| Loop Start slider | Original control/display; full-precision phase metadata, release schedules source at +50ms, reverse/phase latches and bounded FIFO; OFF/static/dynamic source offsets | Unchanged setter/restart/AudioGraph + committed PCM, 64/128 and native slider drag gates; Q/nudge and exact browser transition envelopes remain separate |
 | Loop editing/export | Other editing features not ported | Reference PCM/state/UI fixtures |
 | Drone voices/sampler/tracker/FX | Not ported | Algorithm/timing/CPU and saved-state fixtures |
 | MIDI learn/FCB1010/Oxygen/HID | Designed, not implemented | Real hardware, reconnect/panic and learn matrix |

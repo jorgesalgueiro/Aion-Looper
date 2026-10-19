@@ -11,7 +11,8 @@ performance commands, the original NORM action (including its no-op envelope
 repair), the loop Rvers control, per-loop/global Undo/Redo, and original MULT
 capture/doubling, and the internal Master BPM static/dynamic arm-record-play
 workflow with unified mouse/keyboard gestures, native session naming and the
-continuous monitor-only metronome and static SOUND/VISUAL count-in. Offline DSP and connected
+continuous monitor-only metronome, static SOUND/VISUAL count-in and the original
+Start slider. Offline DSP and connected
 committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.
@@ -115,3 +116,15 @@ all cancellation/reset barriers and unrelated/rejected command protection.
 Preserve real mouse SOUND/cancel checks in both block-size workflows. Actual
 browser acceptance currently covers WebView2; other engines/hardware remain
 separate work. Never create a product AudioContext for native sound.
+
+Start-slider acceptance must retain js_native_start_phase's unchanged setter,
+Loop.restart and AudioGraph source offsets/conditioned PCM at <=1e-6, including
+rapid future sources, sync/solo exceptions, reverse and fractional rates. Keep
+phase values/source offset math double precision; preserve float audio controls.
+Do not replace the fixed FIFO with a single pending restart: it loses accepted
+releases within 50ms. Preserve cancellation epochs on panic/DEL/reset and source
+ownership changes, bounded overflow rejection, metadata-only dragging and the
+stopped/empty release guard. Retain zero callback new/delete, full-pool controls,
+Engine stereo/64/128 checks and actual native slider drag/PCM tests. Q/nudge and
+bit identity of browser transition envelopes are separate work. Preserve the
+user's local logo edits when staging controller changes; avoid blanket formatting.

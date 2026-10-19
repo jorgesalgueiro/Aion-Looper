@@ -174,12 +174,18 @@ bool LoopBank::finish(Track& track) noexcept {
     jobState.store(1,std::memory_order_release);return true;
 }
 void LoopBank::blend(Track& track) noexcept {track.blendFrom=track.last;track.blendRemaining=fadeLength;}
+bool LoopBank::setStartDelay(std::uint32_t id,double value) noexcept {
+    if(id>=trackCount||!std::isfinite(value)||value<0||value>1)return false;
+    tracks[id].info.startDelay=value;return true;
+}
 void LoopBank::restartSource(Track& track) noexcept {
+    ++track.phaseEpoch;track.info.phaseApplyFrame=0;
     retire(track.reverseHold);track.reverseHold=nullptr;
     track.activeReverse=track.info.state==LoopState::playing&&track.info.reverse;
-    if(track.clip&&track.info.state==LoopState::playing&&sync.settings.mode!=SyncMode::off){
-        track.phase=std::fmod((static_cast<double>(frame)-sync.origin)*track.targetRate,static_cast<double>(track.clip->length));
-        if(track.phase<0)track.phase+=track.clip->length;
+    if(track.clip&&track.info.state==LoopState::playing){
+        const double length=track.clip->length,shift=track.info.startDelay*length;
+        const double offset=sync.settings.mode!=SyncMode::off?(static_cast<double>(frame)-sync.origin)*track.phaseRate-shift:shift;
+        track.phase=std::fmod(offset,length);if(track.phase<0)track.phase+=length;
         track.info.position=static_cast<std::uint32_t>(track.phase);
     }
 }
@@ -212,7 +218,7 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
 }
 void LoopBank::stop(Track& track) noexcept {
     if(track.info.state==LoopState::armed){clear(track);return;}
-    track.startAt=track.endAt=0;track.info.stopPending=false;
+    track.startAt=track.endAt=0;++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stopPending=false;
     if(capturing(track.info.state))(void)finish(track);
     if(track.info.state==LoopState::finalizing){track.finalPlay=false;track.playWhileFinalizing=false;}
     else if(track.info.state!=LoopState::empty)track.info.state=LoopState::stopped;
@@ -220,7 +226,7 @@ void LoopBank::stop(Track& track) noexcept {
     track.tail=track.last;track.tailRemaining=fadeLength;track.phase=0;track.info.position=0;
 }
 void LoopBank::clear(Track& track) noexcept {
-    ++track.revision;track.startAt=track.endAt=0;track.plannedFrames=0;
+    ++track.phaseEpoch;++track.revision;track.startAt=track.endAt=0;track.plannedFrames=0;
     for(std::uint32_t i=0;i<track.info.undoCount;++i)retire(track.undo[i]);
     for(std::uint32_t i=0;i<track.info.redoCount;++i)retire(track.redo[i]);
     track.undo.fill(nullptr);track.redo.fill(nullptr);
@@ -235,7 +241,7 @@ void LoopBank::clear(Track& track) noexcept {
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
     const bool muted=track.info.muted;track.info=LoopView{};track.info.muted=muted;
-    track.phase=0;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=false;
+    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=false;
     if(freeCount)poolFull=false;
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
@@ -253,13 +259,13 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(s==LoopState::playing&&(std::abs(t.info.playbackRate-1)>0.01f||t.rateRemaining))return false;
             if(s==LoopState::playing&&value==1){
                 if(!freeCount||growthRoom(t)<128)return false;
-                t.captureLength=t.captureOffset=0;t.info.finalizationFailed=false;s=LoopState::multiplying;poolFull=false;return true;
+                ++t.phaseEpoch;t.info.phaseApplyFrame=0;t.captureLength=t.captureOffset=0;t.info.finalizationFailed=false;s=LoopState::multiplying;poolFull=false;return true;
             }
             if(t.clip->length>growthRoom(t))return false;
             job.blockCount=0;job.length=0;job.offset=0;job.track=id;job.revision=t.revision;
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=false;job.multiply=job.doubling=true;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
-            t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            ++t.phaseEpoch;t.info.phaseApplyFrame=0;t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         }
         case LoopAction::undo:return restore(t,id,false);
@@ -272,7 +278,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
                 if(length>available()||length<1)return false;
                 t.plannedFrames=static_cast<std::uint32_t>(length);
             }
-            t.info.playbackRate=t.rate=t.targetRate=1;t.rateRemaining=0;t.captureLength=t.captureOffset=0;
+            t.phaseRate=1;t.info.playbackRate=t.rate=t.targetRate=1;t.rateRemaining=0;t.captureLength=t.captureOffset=0;
             t.info.length=t.info.position=0;t.phase=0;t.info.finalizationFailed=false;
             t.info.originalBpm=sync.settings.bpm;t.info.dynamicRecorded=t.recordMode==SyncMode::dynamic;
             s=LoopState::recording;poolFull=false;
@@ -297,7 +303,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             return finish(t);
         case LoopAction::stopImmediate:stop(t);return true;
         case LoopAction::stop:
-            if(s==LoopState::playing&&sync.settings.mode!=SyncMode::off){s=LoopState::stopping;t.endAt=SyncClock::deadline(sync.nextGrid(frame));return true;}
+            if(s==LoopState::playing&&sync.settings.mode!=SyncMode::off){++t.phaseEpoch;t.info.phaseApplyFrame=0;s=LoopState::stopping;t.endAt=SyncClock::deadline(sync.nextGrid(frame));return true;}
             stop(t);return true;
         case LoopAction::clear:++t.clearEpoch;clear(t);return true;
         case LoopAction::play:
@@ -307,7 +313,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::overdub:
         case LoopAction::substitute:
             if(s!=LoopState::playing||!t.clip||hasCapture()||t.info.playbackRate!=1||t.rateRemaining)return false;
-            t.captureLength=0;t.captureOffset=t.info.position;t.info.finalizationFailed=false;
+            ++t.phaseEpoch;t.info.phaseApplyFrame=0;t.captureLength=0;t.captureOffset=t.info.position;t.info.finalizationFailed=false;
             s=action==LoopAction::overdub?LoopState::overdubbing:LoopState::substituting;return true;
         case LoopAction::volume:
             if(!std::isfinite(value)||value<0||value>2)return false;
@@ -327,7 +333,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             job.blockCount=0;job.length=t.clip->length;job.offset=0;job.track=id;job.revision=t.revision;
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=true;job.multiply=job.doubling=false;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
-            t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            ++t.phaseEpoch;t.info.phaseApplyFrame=0;t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         case LoopAction::retrigger:
             if(!t.clip||capturing(s)||s==LoopState::finalizing||s==LoopState::armed||s==LoopState::queued||s==LoopState::stopping)return false;
@@ -344,6 +350,26 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if (t.panRemaining) t.panIncrement = {(t.panTarget.left-t.panGain.left)/t.panRemaining,(t.panTarget.right-t.panGain.right)/t.panRemaining};
             else t.panGain = t.panTarget;
             return true;
+        }
+        case LoopAction::startDelay:return setStartDelay(id,value);
+        case LoopAction::applyStart: {
+            if(s!=LoopState::playing||!t.clip)return true; // Original restart guard.
+            const double target=static_cast<double>(frame)/rate+0.05;
+            const auto deadline=SyncClock::deadline(target*rate);
+            const double length=t.clip->length,shift=t.info.startDelay*length;
+            const bool excluded=soloTrack>=0&&soloTrack!=static_cast<int>(id);
+            const double offset=sync.settings.mode!=SyncMode::off&&!excluded?(target*rate-sync.origin)*t.phaseRate-shift:shift;
+            // The reference creates the future source immediately. Latch its
+            // offset and reverse choice, not a later slider/toggle value.
+            double phase=std::fmod(offset+(static_cast<double>(deadline)-target*rate)*t.phaseRate,length);
+            if(phase<0)phase+=length;
+            // Reclaim cancelled events at the head, bounded by fixed capacity.
+            while(phaseRead!=phaseWrite&&phaseEvents[phaseRead].epoch!=tracks[phaseEvents[phaseRead].track].phaseEpoch)
+                phaseRead=(phaseRead+1)%phaseCapacity;
+            const unsigned next=(phaseWrite+1)%phaseCapacity;
+            if(next==phaseRead)return false; // Keep every older accepted source.
+            phaseEvents[phaseWrite]={deadline,t.phaseEpoch,phase,id,t.info.reverse};phaseWrite=next;
+            t.info.phaseApplyFrame=deadline;return true;
         }
         case LoopAction::speed:
             if (!std::isfinite(value) || value < 0.25f || value > 2 || s == LoopState::recording
@@ -395,7 +421,22 @@ bool LoopBank::hasCapture() const noexcept {
     return false;
 }
 void LoopBank::beginBlock() noexcept {acceptResult();for(auto& track:tracks)track.info.peak=0;}
+void LoopBank::applyPhaseEvents() noexcept {
+    for(unsigned n=0;phaseRead!=phaseWrite&&n<phaseCapacity;++n){
+        const auto event=phaseEvents[phaseRead];auto& track=tracks[event.track];
+        const bool valid=event.epoch==track.phaseEpoch;
+        if(valid&&event.frame>frame)break;
+        phaseRead=(phaseRead+1)%phaseCapacity;
+        if(!valid||track.info.state!=LoopState::playing||!track.clip)continue;
+        retire(track.reverseHold);track.reverseHold=nullptr;
+        track.phase=event.phase;track.activeReverse=event.reverse;
+        track.info.position=static_cast<std::uint32_t>(track.phase);
+        if(track.info.phaseApplyFrame==event.frame)track.info.phaseApplyFrame=0;
+        blend(track);
+    }
+}
 Stereo LoopBank::tick(Stereo input) noexcept {
+    applyPhaseEvents();
     input={safe(input.left),safe(input.right)};Stereo mix{};
     for(auto& t:tracks){
         auto& v=t.info;schedules(t);
@@ -452,7 +493,8 @@ void LoopBank::updateRate(Track& track) noexcept {
         const double natural=ratio>=1?std::floor(ratio+0.5):1/std::max(1.0,std::floor(1/ratio+0.5));
         target=duration/(sync.loopFrames()/rate*natural)*track.info.playbackRate;
     }
-    const auto next=static_cast<float>(std::max(0.001,target));
+    track.phaseRate=std::max(0.001,target); // JS source offset uses Number before AudioParam float conversion.
+    const auto next=static_cast<float>(track.phaseRate);
     if(next==track.targetRate)return;
     track.targetRate=next;track.rateRemaining=fadeLength*4;
     if(track.rateRemaining)track.rateIncrement=(next-track.rate)/track.rateRemaining;else track.rate=next;

@@ -24,6 +24,7 @@ void multiplyTests();
 void syncTests();
 void metronomeTests();
 void countInTests();
+void startPhaseTests();
 int main() {
     aion::SpscQueue<unsigned, 8> q; unsigned value=0;
     for(unsigned i=0;i<7;++i) check(q.push(i),"queue capacity");
@@ -52,5 +53,6 @@ int main() {
     syncTests();
     metronomeTests();
     countInTests();
+    startPhaseTests();
     std::cout<<"PASS: queue bounds/concurrency, sample timing, smoothing, 64/128 invariance, no callback new/delete, finite output\n";
 }

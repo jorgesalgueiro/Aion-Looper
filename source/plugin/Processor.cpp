@@ -134,6 +134,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             object->setProperty("length", static_cast<int>(t.length)); object->setProperty("position", static_cast<int>(t.position));
             object->setProperty("undoCount",static_cast<int>(t.undoCount));object->setProperty("redoCount",static_cast<int>(t.redoCount));
             object->setProperty("reverse", t.reverse);
+            object->setProperty("startDelay",t.startDelay);object->setProperty("phaseApplyFrame",static_cast<juce::int64>(t.phaseApplyFrame));
             object->setProperty("scheduledFrame",static_cast<juce::int64>(t.scheduledFrame));object->setProperty("stopPending",t.stopPending);
             object->setProperty("effectiveRate",t.effectiveRate);object->setProperty("dynamicRecorded",t.dynamicRecorded);
             object->setProperty("pan", t.pan); object->setProperty("playbackRate", t.playbackRate);
@@ -180,7 +181,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if (!id.isInt() || static_cast<int>(id) < 0 || static_cast<int>(id) >= static_cast<int>(aion::LoopBank::trackCount)
             || !generation.isInt() || static_cast<int>(generation) <= 0) return fail("Invalid track or audio generation");
         const auto actionName = request.getProperty("action", {}).toString();
-        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply", "stopImmediate"};
+        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply", "stopImmediate", "startDelay", "applyStart"};
         unsigned action = 0;
         for (; action < std::size(names) && actionName != names[action]; ++action) {}
         if (action == std::size(names)) return fail("Unknown looper action");
@@ -192,7 +193,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if(actionName=="record"&&!inputAvailable(*this))return fail("No native input: enable an input device and Unmute Input in Options, or route audio from the host.");
         const auto requestId = nextRequest + 1;
         if (!engine.enqueueLoop({static_cast<aion::LoopAction>(action), static_cast<std::uint32_t>(static_cast<int>(id)), requestId,
-                                static_cast<std::uint32_t>(static_cast<int>(generation)), 0, actionName=="multiply"?(inputAvailable(*this)?1.0f:0.0f):static_cast<float>(number)}))
+                                static_cast<std::uint32_t>(static_cast<int>(generation)), 0, actionName=="multiply"?(inputAvailable(*this)?1.0f:0.0f):actionName=="startDelay"?number:static_cast<double>(static_cast<float>(number))}))
             return fail("Audio generation changed or command queue is full");
         nextRequest = requestId;
         result->setProperty("ok", true); result->setProperty("queued", true);

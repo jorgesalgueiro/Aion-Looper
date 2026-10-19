@@ -145,3 +145,8 @@ The tap stops/schedules stopping; 600ms cuts playback but keeps audio. Only the
 Releasing earlier, losing focus/pointer capture or STOP ALL cancels deletion.
 PLAY/FINISH/CANCEL/RECORD holds never delete. DEL deletes directly. The in-app
 English, Spanish and Portuguese manuals explain these rules.
+
+
+The original **Start** slider now adjusts playback phase. Drag to choose the
+value and release to apply it 50ms later during playback; STOP ALL cancels pending
+restarts and preserves the value, while DEL resets it. Q/nudge remain pending.

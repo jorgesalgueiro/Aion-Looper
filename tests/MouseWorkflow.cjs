@@ -80,6 +80,19 @@ let socket;
     let playing=await state('playing');assert(playing.tracks[0].length>4800,'Real captured PCM committed');
     await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await wait(s=>s.outputPeak>0.02,'Captured PCM renders through production processor');
+    // Drag the original Start slider using actual pointer input, then release.
+    const beforePhase=await snapshot();
+    const phaseRect=await evaluate(`(()=>{const e=document.getElementById('loop-start-slider-0');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x,y:r.y+r.height/2,w:r.width};})()`);
+    await call('Input.dispatchMouseEvent',{type:'mousePressed',x:phaseRect.x+phaseRect.w*0.2,y:phaseRect.y,button:'left',clickCount:1});
+    await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:phaseRect.x+phaseRect.w*0.7,y:phaseRect.y,buttons:1,button:'left'});
+    await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:phaseRect.x+phaseRect.w*0.7,y:phaseRect.y,button:'left',clickCount:1});
+    const phased=await wait(s=>s.tracks[0].startDelay>0.5&&s.tracks[0].phaseApplyFrame===0,'Mouse Start phase applied');
+    assert.equal(phased.tracks[0].state,'playing');assert.equal(phased.tracks[0].length,beforePhase.tracks[0].length);assert(!phased.rejected);
+    assert.equal(await evaluate(`document.getElementById('loop-delay-display-0').textContent`),Math.floor(phased.tracks[0].startDelay*(phased.tracks[0].length/phased.sampleRate*1000))+'ms');
+    await wait(s=>s.outputPeak>0.02,'Phase-shifted PCM keeps playing');
+    await evaluate(`(()=>{const e=document.getElementById('loop-start-slider-0');e.value=0;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await wait(s=>s.tracks[0].startDelay===0&&s.tracks[0].phaseApplyFrame===0,'Restore zero phase');
+
     const namedPcm=await snapshot();
     await click('#loop-0 .track-name');await call('Input.insertText',{text:'Guitarra Á 1 + 😀'});
     await call('Input.dispatchKeyEvent',{type:'keyDown',code:'Enter',key:'Enter',windowsVirtualKeyCode:13});

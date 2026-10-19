@@ -1,0 +1,82 @@
+// Execute unchanged UIManager.setLoopStartDelay, Loop.restart, AudioGraph and buffer DSP.
+// Audio nodes are IO stubs; this compares source PCM, not browser resampling/envelopes.
+const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),assert=require('node:assert/strict'),{spawnSync}=require('node:child_process');
+(async()=>{
+ const root=path.resolve(__dirname,'..');
+ const makeBuffer=(data,rate)=>{const channels=data.map(c=>Float32Array.from(c));return {length:channels[0].length,duration:channels[0].length/rate,sampleRate:rate,numberOfChannels:channels.length,getChannelData:c=>channels[c]};};
+ const param=()=>({value:1,setValueAtTime(){},linearRampToValueAtTime(){},cancelScheduledValues(){}});
+ const node=()=>({connect(){},disconnect(){},start(time,offset){this.started={time,offset};},stop(){},gain:param(),playbackRate:param()});
+ const audio={state:'running',currentTime:0,createBuffer:(count,length,rate)=>makeBuffer(Array.from({length:count},()=>Array(length).fill(0)),rate),createBufferSource:node,createGain:node,createChannelMerger:node,createAnalyser:node};
+ const context={window:{},document:{getElementById:()=>null,createElement:()=>({}),head:{appendChild(){}}},effects:{},FACTORY_EFFECTS:{},console,setTimeout:()=>0,clearTimeout(){},audio};vm.createContext(context);
+ vm.runInContext(fs.readFileSync(path.join(root,'resources/ui/Modules/audioEngine.js'),'utf8'),context);
+ const loops=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');vm.runInContext(loops,context);
+ const match=/\/\/ Remove DC Offset\s+for \(let c = 0; c < finalBuffer.numberOfChannels; c\+\+\)/.exec(loops);assert(match);
+ const start=match.index+match[0].indexOf('for ('),brace=loops.indexOf('{',start);let end=brace+1,depth=1;
+ for(;depth;end++){assert(end<loops.length);if(loops[end]==='{')depth++;if(loops[end]==='}')depth--;}
+ vm.runInContext(`const state={audioContext:audio,syncEnabled:false,loops:[],customEffects:{}};
+ UIManager.updateLoop=()=>{};
+ globalThis.condition=b=>{AudioEngine.seamlessLoopCrossfade(b,0.015);const finalBuffer=b;${loops.slice(start,end)}};
+ globalThis.setup=b=>{const loop=new Loop(0);loop.audioBuffer=b;loop.duration=b.duration;loop.state='playing';state.loops=[loop];loop.graph=new AudioGraph(loop);if(!loop.graph.build())throw Error('Reference graph failed');};
+ globalThis.toggle=()=>state.loops[0].toggleEffect('reverse');
+ globalThis.restart=()=>state.loops[0].graph.retrigger(0,state.loops[0]);
+ globalThis.stored=()=>state.loops[0].audioBuffer;
+ globalThis.source=()=>state.loops[0].graph.source.buffer;
+ globalThis.normalize=()=>state.loops[0].normalize();
+ globalThis.edit=async(take,offset,feedback)=>{const finalBuffer=take;${loops.slice(start,end)};AudioEngine.seamlessLoopCrossfade(take,0.008);await AudioEngine.mixBuffersCircular(state.loops[0].audioBuffer,take,offset,feedback);};`,context);
+
+ vm.runInContext(`state.bpm=120;state.bars=1;state.timeSig={num:4};state.masterStartTime=0;state.loopLength=2;
+ globalThis.setDelay=value=>UIManager.setLoopStartDelay(0,value);
+ globalThis.configure=(mode,bpm,origin,num)=>{state.syncEnabled=mode!==0;state.syncMode=mode===1?'static':mode===2?'dynamic':'off';state.bpm=bpm;state.masterStartTime=origin;state.timeSig.num=num;state.loopLength=60/bpm*num;state.loops[0].originalBpm=120;};
+ globalThis.applyPhase=()=>state.loops[0].restart(audio.currentTime+0.05);
+ globalThis.rate=()=>Math.fround(state.loops[0].effectivePlaybackRate);
+ globalThis.offset=()=>state.loops[0].graph.startOffset;
+ globalThis.phaseSolo=value=>{state.loops[0].isMutedBySolo=value;};
+ globalThis.phaseSpeed=value=>{state.loops[0].playbackRate=value;};
+ `,context);
+ let cases=0,samples=0,maximum=0;
+ for(const mono of [true,false])for(const sampleRate of [8000,48000,96000])for(const length of [1,17,512,4097]){
+  audio.currentTime=0;vm.runInContext('state.syncEnabled=false;state.bpm=120;',context);
+  const raw=[Array.from({length},(_,i)=>Math.fround(0.12+0.4*Math.sin(i*0.11))),Array.from({length},(_,i)=>Math.fround(-0.08+0.2*Math.cos(i*0.073)))];
+  const buffer=makeBuffer(mono?[raw[0]]:raw,sampleRate);context.condition(buffer);
+  let frame=length,phase=0,origin=0,bpm=120,pending=[],excluded=false;
+  const commands=[`prepare 81920 ${sampleRate}`,'record 0 0',...raw[0].map((v,i)=>`tick 0 ${v}${mono?'':' '+raw[1][i]}`),'finish 0 0','wait 0 0'];
+  audio.currentTime=frame/sampleRate;context.setup(buffer);let playingSource=context.source();const checks=[];
+  const render=count=>{for(let n=0;n<count;++n){while(pending.length&&frame>=pending[0].at){const event=pending.shift();phase=event.phase;playingSource=event.source;}
+   const src=playingSource,index=Math.floor(phase),next=(index+1)%length,f=Math.fround(phase-index);
+   const value=c=>Math.fround(src.getChannelData(c)[index]+Math.fround(src.getChannelData(c)[next]-src.getChannelData(c)[index])*f);
+   const expected=excluded?0:(value(0)+value(mono?0:1))*0.5*Math.SQRT1_2;
+   checks.push({row:commands.length,expected});commands.push('tick 0 0');phase=(phase+context.rate())%length;frame++;
+  }};
+  for(const mode of [0,1,2]){
+   const nextBpm=mode===1?137.3:120;origin=frame-(frame-origin)*bpm/nextBpm;bpm=nextBpm;
+   commands.push(`sync ${mode} ${bpm} 4 1`);context.configure(mode,bpm,origin/sampleRate,4);
+   if(mode>0){context.toggle();commands.push(`reverse 0 ${mode===1?1:0}`);}
+   const speed=mode===2?Math.fround(0.37):1;context.phaseSpeed(speed);commands.push(`speed 0 ${speed}`);
+   for(const delay of [0.25,0.333,0.000000001,1,0]){
+    audio.currentTime=frame/sampleRate;context.setDelay(delay);commands.push(`delay 0 ${delay}`);render(7); // Input alone must not jump the source.
+    audio.currentTime=frame/sampleRate;context.applyPhase();commands.push('apply 0 0');
+    const target=(audio.currentTime+0.05)*sampleRate,nearest=Math.round(target),deadline=Math.abs(target-nearest)<=4*Number.EPSILON*Math.max(1,Math.abs(target))?nearest:Math.ceil(target);
+    pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate+(deadline-target)*context.rate())%length+length)%length});
+    render(deadline-frame+Math.min(length+3,147));
+   }
+   // Two future sources must both render, even when released within 50ms.
+   for(const delay of [0.2,0.8]){
+    audio.currentTime=frame/sampleRate;context.setDelay(delay);commands.push(`delay 0 ${delay}`);context.applyPhase();commands.push('apply 0 0');
+    const target=(audio.currentTime+0.05)*sampleRate,nearest=Math.round(target),deadline=Math.abs(target-nearest)<=4*Number.EPSILON*Math.max(1,Math.abs(target))?nearest:Math.ceil(target);
+    pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate+(deadline-target)*context.rate())%length+length)%length});render(7);
+   }
+   render(pending.at(-1).at-frame+147);
+  }
+  // The original optimized restart bypasses master phase while muted by solo.
+  commands.push('solo 1 0');context.phaseSolo(true);excluded=true;context.setDelay(0.217);commands.push('delay 0 0.217');
+  audio.currentTime=frame/sampleRate;context.applyPhase();commands.push('apply 0 0');
+  const target=(audio.currentTime+0.05)*sampleRate,nearest=Math.round(target),deadline=Math.abs(target-nearest)<=4*Number.EPSILON*Math.max(1,Math.abs(target))?nearest:Math.ceil(target);
+  pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate+(deadline-target)*context.rate())%length+length)%length});render(deadline-frame+7);
+  commands.push('solo 1 0');context.phaseSolo(false);excluded=false;render(47);
+  const result=spawnSync(process.argv[2],[],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:32*1024*1024});assert.equal(result.status,0,result.stderr);const rows=result.stdout.trim().split(/\r?\n/);assert.equal(rows.length,commands.length);
+  rows.forEach((r,i)=>assert.equal(Number(r.split(' ')[0]),1,'Rejected '+commands[i]));
+  for(const check of checks){const row=rows[check.row].split(' ').map(Number);for(const value of row.slice(6)){const error=Math.abs(value-check.expected);maximum=Math.max(maximum,error);assert(error<=1e-6,`Start phase ${mono}/${sampleRate}/${length}, frame ${row[1]}: ${value} vs ${check.expected}`);}samples++;}
+  cases++;
+ }
+ console.log(JSON.stringify({result:'PASS',cases,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:'Unchanged UI setter, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 50ms timing; linear interpolation, browser playback envelopes/resampling excluded'}));
+})().catch(e=>{console.error(e);process.exitCode=1;});

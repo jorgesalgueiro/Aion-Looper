@@ -26,6 +26,13 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert(await evaluate(`!document.getElementById('loopContainer').textContent.includes('undefined')`),'Missing renderer field');assert(!visible.text.includes('\u00c3'),'Garbled native status text');
  const snapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);assert(snapshot.ok&&snapshot.tracks.length===20);
  assert(snapshot.tracks.every(t=>t.state==='empty'),'Smoke test must not capture audio');
+ assert(await evaluate(`!document.getElementById('loop-start-slider-0').disabled`),'Original Start slider enabled');
+ await evaluate(`(()=>{const s=document.getElementById('loop-start-slider-0');s.value='0.333';s.dispatchEvent(new Event('input',{bubbles:true}));s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+ let phaseSnapshot;
+ for(let n=0;n<50;++n){phaseSnapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);if(phaseSnapshot.tracks[0].startDelay===0.333&&phaseSnapshot.lastRequestId>=snapshot.lastRequestId+2)break;await delay(50);}
+ assert.equal(phaseSnapshot.tracks[0].startDelay,0.333);assert.equal(phaseSnapshot.tracks[0].state,'empty');assert.equal(phaseSnapshot.tracks[0].phaseApplyFrame,0);assert(!phaseSnapshot.rejected,'Start release on empty is a harmless no-op');
+ assert((await evaluate(`AionNative.request({operation:'loop',action:'startDelay',track:0,generation:${snapshot.generation},expiresAt:Date.now()+3000,value:0})`)).ok);
+
  assert(await evaluate(`document.getElementById('btnGlobalUndo').disabled&&document.getElementById('btnGlobalRedo').disabled&&[...document.querySelectorAll('#loopContainer button')].filter(b=>['UNDO','REDO'].includes(b.textContent.trim())).every(b=>b.disabled)`),'Empty history controls are disabled');
  const layout=await evaluate(`({extraPanel:!!document.getElementById('native-mode'),masterInOriginal:!!document.querySelector('#mod-master #native-master'),inputInOriginal:!!document.querySelector('#mod-input #native-monitor'),stopInOriginal:!!document.querySelector('#mod-menu #native-stop-all'),syncMode:document.querySelector('input[name=syncMode]:checked').value,syncEnabled:[...document.querySelectorAll('input[name=syncMode]')].every(e=>!e.disabled)})`);
  assert(!layout.extraPanel&&layout.masterInOriginal&&layout.inputInOriginal&&layout.stopInOriginal&&layout.syncEnabled&&layout.syncMode===['off','static','dynamic'][snapshot.syncMode],JSON.stringify(layout));

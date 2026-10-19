@@ -1038,3 +1038,64 @@ and `build/countin-audio-audit.log`. Only the existing Windows standalone and
 necessary test targets were rebuilt. Physical drivers, DAW/plugin lifecycle,
 Apple/iOS, external MIDI sync and remaining application parity are not accepted
 by these gates.
+
+
+## Original Start slider — 2026-10-19
+
+The original slider and millisecond display are restored, including input-only
+metadata changes and the release-triggered +50ms source restart. OFF playback
+uses the positive buffer offset; synced playback subtracts the chosen shift
+from the master-relative source position. Offset 1 wraps to the loop beginning.
+Start values and source-position math retain JS Number precision; existing audio
+interpolation/control-rate storage keeps its float behavior. Reverse and phase
+choices latch when the future source is scheduled. Stop/panic, DEL/reset and
+source-ownership changes cancel old restarts; unrelated controls do not. Stopped
+or empty releases are harmless. No PCM is edited and no history entry is added.
+Q/nudge remain disabled and are separate work. Existing native declicking is
+reused; bit identity of browser resampling and transition envelopes is not claimed.
+
+A reproduced rapid-release regression lost the first accepted source when a
+second release arrived within 50ms (`build/start-rapid-before.log`). It was
+repaired with a fixed audio-owned FIFO (127 reserved future sources), cancellation
+epochs and bounded work. Overflow rejects the newest request and preserves all
+older accepted sources. Epoch invalidation prevents late restarts after deletion,
+panic, capture/finalization or reprepare. No timer, allocation, lock or full-buffer
+processing runs in the callback. The pending-event storage is fixed-size.
+
+`js_native_start_phase` executes the unchanged UI setter, Loop.restart and full
+AudioGraph build/retrigger methods with browser IO stubs. Conditioned source PCM
+comes from unchanged reference fade/DC processing. Native committed playback is
+compared using the same float linear interpolation model as the retained reverse
+gate. All 24 mono/stereo, 8/48/96kHz and 1/17/512/4097-frame cases cover OFF/static/
+dynamic clocks, positive/zero/full-cycle/tiny offsets, reversed sources, fractional
+varispeed, dragging before release, overlapping future releases and the original
+solo-muted restart exception (observed again after unmuting). Final scope:
+1,198,724 compared samples, maximum absolute error 6.41354e-8, unchanged 1e-6 limit.
+Native core tests cover the 50ms boundary, latched values despite later edits,
+FIFO capacity and panic cancellation, invalid parameters, a full audio pool,
+actual Engine stereo/64/128 equality and zero callback new/delete.
+
+The native WebView gate exercises the original control on empty loops. The
+hardware-free production processor/editor test drags it with real pointer events
+while captured audio plays, verifies state/length/display and continued PCM,
+and restores phase zero before the existing main-workflow regressions. Original
+16 reference assets remain byte-identical. The user's local ASCII-logo whitespace
+edits are retained separately; no package/version changes are needed.
+
+The full post-FIFO regression suites pass Windows 13/13 (164.78s) and Ubuntu
+13/13 (263.61s). The final solo-specific condition then passes all four affected
+core/phase/frontend/original-asset gates again on Windows (44.55s) and Ubuntu
+(58.69s), plus ASan/UBSan core and phase PCM 2/2 (92.68s). The connected capture
+PCM audit retains 126 cases / 965,826 samples, max error 7.39476e-8 at 1e-6.
+The rebuilt standalone also passes the original count-in WebAudio gate and native
+WebView checks without creating a product AudioContext.
+
+Final native acceptance also passes both 64/128 mouse workflows, including actual
+Start dragging, unchanged clip length, phase display/PCM and the retained 4s STOP
+deletion/cancellation cases. Logs: `build/start-final-windows.log`,
+`build/start-final-ubuntu.log`, `build/start-acceptance-windows.log`,
+`build/start-acceptance-ubuntu.log`, `build/start-acceptance-asan.log`,
+`build/start-acceptance-ui.log`, `build/start-acceptance-mouse.log` and
+`build/start-acceptance-audio.log`. No new package, version or platform readiness
+claim. Physical drivers, DAW/plugin lifecycle, browser transition envelopes,
+Apple/iOS and complete application parity remain separate acceptance work.

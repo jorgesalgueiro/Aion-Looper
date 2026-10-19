@@ -12,7 +12,7 @@ struct LoopCommand {
     LoopAction action{};
     std::uint32_t track = 0, requestId = 0, generation = 0;
     std::uint64_t frame = 0;
-    float value = 0;
+    double value = 0;
 };
 struct EngineView {
     std::array<LoopView, LoopBank::trackCount> tracks{};

@@ -11,13 +11,14 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate };
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart };
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
     std::uint32_t length = 0, position = 0, undoCount = 0, redoCount = 0;
     std::uint64_t scheduledFrame = 0, clearEpoch = 0;
-    double originalBpm = 0;
+    double originalBpm = 0, startDelay = 0;
+    std::uint64_t phaseApplyFrame = 0;
     float effectiveRate = 1;
     bool dynamicRecorded = false, stopPending = false;
     float volume = 1, feedback = 0.8f, peak = 0, pan = 5, playbackRate = 1;
@@ -37,6 +38,7 @@ public:
     void prepare(std::uint32_t frames = defaultFrames, std::uint32_t fadeFrames = 240, double sampleRate = 48000);
     bool finalizationPending() const noexcept { return jobState.load(std::memory_order_acquire) != 0; }
     bool apply(LoopAction, std::uint32_t track, float value = 0) noexcept;
+    bool setStartDelay(std::uint32_t track,double value) noexcept;
     Stereo tick(Stereo input) noexcept;
     void beginBlock() noexcept;
     void setAutoPlay(bool enabled) noexcept { autoPlay = enabled; }
@@ -47,7 +49,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { frame=0;sync.reset(rate); }
+    void resetTimeline() noexcept { frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
 private:
@@ -73,7 +75,8 @@ private:
         std::uint32_t blockCount = 0, blendRemaining = 0, tailRemaining = 0;
         Stereo last{}, blendFrom{}, tail{};
         float gain = 1;
-        double phase = 0;
+        double phase = 0, phaseRate = 1;
+        std::uint64_t phaseEpoch = 0;
         float rate = 1, targetRate = 1, rateIncrement = 0;
         std::uint32_t rateRemaining = 0, panRemaining = 0;
         Stereo panGain{0.7071067811865475f, 0.7071067811865475f};
@@ -89,6 +92,11 @@ private:
         std::uint32_t outputFrames=0;
         bool edit = false, normalize = false, multiply = false, doubling = false;
     };
+    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false;};
+    static constexpr unsigned phaseCapacity=128;
+    std::array<PhaseEvent,phaseCapacity> phaseEvents{};
+    unsigned phaseRead=0,phaseWrite=0;
+    void applyPhaseEvents() noexcept;
     float& sample(Track&, std::uint32_t frame, std::uint32_t channel) noexcept;
     bool finish(Track&) noexcept;
     void acceptResult() noexcept;
