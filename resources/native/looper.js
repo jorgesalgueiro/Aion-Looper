@@ -50,6 +50,8 @@
                                                                                                                            ████████████            ██████            ██                      ███                   ███
                                                                                                                                                                  █████                      ███                  ████
                                                                                                                                                                  ███                                             ███\n`;
+        // Align glyph columns, not each ragged row independently.
+        if (logo) logo.style.textAlign = 'left';
         const fitLogo = () => {
             const pre = document.querySelector('#header pre');
             if (!pre) return;

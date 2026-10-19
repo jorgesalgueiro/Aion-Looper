@@ -1099,3 +1099,23 @@ deletion/cancellation cases. Logs: `build/start-final-windows.log`,
 `build/start-acceptance-audio.log`. No new package, version or platform readiness
 claim. Physical drivers, DAW/plugin lifecycle, browser transition envelopes,
 Apple/iOS and complete application parity remain separate acceptance work.
+
+
+## ASCII marquee alignment — 2026-10-19
+
+The header's inherited `text-align:center` centered each unequal-length ASCII
+row independently. Fitting the overall bounding box did not detect those shifted
+columns. The native adapter now left-aligns text inside the existing inline-block
+rainbow span, retaining outer centering, font, colors, line spacing and the user's
+hand-edited artwork. No audio code or original asset changes are needed.
+
+The native WebView regression measures the x coordinate of the same character
+column across actual DOM text rows at 800px and 1200px, asserts <1px spread, and
+retains the viewport-fit checks. A visual preview confirms intact letter shapes.
+
+Rebuilt Windows Standalone acceptance passed: frontend checks, 12 original
+WebAudio count-in PCM comparisons and the native WebView regression, including
+the new column-alignment checks at both widths. Visual inspection of the rebuilt
+app screenshot confirms intact artwork. Logs: `build/logo-align-build.log` and
+`build/logo-align-ui.log`; screenshot: `build/native-looper-top.png`. The existing
+Standalone executable was updated; no new package was created.

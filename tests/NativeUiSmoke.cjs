@@ -19,6 +19,14 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  let info;
  for(let n=0;n<60;++n){info=await evaluate(`({cards:document.querySelectorAll('#loopContainer > div').length,status:document.getElementById('native-status')?.textContent,native:typeof window.AionNative?.request})`);if(info.cards===20)break;await delay(150);}
  assert.equal(info.cards,20,JSON.stringify(info));assert.equal(info.native,'function');
+ // A centered marquee must still left-align its preformatted rows internally.
+ for(const width of [800,1200]){
+  await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});await delay(150);
+  const logoGrid=await evaluate(`(()=>{const e=document.querySelector('#header .rainbow-text'),node=e.firstChild,lines=node.textContent.split('\\n');let offset=0;const x=[];for(const line of lines){if(line.length>40&&line.includes('█')){const r=document.createRange();r.setStart(node,offset+20);r.setEnd(node,offset+21);x.push(r.getBoundingClientRect().x);}offset+=line.length+1;}return {x,align:getComputedStyle(e).textAlign,right:e.getBoundingClientRect().right,viewport:document.documentElement.clientWidth};})()`);
+  assert(logoGrid.x.length>10,'Measure actual ASCII rows');assert.equal(logoGrid.align,'left');assert(Math.max(...logoGrid.x)-Math.min(...logoGrid.x)<1,'Same ASCII column must have the same x coordinate: '+JSON.stringify(logoGrid));assert(logoGrid.right<=logoGrid.viewport+1,'Logo fits viewport');
+ }
+ await call('Emulation.clearDeviceMetricsOverride');await delay(150);
+
  const manual=await evaluate(`['en','es','pt'].map(language=>({language,text:document.getElementById('native-hold-manual-'+language)?.textContent,parent:document.getElementById('native-hold-manual-'+language)?.parentElement.id}))`);
  assert(manual.every(m=>m.text?.includes('4 s')&&m.text.includes('600 ms')&&m.text.includes('Undo/Redo')&&m.text.includes('FINISH')&&m.parent==='manual-'+m.language),'Quick-delete instructions must be in all three original manual panels: '+JSON.stringify(manual));
  const visible=await evaluate(`({overlay:!!document.getElementById('startOverlay'),text:document.getElementById('native-status').textContent,mainVisible:document.getElementById('native-master').getBoundingClientRect().height>0})`);
