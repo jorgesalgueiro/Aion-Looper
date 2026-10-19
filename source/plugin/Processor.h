@@ -32,6 +32,10 @@ private:
     std::atomic<float>* autoPlay = nullptr;
     std::atomic<float> *syncMode=nullptr,*syncBpm=nullptr,*syncBars=nullptr,*syncNum=nullptr,*syncDen=nullptr,*countIn=nullptr;
     aion::EngineView latest{}; // Message-thread cached, coherent audio snapshot.
+    // Session labels belong to the message thread, never the audio callback.
+    std::array<juce::String, aion::LoopBank::trackCount> trackNames{};
+    std::array<std::uint64_t, aion::LoopBank::trackCount> nameClearEpochs{};
+    std::uint32_t nameGeneration = 0;
     std::uint32_t nextRequest = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AionProcessor)
 };

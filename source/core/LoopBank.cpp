@@ -240,7 +240,7 @@ void LoopBank::clear(Track& track) noexcept {
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
     if(action==LoopAction::stopAll){for(auto& track:tracks)stop(track);return true;}
-    if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks)clear(track);return true;}
+    if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks){++track.clearEpoch;clear(track);}return true;}
     if(action==LoopAction::undoGlobal){const int next=nextUndo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),false);}
     if(action==LoopAction::redoGlobal){const int next=nextRedo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),true);}
     if(id>=trackCount)return false;
@@ -299,7 +299,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::stop:
             if(s==LoopState::playing&&sync.settings.mode!=SyncMode::off){s=LoopState::stopping;t.endAt=SyncClock::deadline(sync.nextGrid(frame));return true;}
             stop(t);return true;
-        case LoopAction::clear:clear(t);return true;
+        case LoopAction::clear:++t.clearEpoch;clear(t);return true;
         case LoopAction::play:
             if(s!=LoopState::stopped||!t.clip)return false;
             if(sync.settings.mode!=SyncMode::off){s=LoopState::queued;t.startAt=SyncClock::deadline(sync.nextGrid(frame));return true;}
@@ -483,7 +483,7 @@ void LoopBank::schedules(Track& track) noexcept {
 std::array<LoopView,LoopBank::trackCount> LoopBank::view() const noexcept {
     std::array<LoopView,trackCount> views{};
     for(std::uint32_t i=0;i<trackCount;++i){views[i]=tracks[i].info;views[i].solo=soloTrack==static_cast<int>(i);views[i].effectiveRate=tracks[i].targetRate;
-        views[i].scheduledFrame=tracks[i].startAt?tracks[i].startAt:tracks[i].endAt;}
+        views[i].clearEpoch=tracks[i].clearEpoch;views[i].scheduledFrame=tracks[i].startAt?tracks[i].startAt:tracks[i].endAt;}
     return views;
 }
 }

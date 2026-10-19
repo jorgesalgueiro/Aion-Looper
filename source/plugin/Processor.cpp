@@ -78,9 +78,19 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     if (args.size() != 1 || args[0].getDynamicObject() == nullptr) return fail("Expected one request object");
     const auto& request = args[0];
     const auto operation = request.getProperty("operation", {}).toString();
+    // Consume acknowledged clears before reading/editing labels. Only fixed-size
+    // epochs cross from audio; string allocation and destruction stay here.
+    aion::EngineView view{};
+    while (engine.popView(view)) latest = view;
+    if (latest.generation != nameGeneration) {
+        if (latest.audioReset) trackNames.fill({});
+        nameGeneration = latest.generation;
+    }
+    for (std::size_t i=0; i<trackNames.size(); ++i) {
+        if (nameClearEpochs[i] != latest.tracks[i].clearEpoch) trackNames[i].clear();
+        nameClearEpochs[i] = latest.tracks[i].clearEpoch;
+    }
     if (operation == "hello" || operation == "snapshot") {
-        aion::EngineView view{};
-        while (engine.popView(view)) latest = view;
         result->setProperty("ok", true); result->setProperty("stage", "native-loop-preview");
         result->setProperty("legacyAudioEnabled", false);
         const float masterValue = master->load();
@@ -109,6 +119,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         for (const auto& t : latest.tracks) {
             auto* object = new juce::DynamicObject();
             object->setProperty("state", names[static_cast<unsigned>(t.state)]);
+            object->setProperty("name", trackNames[static_cast<std::size_t>(&t-latest.tracks.data())]);
             object->setProperty("length", static_cast<int>(t.length)); object->setProperty("position", static_cast<int>(t.position));
             object->setProperty("undoCount",static_cast<int>(t.undoCount));object->setProperty("redoCount",static_cast<int>(t.redoCount));
             object->setProperty("reverse", t.reverse);
@@ -120,6 +131,13 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             tracks.add(juce::var(object));
         }
         result->setProperty("tracks", juce::var(tracks));
+    } else if (operation == "renameLoop") {
+        const auto id = request.getProperty("track", {});
+        const auto name = request.getProperty("name", {});
+        if (!id.isInt() || static_cast<int>(id)<0 || static_cast<int>(id)>=static_cast<int>(trackNames.size())) return fail("Invalid track");
+        if (!name.isString() || name.toString().getNumBytesAsUTF8()>4096) return fail("Expected a loop name of at most 4096 UTF-8 bytes");
+        trackNames[static_cast<std::size_t>(static_cast<int>(id))] = name.toString();
+        result->setProperty("ok", true);
     } else if (operation == "setParameter") {
         const auto id = request.getProperty("id", {}).toString();
         const bool boolean=id=="inputMonitor"||id=="autoPlayAfterRecord"||id=="countInVisual";

@@ -16,7 +16,7 @@ struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
     std::uint32_t length = 0, position = 0, undoCount = 0, redoCount = 0;
-    std::uint64_t scheduledFrame = 0;
+    std::uint64_t scheduledFrame = 0, clearEpoch = 0;
     double originalBpm = 0;
     float effectiveRate = 1;
     bool dynamicRecorded = false, stopPending = false;
@@ -61,7 +61,7 @@ private:
         std::array<Clip*,5> undo{},redo{}; // Immutable history leases, matching the reference depth.
         Clip* reverseHold = nullptr; // Old raw clip backing a playing reversed source after NORM.
         bool activeReverse = false;
-        std::uint64_t revision = 0;
+        std::uint64_t revision = 0, clearEpoch = 0;
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
         SyncMode recordMode=SyncMode::off;

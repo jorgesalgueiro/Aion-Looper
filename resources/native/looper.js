@@ -14,7 +14,7 @@
             <label><input id="native-monitor" type="checkbox"> MONITOR</label>
             <p>Standalone: choose device/ASIO driver and buffer in Options, then Unmute Input. Plugins use the host's audio routing.</p>
             <p id="native-status" role="status">Waiting for audio...</p>
-            <p>Session audio is temporary; save/export is not ported. Changing sample rate clears audio.</p></div>`;
+            <p>Session audio and loop names are temporary; save/export is not ported. Changing sample rate clears both.</p></div>`;
         const output = document.createElement('div'); output.className='mixer-row';
         output.innerHTML=`<label for="native-master" class="mixer-label">VOLUME</label>
             <input id="native-master" class="mixer-slider" type="range" min="0" max="2" step="0.01" value="0" aria-label="Master output volume">
@@ -89,8 +89,12 @@
         document.getElementById('midiStatus').textContent='Native MIDI mapping is not ported yet.';
         let selected=0;
         const enabled = () => snapshot?.audioReady && Date.now()-advancedAt < 1000;
-        const scheduler = new window.AionCommandQueue({ready:enabled,
-            run:c=>sendCommand(c.action,c.track,c.value),notify:message=>notify(message)});
+        const scheduler = new window.AionCommandQueue({ready:()=>enabled()||scheduler.items[0]?.metadata===true,
+            run:async c=>{
+                if(c.action!=='renameLoop')return sendCommand(c.action,c.track,c.value);
+                const reply=await rpc({operation:'renameLoop',track:c.track,name:c.name});
+                if(!reply.ok)throw Error(reply.error||'Name was not changed');
+            },notify:message=>notify(message)});
         const command=(action,track,value=0)=>scheduler.enqueue(()=>({action,track,value}),{track:action==='clearAll'?null:track,clearTrack:action==='clear'});
         const restoreHistory=(redo,id=null)=>scheduler.enqueue(()=>{
             const target=id??snapshot[redo?'nextRedo':'nextUndo'],t=snapshot.tracks[target];
@@ -188,6 +192,13 @@
                 row.querySelector('.loop-header').addEventListener('click',e=>{
                     if(enabled()&&!e.target.closest('button,input,select,label,textarea,a,canvas'))mainAction(i);
                 });
+                const name=bind(row.querySelector('.track-name'),e=>{
+                    e.stopPropagation();const value=e.target.value;
+                    // Keep typing after DEL ordered after the audio owner's clear ack.
+                    scheduler.enqueue(()=>({action:'renameLoop',track:i,name:value}),{track:i,key:`name:${i}`,metadata:true});
+                },'input');
+                name.addEventListener('keydown',e=>{if(e.key==='Enter')name.blur();e.stopPropagation();});
+                name.addEventListener('click',e=>e.stopPropagation());
                 const main=bind(row.querySelector(`#loop-action-${i}`),e=>{if(e.detail===0)mainAction(i);});
                 main.addEventListener('pointerdown',e=>{
                     if(e.button!==0||e.isPrimary===false)return;
@@ -215,7 +226,7 @@
                 feedback.addEventListener('dblclick',()=>queueControl('feedback',i,0.8));
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const canvas=row.querySelector('canvas');canvas.title='Playback position';
-                rows.push({row,main,volume,feedback,pan,speed,half,reset,mute,solo,retrigger,normalize,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
+                rows.push({row,main,name,volume,feedback,pan,speed,half,reset,mute,solo,retrigger,normalize,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
         function refresh() {
@@ -235,8 +246,10 @@
             document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state))?'RECORDING':'READY';
             const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)',multiplying:'(M)',finalizing:'[..]',armed:'(A)',queued:'[Q]',stopping:'[S]'};
             rows.forEach((r,i)=>{
-                const t=snapshot.tracks[i];r.row.className=`loop ${t.state}`;
-                r.row.querySelectorAll('[data-native-control]').forEach(e=>e.disabled=!active);
+                const t=snapshot.tracks[i];
+                if(document.activeElement!==r.name)r.name.value=t.name??'';
+                r.row.className=`loop ${t.state}`;
+                r.row.querySelectorAll('[data-native-control]').forEach(e=>e.disabled=!active);r.name.disabled=false;
                 r.main.disabled=!active||t.state==='finalizing'||(t.state==='empty'&&snapshot.freeFrames===0);
                 r.main.textContent=t.state==='finalizing'?'SAVING':['armed','queued'].includes(t.state)?'CANCEL':t.state==='stopping'?'STOP NOW':actionFor(t)==='substitute'?'REPLACE':actionFor(t).toUpperCase();r.main.setAttribute('aria-label',`Loop ${i+1}: ${r.main.textContent}`);r.main.title=r.main.getAttribute('aria-label');
                 r.row.querySelector(`#loop-state-symbol-${i}`).textContent=symbols[t.state];

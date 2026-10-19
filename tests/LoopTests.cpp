@@ -30,6 +30,20 @@ bool equal(const std::vector<aion::Stereo>& a,const std::vector<aion::Stereo>& b
 }
 void loopTests(){
  using namespace aion;using A=LoopAction;
+ // Metadata observes explicit deletion even if an empty state was never polled.
+ {
+  auto clearStorage=std::make_unique<LoopBank>();auto& labels=*clearStorage;labels.prepare(8192,0);
+  watch=true;
+  check(labels.view()[0].clearEpoch==0,"initial label clear epoch");
+  check(labels.apply(A::clear,0)&&labels.apply(A::clear,0),"empty repeated DEL");
+  check(labels.view()[0].clearEpoch==2&&labels.view()[1].clearEpoch==0,"scoped deletion epoch survives skipped snapshots");
+  labels.configureSync({SyncMode::fixed,999,1,1,4,true});
+  check(labels.apply(A::record,0)&&labels.apply(A::stop,0),"arm and cancel named empty slot");
+  check(labels.view()[0].clearEpoch==2,"arm cancellation does not delete a label");
+  check(labels.apply(A::stopAll,0)&&labels.view()[0].clearEpoch==2,"STOP ALL preserves names");
+  check(labels.apply(A::clearAll,0)&&labels.view()[0].clearEpoch==3&&labels.view()[1].clearEpoch==1,"CLEAR ALL acknowledges every label");
+  watch=false;
+ }
  auto bankStorage=std::make_unique<LoopBank>();auto& bank=*bankStorage;bank.prepare(8192,0);auto input=wave(512);
  check(bank.apply(A::record,0)&&!bank.apply(A::record,1),"one capture owner");
  watch=true;for(auto sample:input)bank.tick(sample);check(bank.apply(A::finish,0),"publish take");watch=false;

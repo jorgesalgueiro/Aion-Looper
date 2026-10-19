@@ -791,3 +791,62 @@ cards, no legacy AudioContext/inline handlers and master gain zero. The original
 asset byte gate passes. Only the existing Standalone and optional test host were
 rebuilt; no ZIP or plugin package was produced. Physical driver, listening and
 DAW validation remain outside this synthetic-input/bridge acceptance.
+
+
+### Original loop-name fields (2026-10-19)
+
+The original name inputs were rendered but disabled. They now edit C++
+message-thread session labels for all 20 slots. Original markup/styles remain
+byte-identical; Enter blurs the input, typing is isolated from transport keys,
+and refresh does not overwrite an active edit. The view adapter now passes
+native names through instead of substituting an empty string. A new rendering
+regression caught that override before acceptance.
+
+Labels survive editor/browser reload and ordinary stop/arm cancellation. DEL,
+held STOP deletion and CLEAR ALL reset names when the audio owner acknowledges
+the clear. A fixed-size per-track epoch distinguishes explicit deletion from
+arm cancellation, includes deletion of an already-empty slot, and survives
+skipped snapshots. Only these POD counters cross the audio snapshot queue;
+string allocation/destruction stays on the message thread. Sample-rate resets
+clear labels alongside audio. No audio callback locks or new/free are added.
+
+Rename IPC validates integer track IDs and string types, accepts at most 4096
+UTF-8 bytes, and rejects larger requests without modifying the old name. This
+is a bounded native IPC limit; original JS has no explicit name-length limit.
+Names remain session metadata: like PCM, they are not yet in project save/load
+or the existing parameter-only host-state blob. No persistence parity is claimed.
+
+New checks execute the unchanged original input handler and Loop.clear for
+name assignment/deletion, preserve escaped name markup, and exercise empty,
+Unicode, quote/markup and long names. Native UI tests cover actual typing,
+number-key isolation, Enter, all 20 labels, rejected IDs/types, exact UTF-8 size
+boundaries, browser reload and text-safe rendering. The synthetic native host
+renames actual playing PCM and checks transport request count, clip length,
+continued output and acknowledged name deletion at 64/128 samples. Existing
+main/sync/hold regressions remain. The new arm/cancel unit setup initially used
+a fixed take larger than its small pool; the engine correctly rejected it. The
+fixture now uses a short supported take, retaining the capacity guard unchanged.
+
+Review also reproduced a delayed-clear/name ordering failure in the first native
+build: typing immediately after queued DEL saved a new label before the audio
+owner cleared it, then the acknowledgement erased it (`build/names-order-before-fix.log`).
+Name edits now share the ordered command queue with audio and coalesce by track.
+A metadata item at the head may run without an active audio owner; it still waits
+for preceding clears and their acknowledgement. Explicit clear cancels unsent
+older names as it does other track work. Unit checks and the retained native
+paused-dispatch/DEL/type/ack regression cover this repair.
+
+Acceptance: Windows CTest 10/10 (126.19s), Ubuntu CTest 10/10 (188.27s),
+including the corrected clear-epoch cancellation test and unchanged asset,
+state, DSP, NORM, reverse, history, MULT and sync gates. After the metadata queue
+repair, the expanded frontend suite passes again on both Windows and Ubuntu.
+The final native UI gate passes (`build/names-ordered-native-smoke.log`), including
+the previously failing DEL/name race, Unicode/size validation and reload. Real
+synthetic-input mouse/keyboard workflows pass at both 64 and 128 samples
+(`build/names-ordered-mouse.log`), preserving every prior hold and sync case.
+The rebuilt native audio probe passes 126 committed-PCM cases / 965,826 samples,
+maximum absolute error 7.394757495227111e-8 at unchanged 1e-6 tolerance
+(`build/names-final-audio.log`). Captured original card layout was visually checked.
+Only the existing Standalone and optional test host were rebuilt: no ZIP, version
+bump or plugin package. Physical drivers, listening, DAW and Apple platform
+acceptance remain separate; these tests do not establish complete feature parity.

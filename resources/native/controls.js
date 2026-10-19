@@ -8,14 +8,14 @@
             Object.assign(this,{ready,run,notify,now,limit});
             this.items=[]; this.active=false; this.closed=false;
         }
-        enqueue(resolve, {key=null, stop=false, track=null, clearTrack=false}={}) {
+        enqueue(resolve, {key=null, stop=false, track=null, clearTrack=false, metadata=false}={}) {
             if(this.closed)return;
             if(clearTrack&&(!Number.isInteger(track)||track<0)){this.notify('Track clear requires a valid track.');return;}
             if(stop)this.items=[];
             else if(clearTrack)this.items=this.items.filter(item=>item.track!==track);
             if(key)this.items=this.items.filter(item=>item.key!==key);
             if(this.items.length>=this.limit){this.notify('Too many pending actions; wait for audio processing.');return;}
-            const item={resolve,key,stop,track,clearTrack,deadline:this.now()+3000};
+            const item={resolve,key,stop,track,clearTrack,metadata,deadline:this.now()+3000};
             if(stop)this.items.unshift(item);
             else if(clearTrack){
                 // Clear bypasses finalization waits, after existing panic/clears.

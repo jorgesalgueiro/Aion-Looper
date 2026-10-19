@@ -52,6 +52,15 @@ let socket;
     let playing=await state('playing');assert(playing.tracks[0].length>4800,'Real captured PCM committed');
     await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await wait(s=>s.outputPeak>0.02,'Captured PCM renders through production processor');
+    const namedPcm=await snapshot();
+    await click('#loop-0 .track-name');await call('Input.insertText',{text:'Guitarra Á 1 + 😀'});
+    await call('Input.dispatchKeyEvent',{type:'keyDown',code:'Enter',key:'Enter',windowsVirtualKeyCode:13});
+    await call('Input.dispatchKeyEvent',{type:'keyUp',code:'Enter',key:'Enter',windowsVirtualKeyCode:13});
+    const renamed=await wait(s=>s.tracks[0].name==='Guitarra Á 1 + 😀','Rename real playing PCM');
+    assert.equal(renamed.lastRequestId,namedPcm.lastRequestId,'Name input cannot trigger loop keyboard shortcuts');
+    assert.equal(renamed.tracks[0].length,namedPcm.tracks[0].length);assert.equal(renamed.tracks[0].state,'playing');
+    await wait(s=>s.outputPeak>0.02,'Renamed PCM keeps playing');
+
     // Pause only frontend dispatch, preserving real core PCM and audio callbacks.
     // A deletion queued at 4s must be discarded if focus is then lost.
     const beforeBlur=await snapshot();
@@ -77,6 +86,7 @@ let socket;
     // delete the replacement take when its original 4s deadline arrives.
     await call('Input.dispatchKeyEvent',{type:'keyDown',code:'Digit1',key:'1',windowsVirtualKeyCode:49});await state('stopped');
     await click('#loop-0 .loop-track-delete');await state('empty');
+    assert.equal((await snapshot()).tracks[0].name,'','DEL clears the name with the real loop');
     await click('#loop-action-0');await state('recording');await delay(180);await click('#loop-action-0');
     const replacement=await state('playing');await delay(4200);
     await call('Input.dispatchKeyEvent',{type:'keyUp',code:'Digit1',key:'1',windowsVirtualKeyCode:49});

@@ -229,6 +229,49 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    for(let n=0;n<60;++n){stopped=await evaluate(`AionNative.request({operation:'snapshot'})`);if(stopped.lastRequestId>beforeStop.lastRequestId&&!stopped.rejected)break;await delay(50);}
    assert(stopped.lastRequestId>beforeStop.lastRequestId&&!stopped.rejected&&stopped.tracks.every(t=>t.state==='empty'),JSON.stringify(stopped));
  }
+ // Labels use the original input and stay in C++ across a browser/editor reload.
+ const label='Voz 1 + baixo Á 😀 <tag> " &';
+ await evaluate(`(()=>{const e=document.querySelector('#loop-0 .track-name');if(e.disabled)throw Error('Name field is disabled');e.focus();})()`);
+ const beforeName=await evaluate(`AionNative.request({operation:'snapshot'})`);
+ await call('Input.insertText',{text:label});await delay(200);
+ await call('Input.dispatchKeyEvent',{type:'keyDown',key:'1',code:'Digit1',windowsVirtualKeyCode:49});
+ await call('Input.dispatchKeyEvent',{type:'keyUp',key:'1',code:'Digit1',windowsVirtualKeyCode:49});
+ let named=await evaluate(`AionNative.request({operation:'snapshot'})`);
+ assert.equal(named.tracks[0].name,label,'Original name input reaches C++');
+ assert.equal(named.lastRequestId,beforeName.lastRequestId,'Typing names never sends audio transport commands');
+ await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+ await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+ assert(await evaluate(`document.activeElement!==document.querySelector('#loop-0 .track-name')`),'Enter blurs the original input');
+ for(const request of [{track:-1,name:'bad'},{track:20,name:'bad'},{track:0.5,name:'bad'},{track:0,name:7},{track:0,name:'a'.repeat(4097)},{track:0,name:'😀'.repeat(1025)}]) {
+  const bad=await evaluate(`AionNative.request(${JSON.stringify({operation:'renameLoop',...request})})`);assert(!bad.ok,'Invalid label accepted');
+ }
+ assert.equal((await evaluate(`AionNative.request({operation:'snapshot'})`)).tracks[0].name,label,'Invalid requests preserve the prior name');
+ for(const boundary of ['a'.repeat(4096),'😀'.repeat(1024)]) {
+  assert((await evaluate(`AionNative.request(${JSON.stringify({operation:'renameLoop',track:0,name:boundary})})`)).ok,'Exact UTF-8 limit is accepted');
+  assert.equal((await evaluate(`AionNative.request({operation:'snapshot'})`)).tracks[0].name,boundary);
+ }
+ assert((await evaluate(`AionNative.request(${JSON.stringify({operation:'renameLoop',track:0,name:label})})`)).ok);
+ for(let id=1;id<20;++id)assert((await evaluate(`AionNative.request({operation:'renameLoop',track:${id},name:'Loop label ${id}'})`)).ok);
+ // Freeze dispatch only: DEL followed immediately by typing must keep the new name.
+ const beforeNameClear=await evaluate(`AionNative.request({operation:'snapshot'})`);
+ await evaluate(`window.namePump=AionCommandQueue.prototype.pump;AionCommandQueue.prototype.pump=function(){window.nameQueue=this;return window.namePump.call(this);};`);
+ for(let n=0;n<40;++n){if(await evaluate(`!!window.nameQueue`))break;await delay(25);}
+ await evaluate(`AionCommandQueue.prototype.pump=window.namePump;delete window.namePump;window.nameReady=window.nameQueue.ready;window.nameQueue.ready=()=>false;document.querySelector('#loop-19 .loop-track-delete').click();const field=document.querySelector('#loop-19 .track-name');field.focus();field.value='After DEL Á';field.dispatchEvent(new Event('input',{bubbles:true}));`);
+ await delay(100);
+ await evaluate(`window.nameQueue.ready=window.nameReady;delete window.nameReady;window.nameQueue.pump();`);
+ for(let n=0;n<60;++n){named=await evaluate(`AionNative.request({operation:'snapshot'})`);if(named.lastRequestId>beforeNameClear.lastRequestId&&named.tracks[19].name==='After DEL Á')break;await delay(50);}
+ assert(named.lastRequestId>beforeNameClear.lastRequestId,'Delayed DEL acknowledged by the audio owner');
+ assert.equal(named.tracks[19].name,'After DEL Á','Typing after pending DEL survives its audio acknowledgement');
+ assert((await evaluate(`AionNative.request({operation:'renameLoop',track:19,name:'Loop label 19'})`)).ok);
+ await call('Page.reload');
+ for(let n=0;n<80;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
+ await delay(200);
+ assert.equal(await evaluate(`document.querySelector('#loop-0 .track-name').value`),label,'Reload retains names from native session and escapes markup');
+ assert.equal(await evaluate(`document.querySelectorAll('#loopContainer tag').length`),0,'Name is text, never injected markup');
+ named=await evaluate(`AionNative.request({operation:'snapshot'})`);
+ for(let id=1;id<20;++id)assert.equal(named.tracks[id].name,'Loop label '+id,'Independent native labels');
+ for(let id=0;id<20;++id)assert((await evaluate(`AionNative.request({operation:'renameLoop',track:${id},name:''})`)).ok);
+ await delay(200);
  const dom=await evaluate(`({handlers:[...document.querySelectorAll('#loopContainer *')].flatMap(e=>[...e.attributes].filter(a=>/^on/i.test(a.name))).length,unsupported:[...document.querySelectorAll('#loopContainer button')].filter(e=>e.textContent.trim()==='SAVE').every(e=>e.disabled),hasAudioContext:!!window.state?.audioContext,master:document.getElementById('native-master').value})`);
  assert.equal(dom.handlers,0);assert(dom.unsupported&&!dom.hasAudioContext);assert.equal(Number(dom.master),0);
  await evaluate(`document.documentElement.style.scrollBehavior='auto';window.scrollTo({top:0,behavior:'instant'})`);

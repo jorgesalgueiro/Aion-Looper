@@ -93,6 +93,25 @@ snapshot.tracks[0]={...snapshot.tracks[0],pan:10,playbackRate:0.5};
 cards=context.window.AionLoopMarkup(snapshot,'normal');
 assert(cards[0].includes('0.50x')&&cards[0].includes('value="10"'),'Original pan and speed values must use native state');
 
+// Execute the original name handler and Loop.clear, stubbing only browser IO.
+const nameOracle={window:{},document:{createElement:()=>({}),head:{appendChild(){}},getElementById:()=>null},effects:{},FACTORY_EFFECTS:{},console,setTimeout,clearTimeout};
+vm.createContext(nameOracle);vm.runInContext(original,nameOracle);
+const nameHandler=/class="track-name"[\s\S]*?oninput="([^"]+)"/.exec(original)?.[1];assert(nameHandler);
+vm.runInContext(`const state={loops:[],soloState:{active:false},playingSources:{},undoStack:[],redoStack:[],isRecording:false};state.loops=[new Loop(0)];`,nameOracle);
+// Use a function body so the unchanged handler receives the original input receiver.
+nameOracle.rename=vm.runInContext('(function(value){const event={stopPropagation(){}};return (function(){'+nameHandler.replaceAll('${index}','0')+';return state.loops[0].name;}).call({value});})',nameOracle);
+for(const value of ['', 'Guitarra Á 1 + 😀', '<tag> " &', 'a'.repeat(4096)])assert.equal(nameOracle.rename(value),value,'Original input name semantics');
+assert.equal(vm.runInContext("state.loops[0].clear();state.loops[0].name",nameOracle),'','Original DEL clears the name');
+
+// The unchanged name input is text, including when markup is initially rebuilt.
+for(const name of ['', 'Guitarra Á 1 + 😀', '<tag> " &', 'a'.repeat(4096)]) {
+ snapshot.tracks[0].name=name;
+ const named=context.window.AionLoopMarkup(snapshot,'normal')[0];
+ const escape=name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+ assert(named.includes('class="track-name" value="'+escape+'"'),'Native name must use the original escaped input');
+}
+snapshot.tracks[0].name='';
+
 // Exercise the same scheduler shipped in the native editor, with delayed audio acknowledgements.
 (async()=>{
  // Execute the original long-action handler, retaining its safe clear/cut semantics.
@@ -166,6 +185,16 @@ assert(cards[0].includes('0.50x')&&cards[0].includes('value="10"'),'Original pan
  productionErase(0,'recording',()=>true);
  assert.equal(eraseQueue.items.length,1,'Invalid hold deletion leaves accepted actions intact');
  eraseReady=true;await eraseQueue.pump();await settle();assert.equal(eraseSent.at(-1),'keep');
+
+ // Session metadata uses the same order as audio, but can run with no device.
+ let metadataAudio=false,clearAck;const metadataSent=[];
+ const metadataQueue=new Queue({ready:()=>metadataAudio||metadataQueue.items[0]?.metadata===true,notify(){},run:async c=>{metadataSent.push(c);if(c==='clear')await new Promise(r=>clearAck=r);}});
+ metadataQueue.enqueue(()=>'offline-name',{track:0,key:'name:0',metadata:true});await settle();
+ assert.deepEqual(metadataSent,['offline-name'],'Labels need no audio owner');
+ metadataAudio=true;metadataQueue.enqueue(()=>'clear',{track:0,clearTrack:true});
+ metadataQueue.enqueue(()=>'old-name',{track:0,key:'name:0',metadata:true});metadataQueue.enqueue(()=>'new-name',{track:0,key:'name:0',metadata:true});
+ assert.deepEqual(metadataSent,['offline-name','clear'],'Typing after DEL waits for its acknowledgement');
+ clearAck();await settle();assert.deepEqual(metadataSent,['offline-name','clear','new-name'],'Only the newest pending text follows deletion');
 
  // Keep an already-accepted rapid gesture while the worker finalizes PCM.
  let finalizing=true;const deferredSent=[],deferredErrors=[];let deferredTime=0;
