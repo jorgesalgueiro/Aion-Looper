@@ -102,6 +102,9 @@ vm.runInContext(`const state={loops:[],soloState:{active:false},playingSources:{
 nameOracle.rename=vm.runInContext('(function(value){const event={stopPropagation(){}};return (function(){'+nameHandler.replaceAll('${index}','0')+';return state.loops[0].name;}).call({value});})',nameOracle);
 for(const value of ['', 'Guitarra Á 1 + 😀', '<tag> " &', 'a'.repeat(4096)])assert.equal(nameOracle.rename(value),value,'Original input name semantics');
 assert.equal(vm.runInContext("state.loops[0].clear();state.loops[0].name",nameOracle),'','Original DEL clears the name');
+nameOracle.rename('Nome antes de STOP ALL Á');
+assert.equal(vm.runInContext("globalThis.AudioEngine={currentTime:0};state.samplers=[];UIManager.updateLoop=()=>{};LoopManager.stopAll();state.loops[0].name",nameOracle),'Nome antes de STOP ALL Á','Unchanged original STOP ALL preserves names');
+
 
 // The unchanged name input is text, including when markup is initially rebuilt.
 for(const name of ['', 'Guitarra Á 1 + 😀', '<tag> " &', 'a'.repeat(4096)]) {
@@ -195,6 +198,34 @@ snapshot.tracks[0].name='';
  metadataQueue.enqueue(()=>'old-name',{track:0,key:'name:0',metadata:true});metadataQueue.enqueue(()=>'new-name',{track:0,key:'name:0',metadata:true});
  assert.deepEqual(metadataSent,['offline-name','clear'],'Typing after DEL waits for its acknowledgement');
  clearAck();await settle();assert.deepEqual(metadataSent,['offline-name','clear','new-name'],'Only the newest pending text follows deletion');
+
+ // Naming must stay usable while an unrelated take is being finalized.
+ const liveNames=[],liveNameErrors=[];let nameRelease;
+ const liveNameQueue=new Queue({ready:()=>true,notify:e=>liveNameErrors.push(e),run:async c=>{liveNames.push(c);if(c==='active')await new Promise(r=>nameRelease=r);}});
+ liveNameQueue.enqueue(()=>Queue.wait,{track:1});liveNameQueue.enqueue(()=>'keep-audio',{track:2});
+ liveNameQueue.enqueue(()=>'rename-0',{track:0,key:'name:0',metadata:true});await settle();
+ assert.deepEqual(liveNames,['rename-0'],'Name edits bypass unrelated finalization waits');
+ assert.equal(liveNameQueue.items.length,2,'Naming retains the deferred audio actions');
+ liveNameQueue.items[0].resolve=()=>null;await liveNameQueue.pump();await settle();
+ assert.deepEqual(liveNames,['rename-0','keep-audio'],'Audio work retains its original relative order');
+ liveNameQueue.reset();liveNameQueue.enqueue(()=>'active',{track:1});
+ liveNameQueue.enqueue(()=>'rename-0-after',{track:0,key:'name:0',metadata:true});
+ liveNameQueue.enqueue(()=>'stale-audio',{track:1});liveNameQueue.enqueue(()=>'panic',{stop:true});
+ nameRelease();await settle();assert.deepEqual(liveNames.slice(-3),['active','panic','rename-0-after'],'STOP ALL cancels audio work but preserves pending text');
+ // Even a queue filled entirely with metadata must not reject panic or exceed its bound.
+ let fullReady=false;const fullNames=[],fullNameErrors=[];
+ const fullNameQueue=new Queue({limit:2,ready:()=>fullReady,notify:e=>fullNameErrors.push(e),run:async c=>fullNames.push(c)});
+ fullNameQueue.enqueue(()=>'name-0',{track:0,metadata:true});fullNameQueue.enqueue(()=>'name-1',{track:1,metadata:true});
+ fullNameQueue.enqueue(()=>'panic',{stop:true});assert.equal(fullNameQueue.items.length,2);
+ fullReady=true;await fullNameQueue.pump();await settle();assert.equal(fullNames[0],'panic','Panic always has capacity');
+ assert(fullNameErrors.some(e=>e.includes('cancelled')),'Capacity cancellation is explicit');
+
+ // DEL ALL is also an acknowledgement barrier for names typed afterwards.
+ let globalNameReady=false;const globalNameSent=[];
+ const globalNameQueue=new Queue({ready:()=>globalNameReady,notify(){},run:async c=>globalNameSent.push(c)});
+ globalNameQueue.enqueue(()=>'clear-all',{barrier:true});globalNameQueue.enqueue(()=>'name-after-clear-all',{track:0,metadata:true});
+ globalNameReady=true;await globalNameQueue.pump();await settle();
+ assert.deepEqual(globalNameSent,['clear-all','name-after-clear-all'],'Name priority must not jump a global destructive action');
 
  // Keep an already-accepted rapid gesture while the worker finalizes PCM.
  let finalizing=true;const deferredSent=[],deferredErrors=[];let deferredTime=0;

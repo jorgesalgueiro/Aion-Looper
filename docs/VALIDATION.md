@@ -850,3 +850,49 @@ maximum absolute error 7.394757495227111e-8 at unchanged 1e-6 tolerance
 Only the existing Standalone and optional test host were rebuilt: no ZIP, version
 bump or plugin package. Physical drivers, listening, DAW and Apple platform
 acceptance remain separate; these tests do not establish complete feature parity.
+
+
+### Naming during finalization and STOP ALL (2026-10-19)
+
+The expanded naming audit reproduces another failure in the accepted binary:
+a controlled wait on track 19 leaves an edit to track 18 unapplied beyond a
+1.2s native acceptance window. Actual C++ snapshots still report the previous
+name (`build/names-priority-before-fix.log`); only frontend dispatch is fault-
+injected. The focused queue regression fails identically. Unsent name edits
+were also discarded by STOP ALL, unlike the unchanged original method, which
+is now executed explicitly in the name oracle.
+
+Metadata edits now bypass ordinary audio/finalization waits, retaining the
+relative order of audio work. They stay behind pending panic and deletion
+commands, and continue to coalesce by track. STOP ALL cancels pending performance
+commands/holds while retaining pending names. If a generic queue is filled
+entirely with metadata, panic reserves a slot within the unchanged bound and
+reports any cancelled edit; the actual UI coalesces at most 20 loop names into
+the default 128 slots. In-flight acknowledgements and normal expiry are retained.
+
+A second ordering regression caught during this change put names ahead of
+DEL ALL. Global deletion now carries an explicit acknowledgement barrier, so a
+name typed immediately afterwards is saved only after the clear completes.
+DEL ALL still resets older queued work; per-track DEL still supersedes older
+names on that track. Neither barrier is an audio-finalization wait, and the
+existing four-second deletion thresholds and cancellation tokens are unchanged.
+
+Unit regressions cover unrelated waits, retained audio order, in-flight work,
+STOP ALL retention, metadata-only capacity pressure, and global-clear ordering.
+Native tests retain delayed DEL/name coverage and add live metadata behind a
+controlled different-track wait, STOP ALL acknowledgement/name retention and
+the actual DEL ALL button followed immediately by typing. These checks inspect
+real native snapshots/acknowledgements, not fixture names or fake PCM. The
+original assets, layout, DSP and session-only naming/persistence scope are unchanged.
+
+Final acceptance passes on Windows (10/10 CTest, 128.53s) and Ubuntu (10/10,
+186.83s), with all original reference/state/DSP/sync and byte-identity gates.
+The native UI gate passes with both destructive acknowledgement barriers and
+the new wait/STOP ALL cases (`build/names-priority-final-native-smoke.log`).
+All retained real mouse/keyboard PCM workflows pass at 64 and 128 samples
+(`build/names-priority-final-mouse.log`). The connected native audio comparison
+passes 126 cases / 965,826 samples with maximum error 7.394757495227111e-8 at
+unchanged tolerance 1e-6 (`build/names-priority-audio.log`). Only the existing
+Standalone and optional host were rebuilt; no package or version bump. This is
+session naming/bridge acceptance with synthetic input, not driver, DAW, Apple
+platform or complete application acceptance.

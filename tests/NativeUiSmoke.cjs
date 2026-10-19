@@ -263,6 +263,21 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert(named.lastRequestId>beforeNameClear.lastRequestId,'Delayed DEL acknowledged by the audio owner');
  assert.equal(named.tracks[19].name,'After DEL Á','Typing after pending DEL survives its audio acknowledgement');
  assert((await evaluate(`AionNative.request({operation:'renameLoop',track:19,name:'Loop label 19'})`)).ok);
+ // A controlled unrelated wait must not stall name editing or be discarded.
+ const beforeNameWait=await evaluate(`AionNative.request({operation:'snapshot'})`);
+ await evaluate(`(()=>{window.nameQueue.enqueue(()=>AionCommandQueue.wait,{track:18});const field=document.querySelector('#loop-17 .track-name');field.focus();field.value='Name while saving Á';field.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+ for(let n=0;n<24;++n){named=await evaluate(`AionNative.request({operation:'snapshot'})`);if(named.tracks[17].name==='Name while saving Á')break;await delay(50);}
+ assert.equal(named.tracks[17].name,'Name while saving Á','Names bypass another track finalization wait');
+ assert.equal(named.lastRequestId,beforeNameWait.lastRequestId,'Metadata never dispatches a transport action');
+ assert(await evaluate(`window.nameQueue.items.some(item=>item.track===18)`),'Naming preserves another track deferred action');
+ await evaluate(`window.nameQueue.reset();`);
+ // Panic still goes first, but must not erase typed text waiting for dispatch.
+ const beforeNamePanic=await evaluate(`AionNative.request({operation:'snapshot'})`);
+ await evaluate(`(()=>{window.nameReady=window.nameQueue.ready;window.nameQueue.ready=()=>false;const field=document.querySelector('#loop-17 .track-name');field.value='Name survives STOP ALL Á';field.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('native-stop-all').click();window.nameQueue.ready=window.nameReady;delete window.nameReady;window.nameQueue.pump();})()`);
+ for(let n=0;n<60;++n){named=await evaluate(`AionNative.request({operation:'snapshot'})`);if(named.lastRequestId>beforeNamePanic.lastRequestId&&named.tracks[17].name==='Name survives STOP ALL Á')break;await delay(50);}
+ assert.equal(named.lastRequestId,beforeNamePanic.lastRequestId+1,'Only STOP ALL dispatches to the audio owner');
+ assert.equal(named.tracks[17].name,'Name survives STOP ALL Á','STOP ALL preserves pending label edits');
+ assert((await evaluate(`AionNative.request({operation:'renameLoop',track:17,name:'Loop label 17'})`)).ok);
  await call('Page.reload');
  for(let n=0;n<80;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
  await delay(200);
@@ -270,6 +285,15 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert.equal(await evaluate(`document.querySelectorAll('#loopContainer tag').length`),0,'Name is text, never injected markup');
  named=await evaluate(`AionNative.request({operation:'snapshot'})`);
  for(let id=1;id<20;++id)assert.equal(named.tracks[id].name,'Loop label '+id,'Independent native labels');
+ // Reload constructed a new scheduler; test the actual DEL ALL button as well.
+ await evaluate(`window.namePump=AionCommandQueue.prototype.pump;AionCommandQueue.prototype.pump=function(){window.nameQueue=this;return window.namePump.call(this);};`);
+ for(let n=0;n<40;++n){if(await evaluate(`!!window.nameQueue`))break;await delay(25);}
+ const beforeGlobalNameClear=await evaluate(`AionNative.request({operation:'snapshot'})`);
+ await evaluate(`(()=>{AionCommandQueue.prototype.pump=window.namePump;delete window.namePump;window.nameReady=window.nameQueue.ready;window.nameQueue.ready=()=>false;const confirm=window.confirm;window.confirm=()=>true;try{document.querySelector('#mod-menu [data-i18n="CLEAR_ALL"]').click();}finally{window.confirm=confirm;}const field=document.querySelector('#loop-0 .track-name');field.focus();field.value='Name after DEL ALL Á';field.dispatchEvent(new Event('input',{bubbles:true}));window.nameQueue.ready=window.nameReady;delete window.nameReady;window.nameQueue.pump();})()`);
+ for(let n=0;n<60;++n){named=await evaluate(`AionNative.request({operation:'snapshot'})`);if(named.lastRequestId>beforeGlobalNameClear.lastRequestId&&named.tracks[0].name==='Name after DEL ALL Á')break;await delay(50);}
+ assert.equal(named.lastRequestId,beforeGlobalNameClear.lastRequestId+1,'DEL ALL acknowledged once');
+ assert.equal(named.tracks[0].name,'Name after DEL ALL Á','Name typed after DEL ALL waits for its acknowledgement');
+ assert(named.tracks.slice(1).every(t=>t.name===''),'DEL ALL clears other names');
  for(let id=0;id<20;++id)assert((await evaluate(`AionNative.request({operation:'renameLoop',track:${id},name:''})`)).ok);
  await delay(200);
  const dom=await evaluate(`({handlers:[...document.querySelectorAll('#loopContainer *')].flatMap(e=>[...e.attributes].filter(a=>/^on/i.test(a.name))).length,unsupported:[...document.querySelectorAll('#loopContainer button')].filter(e=>e.textContent.trim()==='SAVE').every(e=>e.disabled),hasAudioContext:!!window.state?.audioContext,master:document.getElementById('native-master').value})`);

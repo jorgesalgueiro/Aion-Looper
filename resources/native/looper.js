@@ -95,7 +95,7 @@
                 const reply=await rpc({operation:'renameLoop',track:c.track,name:c.name});
                 if(!reply.ok)throw Error(reply.error||'Name was not changed');
             },notify:message=>notify(message)});
-        const command=(action,track,value=0)=>scheduler.enqueue(()=>({action,track,value}),{track:action==='clearAll'?null:track,clearTrack:action==='clear'});
+        const command=(action,track,value=0)=>scheduler.enqueue(()=>({action,track,value}),{track:action==='clearAll'?null:track,clearTrack:action==='clear',barrier:action==='clearAll'});
         const restoreHistory=(redo,id=null)=>scheduler.enqueue(()=>{
             const target=id??snapshot[redo?'nextRedo':'nextUndo'],t=snapshot.tracks[target];
             // Original empty history is a no-op. Resolve at dispatch so a rapid

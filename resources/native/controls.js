@@ -8,18 +8,26 @@
             Object.assign(this,{ready,run,notify,now,limit});
             this.items=[]; this.active=false; this.closed=false;
         }
-        enqueue(resolve, {key=null, stop=false, track=null, clearTrack=false, metadata=false}={}) {
+        enqueue(resolve, {key=null, stop=false, track=null, clearTrack=false, metadata=false, barrier=false}={}) {
             if(this.closed)return;
             if(clearTrack&&(!Number.isInteger(track)||track<0)){this.notify('Track clear requires a valid track.');return;}
-            if(stop)this.items=[];
+            if(stop){
+                // Panic cancels performance work; committed/user-entered labels are metadata.
+                this.items=this.items.filter(item=>item.metadata);
+                if(this.items.length>=this.limit){
+                    this.items=this.items.slice(0,Math.max(0,this.limit-1));
+                    this.notify('Pending name edit cancelled to reserve room for STOP ALL.');
+                }
+            }
             else if(clearTrack)this.items=this.items.filter(item=>item.track!==track);
             if(key)this.items=this.items.filter(item=>item.key!==key);
             if(this.items.length>=this.limit){this.notify('Too many pending actions; wait for audio processing.');return;}
-            const item={resolve,key,stop,track,clearTrack,metadata,deadline:this.now()+3000};
+            const item={resolve,key,stop,track,clearTrack,metadata,barrier,deadline:this.now()+3000};
             if(stop)this.items.unshift(item);
-            else if(clearTrack){
-                // Clear bypasses finalization waits, after existing panic/clears.
-                const firstOrdinary=this.items.findIndex(queued=>!queued.stop&&!queued.clearTrack);
+            else if(clearTrack||barrier||metadata){
+                // Labels bypass audio waits, but stay after panic/clears and prior labels.
+                // Clear still supersedes its track's labels before inserting here.
+                const firstOrdinary=this.items.findIndex(queued=>!queued.stop&&!queued.clearTrack&&!queued.barrier&&(clearTrack||barrier||!queued.metadata));
                 this.items.splice(firstOrdinary<0?this.items.length:firstOrdinary,0,item);
             }else this.items.push(item);
             this.pump();
