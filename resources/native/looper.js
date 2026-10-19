@@ -99,9 +99,9 @@
         holdManual.en.push('Metronome: use Metro[N]ome or N. Its VOLUME is independent of MASTER and its sound is excluded from internal loop recording. Static recording: SOUND plays a 100 ms triangle cue on each beat of the final bar, with a higher final cue. Cues bypass MASTER and stay out of internal loop recordings; CANCEL, DEL and STOP ALL silence pending cues. VISUAL and SOUND independently request the same lead-in. OFF and DYNAMIC start immediately.');
         holdManual.es.push('Metrónomo: usa Metro[N]ome o N. Su VOLUME es independiente de MASTER y su sonido no se incluye en la grabación interna de loops. En grabación STATIC, SOUND reproduce tonos de 100 ms en el último compás, con un tono final más agudo. No pasan por MASTER ni entran en los loops. CANCEL, DEL y STOP ALL cancelan los tonos pendientes. VISUAL y SOUND son independientes; OFF y DYNAMIC empiezan de inmediato.');
         holdManual.pt.push('Metrónomo: usa Metro[N]ome ou N. O seu VOLUME é independente de MASTER e o som não entra na gravação interna dos loops. Na gravação STATIC, SOUND toca sinais de 100 ms no último compasso, com o último sinal mais agudo. Não passam por MASTER nem entram nos loops. CANCEL, DEL e STOP ALL cancelam os sinais pendentes. VISUAL e SOUND são independentes; OFF e DYNAMIC começam de imediato.');
-        holdManual.en.push('Start: drag the original slider to choose a playback phase; release applies it after 50 ms while playing. Dragging alone keeps the current source running. The recorded audio is preserved. STOP ALL keeps the chosen phase and cancels pending restarts; DEL resets it. The Q and nudge buttons are still unavailable in this preview.');
-        holdManual.es.push('Start: arrastra el deslizador para elegir la fase; al soltar se aplica tras 50 ms durante la reproducción. Mientras arrastras continúa la fuente actual. El audio grabado se conserva. STOP ALL conserva la fase y cancela los reinicios pendientes; DEL la restablece. Q y los botones de ajuste siguen sin estar disponibles.');
-        holdManual.pt.push('Start: arrasta o controlo para escolher a fase; ao soltar aplica-se após 50 ms durante a reprodução. Enquanto arrastas, a fonte atual continua. O áudio gravado é preservado. STOP ALL mantém a fase e cancela os reinícios pendentes; DEL repõe a fase. Q e os botões de ajuste continuam indisponíveis.');
+        holdManual.en.push('Start: drag the original slider to choose a playback phase; release applies it after 50 ms while playing. Dragging alone keeps the current source running. The recorded audio is preserved. STOP ALL keeps the chosen phase and cancels pending restarts; DEL resets it. Q snaps Start to the nearest sixteenth-note division of the recorded duration using the current BPM; during playback it applies after 50 ms. Clips shorter than half a sixteenth stay unchanged. The nudge buttons are still unavailable in this preview.');
+        holdManual.es.push('Start: arrastra el deslizador para elegir la fase; al soltar se aplica tras 50 ms durante la reproducción. Mientras arrastras continúa la fuente actual. El audio grabado se conserva. STOP ALL conserva la fase y cancela los reinicios pendientes; DEL la restablece. Q ajusta Start a la división de semicorchea más cercana según la duración grabada y el BPM actual; durante la reproducción se aplica tras 50 ms. Los clips menores que media semicorchea no cambian. Los botones de ajuste siguen sin estar disponibles.');
+        holdManual.pt.push('Start: arrasta o controlo para escolher a fase; ao soltar aplica-se após 50 ms durante a reprodução. Enquanto arrastas, a fonte atual continua. O áudio gravado é preservado. STOP ALL mantém a fase e cancela os reinícios pendentes; DEL repõe a fase. Q ajusta Start à divisão de semicolcheia mais próxima usando a duração gravada e o BPM atual; durante a reprodução aplica-se após 50 ms. Clips menores que meia semicolcheia não mudam. Os botões de ajuste continuam indisponíveis.');
         for(const [language,copy] of Object.entries(holdManual)){
             const note=document.createElement('div');note.id=`native-hold-manual-${language}`;
             for(const [index,text] of copy.entries()){const line=document.createElement(index?'p':'h4');line.textContent=text;note.append(line);}
@@ -243,6 +243,8 @@
                 const pan=bind(row.querySelector(`#loop-pan-slider-${i}`),e=>queueControl('pan',i,Number(e.target.value)),'input');
                 const start=bind(row.querySelector(`#loop-start-slider-${i}`),e=>queueControl('startDelay',i,Number(e.target.value)),'input');
                 start.addEventListener('change',e=>{e.stopPropagation();command('applyStart',i);});
+                const quantize=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='Q'),()=>command('quantizeStart',i));
+                quantize.title='Quantize Start to 16th Note';
                 const speed=bind(row.querySelector(`#loop-speed-slider-${i}`),e=>queueControl('speed',i,Number(e.target.value)),'input');
                 const half=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1/2'),()=>halfSpeed(i));
                 const reset=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1x'),()=>queueControl('speed',i,1));
@@ -260,7 +262,7 @@
                 feedback.addEventListener('dblclick',()=>queueControl('feedback',i,0.8));
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const canvas=row.querySelector('canvas');canvas.title='Playback position';
-                rows.push({row,main,name,volume,feedback,pan,start,speed,half,reset,mute,solo,retrigger,normalize,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
+                rows.push({row,main,name,volume,feedback,pan,start,quantize,speed,half,reset,mute,solo,retrigger,normalize,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
         function refresh() {

@@ -1119,3 +1119,53 @@ the new column-alignment checks at both widths. Visual inspection of the rebuilt
 app screenshot confirms intact artwork. Logs: `build/logo-align-build.log` and
 `build/logo-align-ui.log`; screenshot: `build/native-looper-top.png`. The existing
 Standalone executable was updated; no new package was created.
+
+## Original Start Q button — 2026-10-19
+
+The existing Q control now dispatches one native audio-owner command. It uses
+recorded duration and current BPM, rounds to the original sixteenth grid, and
+reuses the accepted 50 ms future-source FIFO. It preserves short-clip no-ops,
+endpoint 1, stopped/empty guards, reverse/sync offset latching and cancellation.
+FIFO exhaustion rejects the edit without changing metadata or prior events.
+The original artwork, loop card markup and 16 protected reference assets remain
+unchanged. Existing EN/ES/PT manual panels explain Q; nudge remains unported.
+
+The expanded Start oracle executes the unchanged `UIManager.quantizeLoopStart`
+plus setter/restart/AudioGraph and conditioned PCM. It retains all old slider,
+rapid-source and solo checks and adds Q no-op, rapid Q, endpoint, below-half and
+exact-half cases across 30 mono/stereo, 8/48/96 kHz and 1/17/512/4097/20003-frame
+fixtures, OFF/static/dynamic clocks, reverse and fractional rates. Final Windows
+comparison: 1,578,100 samples, maximum absolute error 6.02428e-8 at the unchanged
+1e-6 limit; phase metadata tolerance is 1e-14. This is committed PCM with the
+retained linear interpolation model, not full browser transition/resampler parity.
+
+A boundary fixture reproduces the initial `floor(x+0.5)` mismatch against actual
+JS Math.round (`build/q-rounding-before.log`); subtracting the integer part before
+checking the fractional half fixes it. The failed real-pointer gate also caught
+the adapter replacing the original Q tooltip (`build/q-mouse.log`); its original
+title is now retained. No failing case or tolerance was removed.
+
+Windows and Ubuntu full core suites pass 13/13 (186.33s / 300.25s). After the final
+rounding correction, affected core/Start gates pass again 2/2 on both systems
+(59.64s / 82.66s). Core checks retain zero observed callback new/delete, exact
+Engine stereo and 64/128 equality with and without Q, empty/short/stopped cases,
+DEL/panic, invalid track and full-pool/FIFO rejection. Connected capture audio
+audits also pass on both systems: 126 cases, 965,826 samples, max error 7.39476e-8
+at 1e-6. Logs: `build/q-windows-tests.log`, `build/q-ubuntu-tests.log`,
+`build/q-boundary-windows.log`, `build/q-boundary-ubuntu.log` and
+`build/q-audio-windows.log` / `build/q-audio-ubuntu.log`.
+
+Final ASan/UBSan core and expanded Start/Q PCM gates pass 2/2 (129.62s),
+including the below-half rounding fix (`build/q-asan-final.log`). The final
+frontend markup/syntax/command suite also passes (`build/q-frontend-final.log`).
+
+The final corrected Standalone and production processor/editor test host rebuild
+successfully. Real native mouse/PCM workflows pass at both 64 and 128 samples,
+including original Q, Start dragging, arm/record/play, static/dynamic sync and
+retained 4s STOP deletion/cancellation (`build/q-acceptance-mouse.log`). The
+Standalone WebView2 smoke passes the new empty-loop Q action, command acknowledgement,
+20 cards, logo alignment at both widths, original count-in WebAudio comparisons
+and no product AudioContext (`build/q-acceptance-ui.log`). No new package/version.
+Hardware ASIO/listening, DAW/plugin lifecycle, other browser engines, Apple/iOS,
+full browser playback envelopes and complete application parity remain separate
+acceptance work. This completes the documented Q scope only.

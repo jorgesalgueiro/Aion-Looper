@@ -16,6 +16,7 @@ int main(){
   else if(op=="tick")out=bank.tick({static_cast<float>(value),right});
   else if(op=="wait"){for(unsigned n=0;bank.finalizationPending()&&n<10000;++n){bank.beginBlock();std::this_thread::sleep_for(std::chrono::milliseconds(1));}ok=!bank.finalizationPending();}
   else if(op=="delay")ok=bank.setStartDelay(id,value);
+  else if(op=="quantize")ok=bank.apply(A::quantizeStart,id);
   else if(op=="apply")ok=bank.apply(A::applyStart,id);
   else if(op=="retrigger")ok=bank.apply(A::retrigger,id);
   else if(op=="speed")ok=bank.apply(A::speed,id,static_cast<float>(value));

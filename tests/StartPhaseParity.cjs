@@ -27,6 +27,8 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  vm.runInContext(`state.bpm=120;state.bars=1;state.timeSig={num:4};state.masterStartTime=0;state.loopLength=2;
  globalThis.setDelay=value=>UIManager.setLoopStartDelay(0,value);
  globalThis.configure=(mode,bpm,origin,num)=>{state.syncEnabled=mode!==0;state.syncMode=mode===1?'static':mode===2?'dynamic':'off';state.bpm=bpm;state.masterStartTime=origin;state.timeSig.num=num;state.loopLength=60/bpm*num;state.loops[0].originalBpm=120;};
+ globalThis.quantize=()=>UIManager.quantizeLoopStart(0);
+ globalThis.delayValue=()=>state.loops[0].startDelay;
  globalThis.applyPhase=()=>state.loops[0].restart(audio.currentTime+0.05);
  globalThis.rate=()=>Math.fround(state.loops[0].effectivePlaybackRate);
  globalThis.offset=()=>state.loops[0].graph.startOffset;
@@ -34,13 +36,13 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  globalThis.phaseSpeed=value=>{state.loops[0].playbackRate=value;};
  `,context);
  let cases=0,samples=0,maximum=0;
- for(const mono of [true,false])for(const sampleRate of [8000,48000,96000])for(const length of [1,17,512,4097]){
+ for(const mono of [true,false])for(const sampleRate of [8000,48000,96000])for(const length of [1,17,512,4097,20003]){
   audio.currentTime=0;vm.runInContext('state.syncEnabled=false;state.bpm=120;',context);
   const raw=[Array.from({length},(_,i)=>Math.fround(0.12+0.4*Math.sin(i*0.11))),Array.from({length},(_,i)=>Math.fround(-0.08+0.2*Math.cos(i*0.073)))];
   const buffer=makeBuffer(mono?[raw[0]]:raw,sampleRate);context.condition(buffer);
   let frame=length,phase=0,origin=0,bpm=120,pending=[],excluded=false;
   const commands=[`prepare 81920 ${sampleRate}`,'record 0 0',...raw[0].map((v,i)=>`tick 0 ${v}${mono?'':' '+raw[1][i]}`),'finish 0 0','wait 0 0'];
-  audio.currentTime=frame/sampleRate;context.setup(buffer);let playingSource=context.source();const checks=[];
+  audio.currentTime=frame/sampleRate;context.setup(buffer);let playingSource=context.source();const checks=[],metadata=[];
   const render=count=>{for(let n=0;n<count;++n){while(pending.length&&frame>=pending[0].at){const event=pending.shift();phase=event.phase;playingSource=event.source;}
    const src=playingSource,index=Math.floor(phase),next=(index+1)%length,f=Math.fround(phase-index);
    const value=c=>Math.fround(src.getChannelData(c)[index]+Math.fround(src.getChannelData(c)[next]-src.getChannelData(c)[index])*f);
@@ -59,6 +61,18 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
     pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate+(deadline-target)*context.rate())%length+length)%length});
     render(deadline-frame+Math.min(length+3,147));
    }
+   // Execute the original Q handler, including no-op clips and rapid clicks.
+   for(const delay of [0.12499999999999999,0.125,0.24999999999999997,0.17,0.499,1]){
+    context.setDelay(delay);commands.push(`delay 0 ${delay}`);
+    audio.currentTime=frame/sampleRate;context.quantize();
+    metadata.push({row:commands.length,value:context.delayValue()});commands.push('quantize 0 0');
+    if(Math.round((length/sampleRate)/(60/bpm/4))>0){
+     const target=(audio.currentTime+0.05)*sampleRate,nearest=Math.round(target),deadline=Math.abs(target-nearest)<=4*Number.EPSILON*Math.max(1,Math.abs(target))?nearest:Math.ceil(target);
+     pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate+(deadline-target)*context.rate())%length+length)%length});
+    }
+    render(7);
+   }
+   if(pending.length)render(pending.at(-1).at-frame+147);
    // Two future sources must both render, even when released within 50ms.
    for(const delay of [0.2,0.8]){
     audio.currentTime=frame/sampleRate;context.setDelay(delay);commands.push(`delay 0 ${delay}`);context.applyPhase();commands.push('apply 0 0');
@@ -75,8 +89,9 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   commands.push('solo 1 0');context.phaseSolo(false);excluded=false;render(47);
   const result=spawnSync(process.argv[2],[],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:32*1024*1024});assert.equal(result.status,0,result.stderr);const rows=result.stdout.trim().split(/\r?\n/);assert.equal(rows.length,commands.length);
   rows.forEach((r,i)=>assert.equal(Number(r.split(' ')[0]),1,'Rejected '+commands[i]));
+  for(const check of metadata)assert(Math.abs(Number(rows[check.row].split(' ')[3])-check.value)<=1e-14,'Q metadata matches unchanged JS');
   for(const check of checks){const row=rows[check.row].split(' ').map(Number);for(const value of row.slice(6)){const error=Math.abs(value-check.expected);maximum=Math.max(maximum,error);assert(error<=1e-6,`Start phase ${mono}/${sampleRate}/${length}, frame ${row[1]}: ${value} vs ${check.expected}`);}samples++;}
   cases++;
  }
- console.log(JSON.stringify({result:'PASS',cases,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:'Unchanged UI setter, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 50ms timing; linear interpolation, browser playback envelopes/resampling excluded'}));
+ console.log(JSON.stringify({result:'PASS',cases,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:'Unchanged UI setter/Q, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 50ms timing; linear interpolation, browser playback envelopes/resampling excluded'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

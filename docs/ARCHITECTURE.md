@@ -489,3 +489,11 @@ Same-track CANCEL/STOP/DEL and global STOP ALL/DEL ALL cancel cues; reprepare
 cancels them too. Unrelated or rejected actions preserve the accepted schedule.
 The two persistent wavetables allocate and populate in prepare, not process.
 No project PCM persistence or external/DAW clock acceptance is implied.
+
+The original Start Q button sends one `quantizeStart` command to the audio owner.
+It rounds recorded duration to a count of sixteenth notes at the current BPM,
+then rounds the phase to that grid (JavaScript positive half-up semantics).
+It retains endpoint 1, the short-clip no-op and the stopped-loop guard. Playing
+clips use the existing 50 ms future-source FIFO with reverse/sync latching; a
+full FIFO rejects Q atomically, preserving the prior phase. No clip copies,
+allocations or locks are needed. Nudge remains separate migration work.

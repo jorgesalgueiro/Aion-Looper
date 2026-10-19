@@ -352,6 +352,19 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             return true;
         }
         case LoopAction::startDelay:return setStartDelay(id,value);
+        case LoopAction::quantizeStart: {
+            if(!t.clip||!t.info.length)return true;
+            // Original Q uses recorded duration, not varispeed-adjusted duration.
+            // floor(x+0.5) rounds the representable value just below a half
+            // upward on some inputs; JS Math.round must leave it below.
+            const auto round=[](double x) noexcept {const double base=std::floor(x);return base+(x-base>=0.5?1.0:0.0);};
+            const double divisions=round((t.info.length/rate)/(60.0/sync.settings.bpm/4.0));
+            if(divisions<=0)return true;
+            const double previous=t.info.startDelay;
+            t.info.startDelay=std::clamp(round(previous*divisions)/divisions,0.0,1.0);
+            if(apply(LoopAction::applyStart,id))return true;
+            t.info.startDelay=previous;return false; // FIFO rejection preserves accepted state.
+        }
         case LoopAction::applyStart: {
             if(s!=LoopState::playing||!t.clip)return true; // Original restart guard.
             const double target=static_cast<double>(frame)/rate+0.05;

@@ -39,6 +39,11 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  let phaseSnapshot;
  for(let n=0;n<50;++n){phaseSnapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);if(phaseSnapshot.tracks[0].startDelay===0.333&&phaseSnapshot.lastRequestId>=snapshot.lastRequestId+2)break;await delay(50);}
  assert.equal(phaseSnapshot.tracks[0].startDelay,0.333);assert.equal(phaseSnapshot.tracks[0].state,'empty');assert.equal(phaseSnapshot.tracks[0].phaseApplyFrame,0);assert(!phaseSnapshot.rejected,'Start release on empty is a harmless no-op');
+ const qBefore=phaseSnapshot.lastRequestId;
+ assert(await evaluate(`!document.querySelector('#loop-0 button[title="Quantize Start to 16th Note"]').disabled`),'Original Q button enabled');
+ await evaluate(`document.querySelector('#loop-0 button[title="Quantize Start to 16th Note"]').click()`);
+ for(let n=0;n<50;++n){phaseSnapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);if(phaseSnapshot.lastRequestId>qBefore)break;await delay(50);}
+ assert.equal(phaseSnapshot.lastRequestId,qBefore+1);assert(!phaseSnapshot.rejected);assert.equal(phaseSnapshot.tracks[0].state,'empty');assert.equal(phaseSnapshot.tracks[0].startDelay,0.333);assert.equal(phaseSnapshot.tracks[0].phaseApplyFrame,0);
  assert((await evaluate(`AionNative.request({operation:'loop',action:'startDelay',track:0,generation:${snapshot.generation},expiresAt:Date.now()+3000,value:0})`)).ok);
 
  assert(await evaluate(`document.getElementById('btnGlobalUndo').disabled&&document.getElementById('btnGlobalRedo').disabled&&[...document.querySelectorAll('#loopContainer button')].filter(b=>['UNDO','REDO'].includes(b.textContent.trim())).every(b=>b.disabled)`),'Empty history controls are disabled');
