@@ -195,3 +195,30 @@ separate, reset the visual override on source replacement/stop, and retain the
 1e-12 circular-progress comparison, frontend routing, and actual draw-stream
 checks at 64/128. Dynamic recording progress and the unchanged canvas renderer
 must retain their existing gates.
+
+WAV export must retain unchanged bufferToWAV/encodeWAV bytes and exportLoop's
+UTF-16 filename semantics, including freshly typed names before telemetry updates.
+Export stored PCM, independent of playback controls; keep the original waveform
+click and never bubble it into transport. Audio only pins one identity/generation-
+validated immutable lease; worker encodes/releases it and message consumes bytes.
+Preserve bounded independent requests, full-pool/DEL/prepare/OOM recovery and zero
+callback new/delete. Native navigation and editor destruction cancel an unchosen
+destination; do not rely on unload RPC or new-page bootstrap timing. Late picker
+callbacks must fail lifetime/sequence checks. Keep background temporary-file write/
+flush/error/replace checks. Test-host picker injection is not OS-dialog validation.
+Keep frontend export in gesture order after edits/finalization, with the latest
+committed identity and click-time filename. Retain rapid NORM/export, unsent DEL
+cancellation and quiet repeated clicks. OS-picker save/visibility is still a
+manual acceptance gate: automation could not expose that dialog on this PC. Stay
+on this feature until that gate is resolved; do not label full export acceptance.
+
+Mouse fixtures must retain actual CDP pointer events and 240 BPM SOUND/cancel
+assertions. Observe short cues from actual rendered callback PCM and its audio-
+owned armed/frame/master/flash evidence, plus the displayed CANCEL state. Slow
+IPC can sample only gaps between 100ms cues. Keep the original exact block-meter
+gate with an every-block consumer in CountInTests.cpp. No audio/timing mocks or
+threshold changes: the host's bounded SPSC evidence logger writes off audio.
+Queue ordered press/move/release before awaiting their
+acknowledgements so latency cannot turn a 20ms click into a >=600ms hold. Keep all
+original 3800/4200ms gestures and the analytical 3999/4000ms boundaries; never relax
+an assertion or change product DSP to compensate for test-transport latency.

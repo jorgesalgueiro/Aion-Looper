@@ -24,12 +24,17 @@ void countInTests(){
   auto engine=std::make_unique<Engine>();engine->prepare(8000,16384);engine->setMonitoring(false);
   engine->configureSync({SyncMode::fixed,999,1,4,4,false,true});
   check(engine->enqueueLoop({LoopAction::record,0,1,engine->generation(),0,0}),"arm SOUND-only recording");
-  std::vector<float> left(8192),right(8192);bool tailInCapture=false;EngineView latest{},view{};
+  std::vector<float> left(8192),right(8192);bool tailInCapture=false,armedMeterHeard=false;EngineView latest{},view{};
   for(unsigned offset=0;offset<8192;offset+=block){float* channels[]={left.data()+offset,right.data()+offset};watch=true;engine->process(channels,2,block);watch=false;while(engine->popView(view))latest=view;
    check(latest.masterPeak==0,"count-in bypasses MASTER meter");if(latest.tracks[0].state==LoopState::recording)for(unsigned i=0;i<static_cast<unsigned>(block);++i)tailInCapture|=std::abs(left[offset+i])>0.01f;
+   watch=true;const auto inspected=engine->inspectAudioThread();watch=false;
+   check(inspected.frame==latest.frame&&inspected.track.state==latest.tracks[0].state&&inspected.masterPeak==latest.masterPeak&&inspected.countInFlash==latest.countInFlash,"passive audio inspection matches coherent native view");
+   float peak=0;for(unsigned i=0;i<static_cast<unsigned>(block);++i)peak=std::max(peak,std::max(std::abs(left[offset+i]),std::abs(right[offset+i])));
+   check(peak==latest.outputPeak,"native output meter retains exact rendered block peak");armedMeterHeard|=latest.tracks[0].state==LoopState::armed&&latest.outputPeak>0.01f;
   }
   check(left==right,"count-in stereo equality");if(reference.empty())reference=left;else check(reference==left,"count-in exact 64/128 invariance");
   check(tailInCapture,"fast-tempo cue tail overlaps recording for capture-exclusion test");
+  check(armedMeterHeard,"original armed/outputPeak SOUND gate with an every-block consumer");
   for(unsigned i=0;i<10000&&latest.tracks[0].state!=LoopState::playing;++i){float zeros[64]{},*channels[]={zeros};watch=true;engine->process(channels,1,64);watch=false;while(engine->popView(view))latest=view;std::this_thread::sleep_for(std::chrono::milliseconds(1));}
   check(latest.tracks[0].state==LoopState::playing&&latest.tracks[0].length==1922,"static SOUND take commits with original length");
   engine->setTarget(1);

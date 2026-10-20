@@ -10,11 +10,14 @@ public:
 private:
     class Browser final : public juce::WebBrowserComponent {
     public:
-        explicit Browser(const Options& options) : WebBrowserComponent(options) {}
+        Browser(AionProcessor& processor,const Options& options) : WebBrowserComponent(options),owner(processor) {}
         bool pageAboutToLoad(const juce::String& url) override {
+            owner.cancelExport(); // Native navigation precedes unload RPC/new-page bootstrap.
             return url.startsWith(getResourceProviderRoot()) || url == "about:blank";
         }
         void newWindowAttemptingToLoad(const juce::String&) override {}
+    private:
+        AionProcessor& owner;
     };
     static juce::WebBrowserComponent::Options options(AionProcessor&);
     static std::optional<juce::WebBrowserComponent::Resource> resource(const juce::String&);

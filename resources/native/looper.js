@@ -14,7 +14,7 @@
             <label><input id="native-monitor" type="checkbox"> MONITOR</label>
             <p>Standalone: choose device/ASIO driver and buffer in Options, then Unmute Input. Plugins use the host's audio routing.</p>
             <p id="native-status" role="status">Waiting for audio...</p>
-            <p>Session audio and loop names are temporary; save/export is not ported. Changing sample rate clears both.</p></div>`;
+            <p>Click a recorded loop waveform to export WAV. Session audio and names are temporary; project saving is not ported. Changing sample rate clears session audio and names.</p></div>`;
         const output = document.createElement('div'); output.className='mixer-row';
         output.innerHTML=`<label for="native-master" class="mixer-label">VOLUME</label>
             <input id="native-master" class="mixer-slider" type="range" min="0" max="2" step="0.01" value="0" aria-label="Master output volume">
@@ -102,6 +102,9 @@
         holdManual.en.push('Start: drag the original slider to choose a playback phase; release applies it after 50 ms while playing. Dragging alone keeps the current source running. The recorded audio is preserved. STOP ALL keeps the chosen phase and cancels pending restarts; DEL resets it. Q snaps Start to the nearest sixteenth-note division of the recorded duration using the current BPM; during playback it applies after 50 ms. Clips shorter than half a sixteenth stay unchanged. The < and > buttons nudge Start by 1/64 note at the current BPM and apply after 50 ms while playing. Tiny clips wrap across multiple cycles safely; stopped loops stay stopped.');
         holdManual.es.push('Start: arrastra el deslizador para elegir la fase; al soltar se aplica tras 50 ms durante la reproducción. Mientras arrastras continúa la fuente actual. El audio grabado se conserva. STOP ALL conserva la fase y cancela los reinicios pendientes; DEL la restablece. Q ajusta Start a la división de semicorchea más cercana según la duración grabada y el BPM actual; durante la reproducción se aplica tras 50 ms. Los clips menores que media semicorchea no cambian. Los botones < y > ajustan Start en 1/64 de nota al BPM actual y se aplican tras 50 ms durante la reproducción. Los clips muy cortos se envuelven entre varios ciclos; los loops detenidos no empiezan.');
         holdManual.pt.push('Start: arrasta o controlo para escolher a fase; ao soltar aplica-se após 50 ms durante a reprodução. Enquanto arrastas, a fonte atual continua. O áudio gravado é preservado. STOP ALL mantém a fase e cancela os reinícios pendentes; DEL repõe a fase. Q ajusta Start à divisão de semicolcheia mais próxima usando a duração gravada e o BPM atual; durante a reprodução aplica-se após 50 ms. Clips menores que meia semicolcheia não mudam. Os botões < e > ajustam Start em 1/64 de nota ao BPM atual e aplicam-se após 50 ms durante a reprodução. Clips muito curtos dão a volta a vários ciclos em segurança; loops parados continuam parados.');
+        holdManual.en.push('WAV: click a recorded loop waveform and choose the filename and folder in the native save dialog. Exports use the stored take at its capture sample rate in stereo PCM16. Volume, pan, reverse, speed and STUT control playback; exporting reads the stored samples. Cancel keeps the loop. Closing or reloading the editor cancels an unchosen destination; a selected background write completes.');
+        holdManual.es.push('WAV: haz clic en la forma de onda de un loop grabado y elige el nombre y la carpeta en el diálogo nativo. Se exporta la toma almacenada a su frecuencia de captura en PCM16 estéreo. Volumen, panorama, reverse, velocidad y STUT controlan la reproducción; la exportación lee las muestras almacenadas. Cancel conserva el loop. Cerrar o recargar el editor cancela un destino pendiente; una escritura ya elegida termina en segundo plano.');
+        holdManual.pt.push('WAV: clica na forma de onda de um loop gravado e escolhe o nome e a pasta no diálogo nativo. A exportação usa a tomada guardada à frequência de captura em PCM16 estéreo. Volume, panorama, reverse, velocidade e STUT controlam a reprodução; a exportação lê as amostras guardadas. Cancel mantém o loop. Fechar ou recarregar o editor cancela um destino por escolher; uma escrita já escolhida termina em segundo plano.');
         for(const [language,copy] of Object.entries(holdManual)){
             const note=document.createElement('div');note.id=`native-hold-manual-${language}`;
             for(const [index,text] of copy.entries()){const line=document.createElement(index?'p':'h4');line.textContent=text;note.append(line);}
@@ -122,6 +125,11 @@
         const enabled = () => snapshot?.audioReady && Date.now()-advancedAt < 1000;
         const scheduler = new window.AionCommandQueue({ready:()=>enabled()||scheduler.items[0]?.metadata===true,
             run:async c=>{
+                if(c.action==='exportLoop'){
+                    const reply=await rpc({operation:'exportLoop',track:c.track,generation:c.generation,waveformId:c.waveformId,filename:c.filename});
+                    if(!reply.ok&&!reply.exportBusy)throw Error(reply.error||'WAV export unavailable');
+                    if(reply.ok)error='';return;
+                }
                 if(c.action!=='renameLoop')return sendCommand(c.action,c.track,c.value);
                 const reply=await rpc({operation:'renameLoop',track:c.track,name:c.name});
                 if(!reply.ok)throw Error(reply.error||'Name was not changed');
@@ -165,6 +173,15 @@
         monitor.addEventListener('change', () => setParameter('inputMonitor',monitor.checked?1:0));
         autoPlay.addEventListener('change',()=>setParameter('autoPlayAfterRecord',autoPlay.checked?1:0));
         const releaseStutter=track=>{if(snapshot)rpc({operation:'releaseStutter',track,generation:snapshot.generation}).catch(e=>notify(e.message));};
+        const exportLoop=track=>{
+            const t=snapshot?.tracks[track];if(!enabled()||!t?.length||!t.waveformId)return;
+            const filename=window.AionExportName(rows[track]?.name.value??t.name,track,Date.now());
+            scheduler.enqueue(()=>{
+                const current=snapshot.tracks[track];
+                if(current.state==='finalizing')return window.AionCommandQueue.wait;
+                return current.length&&current.waveformId?{action:'exportLoop',track,generation:snapshot.generation,waveformId:current.waveformId,filename}:null;
+            },{track});
+        };
         const stutter=new window.AionStutter({
             start:(track,valid)=>{const generation=snapshot?.generation,clearEpoch=snapshot?.tracks[track]?.clearEpoch;
                 scheduler.enqueue(()=>valid()&&snapshot.generation===generation&&snapshot.tracks[track].clearEpoch===clearEpoch&&snapshot.tracks[track].state==='playing'?{action:'stutterStart',track,value:0}:null,{track});},
@@ -278,7 +295,8 @@
                 const normalize=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='NORM'),()=>command('normalize',i));
                 feedback.addEventListener('dblclick',()=>queueControl('feedback',i,0.8));
                 row.addEventListener('pointerdown',()=>{selected=i;});
-                const canvas=row.querySelector('canvas');canvas.title='Playback position';
+                const canvas=row.querySelector('canvas');canvas.title='Click to Export WAV';
+                canvas.addEventListener('click',e=>{e.stopPropagation();exportLoop(i);});
                 rows.push({row,main,name,volume,feedback,pan,start,quantize,speed,half,reset,mute,solo,retrigger,stut,normalize,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
@@ -372,6 +390,7 @@
                 snapshot.poolFull?'Recording stopped: session audio memory is full. Clear a loop to free space.':
                 snapshot.audioReset?'Session audio cleared after a sample-rate change.':
                 `INPUT ${db(snapshot.inputPeak)} | OUTPUT ${db(snapshot.outputPeak)} | ${(snapshot.freeFrames/snapshot.sampleRate).toFixed(1)}s recording capacity remaining${busy?' | applying...':''}`);
+            if(snapshot.exportStatus)status.textContent+=` | ${snapshot.exportStatus}`;
         }
         async function poll() {
             try {
@@ -380,7 +399,7 @@
                 if(snapshot && reply.generation!==snapshot.generation){scheduler.reset();stutter.cancel();keyboard.cancel();rows.forEach(r=>{r.waveformId=0;r.wavePeaks=null;});}
                 if(reply.frame!==lastFrame || reply.generation!==snapshot?.generation){lastFrame=reply.frame;advancedAt=Date.now();}
                 snapshot=reply;
-                if(!rows.length){releaseStutter(20);createRows(reply);}
+                if(!rows.length){releaseStutter(20);rpc({operation:'cancelExport'}).catch(e=>notify(e.message));createRows(reply);}
                 if(pending) {
                     if(reply.generation!==pending.generation){pending.reject(Error('Audio configuration changed'));pending=null;}
                     else if(reply.lastRequestId>=pending.id){reply.rejected?pending.reject(Error('Action is unavailable in the current loop state')):pending.resolve();pending=null;}
@@ -390,7 +409,7 @@
             } catch(e) {if(alive)notify(e.message);}
             finally {if(alive)pollTimer=setTimeout(poll,snapshot?.tracks.some(t=>t.state==='recording'&&t.dynamicRecorded)?16:66);}
         }
-        window.addEventListener('pagehide',()=>{stutter.cancel();releaseStutter(20);alive=false;scheduler.close();keyboard.cancel();stickyObserver.disconnect();clearTimeout(pollTimer);if(pending)pending.reject(Error('Editor closed'));pending=null;});
+        window.addEventListener('pagehide',()=>{stutter.cancel();releaseStutter(20);rpc({operation:'cancelExport'}).catch(()=>{});alive=false;scheduler.close();keyboard.cancel();stickyObserver.disconnect();clearTimeout(pollTimer);if(pending)pending.reject(Error('Editor closed'));pending=null;});
         document.title='Aion-Looper';
         poll();
     });

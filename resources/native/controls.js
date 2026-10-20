@@ -134,4 +134,5 @@
         }
         cancel() {++this.epoch;for(const press of this.presses.values()){this.timers.clear(press.timer);this.timers.clear(press.eraseTimer);}this.presses.clear();}
     };
+    window.AionExportName=(name,id,now)=>`${(name||`Loop_${id+1}`).replace(/[^a-z0-9]/gi,'_')}_${now}.wav`;
 })();

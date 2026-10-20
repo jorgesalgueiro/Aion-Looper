@@ -8,6 +8,7 @@
 #include <thread>
 #include "core/SpscQueue.h"
 #include "core/SyncClock.h"
+#include "core/Wav.h"
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
@@ -46,6 +47,10 @@ public:
     Stereo tick(Stereo input) noexcept;
     static constexpr unsigned waveformWidth=720;
     bool copyWaveform(std::uint32_t,std::uint64_t,std::array<float,waveformWidth>&) const noexcept;
+    // Audio pins one immutable clip; worker encodes it; message thread takes bytes.
+    // One outstanding request, including failures, until popExport consumes it.
+    bool requestExport(std::uint32_t track,std::uint64_t waveformId) noexcept;
+    bool popExport(WavExport&) noexcept;
     void beginBlock() noexcept;
     void setAutoPlay(bool enabled) noexcept { autoPlay = enabled; }
     std::array<LoopView, trackCount> view() const noexcept;
@@ -123,6 +128,10 @@ private:
     bool resultChanged = true; // Worker publishes with result through jobState.
     SpscQueue<Clip*,256> retired; // 20 current + 20 held sources + at most 100 history + one job.
     std::vector<std::unique_ptr<Clip>> owned; // Worker only, except stopped prepare/destruction.
+    std::atomic<unsigned> exportState{0}; // 0 idle/message released; 1 worker; 2 message result.
+    Clip* exportClip=nullptr;
+    double exportRate=48000;
+    WavExport exported;
     double rate = 48000;
     std::uint64_t frame=0;
     SyncClock sync;

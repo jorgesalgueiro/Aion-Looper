@@ -356,3 +356,19 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
 {const code=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8').split('\n').find(line=>line.includes('const progress=recording?'));assert(code);
  for(const progress of [0,0.123,0.5,0.999])for(const stuttering of [false,true]){const native={snapshot:{},t:{length:4096,position:17,stuttering,stutterClock:true,clockProgress:progress},recording:false};vm.createContext(native);vm.runInContext(code+';globalThis.result=progress;',native);assert.equal(native.result,progress,'Held/released STUT routes original clock to unchanged canvas');}
  console.log('PASS: original STUT waveform clock remains independent of fragment cursor after release');}
+
+// Export must follow an acknowledged edit/finalization, retain its click-time
+// name and remain owned by its track's pending-clear barrier.
+(async()=>{
+ const native={window:{},snapshot:{generation:1,tracks:[{state:'playing',length:512,waveformId:1}]},rows:[{name:{value:'Before'}}],enabled:()=>true,Date:{now:()=>123}};vm.createContext(native);
+ vm.runInContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ let ready=true,finish;const calls=[];
+ native.scheduler=new native.window.AionCommandQueue({ready:()=>ready,notify:message=>assert.fail(message),run:async c=>{calls.push(c);if(c.action==='normalize'){native.snapshot.tracks[0].state='finalizing';await new Promise(r=>finish=r);}if(c.action==='clear')Object.assign(native.snapshot.tracks[0],{state:'empty',length:0,waveformId:0});}});
+ const controller=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8'),method=/const exportLoop=track=>\{[\s\S]*?\n        \};/.exec(controller);assert(method);vm.runInContext(method[0]+'globalThis.exportLoop=exportLoop;',native);
+ native.scheduler.enqueue(()=>({action:'normalize',track:0}),{track:0});native.exportLoop(0);native.rows[0].name.value='Later';
+ assert.equal(calls.length,1);finish();await new Promise(setImmediate);assert.equal(calls.length,1,'Export waits for worker finalization after the edit acknowledgement');
+ Object.assign(native.snapshot.tracks[0],{state:'playing',waveformId:2});await native.scheduler.pump();assert.equal(calls.length,2);assert.equal(calls[1].action,'exportLoop');assert.equal(calls[1].waveformId,2,'Export latest committed edited clip');assert.equal(calls[1].filename,'Before_123.wav','Filename belongs to the click, not later typing');
+ ready=false;native.exportLoop(0);assert.equal(native.scheduler.items[0].track,0);native.scheduler.enqueue(()=>({action:'clear',track:0}),{track:0,clearTrack:true});ready=true;await native.scheduler.pump();assert.equal(calls.filter(c=>c.action==='exportLoop').length,1,'DEL supersedes an unsent export');
+ native.exportLoop(0);assert.equal(native.scheduler.items.length,0,'Empty waveform is a no-op');
+ console.log('PASS: export gesture FIFO, finalization wait, latest clip identity, click-time filename and DEL/empty cancellation');
+})().catch(e=>{console.error(e);process.exitCode=1;});

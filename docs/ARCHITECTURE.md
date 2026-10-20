@@ -172,9 +172,10 @@ Four pure presentation methods and effect colours are copied from the original
 reference into `loop-view.js`; tests compare the method text (line endings normalized).
 The generated cards retain the original controls and CSS. The adapter removes
 inline handlers, enables only implemented controls and polls lossy snapshots.
-No original recorder, AudioContext, Worklet, MIDI or CDN script is executed. Project
-save/export and undo are visibly unavailable; the preview must not imply that DAW
-parameter XML contains recorded audio.
+No original recorder, AudioContext, Worklet, MIDI or CDN script is executed. This
+foundation initially disabled project/export/history controls; current capability
+and validation scope are listed in PARITY.md and the later sections below. DAW
+parameter XML does not contain recorded audio.
 
 ## Reference UI contract (0.3.0)
 
@@ -516,8 +517,8 @@ populate a message-thread cache. The editor acknowledges known identities so
 unchanged snapshots omit peak arrays; generation/identity matching rejects stale
 content. DEL clears the identity, history restores it and reset invalidates caches.
 The original committed-waveform draw block retains state colors, dim/bright bars,
-white playhead and HiDPI canvas scaling. Live input/capture oscilloscope and other
-waveform interactions remain separate migration work.
+white playhead and HiDPI canvas scaling. The DYNAMIC trace and raw WAV waveform
+click are described below; other waveform interactions remain separate work.
 
 DYNAMIC initial recording now uses a native 512-sample time-domain input window,
 matching the reference analyser size. LiveInput is constructed off callback and
@@ -582,3 +583,48 @@ OfflineAudioContext playback tests. The latter currently accept 1x, quantum-alig
 press/release at ordinary/tail fragments with zero/nonzero graph clock origins.
 Full browser envelopes/resampling, other browser engines, live driver latency and
 combined unported features remain separate acceptance work.
+
+### Original waveform-click WAV export
+
+The original canvas retains its `Click to Export WAV` action and existing style.
+`AionExportName` preserves `ProjectManager.exportLoop`'s fallback, UTF-16 ASCII
+sanitization and timestamp. Read the current name input at click time, rather than
+waiting for metadata telemetry. The frontend gesture FIFO orders export after
+earlier NORM/history actions and waits for finalization, then resolves the latest
+clip identity. The click-time filename stays fixed. DEL supersedes an unsent
+track-owned export. Export itself does not change audio/Undo/Redo state or consume
+an audio performance-command acknowledgement.
+
+A separate bounded request slot crosses from message to audio. At the next block
+(including a zero-length block), the audio owner validates generation and immutable
+waveform identity, adds one clip lease and publishes a three-state mailbox. The
+existing worker encodes PCM16 RIFF/WAVE and releases the lease. Full PCM scanning,
+allocation and destruction stay off the callback. One outstanding request bounds
+memory. Deletion, edits and prepare cannot invalidate pinned samples; shutdown
+joins/drains a pinned export before destroying clips. A changed identity reports
+failure rather than exporting an unrelated take; a changed generation cancels an
+unchosen result. Paused host callbacks delay the request until the next callback.
+Failed encoding preserves the current clip and history.
+
+The message thread takes the bytes and opens JUCE's asynchronous save chooser.
+Only this picker supplies a destination; IPC accepts a sanitized basename, never
+a path. A background writer writes a sibling temporary file, checks write/flush
+status and replaces the selected target after success. Results appear in the
+existing status line. Editor destruction and native `pageAboutToLoad` cancel an
+unchosen destination; sequence/lifetime checks invalidate late callbacks. Unload/
+bootstrap RPCs are additional cleanup, not the navigation safety boundary. A chosen
+write finishes independently. The timer sleeps when no export is outstanding.
+
+Exports contain the stored clip, matching original `bufferToWAV`: volume, pan,
+mute, solo, reverse, speed, Start/Q/nudge and STUT do not process exported PCM.
+This is not wet bounce, project persistence or import. Native captures store two
+channels (mono input is duplicated); the standalone encoder also retains the
+reference mono header/encoding behavior.
+
+The hardware-free host additionally observes actual output-buffer peaks and
+`inspectAudioThread`'s audio-owned track/frame/master/flash data. A bounded SPSC
+queue publishes only diagnostic reset and first-cue events; filesystem reporting
+runs on the test host's message thread. It neither changes audio nor advances the
+sample clock. The inspection method must never be called by the GUI. This avoids
+mistaking a missed lossy telemetry pulse for missing audio. Normal application
+processing retains its existing per-block meters and sample output.

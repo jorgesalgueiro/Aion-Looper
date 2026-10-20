@@ -21,15 +21,21 @@ let socket;
     });
     const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
     const snapshot=()=>evaluate(`AionNative.request({operation:'snapshot'})`);
+    const pcmDirectory=require('node:path').resolve(__dirname,`../build/windows/Release/wav-export-${process.argv[2]||64}`);
+    const readPcm=()=>{try{return JSON.parse(require('node:fs').readFileSync(require('node:path').join(pcmDirectory,'pcm-evidence.json'),'utf8'));}catch{return null;}};
+    const waitPcm=async(predicate,label)=>{const end=Date.now()+7000;let evidence;while(Date.now()<end){evidence=readPcm();if(evidence&&predicate(evidence))return evidence;await delay(5);}assert.fail(label+': '+JSON.stringify(evidence));};
     const wait=async (predicate,label,timeout=7000)=>{const end=Date.now()+timeout;let value;while(Date.now()<end){value=await snapshot();if(predicate(value)){await delay(100);return value;}await delay(35);}assert.fail(label+': '+JSON.stringify(value));};
     const state=(wanted,id=0)=>wait(s=>s.tracks[id].state===wanted,`Loop ${id+1} -> ${wanted}`);
     const click=async (selector,{outside=false,hold=20}={})=>{
         const rect=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing target');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,disabled:!!e.disabled,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};})()`);
         assert(!rect.disabled&&rect.hit,'Mouse target blocked: '+selector+' '+JSON.stringify(rect));
-        await call('Input.dispatchMouseEvent',{type:'mousePressed',x:rect.x,y:rect.y,button:'left',clickCount:1});
+        // Queue ordered input before waiting for CDP acknowledgements: response
+        // latency must not turn a requested short click into a >=600ms hold.
+        const input=[call('Input.dispatchMouseEvent',{type:'mousePressed',x:rect.x,y:rect.y,button:'left',clickCount:1})];
         await delay(hold);
-        if(outside)await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:1190,y:790,button:'left',buttons:1});
-        await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:outside?1190:rect.x,y:outside?790:rect.y,button:'left',clickCount:1});
+        if(outside)input.push(call('Input.dispatchMouseEvent',{type:'mouseMoved',x:1190,y:790,button:'left',buttons:1}));
+        input.push(call('Input.dispatchMouseEvent',{type:'mouseReleased',x:outside?1190:rect.x,y:outside?790:rect.y,button:'left',clickCount:1}));
+        await Promise.all(input);
     };
     const pauseDispatch=()=>evaluate(`window.savedHoldPump=AionCommandQueue.prototype.pump;window.pauseHoldQueue=true;AionCommandQueue.prototype.pump=function(){window.pausedHoldQueue=this;if(window.pauseHoldQueue)return;return window.savedHoldPump.call(this);};`);
     const resumeDispatch=()=>evaluate(`(async()=>{const queue=window.pausedHoldQueue,pump=window.savedHoldPump;AionCommandQueue.prototype.pump=pump;delete window.pauseHoldQueue;delete window.pausedHoldQueue;delete window.savedHoldPump;await pump.call(queue);})()`);
@@ -37,7 +43,7 @@ let socket;
         await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     };
     const mode=async value=>{await click(`label:has(input[name=syncMode][value=${value}])`);await wait(s=>s.syncMode===['off','static','dynamic'].indexOf(value),'sync mode '+value);};
-    const exactlyOne=async (gesture,label)=>{const before=await snapshot();await gesture();const after=await wait(s=>s.lastRequestId>before.lastRequestId,label);assert.equal(after.lastRequestId,before.lastRequestId+1,label);assert(!after.rejected,label+' rejected');await delay(160);assert.equal((await snapshot()).lastRequestId,after.lastRequestId,label+' duplicated');return after;};
+    const exactlyOne=async (gesture,label,paired=false)=>{const before=await snapshot();await gesture();const after=await wait(s=>s.lastRequestId>before.lastRequestId,label);assert.equal(after.lastRequestId,before.lastRequestId+1,label);assert(!after.rejected,label+' rejected');if(!paired){await delay(160);assert.equal((await snapshot()).lastRequestId,after.lastRequestId,label+' duplicated');}return after;};
     await call('Runtime.enable');
     await call('Emulation.setFocusEmulationEnabled',{enabled:true});
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
@@ -66,12 +72,21 @@ let socket;
     await parameter('#bpmInput',240);await mode('static');
     await click('#countInAudio');await wait(s=>s.countInAudio&&!s.countInVisual,'SOUND-only lead-in');
     for(const cancel of ['#loop-action-0','#native-stop-all']){
-        await click('#loop-action-0');await state('armed');
-        const heard=await wait(s=>s.tracks[0].state==='armed'&&s.outputPeak>0.01,'Audible native SOUND before capture');
-        assert.equal(heard.masterPeak,0,'SOUND excluded from MASTER meter');assert.equal(heard.countInFlash,0,'SOUND does not enable VISUAL');
+        const previousEpoch=readPcm().epoch;require('node:fs').writeFileSync(require('node:path').join(pcmDirectory,'pcm-reset'),'');
+        await waitPcm(e=>e.epoch>previousEpoch&&!e.heard,'Reset actual output evidence');
+        await evaluate(`(()=>{window.soundArmedSeen=false;window.soundArmedObserver?.disconnect();const row=document.getElementById('loop-0');window.soundArmedObserver=new MutationObserver(()=>{if(row.classList.contains('armed')&&document.getElementById('loop-action-0').textContent==='CANCEL'){window.soundArmedSeen=true;window.soundArmedObserver.disconnect();}});window.soundArmedObserver.observe(row,{attributes:true,attributeFilter:['class']});})()`);
+        await click('#loop-action-0');
+        // Read rendered callback samples, not an occasionally sampled telemetry
+        // proxy. The old exact block-meter gate remains in CountInTests.cpp.
+        const pcm=await waitPcm(e=>e.heard&&e.outputPeak>0.01&&e.frame<e.scheduledFrame,'Actual callback PCM while armed');
+        assert.equal(pcm.masterPeak,0,'SOUND excluded from MASTER meter');assert.equal(pcm.countInFlash,0,'SOUND does not enable VISUAL');
         await click(cancel);await state('empty');
+        assert(await evaluate('window.soundArmedSeen'),'Original CANCEL state was displayed while armed');
+        const lastSound=readPcm().lastAudibleFrame;
         await delay(150);for(let n=0;n<20;++n){const stopped=await snapshot();assert.equal(stopped.outputPeak,0,'Cancel leaves no delayed SOUND');assert.equal(stopped.countInFlash,0);assert.equal(stopped.tracks[0].state,'empty');await delay(50);}
+        assert.equal(readPcm().lastAudibleFrame,lastSound,'Actual PCM remains silent after cancellation');
     }
+    require('node:fs').writeFileSync(require('node:path').join(pcmDirectory,'pcm-stop'),'');
     await click('#countInAudio');await wait(s=>!s.countInAudio,'SOUND disabled');
     await parameter('#bpmInput',120);await mode('off');
     // Header and button are interchangeable, including release outside the button.
@@ -219,6 +234,9 @@ let socket;
     // Clicking nested controls/waveform must never also toggle transport.
     const beforeWave=await snapshot();await click('#loop-wave-0');await delay(250);
     assert.equal((await snapshot()).lastRequestId,beforeWave.lastRequestId,'Waveform never toggles transport');
+    const choice=await wait(s=>s.exportStatus==='Choose a WAV destination','Waveform picker ready');
+    require('node:fs').writeFileSync(require('node:path').resolve(__dirname,`../build/windows/Release/wav-export-${process.argv[2]||64}`,choice.exportFilename+'.choose'),'');
+    await wait(s=>!s.exportBusy,'Waveform export finishes independently');
     await exactlyOne(()=>click('#loop-0 .loop-track-controls button[aria-pressed]'),'Nested control sends only its own action');
     await exactlyOne(()=>click('#loop-0 .loop-track-controls button[aria-pressed]'),'Unmute without toggling transport');
     await exactlyOne(()=>click('#native-stop-all'),'Stop all');await state('stopped');
@@ -250,8 +268,13 @@ let socket;
     await click('#loop-action-0',{hold:4200});
     const heldCancel=await state('stopped');assert.equal(heldCancel.tracks[0].length,96000,'Holding queued CANCEL preserves PCM');
     await exactlyOne(()=>click('#loop-action-0'),'Queue playback again');await state('playing');
-    await exactlyOne(()=>click('#loop-action-0'),'Queue quantized stop');await state('stopping');
-    await exactlyOne(()=>click('#loop-action-0'),'Second mouse stop cuts now');await state('stopped');
+    await wait(s=>s.gridPosition>0.03&&s.gridPosition<0.2,'Early double-stop grid phase');
+    // Assert both acknowledgements, then check late duplicates after the pair.
+    // Extra CDP/state settling between taps can otherwise cross the bar and
+    // correctly turn the second tap into PLAY instead of STOP NOW.
+    const queuedStop=await exactlyOne(()=>click('#loop-action-0'),'Queue quantized stop',true);assert.equal(queuedStop.tracks[0].state,'stopping');
+    const cutStop=await exactlyOne(()=>click('#loop-action-0'),'Second mouse stop cuts now');await state('stopped');
+    assert.equal(cutStop.lastRequestId,queuedStop.lastRequestId+1,'Exactly two commands across the quantized-stop pair');
     await click('#loop-0 .loop-track-delete');await state('empty');
     // DYNAMIC: starts on mouse down, first finish schedules, second finishes immediately.
     await mode('dynamic');

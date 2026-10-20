@@ -23,7 +23,8 @@
 | Loop STUT | Original hold-to-fragment/release-to-full-loop button and independent original playhead clock; native phase/BPM region, fractional/reverse interpolation, queue-independent cancellation and editor lifecycle cleanup | Unchanged JS source PCM/state, actual WebAudio 1x ordinary/tail fragments at zero/nonzero clock origins, native 64/128 mouse gates; full resampling/envelopes and driver latency remain separate |
 | Recorded-loop waveform | Worker-cached original 720-bin stereo peaks; bounded generation-tagged delivery, identity-aware UI cache; original colors/bars/playhead/HiDPI | Unchanged JS peak and canvas comparisons, native pixel/PCM, history/reset/backpressure gates; DYNAMIC live trace covered separately; additional interactions remain separate |
 | DYNAMIC recording live trace | Native 512-sample input window; capture/generation tags, bounded queue, original red trace/fill, four-bar markers and sync-aware playhead | Actual WebAudio downmix, chronological Engine windows, original canvas/progress and native 64/128 gates; browser scheduling/physical latency and other live visualizers remain separate |
-| Loop editing/export | Other editing features not ported | Reference PCM/state/UI fixtures |
+| Loop WAV export | Original waveform click, raw stored stereo PCM16, original filename; bounded worker snapshot and native save picker | Exact original encoder/conditioned-PCM bytes, pin/DEL/reset/OOM, host-picker mouse/file checks at 64/128; OS picker and Apple/Linux UI validation tracked separately |
+| Other loop editing/import/export | Remaining editing, import and wet/mixed exports not ported | Reference PCM/state/UI fixtures |
 | Drone voices/sampler/tracker/FX | Not ported | Algorithm/timing/CPU and saved-state fixtures |
 | MIDI learn/FCB1010/Oxygen/HID | Designed, not implemented | Real hardware, reconnect/panic and learn matrix |
 | MIDI clock I/O | Designed, not implemented | PLL jitter/timeout/start/stop/SPP/host-loop tests |

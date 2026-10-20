@@ -323,3 +323,30 @@ The focused source gate is `js_native_stutter`. `tools/TestCountInUi.ps1` also r
 `tools/TestMouseWorkflow.ps1` checks real production PCM and pointer ownership at
 64/128 samples; run GUI/CDP scripts with local-process/localhost access and one
 GUI suite at a time. Rebuild existing targets; no package/version bump is needed.
+
+### Export a recorded loop
+
+Click the existing loop waveform, then choose the WAV destination. This exports
+stored stereo PCM16 at the capture sample rate, like the original web interface;
+playback volume/pan/reverse/speed/Start/STUT are not baked in. Empty waveforms do
+nothing. Canceling preserves audio/history. Closing or reloading the editor cancels
+an unchosen destination. A selected background write completes.
+
+No new installer is needed: incrementally rebuild the existing Standalone. The
+focused gate is `ctest --test-dir build/windows-core -C Release --output-on-failure
+-R "core_realtime_contract|js_native_wav_export"`; Ubuntu uses `build/core`.
+`tools/TestMouseWorkflow.ps1` runs retained main workflows and export mouse/file
+checks at 64/128; `-ExportOnly` runs just export checks. The fixture substitutes a
+deterministic picker and writes test WAVs under `build/windows/Release/wav-export-64`
+and `wav-export-128`; it opens no audio device. `aion_mouse_host --native-picker`
+instead exercises the real JUCE picker with synthetic audio. Do not package the
+test host. Run `AudioParityAudit.cjs` and `TestCountInUi.ps1` as usual.
+
+The test picker completes only after a `<filename>.choose` marker in its export
+directory. The supplied scripts manage this; no timed picker assumptions are
+needed. Count-in diagnostics use `pcm-evidence.json`, `pcm-reset` and `pcm-stop`
+in the same directory, recording actual callback PCM/state without a device.
+Launching `aion_mouse_host` without arguments also selects the real picker and
+localhost CDP port 9235. `node tests/NativePickerProbe.cjs prepare` records synthetic
+PCM and opens it; `export`, `status` and `cancel` support subsequent checks. This
+debug port/configuration belongs only to the excluded test host, not release apps.

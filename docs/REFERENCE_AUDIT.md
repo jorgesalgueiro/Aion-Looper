@@ -317,3 +317,44 @@ STUT and after release, independently of the fragment's audible cursor. Native
 source replacement/stop resets this visual override. Frontend routing and the
 actual mouse host's draw stream check that the playhead leaves the held fragment;
 committed waveform drawing itself remains the unchanged accepted renderer.
+
+## Waveform WAV export — 2026-10-20
+
+`WavParity.cjs` executes unchanged `AudioEngine.bufferToWAV`/`encodeWAV` and
+`ProjectManager.exportLoop`. Encoder coverage includes mono/stereo, 0/1/17/4097
+frames, clipping, asymmetric signed PCM16 scaling/truncation, nonfinite PCM,
+8/44.1/48/96/192 kHz, fractional-rate header truncation and NaN fallback. Connected
+coverage uses unchanged crossfade/DC conditioning on mono/stereo captures at
+8/48/96 kHz and 1/17/512/4097/20003 frames. All 86 header/data comparisons (767,734
+bytes) are exact. Thirty repeated exports after playback-only reverse/rate/Start/
+STUT changes remain identical. Filename tests cover empty names, punctuation,
+accents and surrogate pairs against original exportLoop. No preserved asset or
+tolerance was changed.
+
+`ExportTests.cpp` covers empty/stale clips, full pool, one-outstanding bound, pinned
+DEL/prepare, worker allocation failure/recovery, retained PCM/history, export behind
+a future performance command, generation reset, zero-block requests and exact
+64/128 captured WAV bytes with zero callback new/delete. Browser export tests use
+the production processor/editor/worker/writer with a test-host destination picker.
+That seam replaces destination selection only; it is not OS-dialog proof. Native
+navigation cancellation is required: unload/bootstrap-only cleanup failed the
+retained 128-sample reload/late-picker test.
+
+The final picker fixture waits for explicit completion markers rather than a
+400ms timeout. A reload check disables JavaScript before navigation and releases
+the old picker before reenabling it, proving the native cancellation boundary.
+Rapid NORM followed by waveform export must contain the normalized committed
+samples; pending export follows the gesture FIFO and an unsent DEL cancels it.
+
+Retained 240 BPM SOUND mouse checks exposed another test limitation: native
+snapshot polling could sample exclusively between the 100ms cues. Passive
+callback evidence recorded a 0.49428 output peak while armed, before the capture
+deadline, with MASTER/flash zero. The GUI gate now reads actual rendered PCM and
+observes the original displayed CANCEL state, retaining both mouse cancellations
+and absence of later sound. The previous exact block-outputPeak contract remains
+checked for every block in CountInTests.cpp, alongside read-only diagnostic
+consistency and zero callback allocation. No DSP, tempo or tolerance was changed.
+
+This compares the existing reference capture pipeline. It does not establish
+physical input fidelity, wet/mixed export, project restore, DAW or other platform
+acceptance. Actual OS-picker observations are recorded separately in VALIDATION.md.

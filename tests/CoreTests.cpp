@@ -26,6 +26,7 @@ void metronomeTests();
 void countInTests();
 void startPhaseTests();
 void stutterTests();
+void exportTests();
 void waveformTests();
 void liveInputTests();
 int main() {
@@ -58,6 +59,7 @@ int main() {
     countInTests();
     startPhaseTests();
     stutterTests();
+    exportTests();
     waveformTests();
     liveInputTests();
     std::cout<<"PASS: queue bounds/concurrency, sample timing, smoothing, 64/128 invariance, no callback new/delete, finite output\n";

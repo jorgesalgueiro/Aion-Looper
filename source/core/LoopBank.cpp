@@ -53,7 +53,14 @@ void LoopBank::releaseOnWorker(Clip* clip) noexcept {
     if(found!=owned.end())owned.erase(found);
 }
 void LoopBank::workerLoop() noexcept {
-    while(!stopping.load(std::memory_order_acquire)){
+    // Drain a pinned export even during prepare/shutdown before destroying clips.
+    while(!stopping.load(std::memory_order_acquire)||exportState.load(std::memory_order_acquire)==1){
+        if(exportState.load(std::memory_order_acquire)==1){
+            try {if(exportClip)exported.bytes=encodeWav(exportClip->channels[0],exportClip->channels[1],exportRate);}
+            catch(...){exported.bytes.clear();}
+            releaseOnWorker(exportClip);exportClip=nullptr;
+            exportState.store(2,std::memory_order_release);
+        }
         unsigned expected=1;
         if(jobState.compare_exchange_strong(expected,2,std::memory_order_acquire)){
             result=nullptr;resultChanged=true;
@@ -121,6 +128,18 @@ void LoopBank::workerLoop() noexcept {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+}
+bool LoopBank::requestExport(std::uint32_t id,std::uint64_t waveformId) noexcept {
+    if(exportState.load(std::memory_order_acquire)!=0)return false;
+    exportClip=id<trackCount?tracks[id].clip:nullptr;
+    if(exportClip&&(!waveformId||exportClip->waveformId!=waveformId))exportClip=nullptr;
+    if(exportClip)exportClip->leases.fetch_add(1,std::memory_order_relaxed);
+    exportRate=rate;exportState.store(1,std::memory_order_release);return true;
+}
+bool LoopBank::popExport(WavExport& output) noexcept {
+    if(exportState.load(std::memory_order_acquire)!=2)return false;
+    output.bytes.swap(exported.bytes);exported.bytes.clear();
+    exportState.store(0,std::memory_order_release);return true;
 }
 void LoopBank::acceptResult() noexcept {
     if(jobState.load(std::memory_order_acquire)!=3)return;

@@ -13,7 +13,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     loops.resetTimeline();liveInput->cancel();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
-    frame = 0; gain = target = increment = 0.0f; remaining = 0;
+    frame = 0; gain = target = increment = renderedMasterPeak = 0.0f; remaining = 0;
     rampLength = static_cast<std::uint32_t>(std::clamp(rate * 0.02, 1.0, 38400.0));
     GainCommand discard{}; while (commands.pop(discard)) {};
     hasPending = false;
@@ -36,6 +36,9 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
     if (count < 0 || frames < 0 || (count > 0 && channels == nullptr)) return;
     float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
     loops.beginBlock();
+    ExportRequest exportRequest{};
+    if(exportRequests.pop(exportRequest))
+        (void)loops.requestExport(exportRequest.generation==generation()?exportRequest.track:LoopBank::trackCount,exportRequest.waveformId);
     for(unsigned id=0;id<LoopBank::trackCount;++id){const auto revision=stutterRevisions[id].load(std::memory_order_acquire);
         if(revision!=seenStutterRevisions[id]){loops.apply(LoopAction::stutterStop,id);seenStutterRevisions[id]=revision;}
     }
@@ -89,6 +92,7 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
         }
     }
     // Telemetry is lossy by design; never wait when the editor is closed/slow.
+    renderedMasterPeak=masterPeak;
     (void) meters.push({frame, peak});
     const auto tracks=loops.view();
     if(liveInput->running()){
@@ -107,5 +111,14 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
         else break; // Closed/slow editor: retry later, never wait.
     }
     (void) views.push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame)});
+}
+bool Engine::enqueueExport(ExportRequest request) noexcept {
+    if(exportOutstanding||request.generation!=generation()||!request.generation||request.track>=LoopBank::trackCount||!request.waveformId)return false;
+    if(!exportRequests.push(request))return false;
+    exportOutstanding=true;return true;
+}
+bool Engine::popExport(WavExport& output) noexcept {
+    if(!exportOutstanding||!loops.popExport(output))return false;
+    exportOutstanding=false;return true;
 }
 }

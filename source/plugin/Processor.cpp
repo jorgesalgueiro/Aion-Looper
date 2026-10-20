@@ -17,7 +17,7 @@ bool inputAvailable(const juce::AudioProcessor& processor){
     return processor.getTotalNumInputChannels()>0;
 }
 }
-AionProcessor::AionProcessor()
+AionProcessor::AionProcessor(ExportDestination destination)
     : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
                                        .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "AionState", {std::make_unique<juce::AudioParameterFloat>(
@@ -33,6 +33,7 @@ AionProcessor::AionProcessor()
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"countInAudio",1},"Sound count-in",false),
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"metronomeEnabled",1},"Metronome",false),
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"metronomeVolume",1},"Metronome volume",juce::NormalisableRange<float>{0,2},0.5f)}) {
+    exportDestination=std::move(destination);
     metroEnabled=parameters.getRawParameterValue("metronomeEnabled");metroVolume=parameters.getRawParameterValue("metronomeVolume");
     master = parameters.getRawParameterValue("masterGain");
     monitor = parameters.getRawParameterValue("inputMonitor");
@@ -40,6 +41,48 @@ AionProcessor::AionProcessor()
     syncMode=parameters.getRawParameterValue("syncMode");syncBpm=parameters.getRawParameterValue("syncBpm");
     syncBars=parameters.getRawParameterValue("syncBars");syncNum=parameters.getRawParameterValue("syncNum");
     syncDen=parameters.getRawParameterValue("syncDen");countIn=parameters.getRawParameterValue("countInVisual");countInAudio=parameters.getRawParameterValue("countInAudio");
+}
+AionProcessor::~AionProcessor(){stopTimer();exportLifetime.reset();exportWriter.removeAllJobs(true,-1);exportChooser.reset();}
+void AionProcessor::cancelExport(){
+    if(exportBusy&&exportWriteResult->load()==0){
+        ++exportSequence;exportAbandoned=true;exportChooser.reset();exportStatus="WAV export cancelled";
+        if(!exportEncoding)exportBusy=false;
+    }
+}
+void AionProcessor::timerCallback(){
+    const auto written=exportWriteResult->load(std::memory_order_acquire);
+    if(written>0){exportWriteResult->store(0);exportBusy=false;exportStatus=written==1?"WAV saved":"WAV export failed: could not write the selected file";}
+    if(!exportBusy)stopTimer();
+    if(!exportEncoding)return;
+    aion::WavExport output;if(!engine.popExport(output))return;
+    exportEncoding=false;
+    if(exportAbandoned||engine.generation()!=exportGeneration){exportBusy=false;exportStatus="WAV export cancelled";return;}
+    if(output.bytes.empty()){exportBusy=false;exportStatus="WAV export failed: loop changed or encoding ran out of memory";return;}
+    exportStatus="Choose a WAV destination";
+    const std::weak_ptr<int> lifetime=exportLifetime;
+    try {
+    auto choose=[this,lifetime,sequence=exportSequence,data=std::make_shared<std::vector<std::uint8_t>>(std::move(output.bytes))](juce::File file){
+        if(lifetime.expired()||exportAbandoned||sequence!=exportSequence)return;
+        if(file==juce::File{}){exportBusy=false;exportStatus="WAV export cancelled";return;}
+        exportStatus="Saving WAV";exportWriteResult->store(-1);
+        try {exportWriter.addJob([file,data,state=exportWriteResult]{
+            bool ok=false;
+            try {
+                juce::TemporaryFile temporary(file);
+                {juce::FileOutputStream stream(temporary.getFile());
+                 ok=stream.openedOk()&&stream.write(data->data(),data->size());stream.flush();ok=ok&&stream.getStatus().wasOk();}
+                if(ok)ok=temporary.overwriteTargetFileWithTemporary();
+            }catch(...){ok=false;}
+            state->store(ok?1:2,std::memory_order_release);
+        });}catch(...){exportWriteResult->store(2,std::memory_order_release);}
+    };
+    if(exportDestination)exportDestination(exportFilename,std::move(choose));
+    else {
+        exportChooser=std::make_unique<juce::FileChooser>("Export Loop WAV",juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(exportFilename),"*.wav");
+        exportChooser->launchAsync(juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::canSelectFiles|juce::FileBrowserComponent::warnAboutOverwriting,
+            [choose=std::move(choose)](const juce::FileChooser& chooser){choose(chooser.getResult());});
+    }
+    }catch(...){exportChooser.reset();exportBusy=false;exportStatus="WAV export failed: could not open the save dialog";}
 }
 void AionProcessor::prepareToPlay(double rate, int) { engine.prepare(rate); }
 bool AionProcessor::isBusesLayoutSupported(const BusesLayout& b) const {
@@ -120,6 +163,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("lastRequestId", static_cast<juce::int64>(latest.lastRequestId));
         result->setProperty("rejected", latest.rejected); result->setProperty("poolFull", latest.poolFull);
         result->setProperty("audioReset", latest.audioReset);
+        result->setProperty("exportBusy",exportBusy);result->setProperty("exportStatus",exportStatus);result->setProperty("exportFilename",exportFilename);
         result->setProperty("nextUndo",latest.nextUndo);result->setProperty("nextRedo",latest.nextRedo);
         const char* names[] = {"empty", "recording", "playing", "stopped", "overdubbing", "substituting", "finalizing", "multiplying", "armed", "queued", "stopping"};
         const auto& timing=latest.sync;
@@ -170,6 +214,20 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             tracks.add(juce::var(object));
         }
         result->setProperty("tracks", juce::var(tracks));
+    } else if (operation == "cancelExport") {
+        cancelExport();result->setProperty("ok",true);
+    } else if (operation == "exportLoop") {
+        const auto id=request.getProperty("track",{}),generation=request.getProperty("generation",{}),waveform=request.getProperty("waveformId",{});
+        const auto filename=request.getProperty("filename",{});
+        if(!id.isInt()||static_cast<int>(id)<0||static_cast<int>(id)>=static_cast<int>(aion::LoopBank::trackCount))return fail("Invalid export track");
+        if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation()))return fail("Audio generation changed");
+        if(!(waveform.isInt()||waveform.isInt64()||waveform.isDouble())||!std::isfinite(static_cast<double>(waveform))||static_cast<double>(waveform)<1||static_cast<double>(waveform)>9007199254740991.0||std::floor(static_cast<double>(waveform))!=static_cast<double>(waveform))return fail("Invalid clip identity");
+        const auto name=filename.toString();
+        if(!filename.isString()||name.length()>4096||!name.endsWith(".wav")||!name.dropLastCharacters(4).containsOnly("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")||name.length()<=4)return fail("Invalid WAV filename");
+        if(exportBusy){result->setProperty("exportBusy",true);return fail("A WAV export is already in progress");}
+        if(!engine.enqueueExport({static_cast<unsigned>(static_cast<int>(id)),static_cast<unsigned>(static_cast<int>(generation)),static_cast<std::uint64_t>(static_cast<double>(waveform))}))return fail("WAV export unavailable");
+        ++exportSequence;exportFilename=name;exportGeneration=engine.generation();exportAbandoned=false;exportBusy=exportEncoding=true;exportStatus="Preparing WAV";startTimer(25);
+        result->setProperty("ok",true);
     } else if (operation == "renameLoop") {
         const auto id = request.getProperty("track", {});
         const auto name = request.getProperty("name", {});

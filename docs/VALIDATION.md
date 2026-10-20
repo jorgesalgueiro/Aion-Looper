@@ -1467,3 +1467,86 @@ visual-clock scope. Actual browser acceptance currently covers 1x, quantum-align
 controls in WebView2; broader resampling/envelopes, overlapping future graphs,
 physical ASIO/latency, DAW/MIDI, Apple/platform builds and full application parity
 remain separate work.
+
+## Waveform WAV export — 2026-10-20
+
+Implemented the original waveform click with the original filename fallback,
+UTF-16 sanitization and click-time timestamp. The PCM16 encoder matches unchanged
+AudioEngine.bufferToWAV/encodeWAV. Exports read stored samples, independent of
+playback volume/pan/reverse/rate/Start/STUT. No preserved UI asset was edited.
+
+Audio pins one immutable clip through a bounded independent request/mailbox;
+encoding and lease destruction run on the existing worker. The frontend gesture
+FIFO waits for earlier edits/finalization and resolves the latest identity, while
+keeping the name typed at the click. DEL cancels an unsent track-owned export.
+The native picker supplies the destination; a background temporary-file writer
+checks write/flush/replacement. Selected writes finish before picker resources
+are destroyed. Empty, stale, failed and canceled exports keep audio/history.
+
+Repairs and retained failure evidence:
+
+- An unload/bootstrap-only cleanup failed the 128-sample reload test: a delayed
+  picker callback saved after reload. Native pageAboutToLoad cancellation now
+  invalidates it. The retained final test disables JavaScript across navigation
+  and releases the old callback before reenabling it, checking the native boundary.
+- Rapid NORM/export could bypass the queued edit and export the earlier clip.
+  Gesture ordering/finalization waits now select the normalized committed take.
+  Unit checks retain click-time naming and DEL cancellation; real saved PCM has
+  the normalized peak, instead of the earlier <0.3 peak.
+- A timed 400ms test picker raced slow CDP round trips. The fixture now waits for
+  explicit completion markers and retains busy, cancel, failure, overwrite and
+  late-callback cases. Repeated waveform clicks keep the current export status.
+- Retained short-cue mouse tests sampled only gaps between real 100ms count-in
+  sounds. A passive callback trace recorded outputPeak 0.494280159 while armed at
+  frame 630080, before deadline 666016, with MASTER/flash zero. The integration gate
+  now checks actual rendered PCM, the displayed CANCEL state, both mouse cancels
+  and absence of later PCM. CountInTests retains the exact per-block outputPeak
+  contract with an every-block consumer and checks passive inspection consistency.
+  Product sound/timing and thresholds were not changed. CDP pointer events are
+  queued before awaiting acknowledgements so response latency cannot extend taps
+  into >=600ms holds. Both single-bar stop acknowledgements and late-duplicate
+  checks remain, with verification after the timed pair. All 3800/4200ms holds and
+  analytical 3999/4000ms boundaries remain.
+- Early focused tests also needed explicit WebView startup/rendered-state waits
+  and auto-play initialization. An intermediate test loaded newer assertions
+  against an older binary; the final checks rebuilt both targets first. Failed
+  diagnostic logs remain under build/. No reference method or tolerance was changed.
+
+Final automated results:
+
+- Windows core: 16/16, 203.37s (`build/wav-pcm-tests-windows.log`).
+- Installed Ubuntu core: 16/16, 389.11s (`build/wav-pcm-tests-ubuntu.log`).
+- Ubuntu ASan/UBSan with leak detection: core/frontend/WAV gates 3/3, 26.25s
+  (`build/wav-pcm-tests-asan.log`).
+- Exact WAV comparison: 86 cases / 767734 bytes, maximum byte difference 0.
+  Includes original conditioned capture PCM at 8/48/96kHz, mono/stereo, tiny and
+  longer clips; 30 repeated playback-control exports remain byte-identical.
+  Encoder cases include empty buffers, clipping, nonfinite samples, fractional
+  rate header conversion, NaN fallback and original filenames.
+- Core ownership/OOM/stale identity/DEL/prepare/bound/zero-block/future-command
+  cases and exact 64/128 capture bytes pass with zero callback new/delete.
+- Full production processor/editor mouse workflows pass at 64 and 128, retaining
+  arm/cancel/record/play, all sync/Start/Q/nudge/RTRG/STUT/waveform/live-trace/
+  hold/cancellation cases (`build/wav-pcm-mouse.log`). Export cases cover actual
+  saved stereo PCM, naming, repeat clicks, busy rejection, cancel/failure recovery,
+  NORM ordering, overwrite, deletion and native-only navigation cancellation.
+  Focused export/lifecycle checks pass again at both block sizes after the final
+  writer/picker destruction-order adjustment (`build/wav-shutdown-export.log`).
+- Actual WebView2 WebAudio count-in, nudge, analyser and STUT comparisons and
+  NativeUiSmoke pass (`build/wav-pcm-ui.log`); EN/ES/PT export instructions are in
+  the existing manual panels. No product AudioContext is created.
+- Connected native/reference audio audits pass on both platforms: 126 cases /
+  965826 samples, maximum error 7.394757495227111e-8 at unchanged 1e-6
+  (`build/wav-pcm-audio-windows.log`, `build/wav-pcm-audio-ubuntu.log`).
+
+Remaining acceptance gate: the real Windows save dialog could not be exposed by
+the Windows automation helper (capture timeout / no returned dialog window).
+The real picker path was invoked and canceled through the native API while the
+synthetic loop stayed playing; that is not a verified OS Save/Cancel button test.
+Manual visibility/save confirmation remains pending, and no subsequent feature
+is started or full export acceptance claimed. Apple/Linux native picker behavior,
+physical ASIO/latency, DAW/MIDI and full application parity remain separate work.
+
+Only the existing Windows Standalone and excluded mouse host were incrementally
+rebuilt. Version remains 0.4.3; no installer, distribution ZIP or additional format
+package was created. The user's local ASCII-logo template edits remain uncommitted.

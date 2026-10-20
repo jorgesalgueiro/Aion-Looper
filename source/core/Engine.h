@@ -17,6 +17,8 @@ struct LoopCommand {
     std::uint32_t stutterRevision = 0;
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
+struct ExportRequest {std::uint32_t track=0,generation=0;std::uint64_t waveformId=0;};
+struct AudioInspection {LoopView track{};std::uint64_t frame=0;float masterPeak=0;unsigned countInFlash=0;};
 struct EngineView {
     std::array<LoopView, LoopBank::trackCount> tracks{};
     std::uint64_t frame = 0;
@@ -40,6 +42,8 @@ public:
     void setMetronome(bool enabled,float volume) noexcept {metronome.setEnabled(enabled);metronome.setVolume(volume);}
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
+    bool enqueueExport(ExportRequest request) noexcept; // Message owner, separate from performance FIFO.
+    bool popExport(WavExport& output) noexcept;
     void cancelStutter(std::uint32_t track = LoopBank::trackCount) noexcept {
         if(track<LoopBank::trackCount)stutterRevisions[track].fetch_add(1,std::memory_order_release);
         else for(auto& revision:stutterRevisions)revision.fetch_add(1,std::memory_order_release);
@@ -54,9 +58,15 @@ public:
     void process(float* const* channels, int channelCount, int frames) noexcept;
     bool popMeter(Meter& meter) noexcept { return meters.pop(meter); }
     std::uint64_t clock() const noexcept { return frame; }
+    // Audio owner only, after process. Passive diagnostics; never call from UI.
+    AudioInspection inspectAudioThread(std::uint32_t track=0) const noexcept {
+        return {track<LoopBank::trackCount?loops.view()[track]:LoopView{},frame,renderedMasterPeak,countIn.flash(frame)};
+    }
     Transport transport{}; // Audio-owned; never read directly from the editor.
 private:
     LoopBank loops;
+    SpscQueue<ExportRequest,2> exportRequests;
+    bool exportOutstanding=false; // Message thread only, retained across prepare.
     std::array<std::atomic<std::uint32_t>,LoopBank::trackCount> stutterRevisions{};
     std::array<std::uint32_t,LoopBank::trackCount> seenStutterRevisions{};
     std::unique_ptr<LiveInput> liveInput=std::make_unique<LiveInput>();
@@ -79,6 +89,7 @@ private:
     bool hasPending = false;
     std::uint64_t frame = 0;
     float gain = 0.0f, target = 0.0f, increment = 0.0f;
+    float renderedMasterPeak=0;
     std::uint32_t rampLength = 960, remaining = 0;
 };
 }

@@ -19,6 +19,12 @@ int main(){
    std::array<float,aion::LoopBank::waveformWidth> peaks{};ok=bank.copyWaveform(id,bank.view()[id].waveformId,peaks);
    std::cout<<std::setprecision(17)<<ok;for(auto peak:peaks)std::cout<<' '<<peak;std::cout<<'\n';continue;
   }
+  else if(op=="export"){
+   if(!bank.requestExport(id,bank.view()[id].waveformId))return 3;
+   aion::WavExport data;bool ready=false;
+   for(unsigned n=0;n<10000&&!ready;++n){ready=bank.popExport(data);if(!ready)std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+   if(!ready)return 4;const char* hex="0123456789abcdef";for(const auto b:data.bytes)std::cout<<hex[b>>4]<<hex[b&15];std::cout<<'\n';continue;
+  }
   else if(op=="delay")ok=bank.setStartDelay(id,value);
   else if(op=="nudge")ok=bank.apply(A::nudgeStart,id,static_cast<float>(value));
   else if(op=="quantize")ok=bank.apply(A::quantizeStart,id);

@@ -2,9 +2,11 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "core/Engine.h"
 static_assert(std::atomic<float>::is_always_lock_free, "Audio parameter loads must be lock-free");
-class AionProcessor final : public juce::AudioProcessor {
+class AionProcessor final : public juce::AudioProcessor, private juce::Timer {
 public:
-    AionProcessor();
+    using ExportDestination = std::function<void(const juce::String&, std::function<void(juce::File)>)>;
+    explicit AionProcessor(ExportDestination = {});
+    ~AionProcessor() override;
     void prepareToPlay(double, int) override;
     void releaseResources() override {}
     using juce::AudioProcessor::processBlock;
@@ -24,9 +26,21 @@ public:
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*, int) override;
     void releaseStutter() noexcept {engine.cancelStutter();}
+    void cancelExport(); // Editor close cancels an unchosen destination.
+    aion::AudioInspection inspectAudioThread(std::uint32_t track=0) const noexcept {return engine.inspectAudioThread(track);}
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:
+    void timerCallback() override;
+    ExportDestination exportDestination; // Optional host-supplied file picker, never exposed through IPC.
+    std::shared_ptr<int> exportLifetime=std::make_shared<int>(0);
+    std::unique_ptr<juce::FileChooser> exportChooser;
+    juce::ThreadPool exportWriter{1};
+    std::shared_ptr<std::atomic<int>> exportWriteResult=std::make_shared<std::atomic<int>>(0);
+    bool exportBusy=false,exportEncoding=false,exportAbandoned=false;
+    std::uint32_t exportGeneration=0;
+    std::uint64_t exportSequence=0;
+    juce::String exportFilename,exportStatus;
     aion::Engine engine;
     std::atomic<float>* master = nullptr;
     std::atomic<float>* monitor = nullptr;
