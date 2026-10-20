@@ -628,3 +628,33 @@ runs on the test host's message thread. It neither changes audio nor advances th
 sample clock. The inspection method must never be called by the GUI. This avoids
 mistaking a missed lossy telemetry pulse for missing audio. Normal application
 processing retains its existing per-block meters and sample output.
+
+### Loop merge
+
+The original MERGE selector lists committed source loops except the destination.
+GO enters the existing track-owned gesture FIFO and waits for earlier worker
+finalization. Audio validates IDs/states/capacity and pins one immutable source
+plus the existing destination, if present. The single worker clones source PCM
+or copies the destination and runs the original circular mixer with offset zero
+and feedback one. It does not apply capture conditioning a second time or bake
+in source/destination playback controls. The source lease is released on the
+worker; only copied identity/metadata fields cross back to audio.
+
+Audio commits only to the destination revision that requested the edit. Existing
+destinations retain length, source phase and playing/stopped state; one previous
+clip enters the original local/global history. A playing reversed source keeps
+its independent old clip until replacement, as in the reference graph. A clone
+keeps the destination's controls, copies source BPM/dynamic flags and stays
+stopped without a new history entry. Failed allocation preserves PCM/history.
+
+Successful commits publish a monotonic completion serial and source identity.
+The frontend uses the original confirmation text after 50ms. Its optional clear
+command is validated again by audio against the completion, source waveform,
+clear epoch and a noncapturing source state. Stop/panic invalidates completion
+notifications; generation/editor/clear guards prevent stale prompts. Undo/Redo
+or another successful destination PCM edit also invalidates completion, so a
+delayed confirmation cannot clear a source after the merge has been undone. These are
+safety repairs to the original delayed clear, which could erase a later take.
+No real-time scans, allocation, file IO or locks were added. The bounded snapshot
+queue is allocated during Engine construction to keep growing telemetry off
+Windows' limited stack.

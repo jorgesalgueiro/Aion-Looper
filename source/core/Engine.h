@@ -51,7 +51,7 @@ public:
     bool finalizationPending() const noexcept { return loops.finalizationPending(); }
     bool popLiveInput(LiveInputEvent& event) noexcept {return liveInput->pop(event);}
     bool popWaveform(WaveformEvent& event) noexcept {return waveforms->pop(event);}
-    bool popView(EngineView& view) noexcept { return views.pop(view); }
+    bool popView(EngineView& view) noexcept { return views->pop(view); }
     std::uint32_t generation() const noexcept { return epoch.load(std::memory_order_acquire); }
     void setTarget(float value) noexcept;
     bool enqueue(GainCommand command) noexcept;
@@ -74,7 +74,7 @@ private:
     CountIn countIn;
     std::uint32_t countInTrack=0;
     SpscQueue<LoopCommand, 256> loopCommands;
-    SpscQueue<EngineView, 8> views;
+    std::unique_ptr<SpscQueue<EngineView,8>> views=std::make_unique<SpscQueue<EngineView,8>>(); // Construction-time storage, never allocate snapshots on audio.
     std::unique_ptr<SpscQueue<WaveformEvent,8>> waveforms=std::make_unique<SpscQueue<WaveformEvent,8>>(); // Allocate off callback, avoid large engine stack frames.
     std::array<std::uint64_t,LoopBank::trackCount> sentWaveforms{};
     unsigned waveformCursor=0;

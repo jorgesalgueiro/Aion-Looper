@@ -146,6 +146,18 @@
             const t=snapshot.tracks[id];
             return t.length&&['playing','stopped','multiplying'].includes(t.state)?{action:'multiply',track:id,value:0}:null;
         },{track:id});
+        const merge=(id,source)=>{
+            if(source==='')return;
+            const src=Number(source);if(!Number.isInteger(src)||src<0||src>=20||src===id)return;
+            scheduler.enqueue(()=>{
+                if(snapshot.tracks.some(t=>t.state==='finalizing'))return window.AionCommandQueue.wait;
+                return snapshot.tracks[src].length?{action:'merge',track:id,value:src}:null;
+            },{track:id});
+        };
+        const mergeNotice=new window.AionMerge({current:()=>snapshot,confirm:message=>window.confirm(message),clear:(dest,source,serial)=>{
+            stutter.cancelTrack(source);keyboard.cancelTrack(source);
+            scheduler.enqueue(()=>({action:'clearMergedSource',track:dest,value:serial}),{track:source});
+        }});
         const halfSpeed=id=>scheduler.enqueue(()=>snapshot.tracks[id].length?{action:'speed',track:id,value:snapshot.tracks[id].playbackRate===1?0.5:1}:null,{track:id});
         const queueControl=(action,track,value)=>{if(enabled())scheduler.enqueue(()=>({action,track,value}),{key:`${track}:${action}`,track});};
         const actionFor = t => t.state === 'empty' ? 'record' : t.state === 'stopped' ? 'play'
@@ -190,7 +202,7 @@
         window.addEventListener('pointerup',e=>stutter.release(`stutter:${e.pointerId}`));
         window.addEventListener('pointercancel',e=>stutter.release(`stutter:${e.pointerId}`));
         window.addEventListener('blur',()=>{stutter.cancel();releaseStutter(20);});
-        const stopSession=()=>{stutter.cancel();keyboard.cancel();scheduler.enqueue(()=>({action:'stopAll',track:0,value:0}),{stop:true});};
+        const stopSession=()=>{mergeNotice.cancel();stutter.cancel();keyboard.cancel();scheduler.enqueue(()=>({action:'stopAll',track:0,value:0}),{stop:true});};
         stopAll.addEventListener('click', stopSession);
         globalUndo.title='Undo Last Action';globalRedo.title='Redo Last Action';
         globalUndo.addEventListener('click',()=>restoreHistory(false));
@@ -293,11 +305,14 @@
                 const mult=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='MULT'),()=>multiply(i));
                 mult.title='Multiply [\\] — press to capture, press again to extend. No input = double.';
                 const normalize=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='NORM'),()=>command('normalize',i));
+                const mergeSource=bind(row.querySelector(`#merge-src-${i}`),()=>{},'change');
+                const mergeGo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='GO'),()=>merge(i,mergeSource.value));
+                mergeGo.title='Merge selected source into this loop';
                 feedback.addEventListener('dblclick',()=>queueControl('feedback',i,0.8));
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const canvas=row.querySelector('canvas');canvas.title='Click to Export WAV';
                 canvas.addEventListener('click',e=>{e.stopPropagation();exportLoop(i);});
-                rows.push({row,main,name,volume,feedback,pan,start,quantize,speed,half,reset,mute,solo,retrigger,stut,normalize,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
+                rows.push({row,main,name,volume,feedback,pan,start,quantize,speed,half,reset,mute,solo,retrigger,stut,normalize,mergeSource,mergeGo,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
         function refresh() {
@@ -323,6 +338,9 @@
             const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)',multiplying:'(M)',finalizing:'[..]',armed:'(A)',queued:'[Q]',stopping:'[S]'};
             rows.forEach((r,i)=>{
                 const t=snapshot.tracks[i];
+                const sources=snapshot.tracks.map((s,id)=>id!==i&&s.length?id:-1).filter(id=>id>=0);
+                const mergeKey=sources.join(',');
+                if(r.mergeKey!==mergeKey){const selected=r.mergeSource.value;r.mergeSource.replaceChildren(new Option('-',''),...sources.map(id=>new Option(String(id+1),String(id))));r.mergeSource.value=sources.includes(Number(selected))&&selected!==''?selected:'';r.mergeKey=mergeKey;}
                 if(!t.waveformId){r.waveformId=0;r.wavePeaks=null;}
                 else if(t.wavePeaks){r.waveformId=t.waveformId;r.wavePeaks=t.wavePeaks;}
                 if(document.activeElement!==r.name)r.name.value=t.name??'';
@@ -353,6 +371,9 @@
                 r.reverse.checked=!!t.reverse;
                 r.mult.disabled=!active||!t.length||!['playing','stopped','multiplying'].includes(t.state)||snapshot.tracks.some((other,id)=>id!==i&&['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(other.state));
                 r.normalize.disabled=!active||!t.length||!['playing','stopped'].includes(t.state)||snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
+                const mergeBusy=snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
+                r.mergeSource.disabled=!active||mergeBusy;
+                r.mergeGo.disabled=!active||mergeBusy||!['empty','playing','stopped'].includes(t.state)||!sources.includes(Number(r.mergeSource.value))||r.mergeSource.value==='';
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
                 r.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
                 r.mute.textContent=t.muted?'UNM':'MUTE';r.mute.setAttribute('aria-pressed',String(t.muted));
@@ -399,6 +420,7 @@
                 if(snapshot && reply.generation!==snapshot.generation){scheduler.reset();stutter.cancel();keyboard.cancel();rows.forEach(r=>{r.waveformId=0;r.wavePeaks=null;});}
                 if(reply.frame!==lastFrame || reply.generation!==snapshot?.generation){lastFrame=reply.frame;advancedAt=Date.now();}
                 snapshot=reply;
+                mergeNotice.observe(reply);
                 if(!rows.length){releaseStutter(20);rpc({operation:'cancelExport'}).catch(e=>notify(e.message));createRows(reply);}
                 if(pending) {
                     if(reply.generation!==pending.generation){pending.reject(Error('Audio configuration changed'));pending=null;}

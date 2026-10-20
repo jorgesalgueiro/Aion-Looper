@@ -193,6 +193,10 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             object->setProperty("reverse", t.reverse);
             object->setProperty("captureStartFrame",static_cast<juce::int64>(t.captureStartFrame));
             object->setProperty("waveformId",static_cast<juce::int64>(t.waveformId));
+            object->setProperty("mergeSerial",static_cast<juce::int64>(t.mergeSerial));
+            object->setProperty("mergeSource",static_cast<int>(t.mergeSource));
+            object->setProperty("mergeSourceWaveform",static_cast<juce::int64>(t.mergeSourceWaveform));
+            object->setProperty("mergeSourceClearEpoch",static_cast<juce::int64>(t.mergeSourceClearEpoch));
             const auto trackIndex=static_cast<int>(&t-latest.tracks.data());
             const bool alreadyKnown=sameGeneration&&known.isArray()&&known.size()==static_cast<int>(aion::LoopBank::trackCount)&&static_cast<juce::int64>(known[trackIndex])==static_cast<juce::int64>(t.waveformId);
             const auto& cached=waveformCache[static_cast<unsigned>(trackIndex)];
@@ -271,20 +275,21 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if (!id.isInt() || static_cast<int>(id) < 0 || static_cast<int>(id) >= static_cast<int>(aion::LoopBank::trackCount)
             || !generation.isInt() || static_cast<int>(generation) <= 0) return fail("Invalid track or audio generation");
         const auto actionName = request.getProperty("action", {}).toString();
-        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply", "stopImmediate", "startDelay", "applyStart", "quantizeStart", "nudgeStart", "stutterStart", "stutterStop"};
+        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply", "stopImmediate", "startDelay", "applyStart", "quantizeStart", "nudgeStart", "stutterStart", "stutterStop", "merge", "clearMergedSource"};
         unsigned action = 0;
         for (; action < std::size(names) && actionName != names[action]; ++action) {}
         if (action == std::size(names)) return fail("Unknown looper action");
         const auto value = request.getProperty("value", 0);
         if (!(value.isDouble() || value.isInt())) return fail("Expected numeric action value");
         const double number = static_cast<double>(value);
-        if (!std::isfinite(number) || number < (actionName == "nudgeStart" ? -1.0 : actionName == "speed" ? 0.25 : 0.0) || number > (actionName == "pan" ? 10 : (actionName == "volume" || actionName == "speed" ? 2 : 1))
+        if (!std::isfinite(number) || number < (actionName == "nudgeStart" ? -1.0 : actionName == "speed" ? 0.25 : 0.0) || number > (actionName=="clearMergedSource"?9007199254740991.0:actionName=="merge"?19:actionName == "pan" ? 10 : (actionName == "volume" || actionName == "speed" ? 2 : 1))
+            || ((actionName=="merge"||actionName=="clearMergedSource")&&number!=std::floor(number))
             || (actionName == "nudgeStart" && number != -1 && number != 1)
             || ((actionName == "mute" || actionName == "reverse") && number != 0 && number != 1)) return fail("Action value outside range");
         if(actionName=="record"&&!inputAvailable(*this))return fail("No native input: enable an input device and Unmute Input in Options, or route audio from the host.");
         const auto requestId = nextRequest + 1;
         if (!engine.enqueueLoop({static_cast<aion::LoopAction>(action), static_cast<std::uint32_t>(static_cast<int>(id)), requestId,
-                                static_cast<std::uint32_t>(static_cast<int>(generation)), 0, actionName=="multiply"?(inputAvailable(*this)?1.0f:0.0f):actionName=="startDelay"?number:static_cast<double>(static_cast<float>(number))}))
+                                static_cast<std::uint32_t>(static_cast<int>(generation)), 0, actionName=="multiply"?(inputAvailable(*this)?1.0f:0.0f):(actionName=="startDelay"||actionName=="clearMergedSource")?number:static_cast<double>(static_cast<float>(number))}))
             return fail("Audio generation changed or command queue is full");
         nextRequest = requestId;
         result->setProperty("ok", true); result->setProperty("queued", true);

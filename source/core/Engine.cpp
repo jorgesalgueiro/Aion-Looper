@@ -57,6 +57,7 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
             const bool cancelledStutter=pendingLoop.action==LoopAction::stutterStart&&pendingLoop.stutterRevision!=stutterRevisions[pendingLoop.track].load(std::memory_order_acquire);
             rejected = pendingLoop.generation != generation() ||
                 (!cancelledStutter&&!(pendingLoop.action==LoopAction::startDelay?loops.setStartDelay(pendingLoop.track,pendingLoop.value):
+                  pendingLoop.action==LoopAction::clearMergedSource?loops.clearMergedSource(pendingLoop.track,pendingLoop.value):
                   loops.apply(pendingLoop.action,pendingLoop.track,static_cast<float>(pendingLoop.value))));
             if(!rejected){
                 const auto action=pendingLoop.action;
@@ -110,7 +111,7 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
         if(loops.copyWaveform(id,revision,event.peaks)&&waveforms->push(event)){sentWaveforms[id]=revision;++emitted;}
         else break; // Closed/slow editor: retry later, never wait.
     }
-    (void) views.push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame)});
+    (void) views->push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame)});
 }
 bool Engine::enqueueExport(ExportRequest request) noexcept {
     if(exportOutstanding||request.generation!=generation()||!request.generation||request.track>=LoopBank::trackCount||!request.waveformId)return false;

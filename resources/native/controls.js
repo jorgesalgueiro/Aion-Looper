@@ -135,4 +135,20 @@
         cancel() {++this.epoch;for(const press of this.presses.values()){this.timers.clear(press.timer);this.timers.clear(press.eraseTimer);}this.presses.clear();}
     };
     window.AionExportName=(name,id,now)=>`${(name||`Loop_${id+1}`).replace(/[^a-z0-9]/gi,'_')}_${now}.wav`;
+    window.AionMerge = class {
+        constructor({current,confirm,clear,schedule=fn=>window.setTimeout(fn,50)}) {
+            Object.assign(this,{current,confirm,clear,schedule});this.seen=[];this.generation=null;this.epoch=0;
+        }
+        cancel(){++this.epoch;}
+        observe(snapshot) {
+            if(this.generation!==snapshot.generation){this.generation=snapshot.generation;this.seen=snapshot.tracks.map(t=>t.mergeSerial??0);return;}
+            snapshot.tracks.forEach((t,id)=>{
+                const serial=t.mergeSerial??0;if(this.seen[id]===serial)return;this.seen[id]=serial;
+                if(!serial)return;
+                const generation=snapshot.generation,epoch=t.clearEpoch,source=t.mergeSource,cancelEpoch=this.epoch;
+                const valid=()=>{const s=this.current(),dest=s?.tracks[id],src=s?.tracks[source];return cancelEpoch===this.epoch&&s?.generation===generation&&dest?.clearEpoch===epoch&&dest.mergeSerial===serial&&dest.waveformId===t.waveformId&&src?.waveformId===t.mergeSourceWaveform&&src?.clearEpoch===t.mergeSourceClearEpoch&&['playing','stopped'].includes(src.state);};
+                this.schedule(()=>{if(valid()&&this.confirm(`Merge successful. Clear Source Loop ${source+1}?`)&&valid())this.clear(id,source,serial);});
+            });
+        }
+    };
 })();

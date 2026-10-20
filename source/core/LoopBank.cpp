@@ -67,7 +67,11 @@ void LoopBank::workerLoop() noexcept {
             try {
                 auto output=std::make_unique<Clip>();
                 output->length=job.multiply?job.base->length+(job.doubling?job.base->length:job.length):(job.edit?job.base->length:job.outputFrames);
-                if(job.multiply){
+                if(job.merge){
+                    output->channels=job.edit?job.base->channels:job.mergeSource->channels;
+                    if(job.edit)for(unsigned c=0;c<2;++c)
+                        (void)reference::mixCircular(output->channels[c],job.mergeSource->channels[c],rate,0,1);
+                } else if(job.multiply){
                     for(unsigned c=0;c<2;++c){
                         auto& data=output->channels[c];data=job.base->channels[c];
                         if(job.doubling)data.insert(data.end(),job.base->channels[c].begin(),job.base->channels[c].end());
@@ -120,6 +124,7 @@ void LoopBank::workerLoop() noexcept {
                 result=output.get();owned.push_back(std::move(output));
             }catch(...){result=nullptr;}
             if(job.edit)releaseOnWorker(job.base);
+            if(job.merge)releaseOnWorker(job.mergeSource);
             jobState.store(3,std::memory_order_release);
         }
         Clip* garbage=nullptr;
@@ -150,20 +155,32 @@ void LoopBank::acceptResult() noexcept {
             if(track.clip)residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
             // Web Audio reverses into an independent source buffer. NORM edits
             // the stored buffer, leaving that playing reversed copy untouched.
+            if(job.merge&&job.edit&&track.activeReverse&&!track.reverseHold){
+                track.reverseHold=track.clip;track.reverseHold->leases.fetch_add(1,std::memory_order_relaxed);
+            }
             if(job.edit&&!job.normalize)saveUndo(track,job.track,!job.multiply);
-            else if(job.normalize&&resultChanged&&track.activeReverse&&!track.reverseHold)
+            else if((job.normalize||job.merge)&&resultChanged&&track.activeReverse&&!track.reverseHold)
                 track.reverseHold=track.clip; // Transfer the old audio lease.
             else retire(track.clip);
             track.clip=result;
             residentBlocks+=(result->length+blockFrames-1)/blockFrames;
             track.info.length=result->length;
+            if(job.merge){
+                if(job.mergeNotify){
+                    track.info.mergeSerial=nextMergeSerial++;
+                    track.info.mergeSource=job.sourceTrack;
+                    track.info.mergeSourceWaveform=job.sourceWaveform;
+                    track.info.mergeSourceClearEpoch=job.sourceClearEpoch;
+                }
+                if(!job.edit){track.info.originalBpm=job.sourceBpm;track.info.dynamicRecorded=job.sourceDynamic;}
+            }else track.info.mergeSerial=0;
             track.info.finalizationFailed=false;
         }else track.info.finalizationFailed=true;
         const bool play=track.finalPlay&&(job.edit||autoPlay);
         track.info.state=track.clip?(play?LoopState::playing:LoopState::stopped):LoopState::empty;
         if(!track.clip)track.info.length=0;
-        if(result){updateRate(track);if(!job.normalize){track.phase=0;track.info.position=0;restartSource(track);}
-            if(resultChanged&&!(job.normalize&&track.activeReverse))blend(track);}
+        if(result){updateRate(track);if(!job.normalize&&!job.merge){track.phase=0;track.info.position=0;restartSource(track);}
+            if(resultChanged&&!((job.normalize||job.merge)&&track.activeReverse))blend(track);}
     }else retire(result);
     result=nullptr;jobState.store(0,std::memory_order_release);
 }
@@ -182,6 +199,7 @@ bool LoopBank::finish(Track& track) noexcept {
     job.blocks=track.blocks;job.blockCount=track.blockCount;job.length=track.captureLength;
     job.track=static_cast<std::uint32_t>(&track-tracks.data());job.revision=track.revision;
     job.normalize=false;job.multiply=track.info.state==LoopState::multiplying;job.doubling=false;
+    job.merge=false;
     job.edit=track.info.state!=LoopState::recording;job.base=track.clip;job.baseLength=track.info.length;
     job.recordMode=track.recordMode;job.outputFrames=job.length;
     if(!job.edit){
@@ -201,6 +219,15 @@ void LoopBank::blend(Track& track) noexcept {track.blendFrom=track.last;track.bl
 bool LoopBank::setStartDelay(std::uint32_t id,double value) noexcept {
     if(id>=trackCount||!std::isfinite(value)||value<0||value>1)return false;
     tracks[id].info.startDelay=value;return true;
+}
+bool LoopBank::clearMergedSource(std::uint32_t id,double serial) noexcept {
+    if(id>=trackCount||!std::isfinite(serial)||serial<1||serial!=std::floor(serial)||serial>9007199254740991.0)return false;
+    const auto& merged=tracks[id].info;
+    if(merged.mergeSerial!=static_cast<std::uint64_t>(serial)||merged.mergeSource>=trackCount)return false;
+    auto& source=tracks[merged.mergeSource];
+    if(!source.clip||source.clip->waveformId!=merged.mergeSourceWaveform||source.clearEpoch!=merged.mergeSourceClearEpoch||
+       (source.info.state!=LoopState::playing&&source.info.state!=LoopState::stopped))return false;
+    ++source.clearEpoch;clear(source);return true;
 }
 void LoopBank::restartSource(Track& track) noexcept {
     ++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stuttering=track.info.stutterClock=false;
@@ -234,6 +261,7 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     if(restored->length>track.clip->length&&restored->length-track.clip->length>growthRoom(track))return false;
     residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
     to[toCount++]=track.clip;track.clip=from[--fromCount];from[fromCount]=nullptr;
+    track.info.mergeSerial=0;
     residentBlocks+=(track.clip->length+blockFrames-1)/blockFrames;
     track.info.length=track.clip->length;track.info.finalizationFailed=false;updateRate(track);
     if(redo){if(remove(redoOrder,redoSize,id,true))append(undoOrder,undoSize,id);}
@@ -242,6 +270,8 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     return true;
 }
 void LoopBank::stop(Track& track) noexcept {
+    track.info.mergeSerial=0;
+    if(track.info.state==LoopState::finalizing&&job.merge&&job.track==static_cast<std::uint32_t>(&track-tracks.data()))job.mergeNotify=false;
     track.info.stuttering=track.info.stutterClock=false;
     if(track.info.state==LoopState::armed){clear(track);return;}
     track.startAt=track.endAt=0;++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stopPending=false;
@@ -278,6 +308,26 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
     if(id>=trackCount)return false;
     auto& t=tracks[id];auto& s=t.info.state;
     switch(action){
+        case LoopAction::clearMergedSource:return clearMergedSource(id,value);
+        case LoopAction::merge: {
+            if(!std::isfinite(value)||value<0||value>=trackCount||value!=std::floor(value))return false;
+            const auto sourceId=static_cast<std::uint32_t>(value);
+            if(sourceId==id||hasCapture()||(s!=LoopState::empty&&s!=LoopState::playing&&s!=LoopState::stopped))return false;
+            const auto& source=tracks[sourceId];
+            if(!source.clip||(source.info.state!=LoopState::playing&&source.info.state!=LoopState::stopped))return false;
+            if(!t.clip&&source.clip->length>available())return false;
+            job.blockCount=0;job.length=0;job.offset=0;job.track=id;job.revision=t.revision;
+            job.base=t.clip;job.baseLength=t.info.length;job.edit=t.clip!=nullptr;
+            job.normalize=job.multiply=job.doubling=false;job.merge=job.mergeNotify=true;
+            job.outputFrames=source.clip->length;job.mergeSource=source.clip;
+            job.sourceTrack=sourceId;job.sourceClearEpoch=source.clearEpoch;
+            job.sourceWaveform=source.clip->waveformId;
+            job.sourceBpm=source.info.originalBpm;job.sourceDynamic=source.info.dynamicRecorded;
+            if(job.base)job.base->leases.fetch_add(1,std::memory_order_relaxed);
+            job.mergeSource->leases.fetch_add(1,std::memory_order_relaxed);
+            t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
+        }
         case LoopAction::multiply: {
             if(value!=0&&value!=1)return false;
             if(s==LoopState::multiplying)return finish(t);
@@ -290,6 +340,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(t.clip->length>growthRoom(t))return false;
             job.blockCount=0;job.length=0;job.offset=0;job.track=id;job.revision=t.revision;
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=false;job.multiply=job.doubling=true;
+            job.merge=false;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
             ++t.phaseEpoch;t.info.phaseApplyFrame=0;t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
@@ -359,6 +410,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped)||hasCapture())return false;
             job.blockCount=0;job.length=t.clip->length;job.offset=0;job.track=id;job.revision=t.revision;
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=true;job.multiply=job.doubling=false;
+            job.merge=false;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
             ++t.phaseEpoch;t.info.phaseApplyFrame=0;t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;

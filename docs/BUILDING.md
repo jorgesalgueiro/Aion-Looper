@@ -350,3 +350,23 @@ Launching `aion_mouse_host` without arguments also selects the real picker and
 localhost CDP port 9235. `node tests/NativePickerProbe.cjs prepare` records synthetic
 PCM and opens it; `export`, `status` and `cancel` support subsequent checks. This
 debug port/configuration belongs only to the excluded test host, not release apps.
+
+### Merge loops
+
+Use the existing MERGE dropdown on the destination loop, select a source and
+press GO. An empty destination receives an independent, stopped copy. An existing
+destination keeps its length and mixes the source circularly into stored audio;
+Undo/Redo restores the previous/merged take. Accept the original confirmation to
+clear the source, or decline to keep it. Stale confirmations cannot delete a new
+source recording; STOP ALL cancels pending source-clear notices.
+Merge is available when capture/finalization is idle, using the same single-worker
+ownership restriction as native normalization. Wait for a take to finish before
+merging it.
+
+Incrementally build the existing Standalone and `aion_mouse_host` targets. Run
+`ctest --test-dir build/windows-core -C Release --output-on-failure -R
+"core_realtime_contract|js_native_merge|native_frontend_commands"` (Ubuntu uses
+`build/core`). `tools/TestMouseWorkflow.ps1 -MergeOnly` runs focused native mouse,
+confirmation and saved-PCM checks at 64/128; the default runner retains main
+performance and WAV export gates as well. Test WAVs remain under the existing
+build directories. No installer, ZIP or test-host installation is needed.

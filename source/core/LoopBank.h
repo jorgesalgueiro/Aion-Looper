@@ -12,13 +12,15 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, sourceRestart }; // sourceRestart is a core-only graph primitive, never exposed by IPC.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart }; // sourceRestart is a core-only graph primitive, never exposed by IPC.
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
     std::uint32_t length = 0, position = 0, undoCount = 0, redoCount = 0;
     std::uint64_t scheduledFrame = 0, clearEpoch = 0;
     std::uint64_t waveformId = 0, captureStartFrame = 0;
+    std::uint64_t mergeSerial = 0, mergeSourceWaveform = 0, mergeSourceClearEpoch = 0;
+    std::uint32_t mergeSource = 20;
     double originalBpm = 0, startDelay = 0;
     bool stuttering = false, stutterClock = false;
     double clockProgress = 0;
@@ -44,6 +46,7 @@ public:
     bool finalizationPending() const noexcept { return jobState.load(std::memory_order_acquire) != 0; }
     bool apply(LoopAction, std::uint32_t track, float value = 0) noexcept;
     bool setStartDelay(std::uint32_t track,double value) noexcept;
+    bool clearMergedSource(std::uint32_t track,double serial) noexcept;
     Stereo tick(Stereo input) noexcept;
     static constexpr unsigned waveformWidth=720;
     bool copyWaveform(std::uint32_t,std::uint64_t,std::array<float,waveformWidth>&) const noexcept;
@@ -72,6 +75,7 @@ private:
         std::array<float,waveformWidth> peaks{};
     };
     std::uint64_t nextWaveformId=1; // Worker-only, survives prepare after join.
+    std::uint64_t nextMergeSerial=1; // Audio-only, survives prepare.
     struct Track {
         LoopView info{};
         Clip* clip = nullptr; // Immutable samples; one audio lease plus any in-flight job lease.
@@ -105,6 +109,11 @@ private:
         SyncMode recordMode=SyncMode::off;
         std::uint32_t outputFrames=0;
         bool edit = false, normalize = false, multiply = false, doubling = false;
+        bool merge = false, mergeNotify = false, sourceDynamic = false;
+        Clip* mergeSource = nullptr;
+        std::uint32_t sourceTrack = 20;
+        std::uint64_t sourceClearEpoch = 0, sourceWaveform = 0;
+        double sourceBpm = 0;
     };
     struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false,retrigger=false;double sourceStartFrame=0,sourceOffset=0;};
     static constexpr unsigned phaseCapacity=128;

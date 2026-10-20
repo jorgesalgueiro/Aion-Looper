@@ -1585,3 +1585,76 @@ This accepts the Windows stored-PCM waveform export increment within the tested
 scope. Actual OS Cancel/overwrite button interaction, Apple/Linux native picker
 behavior, physical ASIO/latency, DAW/MIDI and full application parity remain
 separate validation work. No subsequent feature was implemented in this follow-up.
+
+## Native MERGE — 2026-10-20
+
+Restored the original MERGE source selector and GO button, including the existing
+manuals' workflow and optional source-clear confirmation. No preserved asset was
+edited. An empty destination receives independent source PCM, BPM/dynamic flags
+and stays stopped; existing destinations retain length/playing phase and gain
+one local/global Undo entry. The worker pins immutable base/source clips and
+performs the original zero-offset, feedback-one circular mixer, without a second
+capture-conditioning pass. Playback controls do not process stored samples.
+
+Implementation and repair evidence:
+
+- First Windows real-time test launch failed with `0xc00000fd` (stack overflow)
+  after expanding telemetry. Moved the bounded EngineView SPSC queue to
+  construction-time heap storage, retaining zero callback allocation/free and
+  all original assertions. No stack-limit increase or tolerance change.
+- Source and destination DEL, prepare, worker allocation failure, full recording
+  pool, clone capacity, playing forward/reversed sources, dynamic BPM metadata,
+  global/local Undo/Redo and exact 64/128 Engine PCM are covered in MergeTests.
+- Delayed source clear is guarded by generation, completion, source identity and
+  clear epoch. STOP ALL/reset invalidates pending completion, including a worker
+  result committed afterwards. A new source capture is protected even when its
+  old stored waveform still matches. This is checked at frontend and audio owner.
+- Review caught that Undo/Redo could leave an older completion valid. History
+  restoration and later successful destination PCM edits now invalidate it;
+  frontend also checks destination waveform identity. Retained actual native
+  stale-request rejection after Undo/Redo and during new source overdub. Failures
+  do not publish success or modify prior PCM/history.
+- Native merges serialize against capture/finalization, matching the existing
+  single-worker safety boundary. These guards improve original asynchronous
+  races; they do not claim identical browser envelope transitions.
+
+Reference/audio acceptance:
+
+- Unchanged user-level `LoopManager.mergeLoops`, `pushUndoState`, `sliceBuffer`
+  and `mixBuffersCircular`, with original capture conditioning: 72 cases,
+  1785720 exact stereo WAV bytes, maximum committed playback error
+  7.907836940823643e-8 at unchanged 1e-6. Includes 8/48/96kHz, duplicated mono /
+  distinct stereo, tiny and longer clips, clipping and multi-wrap sources up to
+  48001 frames; source preservation and Undo/Redo remain exact.
+- Full Windows 17/17, 256.73s (`build/merge-tests-windows.log`), and Ubuntu 17/17,
+  429.79s (`build/merge-tests-ubuntu.log`). These broader runs precede the final
+  source-clear guards; focused final checks are recorded below.
+- Both full 64/128 production mouse/PCM workflows pass, retaining arm/cancel/
+  record/play, sync, Start/Q/nudge, STUT/RTRG, held STOP/delete, waveform/live-trace
+  and export checks (`build/merge-mouse-full.log`).
+- Actual WebView2 count-in/nudge/analyser/STUT and native UI/bridge checks pass
+  (`build/merge-ui.log`). Original 20 cards remain; unported controls are disabled,
+  original assets are byte-identical and no product AudioContext is created.
+- Connected capture/overdub/substitute audit passes on Windows and Ubuntu:
+  126 cases, 965826 samples, maximum error 7.394757495227111e-8 at unchanged 1e-6
+  (`build/merge-audio-windows.log`, `build/merge-audio-ubuntu.log`).
+- Final production MERGE/GO tests pass at both 64/128, using real CDP mouse events
+  and actual JavaScript confirmation accept/decline. Complete saved PCM verifies
+  clone/source preservation and Undo/Redo; native panic, stale completion after
+  Undo/Redo, and active-source-capture guards pass
+  (`build/merge-acceptance-mouse.log`). Only file destination selection uses the
+  existing test-host picker.
+- Final Windows core/merge/frontend gates pass 3/3, 73.22s
+  (`build/merge-acceptance-windows.log`).
+- Final Ubuntu core/merge/frontend gates pass 3/3, 75.72s
+  (`build/merge-acceptance-ubuntu.log`). ASan/UBSan with leak detection passes
+  final core/frontend 2/2, 12.56s (`build/merge-acceptance-asan.log`); the preceding
+  sanitized unchanged-JS merge gate also passed, 3/3 overall, 115.21s
+  (`build/merge-final-asan.log`).
+
+Only the existing Windows Standalone and excluded synthetic test host were
+incrementally rebuilt. Version remains 0.4.3; no installer, ZIP or additional
+plugin-format package was made. Local user logo edits remain untouched and
+unstaged. Physical drivers/latency, DAW/MIDI, exact overlapping WebAudio source
+transitions and Apple/Linux native UI remain separate acceptance work. This
+increment does not establish full application parity or production readiness.

@@ -358,3 +358,30 @@ consistency and zero callback allocation. No DSP, tempo or tolerance was changed
 This compares the existing reference capture pipeline. It does not establish
 physical input fidelity, wet/mixed export, project restore, DAW or other platform
 acceptance. Actual OS-picker observations are recorded separately in VALIDATION.md.
+
+## MERGE user action and connected PCM
+
+`MergeParity.cjs` executes unchanged `LoopManager.mergeLoops`, its global
+`pushUndoState`, `AudioEngine.sliceBuffer` and `mixBuffersCircular`, with original
+capture crossfade/DC conditioning. It compares full stereo PCM16 bytes, source
+preservation and Undo/Redo, then renders committed playback at the unchanged
+1e-6 threshold. The 72 cases cover 8/48/96kHz, duplicated mono/distinct stereo,
+empty destination clone, 1-frame/tiny/4097-frame clips and multi-wrap sources up
+to 48001 frames, including clipping/chunked reference mixing. Exact stored-byte
+comparison covers 1785720 bytes; maximum playback error is 7.907836940823643e-8.
+
+Native tests separately retain clone tempo/dynamic metadata and stopped state,
+existing playing phase, independent reversed playback sources, global/local
+history, pin/DEL/prepare/OOM/full-pool behavior, actual Engine stereo PCM at 64/128
+and zero callback new/delete. GO/confirmation accept/decline, exact exported
+clones/history and panic/new-capture deletion protection run through actual
+WebView2 input and the production processor/worker. Destination selection for
+these saved PCM checks uses the existing test picker.
+
+Native merges are serialized against recording/finalization. Failed work keeps
+old audio/history; the original updates Undo before attempting its mixer. The
+native delayed-clear handshake additionally rejects stale generations, cleared
+or replaced takes, active new capture and panic/reset. These are documented
+safety adaptations, not claims of identical original races. Smooth forward
+source transitions retain native blending; exact overlapping WebAudio source
+envelopes, physical drivers and Apple/Linux UI remain separate acceptance work.

@@ -3,6 +3,22 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const root=path.resolve(__dirname,'..');
+// Merge confirmations follow successful native commits, never stale editor
+// snapshots or a source/destination replacement while the prompt is pending.
+{const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ let snapshot={generation:1,tracks:[{mergeSerial:0,clearEpoch:0},{waveformId:8,clearEpoch:2,state:'playing'}]},timers=[],clears=[],prompts=[];
+ const notice=new native.window.AionMerge({current:()=>snapshot,schedule:fn=>timers.push(fn),confirm:m=>(prompts.push(m),true),clear:(...v)=>clears.push(v)});
+ notice.observe(snapshot);
+ const committed=serial=>({...snapshot,generation:1,tracks:[{mergeSerial:serial,clearEpoch:0,mergeSource:1,mergeSourceWaveform:8,mergeSourceClearEpoch:2},snapshot.tracks[1]]});
+ snapshot=committed(1);notice.observe(snapshot);notice.observe(snapshot);assert.equal(timers.length,1);timers.shift()();assert.equal(prompts[0],'Merge successful. Clear Source Loop 2?');assert.deepEqual(clears,[[0,1,1]]);
+ snapshot=committed(2);notice.observe(snapshot);snapshot={...snapshot,tracks:[snapshot.tracks[0],{waveformId:9,clearEpoch:3,state:'playing'}]};timers.shift()();assert.equal(clears.length,1,'Replacement source is never cleared');
+ snapshot={...snapshot,tracks:[snapshot.tracks[0],{waveformId:8,clearEpoch:2,state:'playing'}]};snapshot=committed(3);notice.observe(snapshot);snapshot={...snapshot,generation:2};timers.shift()();assert.equal(clears.length,1,'Generation cancels old prompt');notice.observe(snapshot);assert.equal(timers.length,0,'Reload/bootstrap never replays a prior completion');
+ snapshot={...snapshot,generation:1};notice.observe(snapshot);snapshot=committed(4);notice.observe(snapshot);snapshot={...snapshot,tracks:[{mergeSerial:0,clearEpoch:1},snapshot.tracks[1]]};timers.shift()();assert.equal(clears.length,1,'Destination DEL cancels confirmation');
+ snapshot=committed(5);notice.observe(snapshot);notice.confirm=()=>false;timers.shift()();assert.equal(clears.length,1,'Declining keeps source');
+ snapshot=committed(6);notice.observe(snapshot);notice.cancel();timers.shift()();assert.equal(clears.length,1,'STOP ALL cancels scheduled confirmation');
+ snapshot=committed(7);notice.observe(snapshot);snapshot={...snapshot,tracks:[{...snapshot.tracks[0],waveformId:999},snapshot.tracks[1]]};timers.shift()();assert.equal(clears.length,1,'Undo/new destination PCM cancels earlier confirmation');
+ snapshot=committed(8);notice.observe(snapshot);notice.confirm=()=>{snapshot={...snapshot,generation:99};return true;};timers.shift()();assert.equal(clears.length,1,'Recheck after blocking confirmation');
+ console.log('PASS: merge success-only confirmation, exact text, repeat/reload/generation/DEL/source replacement and post-dialog guards');}
 const original=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8').replace(/\r\n/g,'\n');
 const adapter=fs.readFileSync(path.join(root,'resources/native/loop-view.js'),'utf8');
 for(const name of ['createEffectToggleHTML','generateEffectsControlsHTML','getLoopAction','generateLoopHTML']) {

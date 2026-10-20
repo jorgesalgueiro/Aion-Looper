@@ -13,6 +13,11 @@ int main(){
   if(op=="prepare")bank.prepare(id,0,value);
   else if(op=="record")ok=bank.apply(A::record,id);
   else if(op=="finish")ok=bank.apply(A::finish,id);
+  else if(op=="merge")ok=bank.apply(A::merge,id,static_cast<float>(value));
+  else if(op=="undo")ok=bank.apply(A::undo,id);
+  else if(op=="redo")ok=bank.apply(A::redo,id);
+  else if(op=="clear")ok=bank.apply(A::clear,id);
+  else if(op=="inspect"){const auto v=bank.view()[id];std::cout<<std::setprecision(17)<<1<<' '<<v.length<<' '<<static_cast<unsigned>(v.state)<<' '<<v.originalBpm<<' '<<v.dynamicRecorded<<' '<<v.undoCount<<' '<<v.redoCount<<' '<<v.position<<' '<<v.startDelay<<' '<<v.playbackRate<<' '<<v.mergeSerial<<'\n';continue;}
   else if(op=="tick")out=bank.tick({static_cast<float>(value),right});
   else if(op=="wait"){for(unsigned n=0;bank.finalizationPending()&&n<10000;++n){bank.beginBlock();std::this_thread::sleep_for(std::chrono::milliseconds(1));}ok=!bank.finalizationPending();}
   else if(op=="peaks"){

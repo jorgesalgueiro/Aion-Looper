@@ -17,6 +17,21 @@ committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.
 
+MERGE acceptance retains unchanged LoopManager.mergeLoops, sliceBuffer and
+mixBuffersCircular at offset zero/feedback one: clone empty destinations stopped
+with source BPM/dynamic metadata, otherwise preserve destination length/phase and
+add one local/global Undo entry. Pin immutable source/base clips, allocate/mix on
+the worker and keep source audio unchanged until explicit confirmation. Preserve
+playing reversed source ownership, worker OOM/history rollback, full-pool merge,
+clone capacity checks and DEL/prepare cleanup. Confirmation is success-only with
+the original text/50ms delay; STOP ALL/reset/DEL/reload and replaced/recording
+sources must never receive stale deletion. Undo/Redo or a subsequent destination
+PCM edit invalidates prior completion; retain both frontend waveform-identity
+and audio-owner serial guards. Retain exact stereo WAV comparisons, 1e-6
+committed playback, actual 64/128 Engine PCM and GO/confirm/Undo/Redo tests.
+Snapshot queue storage belongs to construction-time heap allocation; do not
+increase Windows stack limits or allocate telemetry on the callback.
+
 Before advancing:
 
 1. Run unchanged-JS comparisons for state and DSP and the live core audio audit.
