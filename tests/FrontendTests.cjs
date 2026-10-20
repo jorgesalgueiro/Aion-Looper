@@ -343,3 +343,16 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: original DYNAMIC recording playhead, including sync-mode changes during capture');
 }
+
+// A queued STUT start must be invalid after release/cancel, even without audio ack.
+{const sandbox={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),sandbox);
+ let start=[],stop=[];const hold=new sandbox.window.AionStutter({start:(id,valid)=>start.push({id,valid}),stop:id=>stop.push(id)});
+ hold.press(0,'p1');hold.press(0,'p1');hold.press(0,'p2');assert.equal(start.length,1);assert(start[0].valid());
+ hold.release('p1');assert(!start[0].valid());assert.deepEqual(stop,[0]);hold.release('p1');assert.equal(stop.length,1);
+ hold.press(0,'p1');hold.press(1,'p2');hold.cancelTrack(0);assert(!start[1].valid());assert(start[2].valid());hold.cancel();assert(!start[2].valid());assert.equal(hold.presses.size,0);
+ console.log('PASS: STUT momentary ownership, repeated/multi-pointer guards, queued cancellation, per-track/global cleanup');}
+
+// STUT audio cursor may repeat; the original waveform playhead follows graph/master time.
+{const code=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8').split('\n').find(line=>line.includes('const progress=recording?'));assert(code);
+ for(const progress of [0,0.123,0.5,0.999])for(const stuttering of [false,true]){const native={snapshot:{},t:{length:4096,position:17,stuttering,stutterClock:true,clockProgress:progress},recording:false};vm.createContext(native);vm.runInContext(code+';globalThis.result=progress;',native);assert.equal(native.result,progress,'Held/released STUT routes original clock to unchanged canvas');}
+ console.log('PASS: original STUT waveform clock remains independent of fragment cursor after release');}

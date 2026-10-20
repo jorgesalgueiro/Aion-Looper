@@ -552,3 +552,33 @@ This is an intentional native repair of mixed pending-source behavior, not a
 claim of identical overlapping WebAudio source envelopes. Full-queue rejection
 preserves old metadata/sources. Panic, DEL, capture and reset ownership epochs
 continue to cancel pending sources.
+
+
+### Original STUT momentary source region
+
+The existing STUT button now invokes audio-owned `stutterStart`. It evaluates the
+unchanged JS graph-clock/effective-rate phase, latches a current-BPM sixteenth
+fragment (first clamped to half the clip, then to a 10ms minimum and the clip tail), and
+wraps the retained immutable source inside those bounds. Release restores the
+full-loop bounds while keeping the actual source cursor. The original waveform
+playhead separately follows the graph/master clock during STUT and after release,
+until source replacement; it must not follow the repeated audio cursor. No PCM edit, undo entry,
+source allocation or callback lock is involved. Fragment interpolation uses the
+region's wrapped neighbour, including fractional/tiny regions and reversed
+sources, rather than reading a neighbour from the full file across the cut.
+
+Per-track lock-free revision counters provide a queue-independent release path.
+Release/blur/editor close invalidate already queued starts and release active
+regions at the next audio block, including zero-size processing. Frontend gesture
+ownership also invalidates unsent starts after release, cancellation or deletion.
+Opening/reloading an editor releases temporary regions; native editor destruction
+performs the same cancellation even if JavaScript unload cannot deliver a request.
+STOP ALL/DEL/reset/source replacement release the temporary region. Source-change
+cleanup intentionally prevents a held old source from affecting a replacement;
+it does not claim identical overlapping/future WebAudio graphs.
+
+Reference state/conditioned-source PCM tests are separate from actual WebView2
+OfflineAudioContext playback tests. The latter currently accept 1x, quantum-aligned
+press/release at ordinary/tail fragments with zero/nonzero graph clock origins.
+Full browser envelopes/resampling, other browser engines, live driver latency and
+combined unported features remain separate acceptance work.

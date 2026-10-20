@@ -29,12 +29,16 @@ bool Engine::enqueue(GainCommand command) noexcept {
 bool Engine::enqueueLoop(LoopCommand command) noexcept {
     if (command.generation == 0 || command.generation != generation() || command.track >= LoopBank::trackCount
         || !std::isfinite(command.value)) return false;
+    if(command.action==LoopAction::stutterStart)command.stutterRevision=stutterRevisions[command.track].load(std::memory_order_acquire);
     return loopCommands.push(command);
 }
 void Engine::process(float* const* channels, int count, int frames) noexcept {
     if (count < 0 || frames < 0 || (count > 0 && channels == nullptr)) return;
     float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
     loops.beginBlock();
+    for(unsigned id=0;id<LoopBank::trackCount;++id){const auto revision=stutterRevisions[id].load(std::memory_order_acquire);
+        if(revision!=seenStutterRevisions[id]){loops.apply(LoopAction::stutterStop,id);seenStutterRevisions[id]=revision;}
+    }
     const auto metroClock=loops.syncView();
     metronome.configure(static_cast<float>(metroClock.settings.bpm),static_cast<float>(metroClock.origin/preparedRate),metroClock.settings.numerator);
     int loopApplied = 0;
@@ -47,9 +51,10 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
         if (!hasPendingLoop) hasPendingLoop = loopCommands.pop(pendingLoop);
         while (hasPendingLoop && pendingLoop.frame <= frame && loopApplied < 128) {
             lastRequestId = pendingLoop.requestId;
+            const bool cancelledStutter=pendingLoop.action==LoopAction::stutterStart&&pendingLoop.stutterRevision!=stutterRevisions[pendingLoop.track].load(std::memory_order_acquire);
             rejected = pendingLoop.generation != generation() ||
-                !(pendingLoop.action==LoopAction::startDelay?loops.setStartDelay(pendingLoop.track,pendingLoop.value):
-                  loops.apply(pendingLoop.action,pendingLoop.track,static_cast<float>(pendingLoop.value)));
+                (!cancelledStutter&&!(pendingLoop.action==LoopAction::startDelay?loops.setStartDelay(pendingLoop.track,pendingLoop.value):
+                  loops.apply(pendingLoop.action,pendingLoop.track,static_cast<float>(pendingLoop.value))));
             if(!rejected){
                 const auto action=pendingLoop.action;
                 if(action==LoopAction::record){

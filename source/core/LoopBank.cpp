@@ -184,7 +184,7 @@ bool LoopBank::setStartDelay(std::uint32_t id,double value) noexcept {
     tracks[id].info.startDelay=value;return true;
 }
 void LoopBank::restartSource(Track& track) noexcept {
-    ++track.phaseEpoch;track.info.phaseApplyFrame=0;
+    ++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stuttering=track.info.stutterClock=false;
     retire(track.reverseHold);track.reverseHold=nullptr;
     track.activeReverse=track.info.state==LoopState::playing&&track.info.reverse;
     if(track.clip&&track.info.state==LoopState::playing){
@@ -192,6 +192,7 @@ void LoopBank::restartSource(Track& track) noexcept {
         const double offset=sync.settings.mode!=SyncMode::off?(static_cast<double>(frame)-sync.origin)*track.phaseRate-shift:shift;
         track.phase=std::fmod(offset,length);if(track.phase<0)track.phase+=length;
         track.info.position=static_cast<std::uint32_t>(track.phase);
+        track.sourceStartFrame=static_cast<double>(frame);track.sourceOffset=track.phase;
     }
 }
 void LoopBank::saveUndo(Track& track,std::uint32_t id,bool global) noexcept {
@@ -222,6 +223,7 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     return true;
 }
 void LoopBank::stop(Track& track) noexcept {
+    track.info.stuttering=track.info.stutterClock=false;
     if(track.info.state==LoopState::armed){clear(track);return;}
     track.startAt=track.endAt=0;++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stopPending=false;
     if(capturing(track.info.state))(void)finish(track);
@@ -364,6 +366,17 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             // Original stopped Loop.play(now) bypasses the next-grid queue.
             s=LoopState::playing;t.tailRemaining=0;restartSource(t);blend(t);return true;
         }
+        case LoopAction::stutterStop:t.info.stuttering=false;return true;
+        case LoopAction::stutterStart: {
+            if(s!=LoopState::playing||!t.clip||t.info.stuttering)return true;
+            const double duration=t.info.length/rate;
+            const double position=t.sourceOffset/rate+(static_cast<double>(frame)/rate-t.sourceStartFrame/rate)*t.phaseRate;
+            const double phase=std::fmod(std::fmod(position,duration)+duration,duration);
+            const double fragment=std::max(0.01,std::min(60.0/sync.settings.bpm*0.25,duration*0.5));
+            double end=std::min(phase+fragment,duration);
+            if(end<=phase)end=std::min(phase+0.01,duration);
+            t.info.stutterStart=phase*rate;t.info.stutterEnd=end*rate;t.info.stuttering=t.info.stutterEnd>t.info.stutterStart;t.info.stutterClock=true;return true;
+        }
         case LoopAction::sourceRestart:
             if(!t.clip||capturing(s)||s==LoopState::finalizing||s==LoopState::armed||s==LoopState::queued||s==LoopState::stopping)return false;
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);return true;
@@ -490,7 +503,8 @@ bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool ma
         if(phaseEvents[before].frame<=deadline)break;
         phaseEvents[at]=phaseEvents[before];at=before;
     }
-    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending};phaseWrite=next;
+    double sourceOffset=std::fmod(offset,length);if(sourceOffset<0)sourceOffset+=length;
+    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending,target*rate,sourceOffset};phaseWrite=next;
     track.info.phaseApplyFrame=std::max(track.info.phaseApplyFrame,deadline);return true;
 }
 void LoopBank::applyPhaseEvents() noexcept {
@@ -501,7 +515,8 @@ void LoopBank::applyPhaseEvents() noexcept {
         phaseRead=(phaseRead+1)%phaseCapacity;
         if(!valid||track.info.state!=LoopState::playing||!track.clip)continue;
         retire(track.reverseHold);track.reverseHold=nullptr;
-        track.phase=event.phase;track.activeReverse=event.reverse;
+        track.phase=event.phase;track.activeReverse=event.reverse;track.info.stuttering=track.info.stutterClock=false;
+        track.sourceStartFrame=event.sourceStartFrame;track.sourceOffset=event.sourceOffset;
         track.info.position=static_cast<std::uint32_t>(track.phase);
         if(track.info.phaseApplyFrame==event.frame)track.info.phaseApplyFrame=0;
         blend(track);
@@ -529,18 +544,29 @@ Stereo LoopBank::tick(Stereo input) noexcept {
         if(t.panRemaining){t.panGain.left+=t.panIncrement.left;t.panGain.right+=t.panIncrement.right;if(--t.panRemaining==0)t.panGain=t.panTarget;}
         Stereo out{};
         if(audible){
+            if(v.stuttering&&t.phase>=v.stutterEnd)t.phase=v.stutterStart+std::fmod(t.phase-v.stutterStart,v.stutterEnd-v.stutterStart);
+            else if(t.phase>=t.clip->length){t.phase=std::fmod(t.phase,static_cast<double>(t.clip->length));blend(t);}
             v.position=static_cast<std::uint32_t>(t.phase);
-            const auto next=v.position+1==t.clip->length?0:v.position+1;
+            auto next=v.position+1==t.clip->length?0:v.position+1;
+            if(v.stuttering&&v.position<v.stutterEnd&&v.position+1>=v.stutterEnd){
+                const double span=v.stutterEnd-v.stutterStart;
+                const double neighbor=span>=1?t.phase+1-span:v.stutterStart+std::fmod(t.phase+1-v.stutterStart,span);
+                next=static_cast<std::uint32_t>(std::clamp(neighbor,0.0,static_cast<double>(t.clip->length-1)));
+            }
             const float fraction=static_cast<float>(t.phase-v.position);
             const auto* source=t.reverseHold?t.reverseHold:t.clip;
             const auto index=t.activeReverse?source->length-1-v.position:v.position;
             const auto nextIndex=t.activeReverse?source->length-1-next:next;
             const auto& left=source->channels[0];const auto& right=source->channels[1];
-            out={left[index]+(left[nextIndex]-left[index])*fraction,right[index]+(right[nextIndex]-right[index])*fraction};
+            if(v.stuttering&&next==v.position&&v.position>0){
+                const auto previous=t.activeReverse?source->length-v.position:v.position-1;
+                out={left[index]+(left[index]-left[previous])*fraction,right[index]+(right[index]-right[previous])*fraction};
+            }else out={left[index]+(left[nextIndex]-left[index])*fraction,right[index]+(right[nextIndex]-right[index])*fraction};
             if(t.blendRemaining){const float progress=1-static_cast<float>(--t.blendRemaining)/fadeLength;out={t.blendFrom.left+(out.left-t.blendFrom.left)*progress,t.blendFrom.right+(out.right-t.blendFrom.right)*progress};}
             t.last=out;t.phase+=t.rate;
-            if(t.phase>=t.clip->length){t.phase=std::fmod(t.phase,static_cast<double>(t.clip->length));blend(t);}
-            v.position=static_cast<std::uint32_t>(t.phase);
+            if(v.stuttering&&t.phase>=v.stutterEnd)t.phase=v.stutterStart+std::fmod(t.phase-v.stutterStart,v.stutterEnd-v.stutterStart);
+            else if(t.phase>=t.clip->length){t.phase=std::fmod(t.phase,static_cast<double>(t.clip->length));blend(t);}
+            v.position=static_cast<std::uint32_t>(t.phase>=t.clip->length?std::fmod(t.phase,static_cast<double>(t.clip->length)):t.phase);
         }else if(t.tailRemaining){const float progress=static_cast<float>(--t.tailRemaining)/fadeLength;out={t.tail.left*progress,t.tail.right*progress};t.last=out;}
         else t.last={};
         const bool excluded=soloTrack>=0&&soloTrack!=static_cast<int>(&t-tracks.data());
@@ -601,7 +627,15 @@ bool LoopBank::copyWaveform(std::uint32_t id,std::uint64_t expected,std::array<f
 std::array<LoopView,LoopBank::trackCount> LoopBank::view() const noexcept {
     std::array<LoopView,trackCount> views{};
     for(std::uint32_t i=0;i<trackCount;++i){views[i]=tracks[i].info;views[i].waveformId=tracks[i].clip?tracks[i].clip->waveformId:0;views[i].solo=soloTrack==static_cast<int>(i);views[i].effectiveRate=tracks[i].targetRate;
-        views[i].clearEpoch=tracks[i].clearEpoch;views[i].scheduledFrame=tracks[i].startAt?tracks[i].startAt:tracks[i].endAt;}
+        views[i].clearEpoch=tracks[i].clearEpoch;views[i].scheduledFrame=tracks[i].startAt?tracks[i].startAt:tracks[i].endAt;
+        const auto& t=tracks[i];auto& v=views[i];
+        v.stutterClock=v.stutterClock&&t.clip&&(v.state==LoopState::playing||v.state==LoopState::stopping);
+        if(v.stutterClock){
+            const double duration=v.length/rate,now=static_cast<double>(frame)/rate;
+            const double position=sync.settings.mode!=SyncMode::off?(now-sync.origin/rate)*t.phaseRate-v.startDelay*duration:(now-t.sourceStartFrame/rate)*t.phaseRate+t.sourceOffset/rate;
+            double progress=std::fmod(position,duration);if(progress<0)progress+=duration;v.clockProgress=progress/duration;
+        }
+    }
     return views;
 }
 }

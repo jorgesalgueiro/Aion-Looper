@@ -12,7 +12,7 @@ repair), the loop Rvers control, per-loop/global Undo/Redo, and original MULT
 capture/doubling, and the internal Master BPM static/dynamic arm-record-play
 workflow with unified mouse/keyboard gestures, native session naming and the
 continuous monitor-only metronome, static SOUND/VISUAL count-in and the original
-Start slider/Q/nudge buttons and committed-loop waveform display and DYNAMIC live recording trace. Offline DSP and connected
+Start slider/Q/nudge buttons and committed-loop waveform display, DYNAMIC live recording trace, and original RTRG/STUT source and visual-clock behavior. Offline DSP and connected
 committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.
@@ -173,3 +173,25 @@ older slider/Q/nudge releases; retain other-track sources and rapid RTRGs.
 This pending-phase safety repair is documented separately from reference parity;
 do not claim identical overlapping browser sources or transition envelopes.
 Retain actual RTRG mouse/PCM and original Start/Q/nudge checks at 64/128 samples.
+
+
+STUT acceptance retains unchanged Loop.stutterStart/Stop graph-clock phase and
+fragment bounds, repeated holds and resumed cursor, plus actual WebView2 WebAudio
+ordinary/tail fragments at zero/nonzero source clocks. Preserve fractional-region
+neighbour wrapping/extrapolation; a full-file neighbour passed the old model but
+failed actual browser audio. Keep the 1e-6 PCM and 1e-8-frame metadata thresholds,
+mono/stereo/reverse/varispeed/all-sync/tiny-clip cases, and all prior Start/RTRG gates.
+STUT release must bypass command-queue capacity/acknowledgement waits. Retain
+per-track atomic cancellation revisions, stale queued/unsent start invalidation,
+zero-block release, native editor destruction and reload cleanup. Keep real PCM
+64/128 pointer hold/outside-release/blur/reload/deferred-release checks, with
+exception collection surviving reload, and no product AudioContext or PCM edits.
+Source replacement intentionally clears its temporary region; overlapping/future
+browser graph transitions and broader browser/hardware timing remain separate.
+
+STUT must also retain unchanged Loop.getProgress: the visual graph/master clock
+continues during held fragments and after release. Keep audio and visual cursors
+separate, reset the visual override on source replacement/stop, and retain the
+1e-12 circular-progress comparison, frontend routing, and actual draw-stream
+checks at 64/128. Dynamic recording progress and the unchanged canvas renderer
+must retain their existing gates.

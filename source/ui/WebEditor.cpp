@@ -41,8 +41,9 @@ juce::WebBrowserComponent::Options AionWebEditor::options(AionProcessor& process
     return settings;
 }
 AionWebEditor::AionWebEditor(AionProcessor& owner)
-    : AudioProcessorEditor(owner), browser(options(owner)) {
+    : AudioProcessorEditor(owner), owner(owner), browser(options(owner)) {
     addAndMakeVisible(browser); setResizable(true, true); setSize(1200, 800);
     browser.goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
 }
+AionWebEditor::~AionWebEditor() {owner.releaseStutter();}
 void AionWebEditor::resized() { browser.setBounds(getLocalBounds()); }

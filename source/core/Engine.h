@@ -14,6 +14,7 @@ struct LoopCommand {
     std::uint32_t track = 0, requestId = 0, generation = 0;
     std::uint64_t frame = 0;
     double value = 0;
+    std::uint32_t stutterRevision = 0;
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct EngineView {
@@ -39,6 +40,10 @@ public:
     void setMetronome(bool enabled,float volume) noexcept {metronome.setEnabled(enabled);metronome.setVolume(volume);}
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
+    void cancelStutter(std::uint32_t track = LoopBank::trackCount) noexcept {
+        if(track<LoopBank::trackCount)stutterRevisions[track].fetch_add(1,std::memory_order_release);
+        else for(auto& revision:stutterRevisions)revision.fetch_add(1,std::memory_order_release);
+    }
     bool finalizationPending() const noexcept { return loops.finalizationPending(); }
     bool popLiveInput(LiveInputEvent& event) noexcept {return liveInput->pop(event);}
     bool popWaveform(WaveformEvent& event) noexcept {return waveforms->pop(event);}
@@ -52,6 +57,8 @@ public:
     Transport transport{}; // Audio-owned; never read directly from the editor.
 private:
     LoopBank loops;
+    std::array<std::atomic<std::uint32_t>,LoopBank::trackCount> stutterRevisions{};
+    std::array<std::uint32_t,LoopBank::trackCount> seenStutterRevisions{};
     std::unique_ptr<LiveInput> liveInput=std::make_unique<LiveInput>();
     Metronome metronome;
     CountIn countIn;

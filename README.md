@@ -150,3 +150,10 @@ English, Spanish and Portuguese manuals explain these rules.
 The original **Start** slider now adjusts playback phase. Drag to choose the
 value and release to apply it 50ms later during playback; STOP ALL cancels pending
 restarts and preserves the value, while DEL resets it. Q/nudge remain pending.
+
+
+The original **STUT** button now repeats a short fragment while held and restores
+full-loop playback on release. Focus loss, editor reload/close and STOP ALL clear
+the temporary region. This uses native C++ playback and leaves the recording
+unchanged. See [the reference audit](docs/REFERENCE_AUDIT.md) for tested sound scope
+and remaining platform/driver acceptance.

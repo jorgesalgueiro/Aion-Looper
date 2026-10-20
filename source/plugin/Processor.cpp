@@ -160,6 +160,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
                     object->setProperty("wavePeaks",peaks);
                 }
             }
+            object->setProperty("clearEpoch",static_cast<juce::int64>(t.clearEpoch));object->setProperty("stuttering",t.stuttering);object->setProperty("stutterClock",t.stutterClock);object->setProperty("clockProgress",t.clockProgress);object->setProperty("stutterStart",t.stutterStart);object->setProperty("stutterEnd",t.stutterEnd);
             object->setProperty("startDelay",t.startDelay);object->setProperty("phaseApplyFrame",static_cast<juce::int64>(t.phaseApplyFrame));
             object->setProperty("scheduledFrame",static_cast<juce::int64>(t.scheduledFrame));object->setProperty("stopPending",t.stopPending);
             object->setProperty("effectiveRate",t.effectiveRate);object->setProperty("dynamicRecorded",t.dynamicRecorded);
@@ -196,6 +197,11 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         auto* parameter = parameters.getParameter(id);
         parameter->beginChangeGesture(); parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(number))); parameter->endChangeGesture();
         result->setProperty("ok", true);
+    } else if (operation == "releaseStutter") {
+        const auto id=request.getProperty("track",{}),generation=request.getProperty("generation",{});
+        if(!id.isInt()||static_cast<int>(id)<0||static_cast<int>(id)>static_cast<int>(aion::LoopBank::trackCount))return fail("Invalid stutter track");
+        if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation()))return fail("Audio generation changed");
+        engine.cancelStutter(static_cast<unsigned>(static_cast<int>(id)));result->setProperty("ok",true);
     } else if (operation == "loop") {
         const auto expiration = request.getProperty("expiresAt", {});
         if (!(expiration.isInt() || expiration.isInt64() || expiration.isDouble())) return fail("Missing command expiration");
@@ -207,7 +213,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if (!id.isInt() || static_cast<int>(id) < 0 || static_cast<int>(id) >= static_cast<int>(aion::LoopBank::trackCount)
             || !generation.isInt() || static_cast<int>(generation) <= 0) return fail("Invalid track or audio generation");
         const auto actionName = request.getProperty("action", {}).toString();
-        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply", "stopImmediate", "startDelay", "applyStart", "quantizeStart", "nudgeStart"};
+        const char* names[] = {"record", "finish", "play", "stop", "overdub", "substitute", "clear", "stopAll", "volume", "feedback", "mute", "clearAll", "solo", "retrigger", "pan", "speed", "normalize", "reverse", "undo", "redo", "undoGlobal", "redoGlobal", "multiply", "stopImmediate", "startDelay", "applyStart", "quantizeStart", "nudgeStart", "stutterStart", "stutterStop"};
         unsigned action = 0;
         for (; action < std::size(names) && actionName != names[action]; ++action) {}
         if (action == std::size(names)) return fail("Unknown looper action");

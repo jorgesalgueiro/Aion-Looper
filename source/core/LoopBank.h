@@ -11,7 +11,7 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, sourceRestart }; // sourceRestart is a core-only graph primitive, never exposed by IPC.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, sourceRestart }; // sourceRestart is a core-only graph primitive, never exposed by IPC.
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
@@ -19,6 +19,9 @@ struct LoopView {
     std::uint64_t scheduledFrame = 0, clearEpoch = 0;
     std::uint64_t waveformId = 0, captureStartFrame = 0;
     double originalBpm = 0, startDelay = 0;
+    bool stuttering = false, stutterClock = false;
+    double clockProgress = 0;
+    double stutterStart = 0, stutterEnd = 0; // Source region in frames.
     std::uint64_t phaseApplyFrame = 0;
     float effectiveRate = 1;
     bool dynamicRecorded = false, stopPending = false;
@@ -81,7 +84,7 @@ private:
         std::uint32_t blockCount = 0, blendRemaining = 0, tailRemaining = 0;
         Stereo last{}, blendFrom{}, tail{};
         float gain = 1;
-        double phase = 0, phaseRate = 1;
+        double phase = 0, phaseRate = 1, sourceStartFrame = 0, sourceOffset = 0;
         std::uint64_t phaseEpoch = 0;
         float rate = 1, targetRate = 1, rateIncrement = 0;
         std::uint32_t rateRemaining = 0, panRemaining = 0;
@@ -98,7 +101,7 @@ private:
         std::uint32_t outputFrames=0;
         bool edit = false, normalize = false, multiply = false, doubling = false;
     };
-    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false,retrigger=false;};
+    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false,retrigger=false;double sourceStartFrame=0,sourceOffset=0;};
     static constexpr unsigned phaseCapacity=128;
     std::array<PhaseEvent,phaseCapacity> phaseEvents{};
     unsigned phaseRead=0,phaseWrite=0;

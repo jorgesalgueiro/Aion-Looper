@@ -5,6 +5,7 @@
 class AionWebEditor final : public juce::AudioProcessorEditor {
 public:
     explicit AionWebEditor(AionProcessor&);
+    ~AionWebEditor() override;
     void resized() override;
 private:
     class Browser final : public juce::WebBrowserComponent {
@@ -17,5 +18,6 @@ private:
     };
     static juce::WebBrowserComponent::Options options(AionProcessor&);
     static std::optional<juce::WebBrowserComponent::Resource> resource(const juce::String&);
+    AionProcessor& owner;
     Browser browser;
 };

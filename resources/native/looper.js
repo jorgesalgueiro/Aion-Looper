@@ -164,12 +164,21 @@
         master.addEventListener('input', () => {output.querySelector('#native-master-value').textContent=Number(master.value).toFixed(2);setParameter('masterGain',Number(master.value));});
         monitor.addEventListener('change', () => setParameter('inputMonitor',monitor.checked?1:0));
         autoPlay.addEventListener('change',()=>setParameter('autoPlayAfterRecord',autoPlay.checked?1:0));
-        const stopSession=()=>{keyboard.cancel();scheduler.enqueue(()=>({action:'stopAll',track:0,value:0}),{stop:true});};
+        const releaseStutter=track=>{if(snapshot)rpc({operation:'releaseStutter',track,generation:snapshot.generation}).catch(e=>notify(e.message));};
+        const stutter=new window.AionStutter({
+            start:(track,valid)=>{const generation=snapshot?.generation,clearEpoch=snapshot?.tracks[track]?.clearEpoch;
+                scheduler.enqueue(()=>valid()&&snapshot.generation===generation&&snapshot.tracks[track].clearEpoch===clearEpoch&&snapshot.tracks[track].state==='playing'?{action:'stutterStart',track,value:0}:null,{track});},
+            stop:releaseStutter
+        });
+        window.addEventListener('pointerup',e=>stutter.release(`stutter:${e.pointerId}`));
+        window.addEventListener('pointercancel',e=>stutter.release(`stutter:${e.pointerId}`));
+        window.addEventListener('blur',()=>{stutter.cancel();releaseStutter(20);});
+        const stopSession=()=>{stutter.cancel();keyboard.cancel();scheduler.enqueue(()=>({action:'stopAll',track:0,value:0}),{stop:true});};
         stopAll.addEventListener('click', stopSession);
         globalUndo.title='Undo Last Action';globalRedo.title='Redo Last Action';
         globalUndo.addEventListener('click',()=>restoreHistory(false));
         globalRedo.addEventListener('click',()=>restoreHistory(true));
-        clearAll.addEventListener('click', () => {if(window.confirm('Clear ALL loops and master recordings?')){keyboard.cancel();scheduler.reset();command('clearAll',0);}});
+        clearAll.addEventListener('click', () => {if(window.confirm('Clear ALL loops and master recordings?')){stutter.cancel();keyboard.cancel();scheduler.reset();command('clearAll',0);}});
         const mainAction=id=>{
             selected=id;
             const requestedMode=mode;
@@ -254,9 +263,13 @@
                 const reset=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1x'),()=>queueControl('speed',i,1));
                 speed.addEventListener('dblclick',()=>queueControl('speed',i,1));
                 const mute=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='MUTE'),()=>scheduler.enqueue(()=>({action:'mute',track:i,value:snapshot.tracks[i].muted?0:1}),{track:i}));
-                bind(row.querySelector('.loop-track-delete'),()=>{keyboard.cancelTrack(i);command('clear',i);});
+                bind(row.querySelector('.loop-track-delete'),()=>{stutter.cancelTrack(i);keyboard.cancelTrack(i);command('clear',i);});
                 const solo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='SOLO'),()=>command('solo',i));
                 const retrigger=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='RTRG'),()=>command('retrigger',i));
+                const stut=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='STUT'),e=>{e.preventDefault();e.stopPropagation();});
+                stut.title='Stutter: hold during playback, release to resume';
+                stut.addEventListener('pointerdown',e=>{if(e.button!==0||e.isPrimary===false)return;e.preventDefault();e.stopPropagation();selected=i;stutter.press(i,`stutter:${e.pointerId}`);});
+                stut.addEventListener('lostpointercapture',e=>stutter.release(`stutter:${e.pointerId}`));
                 const undo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='UNDO'),()=>restoreHistory(false,i));
                 const redo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='REDO'),()=>restoreHistory(true,i));
                 const reverse=bind(row.querySelector(`#loop-${i}-reverse`),()=>scheduler.enqueue(()=>({action:'reverse',track:i,value:snapshot.tracks[i].reverse?0:1}),{track:i}),'change');
@@ -266,7 +279,7 @@
                 feedback.addEventListener('dblclick',()=>queueControl('feedback',i,0.8));
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const canvas=row.querySelector('canvas');canvas.title='Playback position';
-                rows.push({row,main,name,volume,feedback,pan,start,quantize,speed,half,reset,mute,solo,retrigger,normalize,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
+                rows.push({row,main,name,volume,feedback,pan,start,quantize,speed,half,reset,mute,solo,retrigger,stut,normalize,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
         function refresh() {
@@ -316,6 +329,7 @@
                 r.speed.disabled=!active||editing;r.half.disabled=!active||editing||!t.length;
                 r.reset.disabled=!active||editing||t.playbackRate===1;
                 r.retrigger.disabled=!active||!t.length||editing||['queued','stopping'].includes(t.state);
+                r.stut.disabled=!active||t.state!=='playing';r.stut.classList.toggle('btn-active',!!t.stuttering);
                 r.undo.disabled=!active||!t.undoCount||!['playing','stopped'].includes(t.state);
                 r.redo.disabled=!active||!t.redoCount||!['playing','stopped'].includes(t.state);
                 r.reverse.checked=!!t.reverse;
@@ -326,7 +340,7 @@
                 r.mute.textContent=t.muted?'UNM':'MUTE';r.mute.setAttribute('aria-pressed',String(t.muted));
                 const input=snapshot.liveInput,live=input?.track===i&&input.startFrame===t.captureStartFrame?{...input,syncMode:['off','static','dynamic'][snapshot.syncMode],now:snapshot.frame/snapshot.sampleRate,barDuration:snapshot.barLength}:null;
                 const recording=t.state==='recording'&&t.dynamicRecorded;
-                const progress=recording?Math.min(1,Math.max(0,(snapshot.frame-t.captureStartFrame)/snapshot.sampleRate/(snapshot.syncMode===0?10:snapshot.gridLength))):(t.length?t.position/t.length:0);
+                const progress=recording?Math.min(1,Math.max(0,(snapshot.frame-t.captureStartFrame)/snapshot.sampleRate/(snapshot.syncMode===0?10:snapshot.gridLength))):(t.stutterClock?t.clockProgress:(t.length?t.position/t.length:0));
                 window.AionDrawWaveform(r.canvas,{state:t.state,graph:recording?{startTime:t.captureStartFrame/snapshot.sampleRate}:null,wavePeaks:r.waveformId===t.waveformId?r.wavePeaks:null},progress,live);
                 r.row.querySelector(`#loop-ascii-vu-${i}`).textContent='|'.repeat(Math.min(20,Math.round(t.peak*20)));
             });
@@ -363,10 +377,10 @@
             try {
                 const reply=await rpc({operation:'snapshot',knownGeneration:snapshot?.generation??0,knownWaveforms:rows.map(r=>r.waveformId??0)});if(!reply.ok)throw Error(reply.error || 'State unavailable');
                 if(!alive)return;
-                if(snapshot && reply.generation!==snapshot.generation){scheduler.reset();keyboard.cancel();rows.forEach(r=>{r.waveformId=0;r.wavePeaks=null;});}
+                if(snapshot && reply.generation!==snapshot.generation){scheduler.reset();stutter.cancel();keyboard.cancel();rows.forEach(r=>{r.waveformId=0;r.wavePeaks=null;});}
                 if(reply.frame!==lastFrame || reply.generation!==snapshot?.generation){lastFrame=reply.frame;advancedAt=Date.now();}
                 snapshot=reply;
-                if(!rows.length)createRows(reply);
+                if(!rows.length){releaseStutter(20);createRows(reply);}
                 if(pending) {
                     if(reply.generation!==pending.generation){pending.reject(Error('Audio configuration changed'));pending=null;}
                     else if(reply.lastRequestId>=pending.id){reply.rejected?pending.reject(Error('Action is unavailable in the current loop state')):pending.resolve();pending=null;}
@@ -376,7 +390,7 @@
             } catch(e) {if(alive)notify(e.message);}
             finally {if(alive)pollTimer=setTimeout(poll,snapshot?.tracks.some(t=>t.state==='recording'&&t.dynamicRecorded)?16:66);}
         }
-        window.addEventListener('pagehide',()=>{alive=false;scheduler.close();keyboard.cancel();stickyObserver.disconnect();clearTimeout(pollTimer);if(pending)pending.reject(Error('Editor closed'));pending=null;});
+        window.addEventListener('pagehide',()=>{stutter.cancel();releaseStutter(20);alive=false;scheduler.close();keyboard.cancel();stickyObserver.disconnect();clearTimeout(pollTimer);if(pending)pending.reject(Error('Editor closed'));pending=null;});
         document.title='Aion-Looper';
         poll();
     });

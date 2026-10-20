@@ -272,3 +272,48 @@ supersedes that track's older pending Start/Q/nudge sources, an intentional safe
 repair; reference overlapping pending-source envelopes are not reproduced or
 claimed. Browser resampling/envelopes, physical latency, DAW/MIDI and other
 platform acceptance remain separate work.
+
+
+## STUT hold/release — 2026-10-20
+
+`StutterParity.cjs` calls unchanged `Loop.stutterStart`/`stutterStop`, retaining
+reference-conditioned source PCM and its graph-time/effective-rate arithmetic.
+Thirty mono-forward/stereo-reverse fixtures cover rates 8/48/96kHz, lengths
+1/17/512/4097/20003, OFF/STATIC/DYNAMIC, fractional BPM, 1x/0.37x/2x, repeat presses
+and successive holds/resumed cursors. There are 1,350 region checks and 321,192
+rendered samples. Audio tolerance remains 1e-6; region frame tolerance remains 1e-8.
+State/IO stubs alone do not
+establish actual browser sound parity.
+
+Actual WebAudio initially exposed a tail-boundary mismatch despite those tests
+passing: a fractional cursor's neighbour came from the full file instead of the
+fragment. A deferred-wrap experiment failed at another rate and was discarded;
+all failing cases remain. The source interpolation now wraps its neighbour inside
+the fragment, with tiny-region extrapolation. This is also consistent with the
+[Chromium source's region interpolation](https://chromium.googlesource.com/chromium/src/+/HEAD/third_party/blink/renderer/modules/webaudio/audio_buffer_source_handler.cc);
+the installed browser's measured output, rather than HEAD-version assumptions,
+is the acceptance oracle.
+
+`StutterWebAudio.cjs` executes the unchanged methods on actual OfflineAudioContext
+sources and compares to the native-conditioned stereo-fold source. It retains the
+original zero-origin cases and adds identical nonzero source clocks: 12 cases,
+86,016 samples, 8/48/96kHz, ordinary/tail regions and 1x quantum-aligned holds and
+release. Maximum error is 1.49012e-8 at unchanged 1e-6. Broader rates, sub-quantum
+browser control timing, cross-engine rendering and transition envelopes are not
+accepted by this browser subset.
+
+Native cancellation is intentionally stronger than reference cleanup: blur,
+editor reload/destruction, STOP ALL/DEL/reset and source replacement cannot strand
+a temporary region. Audio-owned per-track revisions invalidate already queued
+starts, and frontend predicates invalidate unsent released/deleted gestures.
+A release does not consume command-queue capacity or wait for another command's
+acknowledgement. PCM and history remain unchanged.
+
+
+The same 1,350 hold/release snapshots now also call unchanged `Loop.getProgress`
+and compare the native visual graph/master clock at 1e-12 circular-progress
+precision. The original white playhead continues around the full loop during
+STUT and after release, independently of the fragment's audible cursor. Native
+source replacement/stop resets this visual override. Frontend routing and the
+actual mouse host's draw stream check that the playhead leaves the held fragment;
+committed waveform drawing itself remains the unchanged accepted renderer.

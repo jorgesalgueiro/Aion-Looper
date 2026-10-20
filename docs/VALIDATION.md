@@ -1394,3 +1394,76 @@ made. Original UI assets remain byte-identical and the user's local logo edits
 remain unstaged. This accepts the documented RTRG state/source-PCM scope; exact
 browser transition envelopes/resampling, physical drivers/latency, DAW/MIDI clock,
 Apple platforms and full application parity remain separate work.
+
+
+## Original STUT source and visual clock — 2026-10-20
+
+Enabled the existing STUT button with native source-region playback. Hold selects
+the unchanged graph-clock/effective-rate phase and BPM sixteenth bounds; release
+restores the full loop at the actual fragment cursor. The white playhead retains
+the original independent graph/master clock while held and after release. There
+is no recording edit, Undo entry, browser audio engine, or new product panel.
+Per-track atomic revisions release regions independently of command-queue capacity
+and invalidate deferred starts. Frontend validity predicates also suppress unsent
+released/deleted gestures. Blur, pointer cancellation, editor reload/destruction,
+STOP ALL/DEL/reset and source replacement clean up the temporary region.
+
+The first model/core gates passed, but actual WebAudio exposed a fractional
+clip-tail neighbour bug at 48kHz. A deferred-wrap attempt then failed at 8kHz;
+it was discarded. Original zero-clock cases were retained and nonzero graph
+clocks added. The repair wraps the interpolation neighbour inside the fragment,
+including tiny-region extrapolation; all failing browser cases now pass without
+changing preserved JS or loosening PCM tolerance. The initial GUI run also hit a
+sandbox localhost/process restriction; its identified test-owned process was
+closed and subsequent GUI runs used the existing elevated localhost workflow.
+A later mouse fixture lost its exception collector on reload. It now retains the
+pre-reload assertion, reattaches the collector and monitors runtime exceptions
+across navigation. Its original assertions remain in place.
+
+A final reference review caught a visual parity gap: fragment cursor progress
+would replace the original full-loop playhead. The native snapshot now publishes
+an independent visual clock after STUT, reset by source replacement/stop. The same
+unchanged-JS fixture compares Loop.getProgress during hold/release, frontend gates
+verify routing, and actual native draw-stream checks require the playhead to leave
+the held audio fragment. All final gates were rerun after that correction.
+
+Final acceptance:
+
+- Windows MSVC Release: 15/15 CTest gates, 199.77s
+  (`build/stut-clock-tests-windows.log`). Original UI byte checks, all retained
+  Start/RTRG/Q/nudge/capture/reverse/history/Multiply/count-in/metronome/waveform/
+  live-trace regressions pass alongside the new STUT gate.
+- Ubuntu GCC Debug: 15/15 gates, 354.15s
+  (`build/stut-clock-tests-ubuntu.log`). The STUT comparison covers 30 mono-forward/
+  stereo-reverse fixtures, 1,350 hold/release state/bounds/progress snapshots and
+  321,192 source PCM frames, with maximum error 5.90515e-8 at unchanged 1e-6;
+  region bounds stay within 1e-8 frames and visual progress within 1e-12 circular
+  distance. Rates 8/48/96kHz, lengths 1/17/512/4097/20003, OFF/STATIC/DYNAMIC,
+  fractional BPM and 1x/0.37x/2x, repeated holds and resumed cursors are retained.
+- ASan/UBSan with leak detection: core/frontend/STUT/Start pass 4/4, 190.25s
+  (`build/stut-clock-tests-asan.log`). Core checks retain zero callback new/delete,
+  exact stereo/64/128 output, empty/recording guards, full-pool fragment PCM,
+  repeated down, release cursor, tail wrap, panic/DEL/RTRG/reset, zero-block atomic
+  release and invalidation of a deferred start with a full command queue.
+- Actual WebView2 OfflineAudioContext executes unchanged STUT methods for ordinary
+  and tail fragments at zero/nonzero source clocks: 12 cases / 86,016 samples,
+  maximum error 1.49012e-8 at unchanged 1e-6. Retained count-in, tiny-nudge and live
+  analyser browser comparisons and native bridge/keyboard/pointer smoke also pass
+  (`build/stut-clock-ui.log`). No product AudioContext is created.
+- Real production processor/editor mouse/PCM workflows pass at 64 and 128,
+  including held STUT, original draw clock outside its repeated fragment, outside
+  release, blur, editor reload, released deferred starts and all previous main/
+  sync/Start/RTRG/Q/nudge/waveform/live-trace/4s STOP checks
+  (`build/stut-clock-mouse.log`). Test-owned apps close afterwards.
+- Final connected capture/overdub/substitute audits pass on both platforms:
+  126 cases / 965,826 samples, maximum error 7.39476e-8 at unchanged 1e-6
+  (`build/stut-clock-audio-windows.log`, `build/stut-clock-audio-ubuntu.log`).
+
+Only the existing Windows Standalone and optional mouse test host were rebuilt;
+version remains 0.4.3. No ZIP, installer or additional format package was created.
+The 16 preserved UI assets remain unchanged, and the user's manual ASCII-logo
+edits remain outside this commit. This accepts the documented STUT state/source/
+visual-clock scope. Actual browser acceptance currently covers 1x, quantum-aligned
+controls in WebView2; broader resampling/envelopes, overlapping future graphs,
+physical ASIO/latency, DAW/MIDI, Apple/platform builds and full application parity
+remain separate work.

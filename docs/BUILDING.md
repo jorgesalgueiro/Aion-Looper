@@ -309,3 +309,17 @@ runner also runs `tests/LiveInputWebAudio.cjs` (hardware-free OfflineAudioContex
 mono/stereo downmix comparison). `tools/TestMouseWorkflow.ps1` checks native red
 trace/yellow markers, next-take ownership and mid-take sync-off playhead at 64/128,
 saving `build/native-live-input.png`. No additional package/install is needed.
+
+
+Hold the existing **STUT** button on a playing loop to repeat its current short
+fragment. Release anywhere to resume the full loop at the fragment's current
+cursor. The fragment follows the current BPM when pressed; it is bounded by half
+the clip and its end, with a 10ms requested minimum. Blur, pointer cancellation,
+editor reload/close, STOP ALL and deletion release STUT. Starting a replacement
+source also clears its temporary region. This does not edit the recording.
+
+The focused source gate is `js_native_stutter`. `tools/TestCountInUi.ps1` also runs
+`tests/StutterWebAudio.cjs` against the unchanged JS methods in actual WebAudio.
+`tools/TestMouseWorkflow.ps1` checks real production PCM and pointer ownership at
+64/128 samples; run GUI/CDP scripts with local-process/localhost access and one
+GUI suite at a time. Rebuild existing targets; no package/version bump is needed.

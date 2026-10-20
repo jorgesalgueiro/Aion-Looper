@@ -51,6 +51,20 @@
         reset() {this.items=[];}
         close() {this.closed=true;this.reset();}
     };
+    // A momentary gesture remains cancellable after its start resolver is queued.
+    window.AionStutter = class {
+        constructor(actions){this.actions=actions;this.presses=new Map();}
+        press(id,key){
+            if(this.presses.has(key)||[...this.presses.values()].some(p=>p.id===id))return;
+            const press={id};this.presses.set(key,press);
+            this.actions.start(id,()=>this.presses.get(key)===press);
+        }
+        release(key){const press=this.presses.get(key);if(!press)return;
+            this.presses.delete(key);this.actions.stop(press.id);
+        }
+        cancelTrack(id){for(const [key,p] of this.presses)if(p.id===id)this.release(key);}
+        cancel(){for(const key of [...this.presses.keys()])this.release(key);}
+    };
     window.AionPerformance = class {
         constructor(actions, timers = {set:(fn,delay)=>setTimeout(fn,delay), clear:id=>clearTimeout(id)}) {
             this.actions=actions;this.timers=timers;this.now=timers.now||(()=>globalThis.performance?.now?.()??Date.now());this.presses=new Map();this.epoch=0;this.trackEpoch=new Map();

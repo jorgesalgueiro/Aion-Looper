@@ -12,8 +12,8 @@ let socket;
     assert(target,'Start the synthetic mouse host on CDP port 9235');
     const ws=socket=new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((r,j)=>{ws.addEventListener('open',r,{once:true});ws.addEventListener('error',j,{once:true});});
-    let seq=0;const pending=new Map();
-    ws.addEventListener('message',e=>{const reply=JSON.parse(e.data);pending.get(reply.id)?.(reply);});
+    let seq=0;const pending=new Map(),runtimeErrors=[];
+    ws.addEventListener('message',e=>{const reply=JSON.parse(e.data);if(reply.method==='Runtime.exceptionThrown')runtimeErrors.push(reply.params.exceptionDetails);pending.get(reply.id)?.(reply);});
     const call=(method,params={})=>new Promise((resolve,reject)=>{
         const id=++seq,timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout: '+method));},10000);
         pending.set(id,reply=>{clearTimeout(timer);pending.delete(id);reply.error?reject(Error(JSON.stringify(reply.error))):resolve(reply.result);});
@@ -38,6 +38,7 @@ let socket;
     };
     const mode=async value=>{await click(`label:has(input[name=syncMode][value=${value}])`);await wait(s=>s.syncMode===['off','static','dynamic'].indexOf(value),'sync mode '+value);};
     const exactlyOne=async (gesture,label)=>{const before=await snapshot();await gesture();const after=await wait(s=>s.lastRequestId>before.lastRequestId,label);assert.equal(after.lastRequestId,before.lastRequestId+1,label);assert(!after.rejected,label+' rejected');await delay(160);assert.equal((await snapshot()).lastRequestId,after.lastRequestId,label+' duplicated');return after;};
+    await call('Runtime.enable');
     await call('Emulation.setFocusEmulationEnabled',{enabled:true});
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
     await wait(s=>s.audioReady&&s.inputAvailable&&s.inputPeak>0.1,'Synthetic native input active');
@@ -119,6 +120,28 @@ let socket;
     await click('#native-stop-all');await state('stopped');
     await exactlyOne(()=>click('#loop-0 button[title="RTRG"]'),'Stopped RTRG starts playback');
     await state('playing');await wait(s=>s.outputPeak>0.02,'Stopped RTRG produces PCM');
+
+    // Original STUT is momentary: actual pointer hold, release outside and blur.
+    const stutRect=()=>evaluate(`(()=>{const e=[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()==='STUT');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,disabled:e.disabled};})()`);
+    const stutDown=async()=>{const r=await stutRect();assert(!r.disabled);await call('Input.dispatchMouseEvent',{type:'mousePressed',x:r.x,y:r.y,button:'left',clickCount:1});};
+    await evaluate(`window.stutDraws=[];window.originalStutDraw=AionDrawWaveform;window.AionDrawWaveform=(...args)=>{if(args[0].id==='loop-wave-0')window.stutDraws.push(args[2]);return window.originalStutDraw(...args);};`);
+    const beforeStut=await snapshot();await stutDown();
+    const fragment=await wait(s=>s.tracks[0].stuttering&&s.outputPeak>0.02,'Held STUT repeats native PCM');
+    assert.equal(fragment.tracks[0].state,'playing');assert.equal(fragment.tracks[0].length,beforeStut.tracks[0].length);assert(fragment.tracks[0].stutterEnd>fragment.tracks[0].stutterStart);
+    assert(fragment.tracks[0].stutterClock,'Original visual clock enabled');await delay(300);await evaluate('window.stutDraws=[]');await delay(600);
+    const drawn=await evaluate('window.stutDraws'),from=fragment.tracks[0].stutterStart/fragment.tracks[0].length,to=fragment.tracks[0].stutterEnd/fragment.tracks[0].length;
+    assert(drawn.some(p=>p<from-0.02||p>to+0.02),'Original playhead continues outside the repeated fragment: '+JSON.stringify({drawn,from,to}));
+    await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:1190,y:790,button:'left',buttons:1});await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:1190,y:790,button:'left',clickCount:1});
+    await wait(s=>!s.tracks[0].stuttering&&s.tracks[0].stutterClock&&s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Release outside STUT resumes full PCM');
+    await stutDown();await wait(s=>s.tracks[0].stuttering,'STUT before blur');await evaluate(`window.dispatchEvent(new Event('blur'))`);await wait(s=>!s.tracks[0].stuttering,'Blur releases STUT');
+    await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:1190,y:790,button:'left',clickCount:1});
+    await stutDown();await wait(s=>s.tracks[0].stuttering,'STUT before editor reload');assert.deepEqual(await evaluate('window.mouseErrors'),[]);await call('Page.reload');await delay(400);
+    for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
+    await wait(s=>!s.tracks[0].stuttering&&s.tracks[0].state==='playing','Reload releases held STUT without stopping the loop');
+    await evaluate(`window.mouseErrors=[];window.addEventListener('error',e=>window.mouseErrors.push(e.message));document.documentElement.style.scrollBehavior='auto'`);
+    await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:1190,y:790,button:'left',clickCount:1});
+    // A held start behind a paused queue must never fire after its release.
+    await pauseDispatch();await stutDown();await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:1190,y:790,button:'left',clickCount:1});await resumeDispatch();await delay(150);assert(!(await snapshot()).tracks[0].stuttering,'Released queued STUT cannot latch later');
 
     const namedPcm=await snapshot();
     await click('#loop-0 .track-name');await call('Input.insertText',{text:'Guitarra Á 1 + 😀'});
@@ -283,7 +306,7 @@ let socket;
     assert.equal(rapidAfter.lastRequestId,rapidBefore.lastRequestId+3,'Rapid record/finish/play resolves against acknowledged native state');
     assert(rapidAfter.tracks[0].length>0&&!rapidAfter.rejected,'Rapid mouse sequence commits real audio');
     await delay(750);assert.equal((await snapshot()).lastRequestId,rapidAfter.lastRequestId,'Released mouse gestures leave no delayed hold');
-    assert.deepEqual(await evaluate('window.mouseErrors'),[],'No browser gesture exceptions');
-    console.log('PASS: real mouse/header arm, cancel, record, native PCM playback, Start drag/Q/nudges, nested-control isolation, STATIC queued play/stop and DYNAMIC finish/second tap, auto-play off, rapid record/finish/play, held STOP quick-deletes; FINISH/CANCEL/RECORD preserve PCM; no device opened');
+    assert.deepEqual(await evaluate('window.mouseErrors'),[],'No browser gesture exceptions');assert.deepEqual(runtimeErrors,[],'No runtime exceptions across editor reload');
+    console.log('PASS: real mouse/header arm, cancel, record, native PCM playback, Start drag/Q/nudges, STUT hold/outside-release/blur/queued-cancel, nested-control isolation, STATIC queued play/stop and DYNAMIC finish/second tap, auto-play off, rapid record/finish/play, held STOP quick-deletes; FINISH/CANCEL/RECORD preserve PCM; no device opened');
     ws.close();
 })().catch(e=>{console.error(e);socket?.close();process.exitCode=1;});
