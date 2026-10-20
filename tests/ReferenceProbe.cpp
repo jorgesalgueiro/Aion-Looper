@@ -40,7 +40,7 @@ int main(int argc,char**) {
         else if(operation=="stop")accepted=bank.apply(A::stop,id);
         else if(operation=="play")accepted=bank.apply(A::play,id);
         else if(operation=="reverse")accepted=bank.apply(A::reverse,id,value);
-        else if(operation=="retrigger")accepted=bank.apply(A::retrigger,id);
+        else if(operation=="retrigger")accepted=bank.apply(A::sourceRestart,id);
         else if(operation=="length") {const auto t=bank.view()[id];std::cout<<1<<' '<<t.length<<' '<<static_cast<unsigned>(t.state)<<'\n';continue;}
         else if(operation=="history") {std::cout<<1;for(const auto& t:bank.view())std::cout<<' '<<t.undoCount<<' '<<t.redoCount;std::cout<<' '<<bank.nextUndo()<<' '<<bank.nextRedo()<<'\n';continue;}
         else if(operation=="tick")output=bank.tick({value,right});

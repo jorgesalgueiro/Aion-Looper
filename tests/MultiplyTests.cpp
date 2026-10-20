@@ -16,7 +16,7 @@ void check(bool ok,const char* text){if(!ok){std::cerr<<text<<'\n';std::exit(1);
 void wait(aion::LoopBank& b){for(int i=0;b.finalizationPending()&&i<10000;++i){watch=true;b.beginBlock();watch=false;std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(!b.finalizationPending(),"multiply worker timeout");}
 void seed(aion::LoopBank& b,unsigned id,unsigned length){watch=true;check(b.apply(A::record,id),"multiply seed record");for(unsigned i=0;i<length;++i)b.tick({0.1f+0.3f*std::sin(i*0.11f),-0.1f+0.2f*std::cos(i*0.073f)});check(b.apply(A::finish,id),"multiply seed finish");watch=false;wait(b);}
 void append(aion::LoopBank& b,unsigned length){watch=true;check(b.apply(A::multiply,0,1),"multiply capture start");for(unsigned i=0;i<length;++i)b.tick({0.2f+0.3f*std::sin(i*0.091f),-0.2f+0.1f*std::cos(i*0.053f)});check(b.apply(A::multiply,0,1),"multiply capture finish");watch=false;wait(b);}
-std::vector<aion::Stereo> read(aion::LoopBank& b,unsigned length){std::vector<aion::Stereo> out(length);watch=true;check(b.apply(A::retrigger,0),"multiply render");for(auto& frame:out)frame=b.tick({});watch=false;return out;}
+std::vector<aion::Stereo> read(aion::LoopBank& b,unsigned length){std::vector<aion::Stereo> out(length);watch=true;check(b.apply(A::sourceRestart,0),"multiply render");for(auto& frame:out)frame=b.tick({});watch=false;return out;}
 bool equal(const std::vector<aion::Stereo>& a,const std::vector<aion::Stereo>& b){if(a.size()!=b.size())return false;for(unsigned i=0;i<a.size();++i)if(a[i].left!=b[i].left||a[i].right!=b[i].right)return false;return true;}
 }
 void multiplyTests(){
@@ -42,7 +42,7 @@ void multiplyTests(){
  b.prepare(12288,0);seed(b,0,4096);b.apply(A::multiply,0,0);wait(b);b.apply(A::undo,0);seed(b,1,4096);
  check(b.available()==4096,"growth reservation fixture has one free block");b.apply(A::stop,0);check(b.apply(A::multiply,1,0),"other-track growth job");check(b.available()==0,"pending doubling reserves displayed capacity");check(!b.apply(A::redo,0),"history restore respects in-flight multiply growth");b.apply(A::clear,1);wait(b);check(b.apply(A::redo,0),"canceled growth reservation releases space");
  // Clear/reset while worker owns an independently pinned base, including reverse source.
- b.apply(A::clearAll,0);seed(b,0,512);b.apply(A::reverse,0,1);b.apply(A::retrigger,0);b.apply(A::normalize,0);wait(b);b.apply(A::multiply,0,0);b.apply(A::clear,0);wait(b);check(b.view()[0].state==S::empty,"cleared reversed double cannot resurrect");
+ b.apply(A::clearAll,0);seed(b,0,512);b.apply(A::reverse,0,1);b.apply(A::sourceRestart,0);b.apply(A::normalize,0);wait(b);b.apply(A::multiply,0,0);b.apply(A::clear,0);wait(b);check(b.view()[0].state==S::empty,"cleared reversed double cannot resurrect");
  seed(b,0,512);b.apply(A::multiply,0,0);b.prepare(4096,0,96000);check(!b.finalizationPending()&&b.view()[0].state==S::empty,"prepare joins multiply worker before reset");
  // Timestamped capture starts/finishes inside blocks; compare committed audio
  // after worker completion, not wall-clock-dependent asynchronous commit blocks.
@@ -58,7 +58,7 @@ void multiplyTests(){
   check(engine->enqueueLoop({A::record,0,1,generation,0,0})&&engine->enqueueLoop({A::finish,0,2,generation,257,0}),"multiply engine seed commands");run(512,true,blockSize);settle();
   auto start=engine->clock();check(engine->enqueueLoop({A::multiply,0,3,generation,start+19,1})&&engine->enqueueLoop({A::finish,0,4,generation,start+532,0}),"timestamped multiply capture commands");run(768,true,blockSize);settle();
   check(engine->enqueueLoop({A::stop,0,5,generation,engine->clock(),0}),"multiply engine stop");run(2048,false,blockSize);engine->setTarget(1);run(2048,false,blockSize);
-  check(engine->enqueueLoop({A::retrigger,0,6,generation,engine->clock()+17,0}),"multiply engine audition");return run(2048,false,blockSize);
+  check(engine->enqueueLoop({A::sourceRestart,0,6,generation,engine->clock()+17,0}),"multiply engine audition");return run(2048,false,blockSize);
  };
  const auto block64=render(64),block128=render(128);check(block64==block128,"multiply captured PCM and timed playback exact at 64/128 blocks");
  check(allocations.load()==0,"multiply/history growth performs no callback allocation/free");

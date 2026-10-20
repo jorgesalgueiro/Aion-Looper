@@ -188,8 +188,10 @@ disabled, with no substitute browser DSP.
 
 SOLO is audio-owned exclusive gating, preserving each loop's explicit mute and
 continuing the phase of excluded loops; clearing the selected solo cancels solo.
-RTRG restarts retained PCM at sample zero in manual timing. These are not host
-quantization or sync support. Auto-play after Rec is a cached APVTS boolean read
+RTRG resets Start to zero with sync off; with internal static/dynamic sync it
+snaps Start from the current effective-rate master phase to the nearest sixteenth.
+A playing source is replaced at +5ms, while a stopped source plays immediately,
+bypassing the normal next-grid PLAY queue. This is internal sync, not DAW sync. Auto-play after Rec is a cached APVTS boolean read
 at block boundaries. Clear-all recycles the bounded pool without freeing memory.
 Live volume/feedback inputs coalesce their latest values while another native
 command is awaiting acknowledgement; this queue is message-thread only.
@@ -531,3 +533,22 @@ recording getProgress behavior when sync changes. Active capture polls at a 16 m
 budget to support responsive visual updates; other states retain 66 ms polling.
 No product AudioContext is created. Browser render-quantum latency, physical input
 latency and additional live visualizers are separate acceptance work.
+
+
+### User RTRG source scheduling
+
+`LoopAction::retrigger` implements the original user-level `Loop.retrigger`,
+including Start metadata and the healthy graph's 5ms source deadline. The existing
+immediate graph primitive is named `sourceRestart` and is unavailable through
+IPC. Existing source/kernel sound tests continue to use that primitive; the
+expanded Start oracle separately executes unchanged user-level RTRG.
+
+The fixed 127-event phase queue accepts interleaved 5ms RTRG and 50ms Start
+sources in deadline order, retaining rapid retriggers. All scans/shifts are
+bounded; no PCM scan, allocation, deletion or lock is added to the callback.
+An accepted RTRG cancels that track's older slider/Q/nudge releases to prevent a
+stale phase from returning after the tap; other tracks and rapid RTRGs remain.
+This is an intentional native repair of mixed pending-source behavior, not a
+claim of identical overlapping WebAudio source envelopes. Full-queue rejection
+preserves old metadata/sources. Panic, DEL, capture and reset ownership epochs
+continue to cancel pending sources.

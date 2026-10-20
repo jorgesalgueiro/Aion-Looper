@@ -247,3 +247,28 @@ Core timing/playback is exact at both 64/128 buffers after commit, and the real
 browser repeated-key/mouse hold/release acceptance passes after the timer fix.
 See VALIDATION.md for failures, repairs, platform gates and the separate hardware
 acceptance still required.
+
+
+## User RTRG phase and source timing — 2026-10-20
+
+The previous native command implemented only the graph source restart, leaving
+Start unchanged. The unchanged `Loop.retrigger` additionally clears Start with
+sync OFF and computes/sixteenth-snaps the effective-rate master phase with sync
+ON. It then replaces a playing source at +5ms or starts a stopped source at the
+tap, rather than waiting for the next PLAY grid. Native RTRG now follows those
+paths without adding controls or creating a product AudioContext.
+
+`StartPhaseParity.cjs` retains all previous setter/Q/nudge/source PCM checks and
+adds 300 user RTRGs across 30 mono/stereo, 8/48/96kHz and 1/17/512/4097/20003-frame
+fixtures: OFF/STATIC/DYNAMIC, fractional BPM/rate, reverse, rapid taps, stopped
+play and solo exclusion. Metadata tolerance stays 1e-14 and committed source PCM
+stays 1e-6. Existing immediate graph/kernel comparisons remain on `sourceRestart`;
+they must not substitute for the added user-level action oracle.
+
+Native tests additionally cover bounded queue overflow/rollback, inter-track
+5ms/50ms ordering, ring wrap, stale phase cancellation, panic/DEL, exact Engine
+64/128 stereo output and callback allocation/free instrumentation. Accepted RTRG
+supersedes that track's older pending Start/Q/nudge sources, an intentional safety
+repair; reference overlapping pending-source envelopes are not reproduced or
+claimed. Browser resampling/envelopes, physical latency, DAW/MIDI and other
+platform acceptance remain separate work.

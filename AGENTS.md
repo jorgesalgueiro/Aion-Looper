@@ -161,3 +161,15 @@ fixed bounded telemetry and no callback allocation/free/lock. Keep exact Engine
 levels and original live-canvas comparisons. Preserve native red/yellow pixel,
 successive-take and mid-take sync-change checks. Browser render-quantum latency
 and physical input latency remain separate acceptance work.
+
+
+RTRG acceptance retains the unchanged user-level Loop.retrigger Start reset and
+sixteenth snap, and its playing +5ms versus immediate stopped source timing.
+Keep the immediate core graph primitive/source tests separate, with unchanged
+PCM thresholds. Preserve rapid taps, reverse/solo/rate cases, 5ms/50ms inter-track
+deadline ordering, ring wrap, full-queue metadata rollback, panic/DEL/reset and
+zero callback new/delete. Native RTRG intentionally supersedes that track's
+older slider/Q/nudge releases; retain other-track sources and rapid RTRGs.
+This pending-phase safety repair is documented separately from reference parity;
+do not claim identical overlapping browser sources or transition envelopes.
+Retain actual RTRG mouse/PCM and original Start/Q/nudge checks at 64/128 samples.

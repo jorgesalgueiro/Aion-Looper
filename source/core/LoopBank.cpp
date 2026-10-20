@@ -341,7 +341,30 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
             ++t.phaseEpoch;t.info.phaseApplyFrame=0;t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
-        case LoopAction::retrigger:
+        case LoopAction::retrigger: {
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped))return false;
+            const double previous=t.info.startDelay;
+            t.info.startDelay=0;
+            if(sync.settings.mode!=SyncMode::off){
+                const double duration=t.info.length/rate;
+                double phase=std::fmod((static_cast<double>(frame)/rate-sync.origin/rate)*t.phaseRate,duration)/duration;
+                if(phase<0)phase+=1;
+                const auto round=[](double x) noexcept {const double base=std::floor(x);return base+(x-base>=0.5?1.0:0.0);};
+                const double divisions=round(duration/(60.0/sync.settings.bpm/4.0));
+                if(divisions>0)phase=round(phase*divisions)/divisions;
+                t.info.startDelay=std::clamp(phase,0.0,1.0);
+            }
+            if(s==LoopState::playing){
+                // Original Loop.retrigger -> healthy AudioGraph.retrigger starts
+                // its replacement source 5ms later; metadata changes at the tap.
+                const bool master=sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(id));
+                if(schedulePhase(t,id,static_cast<double>(frame)/rate+0.005,master,true))return true;
+                t.info.startDelay=previous;return false;
+            }
+            // Original stopped Loop.play(now) bypasses the next-grid queue.
+            s=LoopState::playing;t.tailRemaining=0;restartSource(t);blend(t);return true;
+        }
+        case LoopAction::sourceRestart:
             if(!t.clip||capturing(s)||s==LoopState::finalizing||s==LoopState::armed||s==LoopState::queued||s==LoopState::stopping)return false;
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);return true;
         case LoopAction::pan: {
@@ -387,22 +410,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         }
         case LoopAction::applyStart: {
             if(s!=LoopState::playing||!t.clip)return true; // Original restart guard.
-            const double target=static_cast<double>(frame)/rate+0.05;
-            const auto deadline=SyncClock::deadline(target*rate);
-            const double length=t.clip->length,shift=t.info.startDelay*length;
-            const bool excluded=soloTrack>=0&&soloTrack!=static_cast<int>(id);
-            const double offset=sync.settings.mode!=SyncMode::off&&!excluded?(target*rate-sync.origin)*t.phaseRate-shift:shift;
-            // The reference creates the future source immediately. Latch its
-            // offset and reverse choice, not a later slider/toggle value.
-            double phase=std::fmod(offset+(static_cast<double>(deadline)-target*rate)*t.phaseRate,length);
-            if(phase<0)phase+=length;
-            // Reclaim cancelled events at the head, bounded by fixed capacity.
-            while(phaseRead!=phaseWrite&&phaseEvents[phaseRead].epoch!=tracks[phaseEvents[phaseRead].track].phaseEpoch)
-                phaseRead=(phaseRead+1)%phaseCapacity;
-            const unsigned next=(phaseWrite+1)%phaseCapacity;
-            if(next==phaseRead)return false; // Keep every older accepted source.
-            phaseEvents[phaseWrite]={deadline,t.phaseEpoch,phase,id,t.info.reverse};phaseWrite=next;
-            t.info.phaseApplyFrame=deadline;return true;
+            const bool master=sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(id));
+            return schedulePhase(t,id,static_cast<double>(frame)/rate+0.05,master);
         }
         case LoopAction::speed:
             if (!std::isfinite(value) || value < 0.25f || value > 2 || s == LoopState::recording
@@ -454,6 +463,36 @@ bool LoopBank::hasCapture() const noexcept {
     return false;
 }
 void LoopBank::beginBlock() noexcept {acceptResult();for(auto& track:tracks)track.info.peak=0;}
+bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool master,bool replacePending) noexcept {
+    const auto deadline=SyncClock::deadline(target*rate);
+    const double length=track.clip->length,shift=track.info.startDelay*length;
+    const double offset=master?(target-sync.origin/rate)*track.phaseRate*rate-shift:shift;
+    double phase=std::fmod(offset+(static_cast<double>(deadline)-target*rate)*track.phaseRate,length);
+    if(phase<0)phase+=length;
+    while(phaseRead!=phaseWrite&&phaseEvents[phaseRead].epoch!=tracks[phaseEvents[phaseRead].track].phaseEpoch)
+        phaseRead=(phaseRead+1)%phaseCapacity;
+    if((phaseWrite+1)%phaseCapacity==phaseRead)return false;
+    if(replacePending){
+        unsigned write=phaseRead;track.info.phaseApplyFrame=0;
+        for(unsigned read=phaseRead;read!=phaseWrite;read=(read+1)%phaseCapacity){
+            const auto event=phaseEvents[read];
+            if(event.track==id&&!event.retrigger)continue;
+            phaseEvents[write]=event;write=(write+1)%phaseCapacity;
+            if(event.track==id&&event.epoch==track.phaseEpoch)track.info.phaseApplyFrame=std::max(track.info.phaseApplyFrame,event.frame);
+        }
+        phaseWrite=write;
+    }
+    const unsigned next=(phaseWrite+1)%phaseCapacity;
+    // RTRG's 5ms and Start's 50ms deadlines may interleave across tracks.
+    // Bounded insertion keeps every accepted source in chronological order.
+    unsigned at=phaseWrite;
+    while(at!=phaseRead){const unsigned before=(at+phaseCapacity-1)%phaseCapacity;
+        if(phaseEvents[before].frame<=deadline)break;
+        phaseEvents[at]=phaseEvents[before];at=before;
+    }
+    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending};phaseWrite=next;
+    track.info.phaseApplyFrame=std::max(track.info.phaseApplyFrame,deadline);return true;
+}
 void LoopBank::applyPhaseEvents() noexcept {
     for(unsigned n=0;phaseRead!=phaseWrite&&n<phaseCapacity;++n){
         const auto event=phaseEvents[phaseRead];auto& track=tracks[event.track];

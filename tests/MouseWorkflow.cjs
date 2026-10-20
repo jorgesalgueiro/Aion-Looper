@@ -112,8 +112,13 @@ let socket;
         assert.equal(nudged.tracks[0].state,'playing');assert.equal(nudged.tracks[0].length,before.tracks[0].length);assert(!nudged.rejected);
         await wait(s=>s.outputPeak>0.02,'Nudged PCM keeps playing');
     }
-    await evaluate(`(()=>{const e=document.getElementById('loop-start-slider-0');e.value=0;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
-    await wait(s=>s.tracks[0].startDelay===0&&s.tracks[0].phaseApplyFrame===0,'Restore zero phase');
+    await exactlyOne(()=>click('#loop-0 button[title="RTRG"]'),'Original RTRG sends exactly one command');
+    await wait(s=>s.tracks[0].startDelay===0&&s.tracks[0].phaseApplyFrame===0&&s.tracks[0].state==='playing','RTRG resets Start and replaces source');
+    await wait(s=>s.outputPeak>0.02,'Retriggered PCM keeps playing');
+    assert.equal(await evaluate(`document.getElementById('loop-delay-display-0').textContent`),'0ms');
+    await click('#native-stop-all');await state('stopped');
+    await exactlyOne(()=>click('#loop-0 button[title="RTRG"]'),'Stopped RTRG starts playback');
+    await state('playing');await wait(s=>s.outputPeak>0.02,'Stopped RTRG produces PCM');
 
     const namedPcm=await snapshot();
     await click('#loop-0 .track-name');await call('Input.insertText',{text:'Guitarra Á 1 + 😀'});

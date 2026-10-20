@@ -1337,3 +1337,60 @@ No tolerance was loosened or failed case removed. Existing Windows Standalone
 rebuilt; no package/version change. This accepts the documented initial DYNAMIC
 recording trace only; full application parity, DAW/platform/physical driver and
 render-quantum timing acceptance remain separate work.
+
+
+## Original user RTRG phase/timing — 2026-10-20
+
+Reproduced a native parity gap: RTRG only restarted the source and never applied
+the unchanged `Loop.retrigger` Start reset/master-phase sixteenth snap. Native
+RTRG now updates double-precision Start at the tap and uses the original playing
++5ms versus immediate stopped-play paths. Existing UI/keyboard wiring is retained.
+The fixed phase FIFO now orders inter-track 5ms/50ms deadlines and preserves rapid
+RTRGs. Successful RTRG intentionally cancels that track's stale slider/Q/nudge
+releases, preventing later phase resurrection; this mixed-source safety repair
+is distinct from exact overlapping WebAudio-envelope parity.
+
+Initial full Windows/Ubuntu runs passed the other 13 gates, but the core suite
+failed `old audio stays immutable while capturing edit`: its PCM fixture used
+the old immediate graph primitive as a user RTRG. The primitive is now explicitly
+`sourceRestart` (not exposed by IPC); all old immediate-source, reverse/history/
+Multiply/rate/pan/Engine regressions retain their sample comparisons. Separate
+new user-action tests execute the unchanged `Loop.retrigger` method, including
+rapid taps, stopped play and solo exclusion. No case or tolerance was removed.
+The first native mouse run also failed a test-only selector: the native binder
+sets the button title to `RTRG`. Its corrected selector passes without a product
+markup change.
+
+Final acceptance:
+
+- Windows: the initial 14-gate run passed 13 gates; repaired core + final Start
+  comparison pass 2/2 (62.61s), and the later inter-track/ring-wrap core additions
+  pass again (24.49s). Logs: `build/rtrg-tests-windows.log`,
+  `build/rtrg-final-windows.log`, `build/rtrg-core-final-windows.log`.
+- Ubuntu: the other 13 gates passed in the full run (311.92s); final core/Start
+  retest passes 2/2 (98.21s). The expanded unchanged-JS oracle covers 300 RTRGs,
+  540 nudges and 1,869,920 rendered samples over 30 cases, max error 5.98023e-8
+  at unchanged 1e-6 tolerance; Start metadata stays within 1e-14. Logs:
+  `build/rtrg-tests-ubuntu.log`, `build/rtrg-final-ubuntu.log`.
+- ASan/UBSan + leak detection: core/frontend/Start pass 3/3 (148.72s); final
+  inter-track/ring-wrap core additions pass again (6.64s). Logs:
+  `build/rtrg-tests-asan.log`, `build/rtrg-core-final-asan.log`.
+- Core tests retain zero callback new/delete, exact Engine stereo/64/128 PCM,
+  empty/capture/finalization rejection, full-pool/FIFO rollback, panic/DEL,
+  cross-track ordering and 300 ring-wrapped RTRGs.
+- Real production processor/editor mouse/PCM workflows pass at 64 and 128,
+  including playing/stopped RTRG and Start-display reset alongside all previous
+  capture, sync, Q/nudge, waveform/live-trace and 4s STOP cases
+  (`build/rtrg-mouse.log`). Standalone WebView2/bridge/keyboard smoke and retained
+  actual WebAudio count-in, tiny-nudge and live-analyser oracles pass
+  (`build/rtrg-ui.log`). Test-owned apps close afterwards.
+- Connected capture/overdub/substitute audits pass on both platforms: 126 cases,
+  965,826 samples, max error 7.39476e-8 at unchanged 1e-6. Logs:
+  `build/rtrg-audio-windows.log`, `build/rtrg-audio-ubuntu.log`.
+
+The existing Windows Standalone and optional mouse host were incrementally
+rebuilt. Version stays 0.4.3; no installer/ZIP or additional format packages were
+made. Original UI assets remain byte-identical and the user's local logo edits
+remain unstaged. This accepts the documented RTRG state/source-PCM scope; exact
+browser transition envelopes/resampling, physical drivers/latency, DAW/MIDI clock,
+Apple platforms and full application parity remain separate work.

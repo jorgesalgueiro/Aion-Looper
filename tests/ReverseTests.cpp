@@ -29,14 +29,14 @@ bool equal(const std::vector<aion::Stereo>& a,const std::vector<aion::Stereo>& b
 void reverseTests(){
  using namespace aion;using A=LoopAction;
  auto bankStorage=std::make_unique<LoopBank>();auto& bank=*bankStorage;
- bank.prepare(4096,0);capture(bank,0);bank.apply(A::retrigger,0);const auto forward=read(bank);
+ bank.prepare(4096,0);capture(bank,0);bank.apply(A::sourceRestart,0);const auto forward=read(bank);
  watch=true;check(bank.apply(A::reverse,0,1)&&bank.view()[0].reverse,"reverse requested flag");watch=false;
  check(equal(forward,read(bank)),"reverse toggle must leave playing forward source unchanged");
- watch=true;bank.apply(A::retrigger,0);watch=false;const auto reversed=read(bank);
+ watch=true;bank.apply(A::sourceRestart,0);watch=false;const auto reversed=read(bank);
  for(unsigned i=0;i<512;++i)check(reversed[i].left==forward[511-i].left&&reversed[i].right==forward[511-i].right,"reverse source exact sample ordering");
  watch=true;check(bank.apply(A::normalize,0),"normalize reversed source");watch=false;wait(bank);
  check(bank.available()==0&&equal(reversed,read(bank)),"NORM keeps independent playing reversed source at full resident budget");
- watch=true;bank.apply(A::retrigger,0);watch=false;const auto normalizedReverse=read(bank);
+ watch=true;bank.apply(A::sourceRestart,0);watch=false;const auto normalizedReverse=read(bank);
  check(!equal(normalizedReverse,reversed),"reverse retrigger picks up normalized stored PCM");
  watch=true;bank.apply(A::reverse,0,0);watch=false;
  check(equal(normalizedReverse,read(bank)),"reverse toggle off must wait for next source");
@@ -62,7 +62,7 @@ void reverseTests(){
   watch=true;check(bank.apply(A::normalize,0),"reverse clear job publish");bank.apply(A::clearAll,0);watch=false;wait(bank);
   check(bank.available()==4096&&bank.view()[0].state==LoopState::empty&&!bank.view()[0].reverse,"clear cancels job and held reverse source");
  }
- bank.apply(A::reverse,0,1);capture(bank,0);bank.apply(A::retrigger,0);const auto old=read(bank);
+ bank.apply(A::reverse,0,1);capture(bank,0);bank.apply(A::sourceRestart,0);const auto old=read(bank);
  failWorkerAllocation.store(true);watch=true;check(bank.apply(A::normalize,0),"reverse OOM job publish");watch=false;wait(bank);
  check(bank.view()[0].finalizationFailed&&equal(old,read(bank)),"reverse source survives worker allocation failure");
  watch=true;check(bank.apply(A::normalize,0),"reverse prepare reset publish");watch=false;bank.prepare(4096,0,96000);

@@ -132,7 +132,9 @@ FINISH, STOP and PLAY. Press `+` to toggle global overdub or `-` to toggle
 substitute, then press a playing loop's main button; FINISH exits that capture
 mode. Feedback defaults to 80% and double-click resets it. The original STOP ALL
 and DEL ALL buttons act on the bank. SOLO is exclusive and preserves explicit
-mutes; RTRG restarts a loop in the current manual-timing mode.
+mutes. RTRG (or `/`) resets Start to zero with sync OFF, or snaps it to the
+current master sixteenth with STATIC/DYNAMIC sync. Playing replacements start
+5ms after the tap; stopped loops start immediately without waiting for the grid.
 
 Keys 1-0 address loops 1-10; Shift+1-0 address 11-20. Holding a loop key for
 600 ms stops a playing loop or clears a stopped loop, matching the reference

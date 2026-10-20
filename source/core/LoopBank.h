@@ -11,7 +11,7 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart };
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, sourceRestart }; // sourceRestart is a core-only graph primitive, never exposed by IPC.
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
@@ -98,11 +98,12 @@ private:
         std::uint32_t outputFrames=0;
         bool edit = false, normalize = false, multiply = false, doubling = false;
     };
-    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false;};
+    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false,retrigger=false;};
     static constexpr unsigned phaseCapacity=128;
     std::array<PhaseEvent,phaseCapacity> phaseEvents{};
     unsigned phaseRead=0,phaseWrite=0;
     void applyPhaseEvents() noexcept;
+    bool schedulePhase(Track&, std::uint32_t, double targetSeconds, bool masterPhase, bool replacePending = false) noexcept;
     float& sample(Track&, std::uint32_t frame, std::uint32_t channel) noexcept;
     bool finish(Track&) noexcept;
     void acceptResult() noexcept;

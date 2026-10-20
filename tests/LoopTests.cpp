@@ -22,7 +22,7 @@ void capture(aion::LoopBank& bank,unsigned id,const std::vector<aion::Stereo>& d
  watch=true;for(auto sample:data)bank.tick(sample);check(bank.apply(A::finish,id),"finish entry");watch=false;wait(bank);
 }
 std::vector<aion::Stereo> render(aion::LoopBank& bank,unsigned id){
- check(bank.apply(aion::LoopAction::retrigger,id),"retrigger committed clip");
+ check(bank.apply(aion::LoopAction::sourceRestart,id),"retrigger committed clip");
  std::vector<aion::Stereo> data(bank.view()[id].length);
  watch=true;for(auto& sample:data)sample=bank.tick({});watch=false;return data;
 }
@@ -93,7 +93,7 @@ void loopTests(){
  watch=true;check(bank.apply(A::normalize,0),"repeat normalize publish");watch=false;wait(bank);
  check(equal(normalized,render(bank,0)),"normalize is idempotent");
  // A live normalize commit must keep the current source phase, not retrigger.
- bank.apply(A::retrigger,0);for(int i=0;i<37;++i)bank.tick({});
+ bank.apply(A::sourceRestart,0);for(int i=0;i<37;++i)bank.tick({});
  check(bank.apply(A::normalize,0),"live normalize phase publish");
  for(int i=0;i<17;++i)bank.tick({});const auto livePhase=bank.view()[0].position;
  for(int n=0;bank.finalizationPending()&&n<10000;++n){watch=true;bank.beginBlock();watch=false;std::this_thread::sleep_for(std::chrono::milliseconds(1));}
@@ -118,7 +118,7 @@ void loopTests(){
   check(instance->apply(A::normalize,0),"prepare unity peak fixture");wait(*instance);
   // Worker wait duration varies; drain the previous source tail before comparing attacks.
   instance->apply(A::stop,0);for(int i=0;i<4;++i)instance->tick({});
-  instance->apply(A::retrigger,0);
+  instance->apply(A::sourceRestart,0);
  }
  for(int i=0;i<phase;++i){auto control=normControl.tick({});auto repeated=normRepeat.tick({});check(control.left==repeated.left&&control.right==repeated.right,"identical normalized playback fixture");}
  check(normRepeat.apply(A::normalize,0),"repeat live unity NORM");
@@ -131,15 +131,15 @@ void loopTests(){
  // Preserve the existing pan/rate/fade regressions on finalized, DC-corrected PCM.
  bank.prepare(8192,0);capture(bank,0,input);auto source=render(bank,0);
  for(float speed : {0.25f,0.5f,0.37f,2.0f}){
-  bank.apply(A::speed,0,speed);bank.apply(A::retrigger,0);
+  bank.apply(A::speed,0,speed);bank.apply(A::sourceRestart,0);
   watch=true;
   double phase=0;
   for(unsigned i=0;i<2048;++i){const auto out=bank.tick({});const auto index=static_cast<unsigned>(phase);const auto next=(index+1)%source.size();const float fraction=static_cast<float>(phase-index);const float expected=source[index].left+(source[next].left-source[index].left)*fraction;check(std::abs(out.left-expected)<1e-6f,"fractional playback interpolation/wrap regression");phase=std::fmod(phase+speed,static_cast<double>(source.size()));}
   watch=false;
  }
- check(!bank.apply(A::overdub,0),"varispeed edit restriction");bank.apply(A::speed,0,1);bank.apply(A::pan,0,0);bank.apply(A::retrigger,0);
+ check(!bank.apply(A::overdub,0),"varispeed edit restriction");bank.apply(A::speed,0,1);bank.apply(A::pan,0,0);bank.apply(A::sourceRestart,0);
  for(unsigned i=0;i<source.size();++i){auto out=bank.tick({});check(out.right==0&&std::abs(out.left-source[i].left/0.7071067811865475f)<1e-6f,"reference hard-left pan regression");}
- bank.apply(A::pan,0,10);bank.apply(A::retrigger,0);check(bank.tick({}).left==0,"hard-right pan regression");
+ bank.apply(A::pan,0,10);bank.apply(A::sourceRestart,0);check(bank.tick({}).left==0,"hard-right pan regression");
  bank.prepare(8192,4);capture(bank,0,input);for(int i=0;i<32;++i)bank.tick({});auto last=bank.tick({});bank.apply(A::stop,0);
  for(int i=0;i<4;++i){const auto out=bank.tick({});const float multiplier=static_cast<float>(3-i)/4;check(std::abs(out.left-last.left*multiplier)<1e-6f,"stop release envelope regression");}
  // Worker completion time is asynchronous. Compare deterministic playback after both
@@ -165,9 +165,9 @@ void loopTests(){
   check(engine.enqueueLoop({A::pan,0,5,generation,frame+617,10}),"sample deadline pan");
   check(engine.enqueueLoop({A::speed,0,6,generation,frame+1001,2}),"sample deadline double rate");
   check(engine.enqueueLoop({A::reverse,0,7,generation,frame+1201,1}),"sample deadline reverse toggle");
-  check(engine.enqueueLoop({A::retrigger,0,8,generation,frame+1233,0}),"sample deadline reverse retrigger");
+  check(engine.enqueueLoop({A::sourceRestart,0,8,generation,frame+1233,0}),"sample deadline reverse retrigger");
   check(engine.enqueueLoop({A::reverse,0,9,generation,frame+1500,0}),"sample deadline forward toggle");
-  check(engine.enqueueLoop({A::retrigger,0,10,generation,frame+1701,0}),"sample deadline forward retrigger");
+  check(engine.enqueueLoop({A::sourceRestart,0,10,generation,frame+1701,0}),"sample deadline forward retrigger");
  };
  ready(engine64);ready(engine128);
  std::vector<float> left64(2048),right64(2048),left128(2048),right128(2048);

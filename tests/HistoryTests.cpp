@@ -19,7 +19,7 @@ void take(aion::LoopBank& bank,unsigned id,bool edit,float phase=0){
  check(bank.apply(A::finish,id),"history take finish");watch=false;wait(bank);
 }
 std::vector<aion::Stereo> read(aion::LoopBank& bank,unsigned id=0){
- std::vector<aion::Stereo> values(512);watch=true;check(bank.apply(aion::LoopAction::retrigger,id),"history render restart");for(auto& value:values)value=bank.tick({});watch=false;return values;
+ std::vector<aion::Stereo> values(512);watch=true;check(bank.apply(aion::LoopAction::sourceRestart,id),"history render restart");for(auto& value:values)value=bank.tick({});watch=false;return values;
 }
 bool equal(const std::vector<aion::Stereo>& a,const std::vector<aion::Stereo>& b){for(unsigned i=0;i<a.size();++i)if(a[i].left!=b[i].left||a[i].right!=b[i].right)return false;return true;}
 }

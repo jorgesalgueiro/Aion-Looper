@@ -14,7 +14,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  const start=match.index+match[0].indexOf('for ('),brace=loops.indexOf('{',start);let end=brace+1,depth=1;
  for(;depth;end++){assert(end<loops.length);if(loops[end]==='{')depth++;if(loops[end]==='}')depth--;}
  vm.runInContext(`const state={audioContext:audio,syncEnabled:false,loops:[],customEffects:{}};
- UIManager.updateLoop=()=>{};
+ UIManager.updateLoop=()=>{}; UIManager.updateStatus=()=>{};state.playingSources={};
  globalThis.condition=b=>{AudioEngine.seamlessLoopCrossfade(b,0.015);const finalBuffer=b;${loops.slice(start,end)}};
  globalThis.setup=b=>{const loop=new Loop(0);loop.audioBuffer=b;loop.duration=b.duration;loop.state='playing';state.loops=[loop];loop.graph=new AudioGraph(loop);if(!loop.graph.build())throw Error('Reference graph failed');};
  globalThis.toggle=()=>state.loops[0].toggleEffect('reverse');
@@ -30,13 +30,15 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  globalThis.nudge=direction=>UIManager.nudgeLoopStart(0,direction);
  globalThis.quantize=()=>UIManager.quantizeLoopStart(0);
  globalThis.delayValue=()=>state.loops[0].startDelay;
+ globalThis.rtrg=()=>state.loops[0].retrigger();
+ globalThis.stopped=()=>{state.loops[0].state="stopped";};
  globalThis.applyPhase=()=>state.loops[0].restart(audio.currentTime+0.05);
  globalThis.rate=()=>Math.fround(state.loops[0].effectivePlaybackRate);
  globalThis.offset=()=>state.loops[0].graph.startOffset;
  globalThis.phaseSolo=value=>{state.loops[0].isMutedBySolo=value;};
  globalThis.phaseSpeed=value=>{state.loops[0].playbackRate=value;};
  `,context);
- let cases=0,samples=0,maximum=0,nudges=0,tinyWraps=0;
+ let cases=0,samples=0,maximum=0,nudges=0,tinyWraps=0,retriggers=0;
  for(const mono of [true,false])for(const sampleRate of [8000,48000,96000])for(const length of [1,17,512,4097,20003]){
   audio.currentTime=0;vm.runInContext('state.syncEnabled=false;state.bpm=120;',context);
   const raw=[Array.from({length},(_,i)=>Math.fround(0.12+0.4*Math.sin(i*0.11))),Array.from({length},(_,i)=>Math.fround(-0.08+0.2*Math.cos(i*0.073)))];
@@ -97,18 +99,33 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
     pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate+(deadline-target)*context.rate())%length+length)%length});render(7);
    }
    render(pending.at(-1).at-frame+147);
+   // Full user-level Loop.retrigger, distinct from the immediate graph primitive.
+   // Starting delay must be overwritten; playing replacement starts at +5ms,
+   // whereas a stopped loop must play immediately even with grid sync enabled.
+   for(const [tapIndex,stopped] of [false,false,true].entries()){
+    context.setDelay(0.731);commands.push('delay 0 0.731');
+    if(stopped){context.stopped();commands.push('stop 0 0');}
+    audio.currentTime=frame/sampleRate;await context.rtrg();
+    metadata.push({row:commands.length,value:context.delayValue()});commands.push('rtrg 0 0');retriggers++;
+    const target=(audio.currentTime+(stopped?0:0.005))*sampleRate,nearest=Math.round(target),deadline=Math.abs(target-nearest)<=4*Number.EPSILON*Math.max(1,Math.abs(target))?nearest:Math.ceil(target);
+    pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate+(deadline-target)*context.rate())%length+length)%length});
+    render(tapIndex===0?1:deadline-frame+Math.min(length+3,147));
+   }
   }
   // The original optimized restart bypasses master phase while muted by solo.
   commands.push('solo 1 0');context.phaseSolo(true);excluded=true;context.setDelay(0.217);commands.push('delay 0 0.217');
   audio.currentTime=frame/sampleRate;context.applyPhase();commands.push('apply 0 0');
   const target=(audio.currentTime+0.05)*sampleRate,nearest=Math.round(target),deadline=Math.abs(target-nearest)<=4*Number.EPSILON*Math.max(1,Math.abs(target))?nearest:Math.ceil(target);
   pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate+(deadline-target)*context.rate())%length+length)%length});render(deadline-frame+7);
+  audio.currentTime=frame/sampleRate;await context.rtrg();
+  metadata.push({row:commands.length,value:context.delayValue()});commands.push('rtrg 0 0');retriggers++;
+  {const target=(audio.currentTime+0.005)*sampleRate,deadline=Math.round(target);pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate)%length+length)%length});render(deadline-frame+7);}
   commands.push('solo 1 0');context.phaseSolo(false);excluded=false;render(47);
   const result=spawnSync(process.argv[2],[],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:32*1024*1024});assert.equal(result.status,0,result.stderr);const rows=result.stdout.trim().split(/\r?\n/);assert.equal(rows.length,commands.length);
   rows.forEach((r,i)=>assert.equal(Number(r.split(' ')[0]),1,'Rejected '+commands[i]));
-  for(const check of metadata)assert(Math.abs(Number(rows[check.row].split(' ')[3])-check.value)<=1e-14,'Q/nudge metadata matches reference or documented tiny-clip wrap');
+  for(const check of metadata)assert(Math.abs(Number(rows[check.row].split(' ')[3])-check.value)<=1e-14,'RTRG/Q/nudge metadata matches reference or documented tiny-clip wrap');
   for(const check of checks){const row=rows[check.row].split(' ').map(Number);for(const value of row.slice(6)){const error=Math.abs(value-check.expected);maximum=Math.max(maximum,error);assert(error<=1e-6,`Start phase ${mono}/${sampleRate}/${length}, frame ${row[1]}: ${value} vs ${check.expected}`);}samples++;}
   cases++;
  }
- console.log(JSON.stringify({result:'PASS',cases,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:'Unchanged UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 50ms timing; linear interpolation, browser playback envelopes/resampling excluded'}));
+ console.log(JSON.stringify({result:'PASS',cases,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing; linear interpolation, browser playback envelopes/resampling excluded'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

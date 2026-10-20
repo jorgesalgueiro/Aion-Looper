@@ -23,7 +23,9 @@ int main(){
   else if(op=="nudge")ok=bank.apply(A::nudgeStart,id,static_cast<float>(value));
   else if(op=="quantize")ok=bank.apply(A::quantizeStart,id);
   else if(op=="apply")ok=bank.apply(A::applyStart,id);
-  else if(op=="retrigger")ok=bank.apply(A::retrigger,id);
+  else if(op=="rtrg")ok=bank.apply(A::retrigger,id);
+  else if(op=="stop")ok=bank.apply(A::stopImmediate,id);
+  else if(op=="retrigger")ok=bank.apply(A::sourceRestart,id);
   else if(op=="speed")ok=bank.apply(A::speed,id,static_cast<float>(value));
   else if(op=="solo")ok=bank.apply(A::solo,id);
   else if(op=="reverse")ok=bank.apply(A::reverse,id,static_cast<float>(value));

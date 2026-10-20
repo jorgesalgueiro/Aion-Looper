@@ -15,7 +15,7 @@ void startPhaseTests(){
  using namespace aion;using A=LoopAction;
  auto store=std::make_unique<LoopBank>();auto& bank=*store;bank.prepare(4096,0,8000);
  watch=true;check(bank.apply(A::record,0),"phase capture");for(unsigned i=0;i<257;++i)bank.tick({0.1f+0.3f*std::sin(i*0.11f),-0.1f+0.2f*std::cos(i*0.073f)});check(bank.apply(A::finish,0),"phase finish");watch=false;wait(bank);
- std::vector<Stereo> baseline(257);watch=true;bank.apply(A::retrigger,0);for(auto& x:baseline)x=bank.tick({});
+ std::vector<Stereo> baseline(257);watch=true;bank.apply(A::sourceRestart,0);for(auto& x:baseline)x=bank.tick({});
  check(bank.available()==0&&bank.setStartDelay(0,0.333)&&bank.view()[0].startDelay==0.333,"phase is double precision and works at full pool budget");
  check(bank.apply(A::quantizeStart,0)&&bank.view()[0].startDelay==0.333&&bank.view()[0].phaseApplyFrame==0,"Q on clip below half a sixteenth is a no-op");
  const auto previous=bank.view()[0].position;bank.tick({});check(bank.view()[0].position==(previous+1)%257,"dragging metadata does not restart");
@@ -55,8 +55,33 @@ void startPhaseTests(){
  bank.prepare(4096,0,8000);watch=true;bank.apply(A::record,0);for(unsigned i=0;i<17;++i)bank.tick({0.2f,0.1f});bank.apply(A::finish,0);watch=false;wait(bank);
  watch=true;bank.setStartDelay(0,0.217);for(unsigned i=0;i<100;++i){check(bank.apply(A::nudgeStart,0,i%2?-1:1),"rapid tiny nudges accepted at full pool");const double phase=bank.view()[0].startDelay;check(phase>=0&&phase<=1,"multi-cycle tiny nudges stay in valid phase range");}
  bank.apply(A::stopAll,0);for(unsigned i=0;i<500;++i)bank.tick({});check(bank.view()[0].state==LoopState::stopped&&bank.view()[0].phaseApplyFrame==0,"panic cancels every rapid nudge");watch=false;
+ // User RTRG has a distinct 5ms deadline and cancels stale delayed releases.
+ bank.prepare(4096,0,8000);watch=true;
+ check(!bank.apply(A::retrigger,0),"empty RTRG rejected");bank.apply(A::record,0);
+ check(!bank.apply(A::retrigger,0),"recording RTRG rejected");
+ for(unsigned i=0;i<257;++i)bank.tick({0.1f,0.2f});bank.apply(A::finish,0);
+ check(!bank.apply(A::retrigger,0),"finalizing RTRG rejected");watch=false;wait(bank);watch=true;
+ bank.setStartDelay(0,0.731);bank.apply(A::applyStart,0);
+ const auto tap=bank.syncView().frame;
+ check(bank.apply(A::retrigger,0)&&bank.view()[0].startDelay==0&&bank.view()[0].phaseApplyFrame==tap+40,"playing RTRG resets Start and schedules 5ms source");
+ for(unsigned i=0;i<40;++i)bank.tick({});check(bank.view()[0].phaseApplyFrame==tap+40,"RTRG not early");
+ bank.tick({});check(bank.view()[0].position==1&&bank.view()[0].phaseApplyFrame==0,"RTRG exact source deadline");
+ for(unsigned i=0;i<400;++i)bank.tick({});check(bank.view()[0].position==144,"RTRG cancels older delayed Start source");
+ for(unsigned i=0;i<127;++i)check(bank.apply(A::applyStart,0),"fill FIFO before RTRG");bank.setStartDelay(0,0.731);
+ check(!bank.apply(A::retrigger,0)&&bank.view()[0].startDelay==0.731,"rejected RTRG preserves Start and older sources");
+ bank.apply(A::stopAll,0);bank.setStartDelay(0,0.731);
+ check(bank.apply(A::retrigger,0)&&bank.view()[0].state==LoopState::playing&&bank.view()[0].startDelay==0&&bank.view()[0].phaseApplyFrame==0,"stopped RTRG starts immediately");
+ bank.apply(A::retrigger,0);bank.apply(A::clear,0);for(unsigned i=0;i<500;++i)bank.tick({});check(bank.view()[0].state==LoopState::empty,"DEL cancels RTRG");watch=false;
+ // Different tracks interleave 5ms/50ms sources, including ring wraparound.
+ bank.prepare(8192,0,8000);
+ for(unsigned id=0;id<2;++id){watch=true;bank.apply(A::record,id);for(unsigned i=0;i<257;++i)bank.tick({0.1f,0.2f});bank.apply(A::finish,id);watch=false;wait(bank);}
+ watch=true;const auto interleave=bank.syncView().frame;bank.setStartDelay(0,0.5);bank.apply(A::applyStart,0);bank.apply(A::retrigger,1);
+ for(unsigned i=0;i<41;++i)bank.tick({});check(bank.view()[1].phaseApplyFrame==0&&bank.view()[0].phaseApplyFrame==interleave+400,"earlier RTRG is not blocked by another track's 50ms source");
+ for(unsigned i=0;i<360;++i)bank.tick({});check(bank.view()[0].phaseApplyFrame==0,"later other-track source retained");
+ for(unsigned n=0;n<300;++n){check(bank.apply(A::retrigger,n%2),"ring-wrapped RTRG accepted");for(unsigned i=0;i<41;++i)bank.tick({});}
+ bank.apply(A::retrigger,0);bank.apply(A::stopAll,0);for(unsigned i=0;i<500;++i)bank.tick({});check(bank.view()[0].state==LoopState::stopped&&bank.view()[1].state==LoopState::stopped,"panic cancels pending RTRG on every track");watch=false;
  // Production Engine: same timestamped controls, actual PCM and exact block invariance.
- for(const unsigned variant:{0u,1u,2u}){
+ for(const unsigned variant:{0u,1u,2u,3u}){
  std::vector<float> reference;
  for(const int block:{64,128}){
   auto engine=std::make_unique<Engine>();engine->prepare(8000,8192);engine->setMonitoring(false);engine->setTarget(1);
@@ -67,8 +92,9 @@ void startPhaseTests(){
   engine->enqueueLoop({A::startDelay,0,3,engine->generation(),640,0.333});engine->enqueueLoop({A::applyStart,0,4,engine->generation(),704,0});
   if(variant>0)engine->enqueueLoop({A::quantizeStart,0,5,engine->generation(),720,0});
   if(variant>1)engine->enqueueLoop({A::nudgeStart,0,6,engine->generation(),736,1});
+  if(variant>2)engine->enqueueLoop({A::retrigger,0,7,engine->generation(),752,0});
   std::vector<float> pcm(2048),right(2048);watch=true;for(unsigned offset=0;offset<2048;offset+=block){float* out[]={pcm.data()+offset,right.data()+offset};engine->process(out,2,block);}watch=false;
-  while(engine->popView(view))latest=view;check(latest.tracks[0].startDelay==(variant>1?0.48828125:variant>0?0:0.333),"SPSC preserves double phase; optional audio-owned Q follows in order");check(pcm==right,"phase stereo equality");if(reference.empty())reference=pcm;else check(reference==pcm,"phase exact 64/128 equality");
+  while(engine->popView(view))latest=view;check(latest.tracks[0].startDelay==(variant>2?0:variant>1?0.48828125:variant>0?0:0.333),"SPSC preserves double phase; optional audio-owned Q follows in order");check(pcm==right,"phase stereo equality");if(reference.empty())reference=pcm;else check(reference==pcm,"phase exact 64/128 equality");
  }
  }
  check(allocations.load()==0,"phase processing has zero callback new/delete");
