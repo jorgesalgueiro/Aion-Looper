@@ -29,7 +29,7 @@ void MidiController::release(Press& p,Dispatch& d) noexcept {
     p.active=false;
 }
 void MidiController::cancel(Dispatch& d,int track) noexcept {
-    if(track<0){++epoch;read=write=0;settings.learnTarget=-1;learnCaptured=false;}
+    if(track<0){++epoch;read=write=0;settings.learnTarget=-1;learnCaptured=false;programPulses={};}
     for(auto& p:presses)if(p.active&&(track<0||p.track==static_cast<unsigned>(track))){
         const auto copy=p;release(p,d);p=copy;p.suppressed=true;p.sustainAction=0;
     }
@@ -63,6 +63,7 @@ void MidiController::main(unsigned id,int requestedMode,Dispatch& d) noexcept {
 }
 void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     if(!settings.enabled)return;
+    recent[observed%recent.size()]={d.frame,e};++observed;
     const unsigned type=e.status&240,channel=(e.status&15)+1;
     if(e.status==252&&e.size==1){apply(LoopAction::stopAll,0,0,d);return;}
     if(type==176&&e.size==3&&(e.data1==120||e.data1==123)){cancel(d);return;}
@@ -83,6 +84,13 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     for(const auto& p:presses)if(p.active&&p.key==key)return;
     const int target=targetFor(settings,e);
     if(target<0)return;
+    if(pulse){
+        // Some foot controllers emit a burst of identical PCs for one pedal tap.
+        // Anchor the 20ms window to the first message so a stream cannot extend it.
+        auto& previous=programPulses[static_cast<unsigned>(target)];
+        if(previous.valid&&previous.key==key&&d.frame-previous.frame<static_cast<std::uint64_t>(std::ceil(d.rate*0.02)))return;
+        previous={d.frame,key,true};
+    }
     Press* p=nullptr;
     if(!pulse){for(auto& slot:presses)if(!slot.active){p=&slot;break;}if(!p){overflow(d);return;}
         *p={};p->active=true;p->key=key;p->track=static_cast<unsigned>(target);p->start=d.frame;
@@ -121,5 +129,5 @@ void MidiController::tick(Dispatch& d) noexcept {
         else if(task.kind==TaskKind::erase&&(t.state==LoopState::playing||t.state==LoopState::stopping||t.state==LoopState::stopped))apply(LoopAction::clear,task.track,0,d);
     }
 }
-MidiView MidiController::view() const noexcept {return {settings.bindings,settings.revision,modeRevision,messages,overflows,actions,rejections,settings.learnTarget,mode,settings.enabled,sustain};}
+MidiView MidiController::view() const noexcept {return {settings.bindings,settings.revision,modeRevision,messages,overflows,actions,rejections,recent,observed,settings.learnTarget,mode,settings.enabled,sustain};}
 }

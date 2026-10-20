@@ -16,5 +16,5 @@ const assert=require('node:assert/strict'),delay=ms=>new Promise(r=>setTimeout(r
    await call('Runtime.evaluate',{expression:`document.getElementById('mod-mapping').scrollIntoView({block:'center',behavior:'instant'})`});}
  }
  if(process.argv[2]==='cancel'){await rpc({operation:'midiConfig',action:'cancelLearn'});s=await rpc({operation:'snapshot'});}
- console.log(JSON.stringify({devices:devices.devices,standalone:devices.standalone,audioReady:s.audioReady,sampleRate:s.sampleRate,frame:s.frame,midi:s.midi,loop0:{state:s.tracks[0].state,length:s.tracks[0].length}},null,2));ws.close();
+ console.log(JSON.stringify({devices:devices.devices,standalone:devices.standalone,audioReady:s.audioReady,sampleRate:s.sampleRate,frame:s.frame,inputAvailable:s.inputAvailable,syncMode:s.syncMode,syncBpm:s.syncBpm,syncBars:s.syncBars,mode:s.midi.mode,midi:s.midi,loop0:{state:s.tracks[0].state,length:s.tracks[0].length}},null,2));ws.close();
 })().catch(e=>{console.error(e);socket?.close();process.exitCode=1;});

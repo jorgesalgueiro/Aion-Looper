@@ -212,6 +212,11 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("legacyAudioEnabled", false);
         auto* midiView=new juce::DynamicObject();juce::var midiReply(midiView);juce::Array<juce::var> bindings;
         for(const auto binding:latest.midi.bindings)bindings.add(static_cast<int>(binding));
+        juce::Array<juce::var> recentMidi;
+        const auto observed=latest.midi.observed;
+        for(unsigned n=0,count=std::min(observed,8u);n<count;++n){const auto& item=latest.midi.recent[(observed-count+n)%8];auto* event=new juce::DynamicObject();
+            event->setProperty("frame",static_cast<juce::int64>(item.frame));event->setProperty("status",item.event.status);event->setProperty("data1",item.event.data1);event->setProperty("data2",item.event.data2);event->setProperty("size",item.event.size);recentMidi.add(juce::var(event));}
+        midiView->setProperty("recent",recentMidi);
         midiView->setProperty("bindings",bindings);midiView->setProperty("enabled",latest.midi.enabled);midiView->setProperty("revision",static_cast<int>(latest.midi.revision));
         midiView->setProperty("mode",latest.midi.mode);midiView->setProperty("modeRevision",static_cast<int>(latest.midi.modeRevision));midiView->setProperty("sustain",latest.midi.sustain);
         midiView->setProperty("learnTarget",latest.midi.learnTarget);midiView->setProperty("messages",static_cast<int>(latest.midi.messages));midiView->setProperty("overflows",static_cast<int>(latest.midi.overflows));midiView->setProperty("rejected",static_cast<int>(latest.midi.rejected));midiView->setProperty("actions",static_cast<int>(latest.midi.actions));

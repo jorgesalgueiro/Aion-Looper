@@ -402,3 +402,8 @@ host; release builds have no MIDI injection RPC. The optional real-device helper
 Standalone on localhost 9236 and never synthesizes physical MIDI. No package or
 version bump is needed. Continuous expression/parameter learn, synth MIDI,
 clock I/O and gamepad remain separate increments.
+
+Foot-controller burst handling: repeated identical PC messages within 20ms count
+as one tap. Separate taps at/after 20ms remain valid. This prevents the tested
+controller's three packets per pedal press from stopping and restarting a loop.
+With sync enabled, STOPPING waits for the grid boundary, then stays STOPPED.

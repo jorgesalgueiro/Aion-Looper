@@ -259,3 +259,10 @@ GUI-action purge. Native mode snapshots must not overwrite a newer UI choice:
 retain mode revision acknowledgement fencing and the unchanged NativeUiSmoke
 keyboard OD/SUB check. Physical PC learn is verified separately from synthetic
 PCM and does not establish MIDI clock, continuous expression, synth or HID parity.
+
+Physical MIDI acceptance must retain the confirmed triple-PC foot-controller
+burst regression: three identical packets per tap previously stopped/restarted
+playback. Keep the fixed 20ms window anchored to the first matching PC/channel/
+target, exact 159/160-sample boundary at 8kHz, no extending debounce, sync-off and
+static/dynamic stop/play cases, and actual 64/128 MidiBuffer burst tests. Preserve
+bounded eight-event raw diagnostic storage and zero callback new/delete.

@@ -12,9 +12,12 @@ struct MidiSettings {
 };
 struct MidiEvent {std::uint32_t offset=0;std::uint8_t status=0,data1=0,data2=0,size=0;};
 struct MidiLearnResult {int target=-1;std::uint16_t binding=0;std::uint32_t token=0,generation=0;};
+struct MidiObservation {std::uint64_t frame=0;MidiEvent event{};};
 struct MidiView {
     std::array<std::uint16_t,33> bindings{};
     std::uint32_t revision=0,modeRevision=0,messages=0,overflows=0,actions=0,rejected=0;
+    std::array<MidiObservation,8> recent{};
+    std::uint32_t observed=0;
     int learnTarget=-1,mode=0;
     bool enabled=false,sustain=false;
 };
@@ -45,7 +48,11 @@ private:
     SpscQueue<MidiSettings,32> configs;
     SpscQueue<MidiLearnResult,8> learned;
     MidiSettings settings;
+    std::array<MidiObservation,8> recent{};
+    std::uint32_t observed=0;
     std::array<Press,64> presses{};
+    struct ProgramPulse {std::uint64_t frame=0;unsigned key=0;bool valid=false;};
+    std::array<ProgramPulse,33> programPulses{};
     std::array<Task,128> tasks{};
     unsigned read=0,write=0;
     std::uint64_t epoch=0,nextDeadline=std::numeric_limits<std::uint64_t>::max();

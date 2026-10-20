@@ -684,3 +684,8 @@ configuration, device routing and bounded status. An acknowledgement fence keeps
 old native mode snapshots from undoing newer keyboard/mouse OD/SUB changes.
 Notes support held actions, PC is a pulse and CC requires zero to rearm. Continuous
 parameter/expression learn, synth MIDI, clock I/O and gamepad remain unported.
+
+Identical mapped Program Changes on the same channel/target within 20ms are
+merged into one pulse, anchored to the first packet. This repairs a physically
+observed triple-PC foot-controller burst. Eight fixed raw events with sample
+timestamps are retained in native diagnostics; JSON construction stays off audio.

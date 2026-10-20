@@ -407,3 +407,10 @@ Physical AudioBox USB learning of PC 0 is independently confirmed by the user
 and native telemetry. That observation does not prove other controller models,
 reconnect, expression, clock synchronization, host/plugin routing or audio
 hardware latency. See VALIDATION.md for exact regression evidence and limits.
+
+Physical pedal testing exposed a triple-PC burst that narrower synthetic
+single-message tests missed. Raw native sample timestamps confirmed the cause;
+20ms identical-program/channel burst suppression repairs it. User verification
+and native six-message/two-action telemetry now confirm stopped playback without
+PCM deletion. This is a documented native PC extension, not an original JS parity
+claim; existing Note/CC behavior and unchanged source comparisons are retained.

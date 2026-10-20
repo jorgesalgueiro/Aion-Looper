@@ -1697,8 +1697,8 @@ MIDI, MIDI clock and HID/gamepad remain unported.
   stopped 176400-frame recording at 44100 Hz, with no overflow/rejected action.
   Subsequent real-device observation confirms queued-to-playing playback with
   the same recording intact (54 messages, 51 actions, no overflow/rejection).
-  User stop confirmation remains pending; this is not an audible listening,
-  disconnect/reconnect, DAW or latency acceptance claim.
+  The user then reported a real failure: the second pedal tap queued playback
+  instead of stopping. This kept physical acceptance open until the repair below.
 
 Full suite runs precede the final UI mode fence and processor input-ready cache;
 final processor, frontend/native UI and focused MIDI mouse tests exercise those
@@ -1707,3 +1707,32 @@ existing Windows Standalone and excluded test tools were incrementally rebuilt;
 version remains 0.4.3 with no installer/ZIP/additional format package. Original
 local logo edits are preserved separately. Broader hardware, continuous MIDI
 parameters, clock, Apple/Linux UI and commercial readiness remain separate work.
+
+#### Physical pedal stop repair
+
+Raw bounded MIDI telemetry reproduced the cause: one physical pedal tap sent
+three identical channel-1 PC 0 packets, about 0-1ms apart. Treating each packet
+as a tap stopped, immediately stopped again, then queued a restart. A fixed
+20ms window, anchored to the first matching program/channel/target packet,
+now merges that burst into one action. It does not extend with each duplicate;
+different programs/channels and later taps remain independent. Notes/CC and
+original preserved JS are unchanged. Diagnostic history is eight fixed entries;
+serialization occurs on the message thread, with no callback allocation.
+
+The user repeated the physical arm/record/play/stop workflow and confirmed it
+now stops and stays stopped. Independent native telemetry: six incoming PC 0
+messages, two accepted actions, a stopped 176400-frame clip at 44100 Hz, zero
+rejected actions and zero overflow. This closes the observed physical pedal
+control failure, not audible sound/latency, reconnect or broader hardware tests.
+
+Retained regression cases exercise triple PC bursts both within and across
+blocks, static/dynamic STOPPING-to-STOPPED, sync-off recording/stop, and the
+159/160-sample boundary at 8kHz. GUI MIDI tests send triple packets through the
+actual preallocated JUCE MidiBuffer at both 64/128. Existing single-message
+coverage and all prior comparisons remain in place. Final result logs:
+`build/midi-pc-burst-final-windows.log`, `build/midi-pc-burst-final-ubuntu.log`,
+`build/midi-pc-burst-final-asan.log`, `build/midi-pc-burst-processor.log` and
+`build/midi-pc-burst-mouse.log`. See those logs for final pass status/durations.
+Final focused gates pass: Windows 3/3 (33.33s), Ubuntu 3/3 (10.09s),
+ASan/UBSan with leak detection 3/3 (18.75s), actual JUCE processor tests and
+triple-PC native mouse workflows at 64/128. No new package/version bump was made.

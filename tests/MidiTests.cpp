@@ -48,6 +48,28 @@ void midiTests(){
   f.command(A::stopAll);f.advance(40000);check(f.latest.tracks[0].length>0&&f.latest.tracks[1].length>0,"panic retains clips");
   mapped.learnTarget=-1;mapped.enabled=false;mapped.revision=++f.revision;check(f.engine->configureMidi(mapped),"disable MIDI");f.process(0);f.send(192,0,0,2);check(f.latest.tracks[0].state==S::stopped,"disabled MIDI ignores input");
  }
+ for(const unsigned block:{64u,128u})for(const auto syncMode:{SyncMode::fixed,SyncMode::dynamic}){
+  Fixture f(block);f.command(A::record);f.advance(1000);f.command(A::finish);f.wait();f.process(0);
+  check(f.latest.tracks[0].state==S::playing,"sync PC fixture plays");
+  MidiSettings settings;settings.enabled=true;settings.bindings[0]=midiBinding(3,0);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"sync PC settings");
+  f.engine->configureSync({syncMode,120,2,4,4,false});f.send(192,0,0,2);
+  check(f.latest.tracks[0].state==S::stopping,"one synced PC pulse schedules STOP, never PLAY");
+  f.send(192,0,0,2);f.advance(8);f.send(192,0,0,2);
+  check(f.latest.tracks[0].state==S::stopping&&f.latest.midi.actions==1,"physical triple-PC burst stops once, never requeues playback");
+  check(f.latest.midi.observed==3&&f.latest.midi.recent[0].event.status==192&&f.latest.midi.recent[0].event.size==2,"bounded raw MIDI observation");
+  f.advance(32001);check(f.latest.tracks[0].state==S::stopped,"synced PC stop settles after grid");
+  f.send(192,0,0,2);check(f.latest.tracks[0].state==S::queued,"synced PC on stopped queues play");
+  f.advance(32001);check(f.latest.tracks[0].state==S::playing,"synced PC play settles after grid");
+ }
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);MidiSettings settings;settings.enabled=true;settings.bindings[0]=midiBinding(3,0);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"program burst config");
+  const std::array<MidiEvent,3> burst{{{0,192,0,0,2},{0,192,0,0,2},{8,192,0,0,2}}};f.process(16,burst);
+  check(f.latest.tracks[0].state==S::recording&&f.latest.midi.messages==3&&f.latest.midi.actions==1,"physical same-block PC burst starts one recording");
+  // Boundaries stay sample accurate: 159 is suppressed, 160 is a separate tap.
+  f.advance(143);f.send(192,0,0,2);check(f.latest.tracks[0].state==S::recording,"19.875ms duplicate suppressed");
+  f.send(192,0,0,2);f.wait();f.process(0);check(f.latest.tracks[0].state==S::playing,"20ms distinct PC tap accepted without extending debounce");
+  f.advance(160);f.process(16,burst);check(f.latest.tracks[0].state==S::stopped,"PC burst stops once with sync off");
+ }
  std::vector<std::uint8_t> reference;
  for(const unsigned block:{64u,128u})for(const bool fromMidi:{false,true}){
   auto engine=std::make_unique<Engine>();engine->prepare(8000,8192);engine->setMonitoring(false);engine->setTarget(1);
