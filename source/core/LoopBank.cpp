@@ -105,6 +105,11 @@ void LoopBank::workerLoop() noexcept {
                         output->channels[c]=std::move(take);
                     }
                 }
+                const auto step=(output->length+waveformWidth-1)/waveformWidth;
+                for(unsigned i=0;i<waveformWidth;++i)
+                    for(unsigned j=0;j<step&&i*step+j<output->length;++j)
+                        for(unsigned c=0;c<2;++c)output->peaks[i]=std::max(output->peaks[i],std::abs(output->channels[c][i*step+j]));
+                output->waveformId=nextWaveformId++;
                 result=output.get();owned.push_back(std::move(output));
             }catch(...){result=nullptr;}
             if(job.edit)releaseOnWorker(job.base);
@@ -549,9 +554,13 @@ void LoopBank::schedules(Track& track) noexcept {
         else if(state==LoopState::recording)(void)finish(track);
     }
 }
+bool LoopBank::copyWaveform(std::uint32_t id,std::uint64_t expected,std::array<float,waveformWidth>& peaks) const noexcept {
+    if(id>=trackCount||!tracks[id].clip||tracks[id].clip->waveformId!=expected)return false;
+    peaks=tracks[id].clip->peaks;return true;
+}
 std::array<LoopView,LoopBank::trackCount> LoopBank::view() const noexcept {
     std::array<LoopView,trackCount> views{};
-    for(std::uint32_t i=0;i<trackCount;++i){views[i]=tracks[i].info;views[i].solo=soloTrack==static_cast<int>(i);views[i].effectiveRate=tracks[i].targetRate;
+    for(std::uint32_t i=0;i<trackCount;++i){views[i]=tracks[i].info;views[i].waveformId=tracks[i].clip?tracks[i].clip->waveformId:0;views[i].solo=soloTrack==static_cast<int>(i);views[i].effectiveRate=tracks[i].targetRate;
         views[i].clearEpoch=tracks[i].clearEpoch;views[i].scheduledFrame=tracks[i].startAt?tracks[i].startAt:tracks[i].endAt;}
     return views;
 }

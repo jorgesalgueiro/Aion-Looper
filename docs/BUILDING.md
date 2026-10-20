@@ -293,3 +293,10 @@ Start nudge buttons against real captured PCM at 64/128 samples. The existing
 reproduce the tiny-clip negative-offset browser failure and verify playable
 wrapped offsets, before the native bridge/empty-loop/invalid-direction smoke.
 These use the incremental build and require no additional package or install.
+
+`js_native_waveform` uses the existing `aion_start_probe` to compare immutable
+worker peaks against unchanged JS generation. `native_frontend_commands` also
+compares original canvas operations across window widths, states and DPR values.
+`tools/TestMouseWorkflow.ps1` now checks actual captured-waveform pixels and cache
+payload omission at 64/128 samples, saving `build/native-mouse-waveform.png`.
+Continue using incremental targets; no extra package/install is required.

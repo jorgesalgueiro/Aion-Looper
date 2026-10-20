@@ -288,3 +288,51 @@ const effectColors = {
         return state.loops.map((t, i) => UIManager.generateLoopHTML({...t, id:i}, i));
     };
 })();
+
+// Original committed-waveform renderer; dimensions match the original HiDPI canvas.
+window.AionDrawWaveform=(cvs,loop,progress)=>{
+    const dpr=window.devicePixelRatio||1,w=Math.max(1,cvs.clientWidth),h=Math.max(1,cvs.clientHeight);
+    const width=Math.round(w*dpr),height=Math.round(h*dpr);
+    if(cvs.width!==width)cvs.width=width;if(cvs.height!==height)cvs.height=height;
+    const ctx=cvs.getContext('2d'),playheadX=Math.floor(progress*w);
+    ctx.resetTransform();ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);
+                // Draw Waveform
+                if (loop.wavePeaks) {
+                    const peaks = loop.wavePeaks;
+                    const amp = h;
+
+                    let waveColor = '#666';
+                    if (loop.state === 'recording') waveColor = '#f00';
+                    else if (loop.state === 'overdubbing') waveColor = '#f0f';
+                    else if (loop.state === 'armed') waveColor = '#ff0';
+                    else if (loop.state === 'substituting') waveColor = '#00cccc';
+                    else if (loop.state === 'multiplying') waveColor = '#ffaa00';
+                    else if (loop.state === 'queued') waveColor = '#0088aa';
+                    else if (loop.state === 'playing') waveColor = '#0f0';
+                    else if (loop.state === 'stopped') waveColor = '#888';
+                    else if (loop.state === 'stopping') waveColor = '#0a0';
+
+                    // Draw dim waveform for full width (unplayed portion)
+                    ctx.globalAlpha = 0.35;
+                    ctx.fillStyle = waveColor;
+                    for (let i = 0; i < w && peaks.length; i++) {
+                        const peakIdx = Math.floor(i / w * peaks.length);
+                        const mag = peaks[peakIdx];
+                        const hBar = Math.max(1, mag * amp);
+                        const y = (h - hBar) / 2;
+                        ctx.fillRect(i, y, 1, hBar);
+                    }
+
+                    // Draw bright waveform for played portion (up to playhead)
+                    ctx.globalAlpha = 1.0;
+                    for (let i = 0; i < playheadX && i < w && peaks.length; i++) {
+                        const peakIdx = Math.floor(i / w * peaks.length);
+                        const mag = peaks[peakIdx];
+                        const hBar = Math.max(1, mag * amp);
+                        const y = (h - hBar) / 2;
+                        ctx.fillRect(i, y, 1, hBar);
+                    }
+                    ctx.globalAlpha = 1.0;
+                }
+    if(loop.state!=='empty'){ctx.fillStyle='#fff';ctx.fillRect(playheadX,0,1,h);}
+};

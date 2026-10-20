@@ -17,6 +17,7 @@ struct LoopView {
     LoopState state = LoopState::empty;
     std::uint32_t length = 0, position = 0, undoCount = 0, redoCount = 0;
     std::uint64_t scheduledFrame = 0, clearEpoch = 0;
+    std::uint64_t waveformId = 0;
     double originalBpm = 0, startDelay = 0;
     std::uint64_t phaseApplyFrame = 0;
     float effectiveRate = 1;
@@ -40,6 +41,8 @@ public:
     bool apply(LoopAction, std::uint32_t track, float value = 0) noexcept;
     bool setStartDelay(std::uint32_t track,double value) noexcept;
     Stereo tick(Stereo input) noexcept;
+    static constexpr unsigned waveformWidth=720;
+    bool copyWaveform(std::uint32_t,std::uint64_t,std::array<float,waveformWidth>&) const noexcept;
     void beginBlock() noexcept;
     void setAutoPlay(bool enabled) noexcept { autoPlay = enabled; }
     std::array<LoopView, trackCount> view() const noexcept;
@@ -57,7 +60,10 @@ private:
         std::atomic<std::uint32_t> leases{1};
         std::array<std::vector<float>,2> channels;
         std::uint32_t length = 0;
+        std::uint64_t waveformId=0;
+        std::array<float,waveformWidth> peaks{};
     };
+    std::uint64_t nextWaveformId=1; // Worker-only, survives prepare after join.
     struct Track {
         LoopView info{};
         Clip* clip = nullptr; // Immutable samples; one audio lease plus any in-flight job lease.

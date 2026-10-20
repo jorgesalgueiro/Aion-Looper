@@ -15,6 +15,10 @@ int main(){
   else if(op=="finish")ok=bank.apply(A::finish,id);
   else if(op=="tick")out=bank.tick({static_cast<float>(value),right});
   else if(op=="wait"){for(unsigned n=0;bank.finalizationPending()&&n<10000;++n){bank.beginBlock();std::this_thread::sleep_for(std::chrono::milliseconds(1));}ok=!bank.finalizationPending();}
+  else if(op=="peaks"){
+   std::array<float,aion::LoopBank::waveformWidth> peaks{};ok=bank.copyWaveform(id,bank.view()[id].waveformId,peaks);
+   std::cout<<std::setprecision(17)<<ok;for(auto peak:peaks)std::cout<<' '<<peak;std::cout<<'\n';continue;
+  }
   else if(op=="delay")ok=bank.setStartDelay(id,value);
   else if(op=="nudge")ok=bank.apply(A::nudgeStart,id,static_cast<float>(value));
   else if(op=="quantize")ok=bank.apply(A::quantizeStart,id);

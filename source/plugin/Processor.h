@@ -32,6 +32,7 @@ private:
     std::atomic<float>* autoPlay = nullptr;
     std::atomic<float> *syncMode=nullptr,*syncBpm=nullptr,*syncBars=nullptr,*syncNum=nullptr,*syncDen=nullptr,*countIn=nullptr,*countInAudio=nullptr;
     std::atomic<float> *metroEnabled=nullptr,*metroVolume=nullptr;
+    std::array<aion::WaveformEvent,aion::LoopBank::trackCount> waveformCache{}; // Message thread only.
     aion::EngineView latest{}; // Message-thread cached, coherent audio snapshot.
     // Session labels belong to the message thread, never the audio callback.
     std::array<juce::String, aion::LoopBank::trackCount> trackNames{};

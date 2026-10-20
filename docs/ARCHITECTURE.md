@@ -502,3 +502,17 @@ It preserves single-wrap arithmetic/endpoints and repairs multi-cycle tiny clips
 with bounded modulo wrapping. Successful nudges share the same future-source FIFO;
 failed edits restore metadata. Message-thread validation permits negative values
 only for the signed nudge action, and rejects zero/fractional directions.
+
+Recorded-loop waveforms use the original 720-bin ceil-partition/stereo-maximum
+algorithm. The finalization worker computes immutable peaks with each clip and
+assigns an identity; Undo/Redo restores the identity with its PCM. Audio snapshots
+carry only the identity. A separate eight-slot SPSC queue copies at most two
+fixed 720-float events per block; backpressure retries later and never blocks.
+The queue is allocated during Engine construction to avoid Windows stack growth.
+No pointers, allocation or PCM scan cross the callback. Generation-tagged events
+populate a message-thread cache. The editor acknowledges known identities so
+unchanged snapshots omit peak arrays; generation/identity matching rejects stale
+content. DEL clears the identity, history restores it and reset invalidates caches.
+The original committed-waveform draw block retains state colors, dim/bright bars,
+white playhead and HiDPI canvas scaling. Live input/capture oscilloscope and other
+waveform interactions remain separate migration work.

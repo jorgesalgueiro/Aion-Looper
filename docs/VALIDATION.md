@@ -1230,3 +1230,54 @@ also pass (`build/nudge-ui-final.log`); frontend checks pass separately
 (`build/nudge-frontend-final.log`). No package/version changes. Hardware/DAW,
 Apple platforms, full browser transition envelopes and complete application
 parity remain separate acceptance work. Only the documented nudge scope is accepted.
+
+## Recorded-loop waveform — 2026-10-20
+
+The native solid progress fill is replaced by the original committed-waveform
+rendering: 720 stereo-max bins, state colors, dim/bright centered bars, thin white
+playhead and DPR-aware sizing. Peaks are computed on the finalization worker and
+owned by immutable clips. A fixed eight-slot SPSC queue publishes at most two
+720-float events per callback; identities in ordinary snapshots stay small. A
+message-thread cache and editor known-ID acknowledgements avoid resending unchanged
+arrays. Generation/identity matching excludes stale peaks; DEL/reset, history,
+NORM, edits and Multiply update or restore the associated cache with the PCM.
+Live input/capture oscilloscope and additional waveform interactions remain unported.
+
+The unchanged generateWaveformPeaks oracle passes 42 mono/stereo, 8/48/96 kHz,
+1/17/512/720/721/4097/20003-frame fixtures: 30,240 bins, maximum error zero at the
+retained 1e-6 conditioning limit. This includes ceil partition and zero-padded tail.
+The original committed drawing block is compared independently across 336 width /
+state / DPR / progress combinations, including 1x/1.25x/2x/4x scaling, with exact
+canvas-operation equality. Protected reference assets remain unchanged.
+
+Initial Windows core tests exposed stack exhaustion after telemetry was embedded
+in Engine; its fixed queue now allocates once in construction, with no callback
+allocation/free. The history fixture also incorrectly expected NORM to create an
+Undo checkpoint. It now asserts the unchanged no-history behavior and tests actual
+overdub Undo/Redo instead. A concurrent old probe run briefly blocked a Windows
+relink; the final build runs after the prior tests finish. These failures remain
+in the initial logs; no reference method/case/tolerance was weakened.
+
+Final Windows asset/core/frontend/waveform gates pass 4/4 (34.73s), Ubuntu core
+passes (2.49s), and ASan/UBSan core/waveform passes 2/2 (18.74s). Tests cover NORM,
+edit/history/reverse/Multiply, failed growth preserving the old waveform, DEL,
+20-track slow-consumer recovery, reset, at-most-two events/block and zero observed
+callback new/delete. Logs: `build/wave-acceptance-windows.log`,
+`build/wave-core-final-ubuntu.log`, `build/wave-asan-final.log`.
+
+Full Windows/Ubuntu suites pass their other 13/14 gates (156.49s / 297.41s);
+the sole initial core failure is repaired and has passing final reruns above.
+The final Windows full rebuild also succeeds after the transient relink conflict.
+Connected audio audits pass on both systems: 126 cases / 965,826 samples, maximum
+error 7.39476e-8 at 1e-6 (`build/wave-audio-windows.log`,
+`build/wave-audio-ubuntu.log`). No audio-path tolerance changed.
+
+Production processor/editor pointer/PCM workflows pass at 64/128 samples,
+including new real captured-waveform pixels and known-ID payload omission, with
+all existing Q/nudge/main/sync/4s STOP checks (`build/wave-mouse.log`). The real
+captured screenshot `build/native-mouse-waveform.png` was visually inspected.
+Standalone WebView, original layout/logo, count-in WebAudio and tiny-nudge browser
+regressions also pass, without a product AudioContext (`build/wave-ui.log`).
+Existing Windows Standalone rebuilt; no package/version change. Physical input,
+DAW/plugin lifecycle, Apple/iOS and complete application parity remain separate
+acceptance work. This accepts committed-loop waveform display only.

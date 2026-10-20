@@ -87,6 +87,8 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     // epochs cross from audio; string allocation and destruction stay here.
     aion::EngineView view{};
     while (engine.popView(view)) latest = view;
+    aion::WaveformEvent waveform{};
+    while(engine.popWaveform(waveform))waveformCache[waveform.track]=waveform;
     if (latest.generation != nameGeneration) {
         if (latest.audioReset) trackNames.fill({});
         nameGeneration = latest.generation;
@@ -126,6 +128,8 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("countInAudio",timing.settings.countInAudio);result->setProperty("countInFlash",static_cast<int>(latest.countInFlash));
         result->setProperty("gridLength",timing.loopSeconds);result->setProperty("barLength",timing.barSeconds);
         result->setProperty("gridPosition",timing.position);result->setProperty("syncFrame",static_cast<juce::int64>(timing.frame));
+        const auto known=request.getProperty("knownWaveforms",{});
+        const bool sameGeneration=static_cast<int>(request.getProperty("knownGeneration",0))==static_cast<int>(latest.generation);
         juce::Array<juce::var> tracks;
         for (const auto& t : latest.tracks) {
             auto* object = new juce::DynamicObject();
@@ -134,6 +138,18 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             object->setProperty("length", static_cast<int>(t.length)); object->setProperty("position", static_cast<int>(t.position));
             object->setProperty("undoCount",static_cast<int>(t.undoCount));object->setProperty("redoCount",static_cast<int>(t.redoCount));
             object->setProperty("reverse", t.reverse);
+            object->setProperty("waveformId",static_cast<juce::int64>(t.waveformId));
+            const auto trackIndex=static_cast<int>(&t-latest.tracks.data());
+            const bool alreadyKnown=sameGeneration&&known.isArray()&&known.size()==static_cast<int>(aion::LoopBank::trackCount)&&static_cast<juce::int64>(known[trackIndex])==static_cast<juce::int64>(t.waveformId);
+            const auto& cached=waveformCache[static_cast<unsigned>(trackIndex)];
+            if(!alreadyKnown){
+                if(!t.waveformId)object->setProperty("wavePeaks",juce::var());
+                else if(cached.generation==latest.generation&&cached.id==t.waveformId){
+                    juce::Array<juce::var> peaks;peaks.ensureStorageAllocated(aion::LoopBank::waveformWidth);
+                    for(const auto peak:cached.peaks)peaks.add(peak);
+                    object->setProperty("wavePeaks",peaks);
+                }
+            }
             object->setProperty("startDelay",t.startDelay);object->setProperty("phaseApplyFrame",static_cast<juce::int64>(t.phaseApplyFrame));
             object->setProperty("scheduledFrame",static_cast<juce::int64>(t.scheduledFrame));object->setProperty("stopPending",t.stopPending);
             object->setProperty("effectiveRate",t.effectiveRate);object->setProperty("dynamicRecorded",t.dynamicRecorded);

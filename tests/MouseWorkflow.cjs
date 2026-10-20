@@ -80,6 +80,14 @@ let socket;
     let playing=await state('playing');assert(playing.tracks[0].length>4800,'Real captured PCM committed');
     await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await wait(s=>s.outputPeak>0.02,'Captured PCM renders through production processor');
+    const waveform=await wait(s=>s.tracks[0].waveformId>0&&s.tracks[0].wavePeaks?.length===720,'Worker waveform reaches native editor');
+    assert(waveform.tracks[0].wavePeaks.some(p=>p>0.01),'Real committed PCM yields waveform peaks');
+    await delay(200);
+    const canvas=await evaluate(`(()=>{const c=document.querySelector('#loop-0 canvas'),ctx=c.getContext('2d'),w=c.width,h=c.height;let shaped=0;for(const x of [Math.floor(w/4),Math.floor(w/2),Math.floor(w*3/4)]){const column=ctx.getImageData(x,0,1,h).data,mid=Math.floor(h/2)*4;if(column[mid+1]>0&&column[3]===0&&column[(h-1)*4+3]===0)shaped++;}return {shaped,w,h};})()`);
+    assert(canvas.shaped>=2,'Canvas shows original centered waveform bars rather than full-height progress fill: '+JSON.stringify(canvas));
+    const known=await evaluate(`AionNative.request({operation:'snapshot',knownGeneration:${waveform.generation},knownWaveforms:${JSON.stringify(waveform.tracks.map(t=>t.waveformId))}})`);
+    assert(!Object.hasOwn(known.tracks[0],'wavePeaks'),'Unchanged waveform payload omitted on acknowledged polls');
+    const screenshot=await call('Page.captureScreenshot',{format:'png'});require('node:fs').writeFileSync(require('node:path').resolve(__dirname,'../build/native-mouse-waveform.png'),Buffer.from(screenshot.data,'base64'));
     // Drag the original Start slider using actual pointer input, then release.
     const beforePhase=await snapshot();
     const phaseRect=await evaluate(`(()=>{const e=document.getElementById('loop-start-slider-0');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x,y:r.y+r.height/2,w:r.width};})()`);

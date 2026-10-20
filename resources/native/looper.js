@@ -292,6 +292,8 @@
             const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)',multiplying:'(M)',finalizing:'[..]',armed:'(A)',queued:'[Q]',stopping:'[S]'};
             rows.forEach((r,i)=>{
                 const t=snapshot.tracks[i];
+                if(!t.waveformId){r.waveformId=0;r.wavePeaks=null;}
+                else if(t.wavePeaks){r.waveformId=t.waveformId;r.wavePeaks=t.wavePeaks;}
                 if(document.activeElement!==r.name)r.name.value=t.name??'';
                 r.row.className=`loop ${t.state}`;
                 r.row.querySelectorAll('[data-native-control]').forEach(e=>e.disabled=!active);r.name.disabled=false;
@@ -322,8 +324,7 @@
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
                 r.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
                 r.mute.textContent=t.muted?'UNM':'MUTE';r.mute.setAttribute('aria-pressed',String(t.muted));
-                const ctx=r.canvas.getContext('2d'),w=r.canvas.width,h=r.canvas.height;ctx.clearRect(0,0,w,h);ctx.fillStyle=t.state==='recording'?'#f00':'#0f0';
-                if(t.length)ctx.fillRect(0,0,w*t.position/t.length,h);
+                window.AionDrawWaveform(r.canvas,{state:t.state,wavePeaks:r.waveformId===t.waveformId?r.wavePeaks:null},t.length?t.position/t.length:0);
                 r.row.querySelector(`#loop-ascii-vu-${i}`).textContent='|'.repeat(Math.min(20,Math.round(t.peak*20)));
             });
             document.getElementById('odModeIndicator').style.display=mode==='overdub'?'':'none';
@@ -357,9 +358,9 @@
         }
         async function poll() {
             try {
-                const reply=await rpc({operation:'snapshot'});if(!reply.ok)throw Error(reply.error || 'State unavailable');
+                const reply=await rpc({operation:'snapshot',knownGeneration:snapshot?.generation??0,knownWaveforms:rows.map(r=>r.waveformId??0)});if(!reply.ok)throw Error(reply.error || 'State unavailable');
                 if(!alive)return;
-                if(snapshot && reply.generation!==snapshot.generation){scheduler.reset();keyboard.cancel();}
+                if(snapshot && reply.generation!==snapshot.generation){scheduler.reset();keyboard.cancel();rows.forEach(r=>{r.waveformId=0;r.wavePeaks=null;});}
                 if(reply.frame!==lastFrame || reply.generation!==snapshot?.generation){lastFrame=reply.frame;advancedAt=Date.now();}
                 snapshot=reply;
                 if(!rows.length)createRows(reply);

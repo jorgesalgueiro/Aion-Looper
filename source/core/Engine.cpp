@@ -10,7 +10,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     if (preparedRate != rate || loops.capacity() != std::clamp(poolFrames / LoopBank::blockFrames, 1u, LoopBank::maxBlocks) * LoopBank::blockFrames)
         loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005), rate);
     else (void) loops.apply(LoopAction::stopAll, 0);
-    loops.resetTimeline();metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
+    loops.resetTimeline();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     frame = 0; gain = target = increment = 0.0f; remaining = 0;
@@ -82,6 +82,17 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
     }
     // Telemetry is lossy by design; never wait when the editor is closed/slow.
     (void) meters.push({frame, peak});
-    (void) views.push({loops.view(), frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame)});
+    const auto tracks=loops.view();
+    unsigned emitted=0;
+    for(unsigned n=0;n<LoopBank::trackCount&&emitted<2;++n){
+        const auto id=waveformCursor;waveformCursor=(waveformCursor+1)%LoopBank::trackCount;
+        const auto revision=tracks[id].waveformId;
+        if(!revision){sentWaveforms[id]=0;continue;}
+        if(revision==sentWaveforms[id])continue;
+        WaveformEvent event{};event.generation=generation();event.track=id;event.id=revision;
+        if(loops.copyWaveform(id,revision,event.peaks)&&waveforms->push(event)){sentWaveforms[id]=revision;++emitted;}
+        else break; // Closed/slow editor: retry later, never wait.
+    }
+    (void) views.push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame)});
 }
 }

@@ -12,7 +12,7 @@ repair), the loop Rvers control, per-loop/global Undo/Redo, and original MULT
 capture/doubling, and the internal Master BPM static/dynamic arm-record-play
 workflow with unified mouse/keyboard gestures, native session naming and the
 continuous monitor-only metronome, static SOUND/VISUAL count-in and the original
-Start slider/Q/nudge buttons. Offline DSP and connected
+Start slider/Q/nudge buttons and committed-loop waveform display. Offline DSP and connected
 committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.
@@ -141,3 +141,13 @@ no-ops, atomic FIFO rollback and panic/DEL cancellation. Multi-cycle tiny clips
 are intentionally repaired to [0,1]; document that distinction from reference
 parity. NudgeWebAudio.cjs reproduces the original negative-offset RangeError and
 checks wrapped playback. Retain actual mouse and bridge checks at 64/128.
+
+Waveform acceptance retains unchanged generateWaveformPeaks (720 bins, ceil
+partition, max across stereo channels, padded tail) and original canvas draw
+comparisons. Peaks belong to immutable worker clips; callback metadata and bounded
+fixed-size SPSC copies must never scan PCM or allocate/free/lock. Keep telemetry
+storage off large Windows stack frames. Preserve identity/generation guards,
+known-ID payload omission, slow-editor recovery for all 20 tracks and cache
+lifecycle through NORM (no history entry), edits/Undo/Redo, Multiply/OOM, DEL/reset.
+Retain actual captured-waveform pixel checks at 64/128. Live recording oscilloscope
+and additional canvas interactions are separate migration work.

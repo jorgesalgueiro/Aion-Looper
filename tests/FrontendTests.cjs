@@ -298,3 +298,21 @@ keyboard.down(key('KeyZ','z',{metaKey:true,shiftKey:true,target:{tagName:'INPUT'
 assert.deepEqual(events.splice(0),[['history',false],['history',true]]);
 snapshot.tracks[0].undoCount=2;snapshot.tracks[0].redoCount=1;cards=context.window.AionLoopMarkup(snapshot,'normal');
 assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/.test(cards[0]),'Original history buttons reflect native counts');
+
+{
+ const reference=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');
+ const a=reference.indexOf('                // Draw Waveform',reference.indexOf('static updateLivePerformanceState'));
+ const b=reference.indexOf(' else if ((loop.state',a);assert(a>=0&&b>a);
+ const original=reference.slice(a,b);
+ const renderer=fs.readFileSync(path.join(root,'resources/native/loop-view.js'),'utf8').split('window.AionDrawWaveform=')[1];assert(renderer);
+ for(const dpr of [1,1.25,2,4])for(const w of [1,180,720,1200])for(const state of ['empty','playing','stopped','queued','stopping','overdubbing','multiplying'])for(const progress of [0,0.333,1]){
+  const run=native=>{const ops=[],ctx={};for(const key of ['resetTransform','scale','clearRect','fillRect'])ctx[key]=(...v)=>ops.push([key,...v,ctx.fillStyle,ctx.globalAlpha]);
+   const cvs={clientWidth:w,clientHeight:30,width:300,height:40,getContext:()=>ctx},loop={state,wavePeaks:Array.from({length:720},(_,i)=>Math.abs(Math.sin(i*0.19))*0.8)};
+   const context={window:{devicePixelRatio:dpr},cvs,loop,progress};vm.createContext(context);
+   if(native)vm.runInContext('const draw='+renderer+';draw(cvs,loop,progress);',context);
+   else vm.runInContext(`const dpr=window.devicePixelRatio,w=cvs.clientWidth,h=cvs.clientHeight,playheadX=Math.floor(progress*w),ctx=cvs.getContext('2d');cvs.width=Math.round(w*dpr);cvs.height=Math.round(h*dpr);ctx.resetTransform();ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);${original};if(loop.state!=='empty'){ctx.fillStyle='#fff';ctx.fillRect(playheadX,0,1,h);}`,context);
+   return {ops,width:cvs.width,height:cvs.height};};
+  assert.deepEqual(run(true),run(false),'Original waveform canvas parity');
+ }
+ console.log('PASS: original waveform colors, dim/bright bars, white playhead and HiDPI canvas operations');
+}

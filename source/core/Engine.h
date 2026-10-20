@@ -14,6 +14,7 @@ struct LoopCommand {
     std::uint64_t frame = 0;
     double value = 0;
 };
+struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct EngineView {
     std::array<LoopView, LoopBank::trackCount> tracks{};
     std::uint64_t frame = 0;
@@ -38,6 +39,7 @@ public:
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
     bool finalizationPending() const noexcept { return loops.finalizationPending(); }
+    bool popWaveform(WaveformEvent& event) noexcept {return waveforms->pop(event);}
     bool popView(EngineView& view) noexcept { return views.pop(view); }
     std::uint32_t generation() const noexcept { return epoch.load(std::memory_order_acquire); }
     void setTarget(float value) noexcept;
@@ -53,6 +55,9 @@ private:
     std::uint32_t countInTrack=0;
     SpscQueue<LoopCommand, 256> loopCommands;
     SpscQueue<EngineView, 8> views;
+    std::unique_ptr<SpscQueue<WaveformEvent,8>> waveforms=std::make_unique<SpscQueue<WaveformEvent,8>>(); // Allocate off callback, avoid large engine stack frames.
+    std::array<std::uint64_t,LoopBank::trackCount> sentWaveforms{};
+    unsigned waveformCursor=0;
     std::atomic<std::uint32_t> epoch{0};
     LoopCommand pendingLoop{};
     bool hasPendingLoop = false, monitoring = true, rejected = false, audioReset = false;
