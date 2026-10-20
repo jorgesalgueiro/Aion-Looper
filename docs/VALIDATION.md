@@ -1550,3 +1550,38 @@ physical ASIO/latency, DAW/MIDI and full application parity remain separate work
 Only the existing Windows Standalone and excluded mouse host were incrementally
 rebuilt. Version remains 0.4.3; no installer, distribution ZIP or additional format
 package was created. The user's local ASCII-logo template edits remain uncommitted.
+
+### WAV export Windows manual gate and lifecycle follow-up — 2026-10-20
+
+The earlier pending Windows visibility/save gate is now resolved. The user
+confirmed the real dialog was visible and saved `NativePicker_1792525456508.wav`
+in Documents. NativePickerProbe reported `WAV saved`, exportBusy false, and the
+same playing 24960-frame clip at 48000 Hz. Independently read
+`D:\Jorge\Documents\NativePicker_1792525456508.wav`: valid RIFF size, 99884 bytes,
+stereo PCM16, 48000 Hz, 24960 frames; both channels contain nonzero, distinct PCM.
+Absolute integer peaks are 8194 and 8413. SHA-256:
+`7abfd57b1e9e12956db2faa8512511cf167567cb4fd5b4311761cd3809751915`.
+The Windows helper's capture timeout/no returned dialog window was an automation
+limitation, not evidence that the actual dialog was invisible. The synthetic
+host remains open for the user; no physical input or device was used.
+
+Extended ExportWorkflow to cancel a pending destination, start another export,
+then deliver the obsolete callback with a valid destination while the replacement
+picker waits. It checks no obsolete file is written, the replacement keeps its
+own busy state/filename/status, clip identity and transport command ID are
+unchanged, and the replacement's entire WAV equals the earlier stored snapshot.
+Existing production guards pass; no DSP or product UI change was required.
+
+- Production processor/editor export workflows pass at 64 and 128 samples,
+  including cancel/replacement/late-callback isolation
+  (`build/wav-picker-lifecycle.log`).
+- Windows exact-JS WAV, frontend command-ordering and waveform gates pass 3/3,
+  15.70s. The broader Windows/Ubuntu/sanitizer results above remain the latest;
+  they were not rerun for this test-only follow-up.
+- No rebuild, version change, installer or distribution package was needed.
+  The user's local logo edits remain untouched and unstaged.
+
+This accepts the Windows stored-PCM waveform export increment within the tested
+scope. Actual OS Cancel/overwrite button interaction, Apple/Linux native picker
+behavior, physical ASIO/latency, DAW/MIDI and full application parity remain
+separate validation work. No subsequent feature was implemented in this follow-up.

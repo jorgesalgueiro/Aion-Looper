@@ -40,6 +40,24 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
   else if(name==='Fail'){assert(done.exportStatus.includes('failed'));assert(!fs.existsSync(file));}
   else {assert.equal(done.exportStatus,'WAV saved');const wav=fs.readFileSync(file);assert.equal(wav.length,44+length*4);assert.equal(wav.toString('ascii',0,4),'RIFF');assert.equal(wav.readUInt16LE(22),2);assert.equal(wav.readUInt32LE(24),48000);assert.equal(wav.readUInt16LE(34),16);assert(wav.subarray(44).some(v=>v!==0),'Committed native stereo PCM saved');}
  }
+ // A canceled picker may deliver its callback after the next export is already
+ // choosing a destination. It must neither write the old snapshot nor cancel,
+ // finish or replace the new request's status. Use an ordinary filename so the
+ // fixture supplies a real destination, rather than its Cancel_* shortcut.
+ const obsolete=`OldPicker_${Date.now()}.wav`,replacement=`NewPicker_${Date.now()}.wav`;
+ assert((await rpc({operation:'exportLoop',track:0,generation:s.generation,waveformId:identity,filename:obsolete})).ok);
+ await wait(s=>s.exportStatus==='Choose a WAV destination','old picker ready');
+ assert((await rpc({operation:'cancelExport'})).ok);
+ await wait(s=>!s.exportBusy&&s.exportStatus==='WAV export cancelled','explicit picker cancellation');
+ assert((await rpc({operation:'exportLoop',track:0,generation:s.generation,waveformId:identity,filename:replacement})).ok);
+ await wait(s=>s.exportBusy&&s.exportFilename===replacement&&s.exportStatus==='Choose a WAV destination','replacement picker ready');
+ choose(obsolete);await delay(300);s=await snapshot();
+ assert(!fs.existsSync(path.join(directory,obsolete)),'Canceled picker cannot save through a late callback');
+ assert(s.exportBusy&&s.exportFilename===replacement&&s.exportStatus==='Choose a WAV destination','Old callback cannot finish or alter the replacement picker');
+ assert.equal(s.tracks[0].waveformId,identity);assert.equal(s.lastRequestId,requestId);
+ choose(replacement);s=await wait(s=>!s.exportBusy,'replacement saved');
+ assert.equal(s.exportStatus,'WAV saved');
+ assert.deepEqual(fs.readFileSync(path.join(directory,replacement)),fs.readFileSync(path.join(directory,fresh.exportFilename)),'Replacement keeps the exact stored snapshot');
  // Reload cancels an unchosen destination; its old async callback must not
  // write a file or hijack the next export after a fresh editor bootstrap.
  const abandoned=`Abandoned_${Date.now()}.wav`;assert((await rpc({operation:'exportLoop',track:0,generation:s.generation,waveformId:identity,filename:abandoned})).ok);
@@ -72,5 +90,5 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
  await wait(s=>s.tracks[0].state==='empty','DEL before choosing');choose('Pinned.wav');
  const cleared=await wait(s=>!s.exportBusy&&s.tracks[0].state==='empty','delete while picker pending');assert.equal(cleared.exportStatus,'WAV saved');assert.deepEqual(fs.readFileSync(path.join(directory,'Pinned.wav')),fs.readFileSync(overwrite));
  assert.deepEqual(errors,[],'No native editor runtime errors');
- console.log(`PASS: real waveform mouse/IPC export, stored stereo PCM, cancel/failure/recovery/overwrite/DEL and transport isolation at ${process.argv[2]} samples; host picker substitutes only destination selection`);ws.close();
+ console.log(`PASS: real waveform mouse/IPC export, stored stereo PCM, cancel/replacement/late-callback isolation/failure/recovery/overwrite/DEL and transport isolation at ${process.argv[2]} samples; host picker substitutes only destination selection`);ws.close();
 })().catch(e=>{console.error(e);socket?.close();process.exitCode=1;});

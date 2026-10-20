@@ -204,13 +204,19 @@ validated immutable lease; worker encodes/releases it and message consumes bytes
 Preserve bounded independent requests, full-pool/DEL/prepare/OOM recovery and zero
 callback new/delete. Native navigation and editor destruction cancel an unchosen
 destination; do not rely on unload RPC or new-page bootstrap timing. Late picker
-callbacks must fail lifetime/sequence checks. Keep background temporary-file write/
+callbacks must fail lifetime/sequence checks. Retain the cancel/replacement test:
+deliver the obsolete picker's valid destination while the replacement is waiting,
+assert no obsolete file/status/transport mutation, then verify replacement WAV
+bytes. Keep background temporary-file write/
 flush/error/replace checks. Test-host picker injection is not OS-dialog validation.
 Keep frontend export in gesture order after edits/finalization, with the latest
 committed identity and click-time filename. Retain rapid NORM/export, unsent DEL
-cancellation and quiet repeated clicks. OS-picker save/visibility is still a
-manual acceptance gate: automation could not expose that dialog on this PC. Stay
-on this feature until that gate is resolved; do not label full export acceptance.
+cancellation and quiet repeated clicks. Windows OS-picker visibility/save was
+confirmed by the user on 2026-10-20; the saved Documents WAV was independently
+validated against the live clip's length/rate and stereo PCM16 structure. The
+automation helper's missing window was not proof of an invisible dialog. This
+closes that Windows gate only; other platforms and OS Cancel/overwrite button
+interaction remain separate checks. See docs/VALIDATION.md for exact scope.
 
 Mouse fixtures must retain actual CDP pointer events and 240 BPM SOUND/cancel
 assertions. Observe short cues from actual rendered callback PCM and its audio-
