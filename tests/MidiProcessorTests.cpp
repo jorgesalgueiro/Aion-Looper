@@ -1,0 +1,39 @@
+#include "plugin/Processor.h"
+#include <juce_gui_extra/juce_gui_extra.h>
+#include <cstdlib>
+#include <iostream>
+#include <new>
+namespace {thread_local bool audioWatch=false;std::atomic<int> audioAllocations{0};void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}}
+void* operator new(std::size_t n){if(audioWatch)++audioAllocations;if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
+void operator delete(void* p) noexcept {if(audioWatch)++audioAllocations;std::free(p);}
+void* operator new[](std::size_t n){return ::operator new(n);}void operator delete[](void* p) noexcept {::operator delete(p);}
+void operator delete(void* p,std::size_t) noexcept {::operator delete(p);}void operator delete[](void* p,std::size_t) noexcept {::operator delete(p);}
+int main(){
+ juce::ScopedJuceInitialiser_GUI gui;
+ for(const int block:{64,128}){
+  auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);
+  const auto rpc=[&](const juce::String& json){auto result=p->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};
+  juce::AudioBuffer<float> audio(2,block);juce::MidiBuffer midi;midi.ensureSize(8192);
+  const auto process=[&]{const int events=midi.getNumEvents();for(int c=0;c<2;++c)for(int i=0;i<block;++i)audio.setSample(c,i,c?0.17f:0.25f);audioWatch=true;p->processBlock(audio,midi);audioWatch=false;check(midi.getNumEvents()==events,"Incoming host MIDI remains available for pass-through");midi.clear();};
+  rpc(R"({"operation":"midiConfig","action":"enable","enabled":true})");process();
+  midi.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),17);process();
+  auto state=rpc(R"({"operation":"snapshot"})");check(state["tracks"][0]["state"].toString()=="recording"&&static_cast<int>(state["tracks"][0]["length"])==block-17,"Actual MidiBuffer sample offset reaches native recorder");
+  // Learning consumes a two-byte program with data1==0; it must not finish the
+  // recording through the old mapping or assume a nonexistent velocity byte.
+  rpc(R"({"operation":"midiConfig","action":"learn","target":19})");process();midi.addEvent(juce::MidiMessage::programChange(16,0),0);process();rpc(R"({"operation":"snapshot"})");process();
+  state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["bindings"][19])==aion::midiBinding(3,0),"Processor MIDI learn bridge commits PC zero");
+  juce::MemoryBlock saved;p->getStateInformation(saved);
+  auto restored=std::make_unique<AionProcessor>();restored->setPlayConfigDetails(2,2,8000,block);restored->prepareToPlay(8000,block);restored->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));
+  juce::MemoryBlock roundtrip;restored->getStateInformation(roundtrip);check(saved==roundtrip,"MIDI mappings persist immediately, including before resumed audio callbacks");
+  juce::AudioBuffer<float> restoredAudio(2,block);restoredAudio.clear();juce::MidiBuffer restoredMidi;restoredMidi.ensureSize(256);restoredMidi.addEvent(juce::MidiMessage::programChange(1,0),0);
+  audioWatch=true;restored->processBlock(restoredAudio,restoredMidi);audioWatch=false;
+  const auto restoredView=restored->request({juce::JSON::parse(R"({"operation":"snapshot"})")});check(restoredView["tracks"][19]["state"].toString()=="recording","Saved learned mapping performs with no editor or WebView");
+  auto xml=juce::AudioProcessor::getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));check(xml!=nullptr,"Native state XML");auto* stored=xml->getChildByName("MidiSettings");check(stored!=nullptr,"MIDI state subtree");stored->setAttribute("binding19",static_cast<int>(aion::midiBinding(1,36)));juce::MemoryBlock invalid;juce::AudioProcessor::copyXmlToBinary(*xml,invalid);
+  restored->setStateInformation(invalid.getData(),static_cast<int>(invalid.getSize()));juce::MemoryBlock preserved;restored->getStateInformation(preserved);check(preserved==roundtrip,"Invalid duplicate mapping preserves complete prior state");
+  rpc(R"({"operation":"midiConfig","action":"learn","target":18})");process();p->cancelMidiLearn();process();midi.addEvent(juce::MidiMessage::programChange(1,3),0);process();state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["bindings"][18])==0,"Editor cancellation leaves old binding intact");
+  midi.clear();for(int i=0;i<300;++i)midi.addEvent(juce::MidiMessage::noteOn(1,40,juce::uint8{100}),0);process();state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["overflows"])>0,"Bounded MidiBuffer overflow reported and held actions cancelled");
+  for(const auto* request:{R"({"operation":"midiConfig","action":"learn","target":20})",R"({"operation":"midiConfig","action":"mode","mode":7})",R"({"operation":"midiConfig","action":"enable","enabled":1})"})check(!p->request({juce::JSON::parse(request)}).getProperty("ok",false),"Invalid MIDI IPC rejected");
+ }
+ check(audioAllocations.load()==0,"Production processBlock MIDI path must perform zero new/delete");
+ std::cout<<"PASS: actual juce::MidiBuffer offsets, PC0 learn/consume, state roundtrip/invalid rollback, cancellation/overflow/IPC and zero processBlock new/delete at 64/128\n";
+}

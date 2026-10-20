@@ -5,7 +5,7 @@
 | Original runtime assets | 16 files preserved with SHA256 | Automated byte identity checks |
 | Native build formats | CMake targets/platform guards configured | Compile/load/validate each OS+format |
 | Original UI runtime | Original loop cards, module placement, tabs and keyboard gestures; legacy audio JS blocked | Full view adapter and original interaction tests |
-| IPC/APVTS | Coherent snapshots, generation/expiry validation, loop commands, master/monitor/auto-play APVTS; parameter XML only | Session/generation tests, gestures, automation/state stress |
+| IPC/APVTS | Coherent snapshots, generation/expiry validation, loop commands, master/monitor/auto-play APVTS and persisted MIDI bindings | Session/generation tests, gestures, automation/state stress |
 | Audio owner | 20-slot native looper, bounded pool, smoothed gain/mute, finite protection | Hardware/DAW audio, 64/128 stress and allocation instrumentation |
 | Host transport | BPM/PPQ/play observation | Meter/cycle/seek and sample-accurate scheduling/sync |
 | Loop recording/play/stop/overdub/substitute | Single capture owner and worker finalization; manual and static/dynamic zero-latency committed PCM comparisons pass | Hardware capture, latency compensation and long-session tests |
@@ -27,7 +27,8 @@
 | Loop Merge | Original MERGE selector/GO, stopped clone into empty destination or circular raw-PCM mix at feedback 1; preserved destination phase/length, local/global Undo/Redo and original optional source-clear confirmation | Unchanged user-level JS, exact stereo WAV and <=1e-6 playback; worker pins/OOM/DEL/full-pool, dynamic metadata, native 64/128 PCM/mouse/confirmation and stale-source guards; full browser transition envelopes/physical drivers remain separate |
 | Other loop editing/import/export | Remaining editing, import and wet/mixed exports not ported | Reference PCM/state/UI fixtures |
 | Drone voices/sampler/tracker/FX | Not ported | Algorithm/timing/CPU and saved-state fixtures |
-| MIDI learn/FCB1010/Oxygen/HID | Designed, not implemented | Real hardware, reconnect/panic and learn matrix |
+| MIDI looper control/learn | Native Note/CC/Program Change actions, original mapping table, OD/SUB/SUS, standalone port routing and persisted bindings; works without editor | Original default-note oracle, processor/allocation and native 64/128 tests pass; physical AudioBox USB PC 0 learn and playback observed; broader hardware/reconnect tests pending |
+| MIDI expression/synth/HID | Continuous parameter learn, synth keyboard/pitch/modulation and gamepad not ported | Controller matrix, voice/parameter behavior and original reference fixtures |
 | MIDI clock I/O | Designed, not implemented | PLL jitter/timeout/start/stop/SPP/host-loop tests |
 | `.alp` / native projects | Not ported | Existing project fixtures, no missing features/data |
 | Windows ASIO | Windows binaries compile with bundled SDK; not hardware-tested | TOPPING/other driver duplex at 64/128 |

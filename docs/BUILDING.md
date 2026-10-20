@@ -370,3 +370,35 @@ Incrementally build the existing Standalone and `aion_mouse_host` targets. Run
 confirmation and saved-PCM checks at 64/128; the default runner retains main
 performance and WAV export gates as well. Test WAVs remain under the existing
 build directories. No installer, ZIP or test-host installation is needed.
+
+### MIDI looper testing
+
+Enable MIDI in the original mapping panel. In Standalone select the desired
+native input port; in a plugin route MIDI from the host. Click a loop's MIDI
+field and send a Note, CC or Program Change to learn it. Right-click clears it;
+Escape cancels learning; SAVE MAPPINGS persists native settings (a DAW saves
+plugin state). Learning consumes the message without performing its action.
+Defaults are notes 36-45 for loops 1-10, 46 OD, 47 SUB and 48 SUS. Loops 11-20
+can be learned. PC 0 is valid. Program Changes act once per message; CC acts on
+a positive edge and must return to zero before another action. Neither is a
+held-delete gesture. Notes retain 600ms cut and four-second uninterrupted
+STOP-origin deletion. The existing EN/ES/PT manual panels include these rules.
+
+Incrementally build AionLooper_Standalone, aion_mouse_host and the excluded
+`aion_midi_processor_tests` in the existing Windows tree. Run:
+
+```powershell
+ctest --test-dir build/windows-core -C Release --output-on-failure
+build/windows/Release/aion_midi_processor_tests.exe
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/TestMouseWorkflow.ps1 -MidiOnly
+```
+
+The default mouse runner also retains main/export/merge checks at both 64/128.
+Ubuntu core uses `ctest --test-dir build/core --output-on-failure` under WSL;
+ASan/UBSan uses build/core-asan with ASAN_OPTIONS=detect_leaks=1. GUI suites run
+sequentially. Synthetic MIDI file injection exists only in the excluded test
+host; release builds have no MIDI injection RPC. The optional real-device helper
+`node tests/MidiHardwareProbe.cjs status` observes an explicitly debug-launched
+Standalone on localhost 9236 and never synthesizes physical MIDI. No package or
+version bump is needed. Continuous expression/parameter learn, synth MIDI,
+clock I/O and gamepad remain separate increments.

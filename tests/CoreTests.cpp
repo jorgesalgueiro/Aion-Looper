@@ -28,6 +28,7 @@ void startPhaseTests();
 void stutterTests();
 void exportTests();
 void mergeTests();
+void midiTests();
 void waveformTests();
 void liveInputTests();
 int main() {
@@ -62,6 +63,7 @@ int main() {
     stutterTests();
     exportTests();
     mergeTests();
+    midiTests();
     waveformTests();
     liveInputTests();
     std::cout<<"PASS: queue bounds/concurrency, sample timing, smoothing, 64/128 invariance, no callback new/delete, finite output\n";

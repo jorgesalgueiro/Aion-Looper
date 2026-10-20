@@ -1658,3 +1658,52 @@ plugin-format package was made. Local user logo edits remain untouched and
 unstaged. Physical drivers/latency, DAW/MIDI, exact overlapping WebAudio source
 transitions and Apple/Linux native UI remain separate acceptance work. This
 increment does not establish full application parity or production readiness.
+
+### MIDI looper control and learn (2026-10-20)
+
+Scope: original note-driven loop main actions, OD/SUB/SUS, native learn for
+Note/CC/PC, standalone MIDI routing and persisted bindings. Original ASCII UI
+assets remain byte-identical. Continuous parameter/expression mappings, synth
+MIDI, MIDI clock and HID/gamepad remain unported.
+
+- Windows full core/reference suite: 18/18, 260.57s
+  (`build/midi-tests-windows.log`); Ubuntu 18/18, 435.50s
+  (`build/midi-tests-ubuntu.log`). Final additional core/MIDI cases pass 2/2,
+  29.82s (`build/midi-final-core-windows.log`). Final ASan/UBSan with leak
+  detection passes core/MIDI/frontend 3/3, 16.84s (`build/midi-final-asan.log`).
+- Unchanged default MIDI handler/table comparisons cover 16384 messages.
+  Core tests retain exact MIDI/direct-action stereo WAV bytes and sample offsets,
+  600ms/4s boundaries, PC/CC pulse rules, SUS release/cancel, absent-input rejection,
+  long RECORD-origin protection, MIDI Stop cancellation and zero callback new/delete.
+- Actual production JUCE processor tests pass at 64/128, including learned PC 0
+  restored and performed with no editor, invalid state rollback and zero
+  processBlock new/delete (`build/midi-acceptance-processor.log`).
+- Full main/export/merge/MIDI mouse/PCM workflows pass at 64/128
+  (`build/midi-mouse-full.log`). Final focused MIDI mouse tests pass at both
+  block sizes (`build/midi-acceptance-mouse.log`). These use the production
+  processor/editor and synthetic PCM/MIDI, not a physical input device.
+- Unchanged NativeUiSmoke exposed an OD/SUB regression: an old MIDI mode snapshot
+  overwrote a newer keyboard choice (`build/midi-ui.log`). Fixed with revision
+  acknowledgement fencing; retained the original failing assertion and added a
+  deterministic out-of-order reply/snapshot regression. Final unchanged native
+  UI/bridge and actual WebAudio count-in/nudge/analyser/STUT checks pass
+  (`build/midi-acceptance-ui.log`). No product AudioContext is created.
+- Connected capture/overdub/substitute audit passes on Windows and Ubuntu:
+  126 cases, 965826 samples, maximum error 7.394757495227111e-8 at unchanged 1e-6
+  (`build/midi-audio-windows.log`, `build/midi-audio-ubuntu.log`).
+- Real Standalone: AudioBox USB MIDI input enabled, output muted. User reports
+  Loop 1 learned `PC 0 ANY`; independent native telemetry confirms binding 3
+  (packed PC 0/omni), learn target cleared, six messages, three actions and a
+  stopped 176400-frame recording at 44100 Hz, with no overflow/rejected action.
+  Subsequent real-device observation confirms queued-to-playing playback with
+  the same recording intact (54 messages, 51 actions, no overflow/rejection).
+  User stop confirmation remains pending; this is not an audible listening,
+  disconnect/reconnect, DAW or latency acceptance claim.
+
+Full suite runs precede the final UI mode fence and processor input-ready cache;
+final processor, frontend/native UI and focused MIDI mouse tests exercise those
+fixes. The final binary rebuild adds only manual text afterwards. Only the
+existing Windows Standalone and excluded test tools were incrementally rebuilt;
+version remains 0.4.3 with no installer/ZIP/additional format package. Original
+local logo edits are preserved separately. Broader hardware, continuous MIDI
+parameters, clock, Apple/Linux UI and commercial readiness remain separate work.

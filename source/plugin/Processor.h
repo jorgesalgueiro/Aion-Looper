@@ -1,7 +1,10 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_audio_devices/juce_audio_devices.h>
 #include "core/Engine.h"
+#include <mutex>
 static_assert(std::atomic<float>::is_always_lock_free, "Audio parameter loads must be lock-free");
+static_assert(std::atomic<bool>::is_always_lock_free, "MIDI input readiness must be lock-free");
 class AionProcessor final : public juce::AudioProcessor, private juce::Timer {
 public:
     using ExportDestination = std::function<void(const juce::String&, std::function<void(juce::File)>)>;
@@ -27,10 +30,22 @@ public:
     void setStateInformation(const void*, int) override;
     void releaseStutter() noexcept {engine.cancelStutter();}
     void cancelExport(); // Editor close cancels an unchosen destination.
+    void cancelMidiLearn(); // MIDI performance continues without an editor.
     aion::AudioInspection inspectAudioThread(std::uint32_t track=0) const noexcept {return engine.inspectAudioThread(track);}
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:
+    std::recursive_mutex midiSettingsMutex; // Non-audio configuration/state serialization only.
+    aion::MidiSettings midiSettings;
+    std::atomic<bool> midiInputReady{false}; // Device queries stay off processBlock.
+    std::array<aion::MidiEvent,256> midiEvents{};
+    std::optional<aion::MidiLearnResult> pendingMidiLearn;
+    juce::String midiStatus;
+    juce::StringArray previousMidiDevices;
+    double nextMidiDeviceCheck=0;
+    juce::MidiDeviceListConnection midiDeviceChanges;
+    bool updateMidi(aion::MidiSettings);
+    void serviceMidi();
     void timerCallback() override;
     ExportDestination exportDestination; // Optional host-supplied file picker, never exposed through IPC.
     std::shared_ptr<int> exportLifetime=std::make_shared<int>(0);

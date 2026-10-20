@@ -34,6 +34,8 @@ juce::WebBrowserComponent::Options AionWebEditor::options(AionProcessor& process
         .withUserScript(juce::String::fromUTF8(AionUi::bridge_js, AionUi::bridge_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::loopview_js, AionUi::loopview_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::controls_js, AionUi::controls_jsSize))
+        .withUserScript(juce::String::fromUTF8(AionUi::midiview_js, AionUi::midiview_jsSize))
+        .withUserScript(juce::String::fromUTF8(AionUi::midi_js, AionUi::midi_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::looper_js, AionUi::looper_jsSize));
    #if JUCE_WINDOWS
     settings = settings.withBackend(juce::WebBrowserComponent::Options::Backend::webview2);
@@ -45,5 +47,5 @@ AionWebEditor::AionWebEditor(AionProcessor& owner)
     addAndMakeVisible(browser); setResizable(true, true); setSize(1200, 800);
     browser.goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
 }
-AionWebEditor::~AionWebEditor() {owner.releaseStutter();owner.cancelExport();}
+AionWebEditor::~AionWebEditor() {owner.releaseStutter();owner.cancelExport();owner.cancelMidiLearn();}
 void AionWebEditor::resized() { browser.setBounds(getLocalBounds()); }

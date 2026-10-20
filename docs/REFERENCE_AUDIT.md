@@ -385,3 +385,25 @@ or replaced takes, active new capture and panic/reset. These are documented
 safety adaptations, not claims of identical original races. Smooth forward
 source transitions retain native blending; exact overlapping WebAudio source
 envelopes, physical drivers and Apple/Linux UI remain separate acceptance work.
+
+### Native MIDI looper increment (2026-10-20)
+
+MidiParity.cjs executes unchanged App.handleMIDIMessage for 16384 default-map
+messages across all 16 channels, note numbers and release/velocity forms. It
+also retains exact original mapping-layout/table markup. The original handler's
+unmapped CC/PC behavior is compared; learned CC/PC looper actions are an explicit
+native extension, not a claim of ported original tracker/CC slider behavior.
+
+Core tests compare MIDI versus directly scheduled recording at sample offsets
+17/900: exact stereo PCM16 WAV bytes, length 883, at both 64/128 blocks. Native
+processor tests exercise actual JUCE MidiBuffer offsets, PC 0 learn/consume,
+persist/restore while paused, duplicate-state rollback, restored performance
+without editor, overflow and zero processBlock new/delete. Native mouse tests
+exercise original fields, learning, duplicate preservation, clear, reload,
+save/disable and PC pulse safety. Fixed input bounds and cancellation cover
+panic, stale future GUI actions, SUS restoration and held-note boundaries.
+
+Physical AudioBox USB learning of PC 0 is independently confirmed by the user
+and native telemetry. That observation does not prove other controller models,
+reconnect, expression, clock synchronization, host/plugin routing or audio
+hardware latency. See VALIDATION.md for exact regression evidence and limits.

@@ -120,7 +120,7 @@
 
         const mapping=document.getElementById('keyMappingUI');
         mapping.innerHTML='<div class="mapping-tabs"><button class="tab-btn active">Keyboard</button></div><div class="mapping-scroll-container"><table class="mapping-table">'+Array.from({length:20},(_,i)=>`<tr><td>Loop ${i+1}</td><td>${i<10?'':'Shift+'}${(i+1)%10}</td></tr>`).join('')+'<tr><td>Global OD</td><td>+</td></tr><tr><td>Global SUB</td><td>-</td></tr><tr><td>STOP ALL</td><td>Space</td></tr><tr><td>Metronome</td><td>N</td></tr><tr><td>Retrigger selected loop</td><td>/</td></tr><tr><td>Multiply selected loop</td><td>&#92;</td></tr></table></div>';
-        document.getElementById('midiStatus').textContent='Native MIDI mapping is not ported yet.';
+        const midi=window.AionMidiSetup({rpc,notify:message=>notify(message),setMode:next=>{mode=next;}});
         let selected=0;
         const enabled = () => snapshot?.audioReady && Date.now()-advancedAt < 1000;
         const scheduler = new window.AionCommandQueue({ready:()=>enabled()||scheduler.items[0]?.metadata===true,
@@ -238,7 +238,7 @@
                     return {action,track:id,value:0};
                 },{track:id,clearTrack:true});
             },
-            mode:next=>{mode=mode===next?'normal':next;refresh();},
+            mode:next=>{mode=mode===next?'normal':next;midi.mode(['normal','overdub','substitute'].indexOf(mode));refresh();},
             history:redo=>restoreHistory(redo),
             multiply:()=>multiply(selected),
             metronome:toggleMetronome,
@@ -420,6 +420,7 @@
                 if(snapshot && reply.generation!==snapshot.generation){scheduler.reset();stutter.cancel();keyboard.cancel();rows.forEach(r=>{r.waveformId=0;r.wavePeaks=null;});}
                 if(reply.frame!==lastFrame || reply.generation!==snapshot?.generation){lastFrame=reply.frame;advancedAt=Date.now();}
                 snapshot=reply;
+                midi.render(reply.midi);
                 mergeNotice.observe(reply);
                 if(!rows.length){releaseStutter(20);rpc({operation:'cancelExport'}).catch(e=>notify(e.message));createRows(reply);}
                 if(pending) {

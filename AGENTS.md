@@ -243,3 +243,19 @@ Queue ordered press/move/release before awaiting their
 acknowledgements so latency cannot turn a 20ms click into a >=600ms hold. Keep all
 original 3800/4200ms gestures and the analytical 3999/4000ms boundaries; never relax
 an assertion or change product DSP to compensate for test-transport latency.
+
+MIDI looper acceptance retains js_native_midi's unchanged original note handler
+and mapping-table markup, actual JUCE MidiBuffer processor checks and original
+mouse/keyboard/audio gates. Performance must work with no editor. Keep fixed
+256-event processing, bounded queues/press/task storage and zero callback
+new/delete/locks; device queries and state parsing belong off audio. Learn
+consumes its event, rejects overlapping bindings atomically and persists accepted
+queued settings. PC is a single pulse; CC is a positive edge rearmed by zero,
+never a held-delete source. Held notes retain the original 600ms cut and user
+4s STOP-origin-only delete boundaries. Panic/disable/device changes/overflow must
+cancel stale tasks and restore momentary SUS without deleting PCM. Preserve muted/
+absent input rejection, sample offsets, finalization FIFO and MIDI Stop's pending
+GUI-action purge. Native mode snapshots must not overwrite a newer UI choice:
+retain mode revision acknowledgement fencing and the unchanged NativeUiSmoke
+keyboard OD/SUB check. Physical PC learn is verified separately from synthetic
+PCM and does not establish MIDI clock, continuous expression, synth or HID parity.

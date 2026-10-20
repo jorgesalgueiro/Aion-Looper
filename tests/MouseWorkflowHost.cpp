@@ -22,6 +22,7 @@ public:
         // All encoding, ownership, file writing and IPC remain production code.
         const auto exportDirectory=juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory().getChildFile("wav-export-"+juce::String(blockSize));
         (void)exportDirectory.createDirectory();pcmDirectory=exportDirectory;
+        (void)pcmDirectory.getChildFile("midi-input.json").deleteFile();(void)pcmDirectory.getChildFile("midi-ack").deleteFile();
         (void)pcmDirectory.getChildFile("pcm-reset").deleteFile();(void)pcmDirectory.getChildFile("pcm-stop").deleteFile();writePcmEvidence();
         AionProcessor::ExportDestination picker=[this,exportDirectory](const juce::String& filename,std::function<void(juce::File)> done){
             choices.push_back({exportDirectory,filename,std::move(done)});
@@ -40,6 +41,7 @@ public:
         audio = std::thread([this] {
             juce::AudioBuffer<float> buffer(2, blockSize);
             juce::MidiBuffer midi;
+            midi.ensureSize(4096);
             std::uint64_t frame = 0;
             std::uint32_t seenRevision=0;bool heard=false;
             auto deadline = std::chrono::steady_clock::now();
@@ -48,7 +50,10 @@ public:
                     buffer.setSample(0, i, 0.25f * std::sin(float(frame % 48000) * 0.057595865f));
                     buffer.setSample(1, i, 0.17f * std::sin(float(frame % 48000) * 0.079848813f));
                 }
+                midi.clear();MidiPacket packet{};std::uint32_t midiSequence=0;
+                for(unsigned n=0;n<256&&midiPackets.pop(packet);++n){midi.addEvent(packet.bytes.data(),packet.size,packet.offset);midiSequence=packet.sequence;}
                 processor->processBlock(buffer, midi);
+                if(midiSequence)midiAcknowledged.store(midiSequence,std::memory_order_release);
                 pcmClock.store(frame,std::memory_order_release);
                 if(pcmActive.load(std::memory_order_acquire)){
                 const auto revision=pcmRevision.load(std::memory_order_acquire);
@@ -77,6 +82,10 @@ public:
     }
     void systemRequestedQuit() override { quit(); }
 private:
+    struct MidiPacket {std::array<juce::uint8,3> bytes{};int size=0,offset=0;std::uint32_t sequence=0;};
+    aion::SpscQueue<MidiPacket,512> midiPackets;
+    std::atomic<std::uint32_t> midiAcknowledged{0};
+    std::uint32_t reportedMidi=0;
     struct PcmEvidence {std::uint32_t epoch=0;bool heard=false;float peak=0,masterPeak=0;unsigned flash=0;std::uint64_t frame=0,deadline=0;};
     aion::SpscQueue<PcmEvidence,8> pcmEvidence; // Audio -> message; reset and first real cue only.
     PcmEvidence latestPcm{};
@@ -96,6 +105,21 @@ private:
     struct Choice {juce::File directory;juce::String filename;std::function<void(juce::File)> done;};
     std::vector<Choice> choices;
     void timerCallback() override {
+        const auto injection=pcmDirectory.getChildFile("midi-input.json");
+        if(injection.existsAsFile()){
+            const auto data=juce::JSON::parse(injection);(void)injection.deleteFile();
+            const auto sequence=static_cast<std::uint32_t>(static_cast<int>(data.getProperty("id",0)));
+            const auto messages=data.getProperty("messages",{});
+            if(const auto* array=messages.getArray();array&&array->size()<=256)for(const auto& value:*array){
+                const auto* message=value.getArray();if(!message||message->size()!=5)continue;
+                MidiPacket packet{};packet.sequence=sequence;packet.size=static_cast<int>((*message)[3]);packet.offset=static_cast<int>((*message)[4]);
+                if(packet.size<1||packet.size>3||packet.offset<0||packet.offset>=blockSize)continue;
+                for(int i=0;i<3;++i)packet.bytes[static_cast<unsigned>(i)]=static_cast<juce::uint8>(static_cast<int>((*message)[i]));
+                (void)midiPackets.push(packet);
+            }
+        }
+        const auto acknowledged=midiAcknowledged.load(std::memory_order_acquire);
+        if(acknowledged!=reportedMidi){reportedMidi=acknowledged;(void)pcmDirectory.getChildFile("midi-ack").replaceWithText(juce::String(acknowledged));}
         const auto reset=pcmDirectory.getChildFile("pcm-reset");if(reset.existsAsFile()){(void)reset.deleteFile();pcmRevision.fetch_add(1,std::memory_order_release);pcmActive.store(true,std::memory_order_release);}
         const auto stop=pcmDirectory.getChildFile("pcm-stop");if(stop.existsAsFile()){(void)stop.deleteFile();pcmActive.store(false,std::memory_order_release);}
         bool changed=false;PcmEvidence evidence;while(pcmEvidence.pop(evidence)){latestPcm=evidence;changed=true;}

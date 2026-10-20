@@ -57,6 +57,7 @@ public:
     void beginBlock() noexcept;
     void setAutoPlay(bool enabled) noexcept { autoPlay = enabled; }
     std::array<LoopView, trackCount> view() const noexcept;
+    LoopView trackView(std::uint32_t id) const noexcept {if(id>=trackCount)return {};auto v=tracks[id].info;v.clearEpoch=tracks[id].clearEpoch;v.waveformId=tracks[id].clip?tracks[id].clip->waveformId:0;return v;}
     std::uint32_t capacity() const noexcept { return totalBlocks * blockFrames; }
     std::uint32_t available() const noexcept;
     int nextUndo() const noexcept { return undoSize?undoOrder[undoSize-1]:-1; }

@@ -4,6 +4,7 @@
 #include "core/Metronome.h"
 #include "core/CountIn.h"
 #include "core/LiveInput.h"
+#include "core/MidiController.h"
 #include <cstdint>
 namespace aion {
 struct GainCommand { std::uint64_t frame; float gain; };
@@ -31,6 +32,7 @@ struct EngineView {
     bool metronomeFlash=false;
     float masterPeak=0;
     unsigned countInFlash=0;
+    MidiView midi{};
 };
 // Audio owner only for prepare/process/target/transport. The message thread is
 // the sole producer of commands; the message thread alone consumes meters.
@@ -55,7 +57,12 @@ public:
     std::uint32_t generation() const noexcept { return epoch.load(std::memory_order_acquire); }
     void setTarget(float value) noexcept;
     bool enqueue(GainCommand command) noexcept;
-    void process(float* const* channels, int channelCount, int frames) noexcept;
+    void process(float* const* channels, int channelCount, int frames,std::span<const MidiEvent> midiEvents={}) noexcept;
+    bool configureMidi(const MidiSettings& settings) noexcept {return midi->configure(settings);}
+    bool popMidiLearn(MidiLearnResult& result) noexcept {return midi->popLearn(result);}
+    void cancelMidi() noexcept {midiCancellation.fetch_add(1,std::memory_order_release);}
+    void midiOverflow() noexcept {midiOverflowRevision.fetch_add(1,std::memory_order_release);}
+    void setMidiInputAvailable(bool available) noexcept {midiInputAvailable=available;}
     bool popMeter(Meter& meter) noexcept { return meters.pop(meter); }
     std::uint64_t clock() const noexcept { return frame; }
     // Audio owner only, after process. Passive diagnostics; never call from UI.
@@ -64,6 +71,15 @@ public:
     }
     Transport transport{}; // Audio-owned; never read directly from the editor.
 private:
+    std::unique_ptr<MidiController> midi=std::make_unique<MidiController>();
+    std::atomic<std::uint32_t> midiCancellation{0};
+    std::uint32_t seenMidiCancellation=0;
+    std::atomic<std::uint32_t> midiOverflowRevision{0};
+    std::uint32_t seenMidiOverflow=0;
+    bool midiInputAvailable=true;
+    bool applyLoop(LoopAction,std::uint32_t,double) noexcept;
+    bool applyMidi(LoopAction,std::uint32_t,double) noexcept;
+    MidiController::Dispatch midiDispatch() noexcept {return {loops,frame,preparedRate,generation(),this,[](void* context,LoopAction action,std::uint32_t track,double value){return static_cast<Engine*>(context)->applyMidi(action,track,value);}};}
     LoopBank loops;
     SpscQueue<ExportRequest,2> exportRequests;
     bool exportOutstanding=false; // Message thread only, retained across prepare.

@@ -658,3 +658,29 @@ safety repairs to the original delayed clear, which could erase a later take.
 No real-time scans, allocation, file IO or locks were added. The bounded snapshot
 queue is allocated during Engine construction to keep growing telemetry off
 Windows' limited stack.
+
+### Native MIDI looper controller
+
+Processor copies at most 256 short MidiBuffer events into fixed storage and
+passes their sample offsets to Engine. The original incoming MidiBuffer remains
+available to hosts. MidiController owns fixed press/deadline/task arrays and
+bounded SPSC configuration/learn queues; audio dispatch shares the existing loop
+action path and worker-finalization rules. Realtime cancellation uses atomics.
+No editor is required for performance. Device routing/masks, XML, learn-result
+validation and state persistence run off audio; a cached atomic input-ready flag
+preserves the standalone input gate without querying device masks on processBlock.
+
+The producer serializes immutable settings, validates all 33 slots and rejects
+omni/channel overlaps before queueing. Learn consumes the triggering message and
+publishes a token/generation-tagged result; only the message owner accepts the
+new binding. APVTS XML includes enabled/bindings; legacy state receives defaults,
+and malformed MIDI state is rejected without partially replacing APVTS. Native
+standalone uses JUCE's existing device-manager/player MIDI route; plugins receive
+host MIDI and never open physical ports themselves.
+
+The preserved mapping-table renderer is extracted into a native view adapter;
+original resources/ui assets remain byte-identical. The bridge supports MIDI
+configuration, device routing and bounded status. An acknowledgement fence keeps
+old native mode snapshots from undoing newer keyboard/mouse OD/SUB changes.
+Notes support held actions, PC is a pulse and CC requires zero to rearm. Continuous
+parameter/expression learn, synth MIDI, clock I/O and gamepad remain unported.

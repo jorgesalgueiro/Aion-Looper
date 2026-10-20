@@ -13,6 +13,7 @@ private:
         Browser(AionProcessor& processor,const Options& options) : WebBrowserComponent(options),owner(processor) {}
         bool pageAboutToLoad(const juce::String& url) override {
             owner.cancelExport(); // Native navigation precedes unload RPC/new-page bootstrap.
+            owner.cancelMidiLearn();
             return url.startsWith(getResourceProviderRoot()) || url == "about:blank";
         }
         void newWindowAttemptingToLoad(const juce::String&) override {}

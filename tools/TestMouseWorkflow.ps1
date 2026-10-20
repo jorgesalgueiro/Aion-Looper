@@ -1,4 +1,4 @@
-param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly)
+param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $hostPath = Join-Path $repo 'build/windows/Release/aion_mouse_host.exe'
@@ -15,17 +15,21 @@ foreach ($block in $Blocks) {
         $preview = Start-Process -FilePath $hostPath -ArgumentList "$block" -WindowStyle Hidden -PassThru
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $savedArguments
         $env:WEBVIEW2_USER_DATA_FOLDER = $savedProfile
-        if (!$ExportOnly -and !$MergeOnly) {
+        if (!$ExportOnly -and !$MergeOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Mouse workflow failed at $block samples." }
         }
-        if (!$MergeOnly) {
+        if (!$MergeOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/ExportWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "WAV export workflow failed at $block samples." }
         }
-        if (!$ExportOnly) {
+        if (!$ExportOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/MergeWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Merge workflow failed at $block samples." }
+        }
+        if (!$ExportOnly -and !$MergeOnly) {
+            & node (Join-Path $repo 'tests/MidiWorkflow.cjs') $block
+            if ($LASTEXITCODE -ne 0) { throw "MIDI workflow failed at $block samples." }
         }
         Write-Output "PASS: production processor/editor mouse workflow at $block samples."
     } finally {

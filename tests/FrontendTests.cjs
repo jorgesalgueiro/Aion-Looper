@@ -3,6 +3,13 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const root=path.resolve(__dirname,'..');
+{const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),native);const sync=new native.window.AionMidiMode();
+ assert.equal(sync.observe({revision:0,modeRevision:0,mode:0}),'normal');
+ const first=sync.begin(),second=sync.begin();sync.ack(first,1);assert.equal(sync.observe({revision:1,modeRevision:1,mode:1}),null,'Earlier mode reply cannot overwrite a newer keyboard gesture');
+ sync.ack(second,2);assert.equal(sync.observe({revision:1,modeRevision:1,mode:1}),null,'Old audio snapshot stays behind newest acknowledgement fence');
+ assert.equal(sync.observe({revision:2,modeRevision:2,mode:2}),'substitute');assert.equal(sync.observe({revision:2,modeRevision:3,mode:1}),'overdub','Subsequent hardware mode reaches UI');
+ const failed=sync.begin();sync.fail(failed);assert.equal(sync.observe({revision:2,modeRevision:3,mode:1}),'overdub','Failed edit restores authoritative mode');
+ console.log('PASS: MIDI/UI mode acknowledgement fence, stale reply/snapshot protection, hardware updates and failure recovery');}
 // Merge confirmations follow successful native commits, never stale editor
 // snapshots or a source/destination replacement while the prompt is pending.
 {const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);

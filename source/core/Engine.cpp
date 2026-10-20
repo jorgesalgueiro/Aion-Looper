@@ -3,6 +3,7 @@
 #include <cmath>
 namespace aion {
 void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
+    auto midiContext=midiDispatch();midi->prepare(midiContext);
     double rate = sampleRate;
     if (!std::isfinite(rate) || rate < 8000.0 || rate > 384000.0) rate = 48000.0;
     epoch.fetch_add(1, std::memory_order_acq_rel);
@@ -32,10 +33,42 @@ bool Engine::enqueueLoop(LoopCommand command) noexcept {
     if(command.action==LoopAction::stutterStart)command.stutterRevision=stutterRevisions[command.track].load(std::memory_order_acquire);
     return loopCommands.push(command);
 }
-void Engine::process(float* const* channels, int count, int frames) noexcept {
+bool Engine::applyMidi(LoopAction action,std::uint32_t track,double value) noexcept {
+    if(action==LoopAction::record&&!midiInputAvailable)return false;
+    if(action==LoopAction::stopAll){
+        if(hasPendingLoop){lastRequestId=std::max(lastRequestId,pendingLoop.requestId);hasPendingLoop=false;rejected=true;}
+        LoopCommand discarded{};for(unsigned n=0;n<256&&loopCommands.pop(discarded);++n){lastRequestId=std::max(lastRequestId,discarded.requestId);rejected=true;}
+    }
+    return applyLoop(action,track,value);
+}
+bool Engine::applyLoop(LoopAction action,std::uint32_t track,double value) noexcept {
+    const bool ok=action==LoopAction::startDelay?loops.setStartDelay(track,value):action==LoopAction::clearMergedSource?loops.clearMergedSource(track,value):loops.apply(action,track,static_cast<float>(value));
+    if(!ok)return false;
+    auto context=midiDispatch();
+    if(action==LoopAction::stopAll||action==LoopAction::clearAll)midi->cancel(context);
+    else if(action==LoopAction::clear)midi->cancel(context,static_cast<int>(track));
+    if(action==LoopAction::record){
+        const auto view=loops.trackView(track);
+        if(view.state==LoopState::recording&&view.dynamicRecorded)liveInput->start(track,generation(),view.captureStartFrame);
+        const double start=loops.armedStartSeconds(track);
+        if(start>=0){const auto settings=loops.syncView().settings;countInTrack=track;
+            countIn.schedule(static_cast<double>(frame)/preparedRate,start,settings.bpm,settings.numerator,settings.countInAudio,settings.countIn);}
+    }else if(action==LoopAction::stopAll||action==LoopAction::clearAll||
+        (track==countInTrack&&(action==LoopAction::finish||action==LoopAction::stop||action==LoopAction::stopImmediate||action==LoopAction::clear)))countIn.cancel();
+    return true;
+}
+void Engine::process(float* const* channels, int count, int frames,std::span<const MidiEvent> midiEvents) noexcept {
     if (count < 0 || frames < 0 || (count > 0 && channels == nullptr)) return;
     float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
     loops.beginBlock();
+    auto midiContext=midiDispatch();midi->begin(midiContext);
+    const auto midiRevision=midiCancellation.load(std::memory_order_acquire);
+    if(midiRevision!=seenMidiCancellation){midi->cancel(midiContext);seenMidiCancellation=midiRevision;}
+    const auto overflowRevision=midiOverflowRevision.load(std::memory_order_acquire);
+    if(overflowRevision!=seenMidiOverflow){midi->overflow(midiContext);seenMidiOverflow=overflowRevision;}
+    if(midiEvents.size()>256){midi->overflow(midiContext);midiEvents={};}
+    for(std::size_t n=0;n<midiEvents.size();++n)if(midiEvents[n].offset>=static_cast<unsigned>(frames)||(n&&midiEvents[n].offset<midiEvents[n-1].offset)){midi->overflow(midiContext);midiEvents={};break;}
+    std::size_t midiRead=0;
     ExportRequest exportRequest{};
     if(exportRequests.pop(exportRequest))
         (void)loops.requestExport(exportRequest.generation==generation()?exportRequest.track:LoopBank::trackCount,exportRequest.waveformId);
@@ -56,22 +89,12 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
             lastRequestId = pendingLoop.requestId;
             const bool cancelledStutter=pendingLoop.action==LoopAction::stutterStart&&pendingLoop.stutterRevision!=stutterRevisions[pendingLoop.track].load(std::memory_order_acquire);
             rejected = pendingLoop.generation != generation() ||
-                (!cancelledStutter&&!(pendingLoop.action==LoopAction::startDelay?loops.setStartDelay(pendingLoop.track,pendingLoop.value):
-                  pendingLoop.action==LoopAction::clearMergedSource?loops.clearMergedSource(pendingLoop.track,pendingLoop.value):
-                  loops.apply(pendingLoop.action,pendingLoop.track,static_cast<float>(pendingLoop.value))));
-            if(!rejected){
-                const auto action=pendingLoop.action;
-                if(action==LoopAction::record){
-                    const auto track=loops.view()[pendingLoop.track];
-                    if(track.state==LoopState::recording&&track.dynamicRecorded)liveInput->start(pendingLoop.track,generation(),track.captureStartFrame);
-                    const double start=loops.armedStartSeconds(pendingLoop.track);
-                    if(start>=0){const auto settings=loops.syncView().settings;countInTrack=pendingLoop.track;
-                        countIn.schedule(static_cast<double>(frame)/preparedRate,start,settings.bpm,settings.numerator,settings.countInAudio,settings.countIn);}
-                }else if(action==LoopAction::stopAll||action==LoopAction::clearAll||
-                    (pendingLoop.track==countInTrack&&(action==LoopAction::finish||action==LoopAction::stop||action==LoopAction::stopImmediate||action==LoopAction::clear)))countIn.cancel();
-            }
+                (!cancelledStutter&&!applyLoop(pendingLoop.action,pendingLoop.track,pendingLoop.value));
             ++loopApplied; hasPendingLoop = loopCommands.pop(pendingLoop);
         }
+        midiContext.frame=frame;
+        while(midiRead<midiEvents.size()&&midiEvents[midiRead].offset<=static_cast<unsigned>(i))midi->event(midiEvents[midiRead++],midiContext);
+        midi->tick(midiContext);
         const float left = count > 0 && channels[0] && std::isfinite(channels[0][i]) ? channels[0][i] : 0.0f;
         const float right = count > 1 && channels[1] && std::isfinite(channels[1][i]) ? channels[1][i] : left;
         inputPeak = std::max(inputPeak, std::max(std::abs(left), std::abs(right)));
@@ -111,7 +134,7 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
         if(loops.copyWaveform(id,revision,event.peaks)&&waveforms->push(event)){sentWaveforms[id]=revision;++emitted;}
         else break; // Closed/slow editor: retry later, never wait.
     }
-    (void) views->push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame)});
+    (void) views->push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame),midi->view()});
 }
 bool Engine::enqueueExport(ExportRequest request) noexcept {
     if(exportOutstanding||request.generation!=generation()||!request.generation||request.track>=LoopBank::trackCount||!request.waveformId)return false;

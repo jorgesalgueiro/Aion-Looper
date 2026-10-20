@@ -34,6 +34,7 @@ AionProcessor::AionProcessor(ExportDestination destination)
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"metronomeEnabled",1},"Metronome",false),
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"metronomeVolume",1},"Metronome volume",juce::NormalisableRange<float>{0,2},0.5f)}) {
     exportDestination=std::move(destination);
+    midiDeviceChanges=juce::MidiDeviceListConnection::make([this]{engine.cancelMidi();});
     metroEnabled=parameters.getRawParameterValue("metronomeEnabled");metroVolume=parameters.getRawParameterValue("metronomeVolume");
     master = parameters.getRawParameterValue("masterGain");
     monitor = parameters.getRawParameterValue("inputMonitor");
@@ -42,7 +43,48 @@ AionProcessor::AionProcessor(ExportDestination destination)
     syncBars=parameters.getRawParameterValue("syncBars");syncNum=parameters.getRawParameterValue("syncNum");
     syncDen=parameters.getRawParameterValue("syncDen");countIn=parameters.getRawParameterValue("countInVisual");countInAudio=parameters.getRawParameterValue("countInAudio");
 }
-AionProcessor::~AionProcessor(){stopTimer();exportLifetime.reset();exportWriter.removeAllJobs(true,-1);exportChooser.reset();}
+AionProcessor::~AionProcessor(){midiDeviceChanges.reset();stopTimer();exportLifetime.reset();exportWriter.removeAllJobs(true,-1);exportChooser.reset();}
+bool AionProcessor::updateMidi(aion::MidiSettings next){
+    std::lock_guard guard(midiSettingsMutex);
+    next.revision=midiSettings.revision+1;if(!next.revision)++next.revision;
+    if(!engine.configureMidi(next))return false;
+    midiSettings=next;midiSettings.modeOverride=-1;startTimer(25);return true;
+}
+void AionProcessor::cancelMidiLearn(){
+    std::lock_guard guard(midiSettingsMutex);
+    if(midiSettings.learnTarget>=0){auto next=midiSettings;next.learnTarget=-1;++next.learnToken;
+        if(!updateMidi(next)){midiSettings.learnTarget=-1;++midiSettings.learnToken;engine.cancelMidi();}
+        midiStatus="MIDI learn cancelled";
+    }
+}
+void AionProcessor::serviceMidi(){
+    midiInputReady.store(inputAvailable(*this),std::memory_order_release);
+    std::lock_guard guard(midiSettingsMutex);
+    aion::MidiLearnResult result;
+    while(engine.popMidiLearn(result))if(result.token==midiSettings.learnToken&&result.generation==engine.generation()&&result.target==midiSettings.learnTarget)pendingMidiLearn=result;
+    if(pendingMidiLearn){const auto learned=*pendingMidiLearn;
+        if(learned.token!=midiSettings.learnToken||learned.generation!=engine.generation()){pendingMidiLearn.reset();}
+        else {auto next=midiSettings;next.bindings[static_cast<unsigned>(learned.target)]=learned.binding;next.learnTarget=-1;++next.learnToken;
+            const bool valid=aion::MidiController::valid(next);if(!valid)next.bindings=midiSettings.bindings;
+            if(updateMidi(next)){midiStatus=valid?"MIDI binding learned":"MIDI binding already assigned; previous mapping kept";pendingMidiLearn.reset();}
+        }
+    }
+    if(midiSettings.learnTarget>=0&&!pendingMidiLearn&&latest.midi.revision==midiSettings.revision&&latest.midi.learnTarget<0){midiSettings.learnTarget=-1;++midiSettings.learnToken;midiStatus="MIDI learn cancelled";}
+    if(midiSettings.learnTarget>=0&&midiSettings.learnGeneration!=engine.generation()){
+        auto next=midiSettings;next.learnTarget=-1;++next.learnToken;if(updateMidi(next))midiStatus="MIDI learn cancelled after audio reset";
+    }
+   #if JucePlugin_Build_Standalone
+    if(midiSettings.enabled&&juce::Time::getMillisecondCounterHiRes()>=nextMidiDeviceCheck){
+        nextMidiDeviceCheck=juce::Time::getMillisecondCounterHiRes()+1000;
+        if(auto* holder=juce::StandalonePluginHolder::getInstance()){
+            juce::StringArray enabled;
+            for(const auto& device:juce::MidiInput::getAvailableDevices())if(holder->deviceManager.isMidiInputDeviceEnabled(device.identifier))enabled.add(device.identifier);
+            for(const auto& old:previousMidiDevices)if(!enabled.contains(old)){engine.cancelMidi();break;}
+            previousMidiDevices=std::move(enabled);
+        }
+    }
+   #endif
+}
 void AionProcessor::cancelExport(){
     if(exportBusy&&exportWriteResult->load()==0){
         ++exportSequence;exportAbandoned=true;exportChooser.reset();exportStatus="WAV export cancelled";
@@ -50,9 +92,10 @@ void AionProcessor::cancelExport(){
     }
 }
 void AionProcessor::timerCallback(){
+    serviceMidi();
     const auto written=exportWriteResult->load(std::memory_order_acquire);
     if(written>0){exportWriteResult->store(0);exportBusy=false;exportStatus=written==1?"WAV saved":"WAV export failed: could not write the selected file";}
-    if(!exportBusy)stopTimer();
+    if(!exportBusy){std::lock_guard guard(midiSettingsMutex);if(!midiSettings.enabled)stopTimer();}
     if(!exportEncoding)return;
     aion::WavExport output;if(!engine.popExport(output))return;
     exportEncoding=false;
@@ -84,13 +127,13 @@ void AionProcessor::timerCallback(){
     }
     }catch(...){exportChooser.reset();exportBusy=false;exportStatus="WAV export failed: could not open the save dialog";}
 }
-void AionProcessor::prepareToPlay(double rate, int) { engine.prepare(rate); }
+void AionProcessor::prepareToPlay(double rate, int) { midiInputReady.store(inputAvailable(*this),std::memory_order_release);engine.prepare(rate); }
 bool AionProcessor::isBusesLayoutSupported(const BusesLayout& b) const {
     return b.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
         && (b.getMainInputChannelSet().isDisabled() || b.getMainInputChannelSet() == juce::AudioChannelSet::mono()
             || b.getMainInputChannelSet() == juce::AudioChannelSet::stereo());
 }
-void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer&) {
+void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer& incomingMidi) {
     const juce::ScopedNoDenormals noDenormals;
     for (int c = getTotalNumInputChannels(); c < audio.getNumChannels(); ++c) audio.clear(c, 0, audio.getNumSamples());
     if (getTotalNumInputChannels() == 1 && audio.getNumChannels() >= 2)
@@ -108,18 +151,41 @@ void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuff
         if (auto bpm = position->getBpm(); bpm && std::isfinite(*bpm) && *bpm > 0.0) engine.transport.bpm = *bpm;
         if (auto ppq = position->getPpqPosition(); ppq && std::isfinite(*ppq)) engine.transport.ppq = *ppq;
     }
-    engine.process(audio.getArrayOfWritePointers(), audio.getNumChannels(), audio.getNumSamples());
+    std::size_t midiCount=0,inspected=0;bool midiOverflow=false;
+    engine.setMidiInputAvailable(getTotalNumInputChannels()>0&&midiInputReady.load(std::memory_order_acquire));
+    for(const auto metadata:incomingMidi){
+        if(++inspected>256){midiOverflow=true;break;}
+        const auto* bytes=metadata.data;const int size=metadata.numBytes;
+        if(size<1||size>3||bytes[0]<128||bytes[0]==240)continue;
+        if(metadata.samplePosition<0||metadata.samplePosition>=audio.getNumSamples()){midiOverflow=true;break;}
+        midiEvents[midiCount++]={static_cast<std::uint32_t>(metadata.samplePosition),bytes[0],static_cast<std::uint8_t>(size>1?bytes[1]:0),static_cast<std::uint8_t>(size>2?bytes[2]:0),static_cast<std::uint8_t>(size)};
+    }
+    if(midiOverflow){engine.midiOverflow();midiCount=0;}
+    engine.process(audio.getArrayOfWritePointers(), audio.getNumChannels(), audio.getNumSamples(),std::span(midiEvents.data(),midiCount));
 }
 juce::AudioProcessorEditor* AionProcessor::createEditor() { return new AionWebEditor(*this); }
 void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
-    if (auto xml = parameters.copyState().createXml()) copyXmlToBinary(*xml, data);
+    auto state=parameters.copyState();juce::ValueTree stored("MidiSettings");
+    {std::lock_guard guard(midiSettingsMutex);stored.setProperty("enabled",midiSettings.enabled,nullptr);
+     for(unsigned i=0;i<33;++i)stored.setProperty("binding"+juce::String(i),static_cast<int>(midiSettings.bindings[i]),nullptr);}
+    state.removeChild(state.getChildWithName("MidiSettings"),nullptr);state.appendChild(stored,nullptr);
+    if (auto xml = state.createXml()) copyXmlToBinary(*xml, data);
 }
 void AionProcessor::setStateInformation(const void* data, int size) {
     if (size <= 0 || size > 1024 * 1024) return;
-    if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName("AionState")) parameters.replaceState(juce::ValueTree::fromXml(*xml));
+    if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName("AionState")) {
+        auto state=juce::ValueTree::fromXml(*xml);aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
+        if(stored.isValid()){
+            const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
+            for(unsigned i=0;i<33;++i){const auto value=stored.getProperty("binding"+juce::String(i)).toString();if(value.isEmpty()||!value.containsOnly("0123456789")||value.getLargeIntValue()>65535)return;next.bindings[i]=static_cast<std::uint16_t>(value.getIntValue());}
+        }
+        std::lock_guard guard(midiSettingsMutex);next.learnToken=midiSettings.learnToken+1;
+        if(updateMidi(next))parameters.replaceState(state);
+    }
 }
 juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+    serviceMidi();
     auto* result = new juce::DynamicObject(); juce::var reply(result);
     result->setProperty("protocol", 1); result->setProperty("ok", false);
     const auto fail = [result, &reply](const char* reason) { result->setProperty("error", reason); return reply; };
@@ -144,6 +210,12 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     if (operation == "hello" || operation == "snapshot") {
         result->setProperty("ok", true); result->setProperty("stage", "native-loop-preview");
         result->setProperty("legacyAudioEnabled", false);
+        auto* midiView=new juce::DynamicObject();juce::var midiReply(midiView);juce::Array<juce::var> bindings;
+        for(const auto binding:latest.midi.bindings)bindings.add(static_cast<int>(binding));
+        midiView->setProperty("bindings",bindings);midiView->setProperty("enabled",latest.midi.enabled);midiView->setProperty("revision",static_cast<int>(latest.midi.revision));
+        midiView->setProperty("mode",latest.midi.mode);midiView->setProperty("modeRevision",static_cast<int>(latest.midi.modeRevision));midiView->setProperty("sustain",latest.midi.sustain);
+        midiView->setProperty("learnTarget",latest.midi.learnTarget);midiView->setProperty("messages",static_cast<int>(latest.midi.messages));midiView->setProperty("overflows",static_cast<int>(latest.midi.overflows));midiView->setProperty("rejected",static_cast<int>(latest.midi.rejected));midiView->setProperty("actions",static_cast<int>(latest.midi.actions));
+        midiView->setProperty("status",midiStatus);result->setProperty("midi",midiReply);
         const float masterValue = master->load();
         result->setProperty("masterGain", std::isfinite(masterValue) ? juce::jlimit(0.0f, 2.0f, masterValue) : 0.0f);
         result->setProperty("inputAvailable",inputAvailable(*this));
@@ -294,7 +366,55 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         nextRequest = requestId;
         result->setProperty("ok", true); result->setProperty("queued", true);
         result->setProperty("requestId", static_cast<juce::int64>(requestId));
-    } else return fail("Unknown operation");
+    } else if(operation=="midiConfig"){
+        std::lock_guard guard(midiSettingsMutex);auto next=midiSettings;
+        const auto action=request.getProperty("action",{}).toString();
+        if(action=="enable"){
+            const auto value=request.getProperty("enabled",{});if(!value.isBool())return fail("Expected MIDI enable flag");next.enabled=static_cast<bool>(value);next.learnTarget=-1;++next.learnToken;
+        }else if(action=="learn"||action=="clear"){
+            const auto target=request.getProperty("target",{});if(!target.isInt())return fail("Expected MIDI target");const int id=target;
+            if(id<0||id>=33||(id>=20&&id<30))return fail("MIDI target unavailable");
+            ++next.learnToken;next.learnGeneration=engine.generation();next.learnTarget=action=="learn"?id:-1;
+            if(action=="learn")next.enabled=true;else next.bindings[static_cast<unsigned>(id)]=0;
+        }else if(action=="cancelLearn"){next.learnTarget=-1;++next.learnToken;}
+        else if(action=="mode"){
+            const auto value=request.getProperty("mode",{});if(!value.isInt()||static_cast<int>(value)<0||static_cast<int>(value)>2)return fail("Invalid performance mode");next.modeOverride=static_cast<int>(value);
+        }else if(action=="save"){
+           #if JucePlugin_Build_Standalone
+            if(auto* holder=juce::StandalonePluginHolder::getInstance()){holder->savePluginState();holder->saveAudioDeviceState();}
+           #endif
+            midiStatus="Mappings saved with native app/plugin state";result->setProperty("ok",true);return reply;
+        }else return fail("Unknown MIDI configuration action");
+        const bool enableDevices=!midiSettings.enabled&&next.enabled;
+        if(!updateMidi(next))return fail("MIDI configuration is invalid or queue is full");
+        midiStatus=action=="learn"?"Waiting for MIDI Note, CC or Program Change...":action=="cancelLearn"?"MIDI learn cancelled":"MIDI configuration queued";
+       #if JucePlugin_Build_Standalone
+        if(enableDevices)if(auto* holder=juce::StandalonePluginHolder::getInstance())
+            for(const auto& device:juce::MidiInput::getAvailableDevices())holder->deviceManager.setMidiInputDeviceEnabled(device.identifier,true);
+       #else
+        juce::ignoreUnused(enableDevices);
+       #endif
+        result->setProperty("ok",true);result->setProperty("revision",static_cast<int>(midiSettings.revision));
+    }else if(operation=="midiDevices"){
+        juce::Array<juce::var> devices;bool standalone=false;
+       #if JucePlugin_Build_Standalone
+        if(auto* holder=juce::StandalonePluginHolder::getInstance()){
+            standalone=true;for(const auto& info:juce::MidiInput::getAvailableDevices()){
+                auto* device=new juce::DynamicObject();device->setProperty("id",info.identifier);device->setProperty("name",info.name);device->setProperty("enabled",holder->deviceManager.isMidiInputDeviceEnabled(info.identifier));devices.add(juce::var(device));
+            }
+        }
+       #endif
+        result->setProperty("ok",true);result->setProperty("standalone",standalone);result->setProperty("devices",devices);
+    }else if(operation=="setMidiDevice"){
+       #if JucePlugin_Build_Standalone
+        if(auto* holder=juce::StandalonePluginHolder::getInstance()){
+            const auto id=request.getProperty("id",{}),enabled=request.getProperty("enabled",{});if(!id.isString()||!enabled.isBool())return fail("Invalid MIDI device selection");
+            bool found=false;for(const auto& device:juce::MidiInput::getAvailableDevices())if(device.identifier==id.toString())found=true;if(!found)return fail("MIDI input disconnected");
+            holder->deviceManager.setMidiInputDeviceEnabled(id.toString(),static_cast<bool>(enabled));engine.cancelMidi();result->setProperty("ok",true);return reply;
+        }
+       #endif
+        return fail("Route MIDI inputs through the plugin host");
+    }else return fail("Unknown operation");
     return reply;
 }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new AionProcessor(); }
