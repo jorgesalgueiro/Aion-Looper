@@ -1281,3 +1281,59 @@ regressions also pass, without a product AudioContext (`build/wave-ui.log`).
 Existing Windows Standalone rebuilt; no package/version change. Physical input,
 DAW/plugin lifecycle, Apple/iOS and complete application parity remain separate
 acceptance work. This accepts committed-loop waveform display only.
+
+## DYNAMIC recording live trace — 2026-10-20
+
+The missing initial-recording oscilloscope now follows the original DYNAMIC
+recording path: 512-sample input window, mono speaker downmix, zero prefix after
+start, original fill/trace and rolling four-bar markers/count labels. Audio-owned
+history and fixed SPSC events carry capture-start sample and generation tags;
+message-thread filtering stops stale windows after finish/panic/reset or on a new
+take. MASTER/monitor/click output is excluded. Bounded queue overflow drops only
+visual telemetry, with no callback allocation/free/lock or capture/output changes.
+The original committed waveform takes precedence as before. Other recording modes
+and visualizers retain their previously documented scope.
+
+Exact original live-canvas operation comparisons cover 384 width/DPR/mode/state/
+elapsed-time cases, plus the retained 336 committed-waveform cases. The unchanged
+Loop.getProgress method is compared in 36 sample-rate/mode/elapsed cases at 1e-12.
+The initial sync-off comparison reproduced a wrong grid-duration playhead; the
+adapter now uses the original ten-second scale when sync is disabled mid-take
+(`build/live-progress-before.log`, `build/live-frontend-final.log`). The strict
+markup fixture also caught accidental whitespace formatting inside a retained
+markup method; the original text was restored, preserving the fixture unchanged.
+
+Core gates pass zero-prefixed/chronological 512-sample history, wrapped windows,
+mono/stereo values, bounded overflow, new-start reset, invalid-input protection,
+Engine sample deadlines and tags, click/MASTER exclusion, stop/reprepare, exact
+64/128 windows and zero observed callback new/delete. Actual WebView2 WebAudio
+AnalyserNode comparisons pass 12 mono/stereo/cancellation cases at 8/44.1/48/96 kHz:
+6,144 samples, max error zero at 1e-6. Stable signed levels are the browser oracle
+scope; varying-stream ordering is tested through Engine. Browser render-quantum
+latency and physical input timing/listening are separate, not inferred from these
+comparisons. No product AudioContext is created.
+
+Windows core passes (24.88s) and the corrected final frontend gate passes (3.15s).
+The initial full Windows run passes the other 13/14 gates (185.85s); its original
+markup failure is repaired by the final frontend rerun. Ubuntu full suite passes
+14/14 (306.94s). ASan/UBSan core/frontend/waveform gates pass 3/3 (24.77s), before
+the later pure-JS playhead repair, which is independently retested. Connected audio
+audits on both platforms pass 126 cases / 965,826 samples, max error 7.39476e-8 at
+unchanged 1e-6. Logs: `build/live-windows-tests.log`,
+`build/live-frontend-acceptance-windows.log`, `build/live-ubuntu-tests.log`,
+`build/live-asan-tests.log`, `build/live-audio-windows.log` and
+`build/live-audio-ubuntu.log`.
+
+The final playhead/cadence build passes real production processor/editor mouse
+workflows at 64/128 samples, including live red/yellow pixels, successive-take
+ownership, sync-off ten-second progress and the retained main/Q/nudge/waveform/
+4s STOP checks (`build/live-mouse-final.log`). The final captured screenshot
+`build/native-live-input.png` was visually inspected. Standalone WebView, all
+original count-in and tiny-nudge browser regressions, and the actual live analyser
+oracle pass again (`build/live-ui-final.log`), without a product AudioContext.
+Final frontend comparisons pass on both Windows (3.15s) and Ubuntu (5.87s),
+including the later progress repair (`build/live-frontend-acceptance-ubuntu.log`).
+No tolerance was loosened or failed case removed. Existing Windows Standalone
+rebuilt; no package/version change. This accepts the documented initial DYNAMIC
+recording trace only; full application parity, DAW/platform/physical driver and
+render-quantum timing acceptance remain separate work.

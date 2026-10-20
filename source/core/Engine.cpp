@@ -10,7 +10,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     if (preparedRate != rate || loops.capacity() != std::clamp(poolFrames / LoopBank::blockFrames, 1u, LoopBank::maxBlocks) * LoopBank::blockFrames)
         loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005), rate);
     else (void) loops.apply(LoopAction::stopAll, 0);
-    loops.resetTimeline();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
+    loops.resetTimeline();liveInput->cancel();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     frame = 0; gain = target = increment = 0.0f; remaining = 0;
@@ -53,6 +53,8 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
             if(!rejected){
                 const auto action=pendingLoop.action;
                 if(action==LoopAction::record){
+                    const auto track=loops.view()[pendingLoop.track];
+                    if(track.state==LoopState::recording&&track.dynamicRecorded)liveInput->start(pendingLoop.track,generation(),track.captureStartFrame);
                     const double start=loops.armedStartSeconds(pendingLoop.track);
                     if(start>=0){const auto settings=loops.syncView().settings;countInTrack=pendingLoop.track;
                         countIn.schedule(static_cast<double>(frame)/preparedRate,start,settings.bpm,settings.numerator,settings.countInAudio,settings.countIn);}
@@ -64,6 +66,7 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
         const float left = count > 0 && channels[0] && std::isfinite(channels[0][i]) ? channels[0][i] : 0.0f;
         const float right = count > 1 && channels[1] && std::isfinite(channels[1][i]) ? channels[1][i] : left;
         inputPeak = std::max(inputPeak, std::max(std::abs(left), std::abs(right)));
+        liveInput->push(left,right);
         const auto loopOutput = loops.tick({left, right});
         // Monitor-only, like the original direct-to-destination worklet: never
         // feed clicks to capture, and keep its volume independent of MASTER.
@@ -83,6 +86,11 @@ void Engine::process(float* const* channels, int count, int frames) noexcept {
     // Telemetry is lossy by design; never wait when the editor is closed/slow.
     (void) meters.push({frame, peak});
     const auto tracks=loops.view();
+    if(liveInput->running()){
+        const auto& track=tracks[liveInput->track()];
+        if(track.state==LoopState::recording&&track.dynamicRecorded)(void)liveInput->publish(frame);
+        else liveInput->cancel();
+    }
     unsigned emitted=0;
     for(unsigned n=0;n<LoopBank::trackCount&&emitted<2;++n){
         const auto id=waveformCursor;waveformCursor=(waveformCursor+1)%LoopBank::trackCount;

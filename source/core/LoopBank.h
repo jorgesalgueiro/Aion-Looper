@@ -17,7 +17,7 @@ struct LoopView {
     LoopState state = LoopState::empty;
     std::uint32_t length = 0, position = 0, undoCount = 0, redoCount = 0;
     std::uint64_t scheduledFrame = 0, clearEpoch = 0;
-    std::uint64_t waveformId = 0;
+    std::uint64_t waveformId = 0, captureStartFrame = 0;
     double originalBpm = 0, startDelay = 0;
     std::uint64_t phaseApplyFrame = 0;
     float effectiveRate = 1;

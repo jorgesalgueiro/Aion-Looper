@@ -516,3 +516,18 @@ content. DEL clears the identity, history restores it and reset invalidates cach
 The original committed-waveform draw block retains state colors, dim/bright bars,
 white playhead and HiDPI canvas scaling. Live input/capture oscilloscope and other
 waveform interactions remain separate migration work.
+
+DYNAMIC initial recording now uses a native 512-sample time-domain input window,
+matching the reference analyser size. LiveInput is constructed off callback and
+owns a zero-prefixed chronological mono ring (stereo speaker downmix) and a fixed
+four-slot SPSC queue. Audio writes samples before MASTER/monitor/click output and
+publishes at most one fixed event per block. A full queue drops visual telemetry;
+it never waits, allocates, locks or changes capture/output. Capture-start sample
+and generation tags prevent old events entering a new take. The message thread
+serializes samples only for the matching current DYNAMIC recorder; finalizing,
+stop, clear and reprepare suppress stale content. The editor uses the unchanged
+live drawing branch, including rolling four-bar lines/count labels and the original
+recording getProgress behavior when sync changes. Active capture polls at a 16 ms
+budget to support responsive visual updates; other states retain 66 ms polling.
+No product AudioContext is created. Browser render-quantum latency, physical input
+latency and additional live visualizers are separate acceptance work.

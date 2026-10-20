@@ -300,3 +300,10 @@ compares original canvas operations across window widths, states and DPR values.
 `tools/TestMouseWorkflow.ps1` now checks actual captured-waveform pixels and cache
 payload omission at 64/128 samples, saving `build/native-mouse-waveform.png`.
 Continue using incremental targets; no extra package/install is required.
+
+For live DYNAMIC input acceptance, incrementally build `aion_live_input_probe`
+alongside Standalone and `aion_mouse_host`. The existing `tools/TestCountInUi.ps1`
+runner also runs `tests/LiveInputWebAudio.cjs` (hardware-free OfflineAudioContext
+mono/stereo downmix comparison). `tools/TestMouseWorkflow.ps1` checks native red
+trace/yellow markers, next-take ownership and mid-take sync-off playhead at 64/128,
+saving `build/native-live-input.png`. No additional package/install is needed.

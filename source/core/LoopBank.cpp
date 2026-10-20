@@ -285,6 +285,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             }
             t.phaseRate=1;t.info.playbackRate=t.rate=t.targetRate=1;t.rateRemaining=0;t.captureLength=t.captureOffset=0;
             t.info.length=t.info.position=0;t.phase=0;t.info.finalizationFailed=false;
+            t.info.captureStartFrame=frame;
             t.info.originalBpm=sync.settings.bpm;t.info.dynamicRecorded=t.recordMode==SyncMode::dynamic;
             s=LoopState::recording;poolFull=false;
             if(t.recordMode==SyncMode::fixed){

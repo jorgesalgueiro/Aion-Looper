@@ -89,6 +89,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     while (engine.popView(view)) latest = view;
     aion::WaveformEvent waveform{};
     while(engine.popWaveform(waveform))waveformCache[waveform.track]=waveform;
+    aion::LiveInputEvent live{};while(engine.popLiveInput(live))latestLiveInput=live;
     if (latest.generation != nameGeneration) {
         if (latest.audioReset) trackNames.fill({});
         nameGeneration = latest.generation;
@@ -128,6 +129,14 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("countInAudio",timing.settings.countInAudio);result->setProperty("countInFlash",static_cast<int>(latest.countInFlash));
         result->setProperty("gridLength",timing.loopSeconds);result->setProperty("barLength",timing.barSeconds);
         result->setProperty("gridPosition",timing.position);result->setProperty("syncFrame",static_cast<juce::int64>(timing.frame));
+        const auto& live=latestLiveInput;
+        if(live.generation==latest.generation&&live.track<aion::LoopBank::trackCount){
+            const auto& track=latest.tracks[live.track];
+            if(track.state==aion::LoopState::recording&&track.dynamicRecorded&&track.captureStartFrame==live.startFrame){
+                auto* input=new juce::DynamicObject();input->setProperty("track",static_cast<int>(live.track));input->setProperty("startFrame",static_cast<juce::int64>(live.startFrame));input->setProperty("frame",static_cast<juce::int64>(live.frame));
+                juce::Array<juce::var> samples;samples.ensureStorageAllocated(512);for(const auto sample:live.samples)samples.add(sample);input->setProperty("samples",samples);result->setProperty("liveInput",juce::var(input));
+            }
+        }
         const auto known=request.getProperty("knownWaveforms",{});
         const bool sameGeneration=static_cast<int>(request.getProperty("knownGeneration",0))==static_cast<int>(latest.generation);
         juce::Array<juce::var> tracks;
@@ -138,6 +147,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             object->setProperty("length", static_cast<int>(t.length)); object->setProperty("position", static_cast<int>(t.position));
             object->setProperty("undoCount",static_cast<int>(t.undoCount));object->setProperty("redoCount",static_cast<int>(t.redoCount));
             object->setProperty("reverse", t.reverse);
+            object->setProperty("captureStartFrame",static_cast<juce::int64>(t.captureStartFrame));
             object->setProperty("waveformId",static_cast<juce::int64>(t.waveformId));
             const auto trackIndex=static_cast<int>(&t-latest.tracks.data());
             const bool alreadyKnown=sameGeneration&&known.isArray()&&known.size()==static_cast<int>(aion::LoopBank::trackCount)&&static_cast<juce::int64>(known[trackIndex])==static_cast<juce::int64>(t.waveformId);

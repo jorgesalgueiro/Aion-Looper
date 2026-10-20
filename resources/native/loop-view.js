@@ -290,7 +290,9 @@ const effectColors = {
 })();
 
 // Original committed-waveform renderer; dimensions match the original HiDPI canvas.
-window.AionDrawWaveform=(cvs,loop,progress)=>{
+window.AionDrawWaveform=(cvs,loop,progress,live=null)=>{
+    const state={syncMode:live?.syncMode,liveRecordAnalyser:live?{getFloatTimeDomainData:out=>out.set(live.samples)}:null,liveRecordAnalyserData:live?Float32Array.from(live.samples):null};
+    const now=live?.now??0,SyncManager={getBarDuration:()=>live?.barDuration??0};
     const dpr=window.devicePixelRatio||1,w=Math.max(1,cvs.clientWidth),h=Math.max(1,cvs.clientHeight);
     const width=Math.round(w*dpr),height=Math.round(h*dpr);
     if(cvs.width!==width)cvs.width=width;if(cvs.height!==height)cvs.height=height;
@@ -333,6 +335,71 @@ window.AionDrawWaveform=(cvs,loop,progress)=>{
                         ctx.fillRect(i, y, 1, hBar);
                     }
                     ctx.globalAlpha = 1.0;
+                } else if ((loop.state === 'recording' || loop.state === 'overdubbing' || loop.state === 'substituting' || loop.state === 'multiplying') && state.liveRecordAnalyser) {
+                    // Live input waveform — oscilloscope-style trace
+                    const analyser = state.liveRecordAnalyser;
+                    const data = state.liveRecordAnalyserData;
+                    analyser.getFloatTimeDomainData(data);
+                    const mid = h / 2;
+                    const step = data.length / w;
+
+                    // Draw filled waveform shape (symmetric around center)
+                    let waveColor = '#f00';
+                    if (loop.state === 'overdubbing') waveColor = '#f0f';
+                    else if (loop.state === 'substituting') waveColor = '#00cccc';
+                    else if (loop.state === 'multiplying') waveColor = '#ffaa00';
+                    ctx.fillStyle = waveColor;
+                    ctx.globalAlpha = 0.6;
+                    for (let i = 0; i < w; i++) {
+                        const idx = Math.floor(i * step);
+                        const v = data[idx] || 0;
+                        const barH = Math.max(1, Math.abs(v) * h);
+                        ctx.fillRect(i, mid - barH / 2, 1, barH);
+                    }
+                    // Draw center line trace on top
+                    ctx.globalAlpha = 1.0;
+                    ctx.strokeStyle = waveColor;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    for (let i = 0; i < w; i++) {
+                        const idx = Math.floor(i * step);
+                        const v = data[idx] || 0;
+                        const y = mid - v * (h * 0.5);
+                        if (i === 0) ctx.moveTo(i, y);
+                        else ctx.lineTo(i, y);
+                    }
+                    ctx.stroke();
+                    // Bar boundary markers — rolling window so user sees approaching bar lines
+                    if (state.syncMode === 'dynamic' && loop.graph && loop.graph.startTime) {
+                        const barDur = SyncManager.getBarDuration();
+                        if (barDur > 0) {
+                            const elapsed = now - loop.graph.startTime;
+                            const visibleBars = 4;
+                            const windowDur = visibleBars * barDur;
+                            // Align window start to bar boundary, keep playhead in right half
+                            const windowStart = Math.max(0, Math.floor(elapsed / windowDur) * windowDur);
+                            const windowEnd = windowStart + windowDur;
+                            ctx.strokeStyle = 'rgba(255, 255, 0, 0.45)';
+                            ctx.lineWidth = 1;
+                            for (let b = 1; b < visibleBars; b++) {
+                                const barTime = windowStart + b * barDur;
+                                const barX = ((barTime - windowStart) / windowDur) * w;
+                                ctx.beginPath();
+                                ctx.moveTo(barX, 0);
+                                ctx.lineTo(barX, h);
+                                ctx.stroke();
+                            }
+                            // Bar count labels at top
+                            ctx.fillStyle = 'rgba(255, 255, 0, 0.6)';
+                            ctx.font = '8px monospace';
+                            const startBar = Math.round(windowStart / barDur);
+                            for (let b = 0; b <= visibleBars; b++) {
+                                const barX = (b / visibleBars) * w;
+                                ctx.fillText(`${startBar + b}`, barX + 2, 8);
+                            }
+                        }
+                    }
                 }
+
     if(loop.state!=='empty'){ctx.fillStyle='#fff';ctx.fillRect(playheadX,0,1,h);}
 };

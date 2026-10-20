@@ -12,7 +12,7 @@ repair), the loop Rvers control, per-loop/global Undo/Redo, and original MULT
 capture/doubling, and the internal Master BPM static/dynamic arm-record-play
 workflow with unified mouse/keyboard gestures, native session naming and the
 continuous monitor-only metronome, static SOUND/VISUAL count-in and the original
-Start slider/Q/nudge buttons and committed-loop waveform display. Offline DSP and connected
+Start slider/Q/nudge buttons and committed-loop waveform display and DYNAMIC live recording trace. Offline DSP and connected
 committed-PCM gates pass for their documented scope. Full browser/driver parity
 is not established. Each subsequent feature must independently pass the gates
 below before another feature starts; keep any newly failing feature under repair.
@@ -149,5 +149,15 @@ fixed-size SPSC copies must never scan PCM or allocate/free/lock. Keep telemetry
 storage off large Windows stack frames. Preserve identity/generation guards,
 known-ID payload omission, slow-editor recovery for all 20 tracks and cache
 lifecycle through NORM (no history entry), edits/Undo/Redo, Multiply/OOM, DEL/reset.
-Retain actual captured-waveform pixel checks at 64/128. Live recording oscilloscope
-and additional canvas interactions are separate migration work.
+Retain actual captured-waveform pixel checks at 64/128. Additional live visualizers
+and canvas interactions are separate migration work.
+
+DYNAMIC live-trace acceptance retains original 512-sample analyser downmix and
+canvas/progress methods, including sync-off ten-second playhead and rolling bar
+markers. Never create a product AudioContext. Preserve zero-prefixed chronological
+history, capture-start/generation ownership, suppression after finish/stop/reset,
+fixed bounded telemetry and no callback allocation/free/lock. Keep exact Engine
+64/128 windows, MASTER/monitor/click exclusion, actual WebAudio signed mono/stereo
+levels and original live-canvas comparisons. Preserve native red/yellow pixel,
+successive-take and mid-take sync-change checks. Browser render-quantum latency
+and physical input latency remain separate acceptance work.

@@ -3,6 +3,7 @@
 #include "core/LoopBank.h"
 #include "core/Metronome.h"
 #include "core/CountIn.h"
+#include "core/LiveInput.h"
 #include <cstdint>
 namespace aion {
 struct GainCommand { std::uint64_t frame; float gain; };
@@ -39,6 +40,7 @@ public:
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
     bool finalizationPending() const noexcept { return loops.finalizationPending(); }
+    bool popLiveInput(LiveInputEvent& event) noexcept {return liveInput->pop(event);}
     bool popWaveform(WaveformEvent& event) noexcept {return waveforms->pop(event);}
     bool popView(EngineView& view) noexcept { return views.pop(view); }
     std::uint32_t generation() const noexcept { return epoch.load(std::memory_order_acquire); }
@@ -50,6 +52,7 @@ public:
     Transport transport{}; // Audio-owned; never read directly from the editor.
 private:
     LoopBank loops;
+    std::unique_ptr<LiveInput> liveInput=std::make_unique<LiveInput>();
     Metronome metronome;
     CountIn countIn;
     std::uint32_t countInTrack=0;

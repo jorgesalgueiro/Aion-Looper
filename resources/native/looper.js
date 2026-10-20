@@ -324,7 +324,10 @@
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
                 r.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
                 r.mute.textContent=t.muted?'UNM':'MUTE';r.mute.setAttribute('aria-pressed',String(t.muted));
-                window.AionDrawWaveform(r.canvas,{state:t.state,wavePeaks:r.waveformId===t.waveformId?r.wavePeaks:null},t.length?t.position/t.length:0);
+                const input=snapshot.liveInput,live=input?.track===i&&input.startFrame===t.captureStartFrame?{...input,syncMode:['off','static','dynamic'][snapshot.syncMode],now:snapshot.frame/snapshot.sampleRate,barDuration:snapshot.barLength}:null;
+                const recording=t.state==='recording'&&t.dynamicRecorded;
+                const progress=recording?Math.min(1,Math.max(0,(snapshot.frame-t.captureStartFrame)/snapshot.sampleRate/(snapshot.syncMode===0?10:snapshot.gridLength))):(t.length?t.position/t.length:0);
+                window.AionDrawWaveform(r.canvas,{state:t.state,graph:recording?{startTime:t.captureStartFrame/snapshot.sampleRate}:null,wavePeaks:r.waveformId===t.waveformId?r.wavePeaks:null},progress,live);
                 r.row.querySelector(`#loop-ascii-vu-${i}`).textContent='|'.repeat(Math.min(20,Math.round(t.peak*20)));
             });
             document.getElementById('odModeIndicator').style.display=mode==='overdub'?'':'none';
@@ -371,7 +374,7 @@
                 }
                 refresh();scheduler.pump();
             } catch(e) {if(alive)notify(e.message);}
-            finally {if(alive)pollTimer=setTimeout(poll,66);}
+            finally {if(alive)pollTimer=setTimeout(poll,snapshot?.tracks.some(t=>t.state==='recording'&&t.dynamicRecorded)?16:66);}
         }
         window.addEventListener('pagehide',()=>{alive=false;scheduler.close();keyboard.cancel();stickyObserver.disconnect();clearTimeout(pollTimer);if(pending)pending.reject(Error('Editor closed'));pending=null;});
         document.title='Aion-Looper';

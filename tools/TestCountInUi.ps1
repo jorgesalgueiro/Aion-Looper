@@ -14,6 +14,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Original WebAudio count-in sound comparison failed.' }
     & node (Join-Path $repo 'tests/NudgeWebAudio.cjs')
     if ($LASTEXITCODE -ne 0) { throw 'Tiny-clip WebAudio nudge regression failed.' }
+    & node (Join-Path $repo 'tests/LiveInputWebAudio.cjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Live input WebAudio downmix comparison failed.' }
     & node (Join-Path $repo 'tests/NativeUiSmoke.cjs')
     if ($LASTEXITCODE -ne 0) { throw 'Native UI smoke failed.' }
 } finally {

@@ -316,3 +316,30 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: original waveform colors, dim/bright bars, white playhead and HiDPI canvas operations');
 }
+
+{
+ const reference=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8'),a=reference.indexOf('                // Draw Waveform',reference.indexOf('static updateLivePerformanceState')),b=reference.indexOf('            // Draw Playhead',a);
+ const original=reference.slice(a,b),renderer=fs.readFileSync(path.join(root,'resources/native/loop-view.js'),'utf8').split('window.AionDrawWaveform=')[1];
+ for(const dpr of [1,1.25,2,4])for(const width of [1,180,720,1200])for(const mode of ['off','dynamic'])for(const captureState of ['recording','overdubbing','substituting','multiplying'])for(const now of [0.25,2.5,50]){
+  const run=native=>{const ops=[],ctx={};for(const name of ['resetTransform','scale','clearRect','fillRect','beginPath','moveTo','lineTo','stroke','fillText'])ctx[name]=(...args)=>ops.push([name,...args,ctx.fillStyle,ctx.globalAlpha,ctx.strokeStyle,ctx.lineWidth,ctx.font]);
+   const cvs={clientWidth:width,clientHeight:30,width:300,height:40,getContext:()=>ctx},loop={state:captureState,wavePeaks:null,graph:{startTime:0.25}},progress=0.333,live={samples:Array.from(Float32Array.from({length:512},(_,i)=>0.5*Math.sin(i*0.31))),syncMode:mode,now,barDuration:60/137.3*7};
+   const context={window:{devicePixelRatio:dpr},cvs,loop,progress,live};vm.createContext(context);
+   if(native)vm.runInContext('const draw='+renderer+';draw(cvs,loop,progress,live);',context);
+   else vm.runInContext(`const dpr=window.devicePixelRatio,w=cvs.clientWidth,h=cvs.clientHeight,playheadX=Math.floor(progress*w),ctx=cvs.getContext('2d'),state={syncMode:live.syncMode,liveRecordAnalyser:{getFloatTimeDomainData:out=>out.set(live.samples)},liveRecordAnalyserData:new Float32Array(512)},now=live.now,SyncManager={getBarDuration:()=>live.barDuration};cvs.width=Math.round(w*dpr);cvs.height=Math.round(h*dpr);ctx.resetTransform();ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);${original};if(loop.state!=='empty'){ctx.fillStyle='#fff';ctx.fillRect(playheadX,0,1,h);}`,context);
+   return {ops,width:cvs.width,height:cvs.height};};
+  assert.deepEqual(run(true),run(false),'Original live trace and dynamic bar markers');
+ }
+ console.log('PASS: original live trace fills/line/colors, rolling four-bar markers and HiDPI operations');
+}
+
+{
+ const reference=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8'),a=reference.indexOf('    getProgress(now) {',reference.indexOf('class Loop {')),method=reference.slice(a,reference.indexOf('\n    }',a)+6);assert(a>=0);
+ const product=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8').split('\n').find(line=>line.includes('const progress=recording?'));assert(product);
+ for(const rate of [8000,48000,96000])for(const mode of [0,1,2])for(const elapsed of [1/rate,0.3,2.75,12]){
+  const snapshot={frame:Math.round((0.137+elapsed)*rate),sampleRate:rate,syncMode:mode,gridLength:60/137.3*7},t={state:'recording',captureStartFrame:Math.round(0.137*rate)};t.graph={startTime:t.captureStartFrame/rate};
+  const native={snapshot,t,recording:true};vm.createContext(native);vm.runInContext(product+';globalThis.result=progress;',native);
+  const original={snapshot,t,state:{syncEnabled:mode!==0},SyncManager:{getLoopLength:()=>snapshot.gridLength}};vm.createContext(original);vm.runInContext(`class Original{${method}}globalThis.result=Original.prototype.getProgress.call(t,snapshot.frame/snapshot.sampleRate);`,original);
+  assert(Math.abs(native.result-original.result)<=1e-12,'Recording playhead follows unchanged getProgress after mode changes');
+ }
+ console.log('PASS: original DYNAMIC recording playhead, including sync-mode changes during capture');
+}
