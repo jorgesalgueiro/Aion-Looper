@@ -28,7 +28,8 @@
 | Other loop editing/import/export | Remaining editing, import and wet/mixed exports not ported | Reference PCM/state/UI fixtures |
 | Drone voices/sampler/tracker/FX | Not ported | Algorithm/timing/CPU and saved-state fixtures |
 | MIDI looper control/learn | Native Note/CC/Program Change actions, original mapping table, OD/SUB/SUS, standalone port routing and persisted bindings; works without editor | Original default-note oracle, processor/allocation and native 64/128 tests pass; physical AudioBox USB PC 0 learn/record/play/stop confirmed after triple-PC burst repair; broader hardware/reconnect tests pending |
-| MIDI expression/synth/HID | Continuous parameter learn, synth keyboard/pitch/modulation and gamepad not ported | Controller matrix, voice/parameter behavior and original reference fixtures |
+| MIDI loop volume/pan expression | Original slider right-click learn, zero/repeated CC values, native sample timing, pan integer steps, saved mappings and legacy state migration | Original handler/setter and exact connected stereo PCM, no-editor processor and 64/128 mouse gates; physical expression/listening remains separate |
+| Other MIDI expression/synth/HID | Other continuous targets, synth keyboard/pitch/modulation and gamepad not ported | Controller matrix, voice/parameter behavior and original reference fixtures |
 | MIDI clock I/O | Designed, not implemented | PLL jitter/timeout/start/stop/SPP/host-loop tests |
 | `.alp` / native projects | Not ported | Existing project fixtures, no missing features/data |
 | Windows ASIO | Windows binaries compile with bundled SDK; not hardware-tested | TOPPING/other driver duplex at 64/128 |

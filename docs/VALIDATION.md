@@ -1736,3 +1736,55 @@ coverage and all prior comparisons remain in place. Final result logs:
 Final focused gates pass: Windows 3/3 (33.33s), Ubuntu 3/3 (10.09s),
 ASan/UBSan with leak detection 3/3 (18.75s), actual JUCE processor tests and
 triple-PC native mouse workflows at 64/128. No new package/version bump was made.
+
+### Continuous MIDI loop volume/pan (2026-10-21)
+
+Scope: original right-click CC learn on existing loop volume/pan sliders, all
+20 loops, continuous zero/repeated values, native sample timing, persisted
+bindings and legacy 33-slot state migration. Original resources/ui assets and
+local logo edits remain untouched. Other MIDI/expression targets remain unported.
+
+- Unchanged App.handleMIDIMessage and original UIManager setters: 4256 CC
+  messages, all values/channels, zero/repeats/nonmonotonic movement; maximum
+  float metadata error 5.913531686552176e-8 at 1e-7. Original pan parseInt steps
+  are exact. Retains all prior 16384 default message comparisons.
+- Connected Engine capture/playback uses distinct nonconstant stereo input,
+  with a nonzero-output assertion. Sample-timed MIDI and directly scheduled
+  slider controls render exactly equal PCM across 64/128, including zeros,
+  both pan endpoints and rapid expression movement. This establishes routing
+  through existing native smoothing, not bit identity of every browser
+  AudioParam automation envelope.
+- Actual production JUCE MidiBuffer tests pass at 64/128: CC-zero learn consumes
+  its event, continuous CC changes controls without changing capture state,
+  saved expression works without an editor, legacy 33-slot mappings survive,
+  invalid duplicate XML preserves prior state and processBlock new/delete is
+  zero (`build/midi-expression-processor.log`).
+- Full Windows 18/18, 254.15s (`build/midi-expression-tests-windows.log`);
+  full Ubuntu 18/18, 423.36s (`build/midi-expression-tests-ubuntu.log`).
+- ASan/UBSan with leak detection: core/MIDI/frontend 3/3, 17.14s
+  (`build/midi-expression-asan.log`). No tolerance was relaxed or test removed.
+- Full native main/export/merge/MIDI mouse/PCM workflow passes at 64/128
+  (`build/midi-expression-mouse-full-retry.log`). It exercises actual CDP
+  right-click learning, CC zero/repeats, integer pan, conflicting button learn,
+  10s native timeout, Escape, reload, shift-right-click clear and save/disable.
+  All prior arm/record/play, sync, holds/delete, waveform, STUT/RTRG and PCM
+  export/merge checks are retained.
+- The first sandboxed GUI launch never initialized a CDP page, so it failed
+  before interaction (`build/midi-expression-mouse-full.log`). Repeating with
+  desktop access passed; the failed synthetic host was terminated by exact PID.
+  No product assertion or timeout was weakened to compensate.
+- Unchanged NativeUiSmoke and actual WebAudio count-in/nudge/analyser/STUT
+  comparisons pass (`build/midi-expression-ui.log`); 20 original cards, validated
+  IPC, disabled unported controls and no product AudioContext are retained.
+- Windows and Ubuntu connected capture/overdub/substitute audits each pass
+  126 cases and 965826 samples, maximum error 7.394757495227111e-8 at unchanged
+  1e-6 (`build/midi-expression-audio-windows.log`,
+  `build/midi-expression-audio-ubuntu.log`).
+
+Physical expression check: the updated Standalone is open with output muted,
+AudioBox USB enabled and unchanged PC pedal mappings. A native 10s learn timeout
+was observed. No expression CC has yet arrived; no physical expression/listening
+claim is made. The earlier user-confirmed physical PC record/play/stop repair
+remains accepted. The optional check does not authorize inferring hardware success
+from synthetic injection. Only existing binaries/test tools were incrementally
+rebuilt; version remains 0.4.3, with no installer/ZIP/additional format package.

@@ -395,3 +395,11 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  native.exportLoop(0);assert.equal(native.scheduler.items.length,0,'Empty waveform is a no-op');
  console.log('PASS: export gesture FIFO, finalization wait, latest clip identity, click-time filename and DEL/empty cancellation');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+{
+ const sandbox={window:{}};vm.createContext(sandbox);vm.runInContext(fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),sandbox);
+ const target=sandbox.window.AionMidiSliderTarget;
+ for(let i=0;i<20;++i){assert.equal(target(`loop-vol-slider-${i}`),33+i);assert.equal(target(`loop-pan-slider-${i}`),53+i);}
+ for(const id of ['loop-vol-slider-20','loop-vol-slider--1','loop-fbk-slider-0','loop-speed-slider-0','master','map-midi-0','loop-pan-slider-0-extra'])assert.equal(target(id),-1,'Unported/non-slider targets never start continuous learn');
+ console.log('PASS: original volume/pan slider MIDI target routing, all 20 loops and unsupported controls');
+}

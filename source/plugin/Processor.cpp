@@ -54,12 +54,13 @@ void AionProcessor::cancelMidiLearn(){
     std::lock_guard guard(midiSettingsMutex);
     if(midiSettings.learnTarget>=0){auto next=midiSettings;next.learnTarget=-1;++next.learnToken;
         if(!updateMidi(next)){midiSettings.learnTarget=-1;++midiSettings.learnToken;engine.cancelMidi();}
-        midiStatus="MIDI learn cancelled";
+        midiStatus="MIDI learn cancelled";midiLearnDeadline=0;
     }
 }
 void AionProcessor::serviceMidi(){
     midiInputReady.store(inputAvailable(*this),std::memory_order_release);
     std::lock_guard guard(midiSettingsMutex);
+    if(midiSettings.learnTarget>=static_cast<int>(aion::MidiSettings::volumeBase)&&midiLearnDeadline>0&&juce::Time::getMillisecondCounterHiRes()>=midiLearnDeadline){cancelMidiLearn();midiStatus="MIDI Learn timed out";}
     aion::MidiLearnResult result;
     while(engine.popMidiLearn(result))if(result.token==midiSettings.learnToken&&result.generation==engine.generation()&&result.target==midiSettings.learnTarget)pendingMidiLearn=result;
     if(pendingMidiLearn){const auto learned=*pendingMidiLearn;
@@ -167,7 +168,8 @@ juce::AudioProcessorEditor* AionProcessor::createEditor() { return new AionWebEd
 void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
     auto state=parameters.copyState();juce::ValueTree stored("MidiSettings");
     {std::lock_guard guard(midiSettingsMutex);stored.setProperty("enabled",midiSettings.enabled,nullptr);
-     for(unsigned i=0;i<33;++i)stored.setProperty("binding"+juce::String(i),static_cast<int>(midiSettings.bindings[i]),nullptr);}
+     stored.setProperty("version",2,nullptr);
+     for(unsigned i=0;i<aion::MidiSettings::bindingCount;++i)stored.setProperty("binding"+juce::String(i),static_cast<int>(midiSettings.bindings[i]),nullptr);}
     state.removeChild(state.getChildWithName("MidiSettings"),nullptr);state.appendChild(stored,nullptr);
     if (auto xml = state.createXml()) copyXmlToBinary(*xml, data);
 }
@@ -177,7 +179,9 @@ void AionProcessor::setStateInformation(const void* data, int size) {
         auto state=juce::ValueTree::fromXml(*xml);aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
         if(stored.isValid()){
             const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
-            for(unsigned i=0;i<33;++i){const auto value=stored.getProperty("binding"+juce::String(i)).toString();if(value.isEmpty()||!value.containsOnly("0123456789")||value.getLargeIntValue()>65535)return;next.bindings[i]=static_cast<std::uint16_t>(value.getIntValue());}
+            const auto version=stored.getProperty("version",1).toString();if(version!="1"&&version!="2")return;
+            const unsigned count=version=="2"?aion::MidiSettings::bindingCount:33;
+            for(unsigned i=0;i<count;++i){const auto value=stored.getProperty("binding"+juce::String(i)).toString();if(value.isEmpty()||!value.containsOnly("0123456789")||value.getLargeIntValue()>65535)return;next.bindings[i]=static_cast<std::uint16_t>(value.getIntValue());}
         }
         std::lock_guard guard(midiSettingsMutex);next.learnToken=midiSettings.learnToken+1;
         if(updateMidi(next))parameters.replaceState(state);
@@ -378,7 +382,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             const auto value=request.getProperty("enabled",{});if(!value.isBool())return fail("Expected MIDI enable flag");next.enabled=static_cast<bool>(value);next.learnTarget=-1;++next.learnToken;
         }else if(action=="learn"||action=="clear"){
             const auto target=request.getProperty("target",{});if(!target.isInt())return fail("Expected MIDI target");const int id=target;
-            if(id<0||id>=33||(id>=20&&id<30))return fail("MIDI target unavailable");
+            if(id<0||id>=static_cast<int>(aion::MidiSettings::bindingCount)||(id>=20&&id<30))return fail("MIDI target unavailable");
             ++next.learnToken;next.learnGeneration=engine.generation();next.learnTarget=action=="learn"?id:-1;
             if(action=="learn")next.enabled=true;else next.bindings[static_cast<unsigned>(id)]=0;
         }else if(action=="cancelLearn"){next.learnTarget=-1;++next.learnToken;}
@@ -392,6 +396,8 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         }else return fail("Unknown MIDI configuration action");
         const bool enableDevices=!midiSettings.enabled&&next.enabled;
         if(!updateMidi(next))return fail("MIDI configuration is invalid or queue is full");
+        if(action=="learn")midiLearnDeadline=next.learnTarget>=static_cast<int>(aion::MidiSettings::volumeBase)?juce::Time::getMillisecondCounterHiRes()+10000:0;
+        else if(action=="clear"||action=="cancelLearn"||action=="enable")midiLearnDeadline=0;
         midiStatus=action=="learn"?"Waiting for MIDI Note, CC or Program Change...":action=="cancelLearn"?"MIDI learn cancelled":"MIDI configuration queued";
        #if JucePlugin_Build_Standalone
         if(enableDevices)if(auto* holder=juce::StandalonePluginHolder::getInstance())

@@ -689,3 +689,26 @@ Identical mapped Program Changes on the same channel/target within 20ms are
 merged into one pulse, anchored to the first packet. This repairs a physically
 observed triple-PC foot-controller burst. Eight fixed raw events with sample
 timestamps are retained in native diagnostics; JSON construction stays off audio.
+
+### Continuous MIDI loop volume and pan
+
+MIDI settings version 2 extends the fixed binding array to 73 slots: original
+transport slots 0..32, loop volume 33..52 and pan 53..72. Continuous targets accept
+only CC, with overlap checks shared with button mappings; one CC cannot silently
+perform both a transport action and a continuous control. Version-1/legacy MIDI
+state retains its 33 original assignments and initializes extra slots unassigned.
+No original default effect CC mappings are activated for unported effects.
+
+The audio owner maps CC volume to value/127*2 and pan to floor(value/127*10),
+matching the original UI setter's parseInt. Zero and repeated positive values
+are continuous controls, without press slots/hold timers. Values dispatch at the
+MidiBuffer sample offset through existing LoopBank control/smoothing. Learn
+accepts CC zero and consumes the learn event; the message owner validates and
+acknowledges the mapping through the existing bounded configuration queue.
+Subsequent performance uses the acknowledged configuration without an editor.
+
+Original volume/pan slider right-clicks initiate CC learn, with the original
+magenta outline. Escape or a native message-thread 10s deadline cancels it;
+navigation/editor teardown retains native cancellation. Shift+right-click clears
+only the selected binding. The existing MIDI table/layout stays unchanged, with
+binding details in slider tooltips and the existing status/manual panels.

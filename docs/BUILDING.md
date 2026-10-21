@@ -407,3 +407,23 @@ Foot-controller burst handling: repeated identical PC messages within 20ms count
 as one tap. Separate taps at/after 20ms remain valid. This prevents the tested
 controller's three packets per pedal press from stopping and restarting a loop.
 With sync enabled, STOPPING waits for the grid boundary, then stays STOPPED.
+
+### MIDI expression: loop volume and pan
+
+Right-click an existing loop volume or pan slider, then move an expression pedal,
+knob or fader that sends MIDI CC. Wait until learning clears before adjusting it.
+The learn event is consumed, including CC zero; later values control the slider.
+Volume follows the original 0..2 range. Pan follows the original integer 0..10
+steps. Repeated positive CC values are continuous, unlike button CC mappings.
+Shift+right-click clears that slider's binding; Escape or 10 seconds cancels learn.
+SAVE MAPPINGS stores these with the original Note/CC/PC assignments. Older saved
+pedal mappings load unchanged. MIDI clock, synth and other continuous targets
+remain separate work.
+
+Use the same existing Standalone, aion_mouse_host and aion_midi_processor_tests
+build targets. js_native_midi now also compares the unchanged CC handler and
+original volume/pan setters. core_realtime_contract compares exact stereo PCM
+against scheduled native slider controls at 64/128. TestMouseWorkflow.ps1 -MidiOnly
+covers real slider right-click/clear, CC zero/repeats/pan steps, duplicate mapping
+rejection, ten-second timeout, Escape and reload. The default runner retains all
+main/export/merge tests. No new package or version bump is needed.

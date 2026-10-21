@@ -70,6 +70,34 @@ void midiTests(){
   f.send(192,0,0,2);f.wait();f.process(0);check(f.latest.tracks[0].state==S::playing,"20ms distinct PC tap accepted without extending debounce");
   f.advance(160);f.process(16,burst);check(f.latest.tracks[0].state==S::stopped,"PC burst stops once with sync off");
  }
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);MidiSettings settings;settings.enabled=true;settings.bindings[33]=midiBinding(2,11);settings.bindings[53]=midiBinding(2,12);settings.revision=++f.revision;
+  check(f.engine->configureMidi(settings),"continuous MIDI config");f.process(0);
+  for(unsigned v=0;v<128;++v){f.send(176,11,v);f.send(191,12,v);check(std::abs(f.latest.tracks[0].volume-static_cast<float>(2*v/127.0))<1e-7&&f.latest.tracks[0].pan==std::floor(10*v/127.0),"continuous CC all values and channels match original setters");}
+  f.send(176,11,0);check(f.latest.tracks[0].volume==0&&f.latest.tracks[0].state==S::empty,"continuous zero is volume, never transport release/record");
+  f.send(176,11,90);f.send(176,11,80);check(f.latest.tracks[0].volume==static_cast<float>(160/127.0),"expression positive repeats are continuous");
+  settings.bindings[1]=midiBinding(2,11);check(!MidiController::valid(settings),"continuous CC conflicts with button mapping");settings.bindings[1]=midiBinding(1,37);
+  settings.bindings[34]=midiBinding(1,60);check(!MidiController::valid(settings),"slider rejects non-CC bindings");settings.bindings[34]=0;
+  settings.learnTarget=34;settings.learnGeneration=f.engine->generation();settings.learnToken=9;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"continuous learn config");f.process(0);
+  f.send(176,13,0);MidiLearnResult learned;check(f.engine->popMidiLearn(learned)&&learned.target==34&&learned.binding==midiBinding(2,13),"CC zero learns and is consumed");
+  check(f.latest.tracks[1].volume==1&&f.latest.tracks[1].state==S::empty,"learning does not change control or record");
+  f.send(144,36,100);check(f.latest.tracks[0].state==S::recording,"Notes retain performance during continuous CC learn");f.send(128,36,0);
+  settings.learnTarget=-1;settings.enabled=false;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"disable continuous");f.process(0);f.send(176,11,127);check(f.latest.tracks[0].volume==static_cast<float>(160/127.0),"disabled CC preserves value");
+ }
+ std::vector<float> expressionReference;
+ for(const unsigned block:{64u,128u})for(const bool midiControls:{false,true}){
+  Fixture f(block);f.command(A::record);
+  for(unsigned n=0;n<1024;n+=block){float l[128],r[128];for(unsigned i=0;i<block;++i){l[i]=0.4f*std::sin((n+i)*0.11f);r[i]=0.2f*std::cos((n+i)*0.093f);}float* input[]={l,r};watch=true;f.engine->process(input,2,block);watch=false;}
+  f.command(A::finish);f.wait();
+  MidiSettings settings;settings.enabled=true;settings.bindings[33]=midiBinding(2,11);settings.bindings[53]=midiBinding(2,12);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"CC PCM comparison config");f.process(0);
+  const auto origin=f.engine->clock();
+  const std::array<MidiEvent,8> sequence{{{17,176,11,0,3},{257,176,11,127,3},{402,176,12,0,3},{630,176,12,64,3},{755,176,12,127,3},{1023,176,11,70,3},{1157,176,11,60,3},{1281,176,12,33,3}}};
+  if(!midiControls)for(const auto& e:sequence)check(f.engine->enqueueLoop({e.data1==11?A::volume:A::pan,0,++f.request,f.engine->generation(),origin+e.offset,e.data1==11?2*e.data2/127.0:std::floor(10*e.data2/127.0)}),"scheduled direct expression parameter");
+  std::vector<float> pcm;for(unsigned n=0;n<2048;n+=block){std::array<MidiEvent,8> events{};unsigned count=0;if(midiControls)for(auto e:sequence)if(e.offset>=n&&e.offset<n+block){e.offset-=n;events[count++]=e;}
+   float l[128]{},r[128]{};float* audio[]={l,r};watch=true;f.engine->process(audio,2,block,{events.data(),count});watch=false;for(unsigned i=0;i<block;++i){pcm.push_back(l[i]);pcm.push_back(r[i]);}}
+  if(expressionReference.empty()){expressionReference=pcm;check(std::any_of(pcm.begin(),pcm.end(),[](float v){return std::abs(v)>0.01f;}),"expression PCM oracle must contain audible signal");}
+  else check(expressionReference==pcm,"MIDI expression renders exact stereo PCM versus scheduled UI parameters at 64/128");
+ }
  std::vector<std::uint8_t> reference;
  for(const unsigned block:{64u,128u})for(const bool fromMidi:{false,true}){
   auto engine=std::make_unique<Engine>();engine->prepare(8000,8192);engine->setMonitoring(false);engine->setTarget(1);

@@ -266,3 +266,17 @@ playback. Keep the fixed 20ms window anchored to the first matching PC/channel/
 target, exact 159/160-sample boundary at 8kHz, no extending debounce, sync-off and
 static/dynamic stop/play cases, and actual 64/128 MidiBuffer burst tests. Preserve
 bounded eight-event raw diagnostic storage and zero callback new/delete.
+
+Continuous MIDI mixer acceptance retains unchanged App.handleMIDIMessage and
+UIManager.setLoopVolume/setLoopPan comparisons for all 128 values and 16 channels.
+Keep CC zero, repeated positive/nonmonotonic values, original pan parseInt steps
+(0..10) and volume 0..2; continuous CC must never enter the held-button state or
+transport path. Only existing loop volume/pan sliders support this increment.
+Retain original right-click learn, 10s native timeout, Escape/editor cancellation,
+shift-right-click clear, duplicate trigger/slider rejection and versioned 73-slot
+state with backward-compatible 33-slot loading. MIDI controls work without an
+editor and use sample offsets through the existing parameter smoothing. Retain
+nonzero stereo PCM equality against scheduled UI controls at 64/128, zero callback
+new/delete, native MidiBuffer persistence/legacy rollback, and actual pointer/
+keyboard/reload/timeout tests. Unported effect/master/synth/expression targets stay
+disabled; this gate does not establish physical expression-pedal or clock parity.

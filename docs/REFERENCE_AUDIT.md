@@ -414,3 +414,27 @@ single-message tests missed. Raw native sample timestamps confirmed the cause;
 and native six-message/two-action telemetry now confirm stopped playback without
 PCM deletion. This is a documented native PC extension, not an original JS parity
 claim; existing Note/CC behavior and unchanged source comparisons are retained.
+
+### Continuous MIDI loop mixer (2026-10-21)
+
+In addition to the retained 16384 default-note/message comparisons,
+MidiParity.cjs executes unchanged App.handleMIDIMessage plus original
+UIManager.setLoopVolume/setLoopPan for 4256 continuous CC messages: all values,
+all 16 channels, zeros, repeated positive and nonmonotonic expression movement.
+Maximum native float metadata error is 5.913531686552176e-8 (limit 1e-7); pan's
+original parseInt steps are exact. Existing committed sound gates remain at 1e-6.
+
+The connected Engine test captures nonconstant distinct stereo PCM, then compares
+sample-timed MIDI volume/pan with directly scheduled native controls. Output is
+exact across 64/128 blocks, including mute-volume zero, opposite pan endpoints,
+center steps and rapid expression changes. An explicit nonzero-signal assertion
+prevents a silent test oracle. Actual JUCE MidiBuffer tests cover learn-zero,
+performance without editor, state roundtrip and migration of old 33-slot state.
+
+Continuous CC is restricted to the already implemented loop volume/pan sliders.
+The original supports learning more effect/input/master/synth targets; those
+remain unported. Native bindings reject overlapping CC button/slider ownership
+instead of silently triggering transport or reassigning another target. This is
+a documented safety improvement, not a claim that every original CC mapping is
+ported. Physical expression response/listening, other controllers, DAWs and
+non-Windows native UI remain separate acceptance work.

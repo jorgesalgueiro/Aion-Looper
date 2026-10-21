@@ -2,10 +2,10 @@
 #include <cmath>
 namespace aion {
 bool MidiController::valid(const MidiSettings& s) noexcept {
-    if(s.learnTarget < -1||s.learnTarget>=33||(s.learnTarget>=20&&s.learnTarget<30)||s.modeOverride < -1||s.modeOverride>2)return false;
-    for(unsigned i=0;i<33;++i){const auto b=s.bindings[i];if(!b)continue;
+    if(s.learnTarget < -1||s.learnTarget>=static_cast<int>(MidiSettings::bindingCount)||(s.learnTarget>=20&&s.learnTarget<30)||s.modeOverride < -1||s.modeOverride>2)return false;
+    for(unsigned i=0;i<MidiSettings::bindingCount;++i){const auto b=s.bindings[i];if(!b)continue;
         const unsigned kind=b&3,number=(b>>2)&127,channel=b>>9;
-        if(!kind||channel>16||(i>=20&&i<30)||(kind==2&&(number==120||number==123)))return false;
+        if(!kind||channel>16||(i>=20&&i<30)||(i>=MidiSettings::volumeBase&&kind!=2)||(kind==2&&(number==120||number==123)))return false;
         for(unsigned j=0;j<i;++j){const auto a=s.bindings[j];if(a&&(a&511)==(b&511)&&(!(a>>9)||!channel||(a>>9)==channel))return false;}
     }
     return true;
@@ -14,7 +14,7 @@ int MidiController::targetFor(const MidiSettings& s,const MidiEvent& e) noexcept
     const unsigned type=e.status&240,channel=(e.status&15)+1;
     const unsigned kind=(type==128||type==144)&&e.size==3?1:type==176&&e.size==3?2:type==192&&e.size==2?3:0;
     if(!kind||e.data1>127||e.data2>127)return -1;
-    for(unsigned i=0;i<33;++i){const auto b=s.bindings[i];if((b&3)==kind&&((b>>2)&127)==e.data1&&(!(b>>9)||(b>>9)==channel))return static_cast<int>(i);}
+    for(unsigned i=0;i<MidiSettings::bindingCount;++i){const auto b=s.bindings[i];if((b&3)==kind&&((b>>2)&127)==e.data1&&(!(b>>9)||(b>>9)==channel))return static_cast<int>(i);}
     return -1;
 }
 bool MidiController::apply(LoopAction action,unsigned id,double value,Dispatch& d) noexcept {
@@ -74,12 +74,26 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     else return;
     if(e.data1>127||e.data2>127)return;
     ++messages;
-    const unsigned key=(kind<<12)|(channel<<7)|e.data1;
-    if(up){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);return;}
-    if(settings.learnTarget>=0){
+    // Continuous CC learn accepts zero and consumes the event; Note/PC keep
+    // their transport mappings while a slider waits for CC, as in the original.
+    if(settings.learnTarget>=static_cast<int>(MidiSettings::volumeBase)&&kind==2){
+        if(!learnCaptured&&learned.push({settings.learnTarget,midiBinding(2,e.data1),settings.learnToken,d.generation}))learnCaptured=true;
+        return;
+    }
+    if(settings.learnTarget>=0&&settings.learnTarget<static_cast<int>(MidiSettings::volumeBase)&&down){
         if(!learnCaptured&&learned.push({settings.learnTarget,midiBinding(kind,e.data1),settings.learnToken,d.generation}))learnCaptured=true;
         return;
     }
+    const int continuous=kind==2?targetFor(settings,e):-1;
+    if(continuous>=static_cast<int>(MidiSettings::volumeBase)){
+        const bool pan=continuous>=static_cast<int>(MidiSettings::panBase);
+        const auto track=static_cast<unsigned>(continuous)-(pan?MidiSettings::panBase:MidiSettings::volumeBase);
+        // Original setLoopPan uses parseInt after mapping 0..127 onto 0..10.
+        const double value=pan?std::floor((e.data2/127.0)*10):(e.data2/127.0)*2;
+        apply(pan?LoopAction::pan:LoopAction::volume,track,value,d);return;
+    }
+    const unsigned key=(kind<<12)|(channel<<7)|e.data1;
+    if(up){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);return;}
     if(!down)return;
     for(const auto& p:presses)if(p.active&&p.key==key)return;
     const int target=targetFor(settings,e);

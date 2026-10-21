@@ -42,7 +42,7 @@ private:
     std::optional<aion::MidiLearnResult> pendingMidiLearn;
     juce::String midiStatus;
     juce::StringArray previousMidiDevices;
-    double nextMidiDeviceCheck=0;
+    double nextMidiDeviceCheck=0,midiLearnDeadline=0;
     juce::MidiDeviceListConnection midiDeviceChanges;
     bool updateMidi(aion::MidiSettings);
     void serviceMidi();

@@ -9,12 +9,12 @@ const assert=require('node:assert/strict'),delay=ms=>new Promise(r=>setTimeout(r
  for(let n=0;n<100;++n){const r=await call('Runtime.evaluate',{expression:`typeof window.AionNative?.request==='function'&&!!document.getElementById('map-midi-0')`,returnByValue:true});if(r.result.value)break;await delay(100);}
  const rpc=async request=>{const r=await call('Runtime.evaluate',{expression:`AionNative.request(${JSON.stringify(request)})`,awaitPromise:true,returnByValue:true});assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));assert(r.result.value.ok,JSON.stringify(r.result.value));return r.result.value;};
  let devices=await rpc({operation:'midiDevices'}),s=await rpc({operation:'snapshot'});
- if(process.argv[2]==='prepare'){
+ if(['prepare','prepare-volume'].includes(process.argv[2])){
   assert(devices.standalone,'Real Standalone owns hardware routing');
   for(const [id,value] of [['masterGain',0],['inputMonitor',0]])await rpc({operation:'setParameter',id,value});
-  if(devices.devices.length){await rpc({operation:'midiConfig',action:'learn',target:0});await delay(150);devices=await rpc({operation:'midiDevices'});s=await rpc({operation:'snapshot'});
-   await call('Runtime.evaluate',{expression:`document.getElementById('mod-mapping').scrollIntoView({block:'center',behavior:'instant'})`});}
+  if(devices.devices.length){await rpc({operation:'midiConfig',action:'learn',target:process.argv[2]==='prepare-volume'?33:0});await delay(150);devices=await rpc({operation:'midiDevices'});s=await rpc({operation:'snapshot'});
+   await call('Runtime.evaluate',{expression:`document.getElementById('${process.argv[2]==='prepare-volume'?'loop-vol-slider-0':'mod-mapping'}').scrollIntoView({block:'center',behavior:'instant'})`});}
  }
  if(process.argv[2]==='cancel'){await rpc({operation:'midiConfig',action:'cancelLearn'});s=await rpc({operation:'snapshot'});}
- console.log(JSON.stringify({devices:devices.devices,standalone:devices.standalone,audioReady:s.audioReady,sampleRate:s.sampleRate,frame:s.frame,inputAvailable:s.inputAvailable,syncMode:s.syncMode,syncBpm:s.syncBpm,syncBars:s.syncBars,mode:s.midi.mode,midi:s.midi,loop0:{state:s.tracks[0].state,length:s.tracks[0].length}},null,2));ws.close();
+ console.log(JSON.stringify({devices:devices.devices,standalone:devices.standalone,audioReady:s.audioReady,sampleRate:s.sampleRate,frame:s.frame,inputAvailable:s.inputAvailable,syncMode:s.syncMode,syncBpm:s.syncBpm,syncBars:s.syncBars,mode:s.midi.mode,midi:s.midi,loop0:{state:s.tracks[0].state,length:s.tracks[0].length,volume:s.tracks[0].volume,pan:s.tracks[0].pan}},null,2));ws.close();
 })().catch(e=>{console.error(e);socket?.close();process.exitCode=1;});
