@@ -2268,3 +2268,49 @@ with current docs, dependency notices and source/local-override/executable-hash
 manifest. Version stays 0.4.3. No plugin/installer package or production-ready
 claim follows. Physical drivers, listening, other platforms and DAW hosts remain
 separate acceptance work.
+
+### Held loop note reassigned to OD/SUB/SUS (2026-10-21)
+
+The core regression first failed at "Original global NoteOn bypasses a cancelled
+former loop press" (`build/midi-reassigned-mode-repro.log`). Suppressed old loop
+presses intentionally remain until release after a transport-binding change, but
+native code consulted that entry before resolving a key's new global assignment.
+The original handler directly dispatches modes and never consults the loop press
+map for them. Native routing now resolves current bindings first and bypasses
+old entries for global NoteOns. Ordinary loop debounce/recovery and global CC/PC
+edge/burst handling remain unchanged. The old suppressed release still cannot
+finish a former recording. No alternative behavior or new interface was added.
+
+Acceptance:
+
+- Windows focused core/MIDI/frontend/assets and unchanged-JS DSP/sync/state:
+  7/7, 61.77s (`build/midi-reassigned-mode-windows.log`). Unchanged original MIDI,
+  press/release and mode methods compare reassignment to each of OD/SUB/SUS.
+- Ubuntu 4/4, 14.06s (`build/midi-reassigned-mode-ubuntu.log`); ASan/UBSan with
+  leak detection 4/4, 29.15s (`build/midi-reassigned-mode-asan.log`). Earlier
+  Note/CC/PC learning, focused sliders, hold/delete and lost-release gates remain.
+- Nonzero distinct stereo capture from sample 17 through 899 (883 frames) stays
+  byte-identical to direct capture at 64/128 when a held loop key becomes OD,
+  SUB or SUS, receives repeated NoteOns and is finally released. This verifies
+  preserved audio, in addition to mode metadata. Zero callback new/delete passes.
+- Production juce::MidiBuffer tests pass at 64/128
+  (`build/midi-reassigned-mode-processor.log`): record with held Note 36, clear its
+  binding, learn it as global OD, then repeat/release at offsets 19/20/21. New
+  modes work immediately while the former recording continues. All earlier
+  persistence/overflow/learn and host MIDI passthrough/allocation checks remain.
+- Connected original/native capture/overdub/substitute audit passes 126 cases,
+  965826 samples, maximum error 7.394757495227111e-8 at unchanged 1e-6 tolerance
+  (`build/midi-reassigned-mode-audio.log`). Full browser envelopes/resampling,
+  physical latency and external sync remain outside that committed-PCM scope.
+
+- Full production MIDI mouse/key/reload/save/slider gates pass at 64/128
+  (`build/midi-reassigned-mode-mouse.log`). The added case uses actual pointer
+  clear/learn gestures while Note 36 is held, verifies its new global OD action,
+  repeats/releases without ending capture, then restores original mappings.
+- Existing Standalone original 20-card UI/keyboard/IPC smoke and actual WebAudio
+  count-in, nudge, analyser and STUT gates pass
+  (`build/midi-reassigned-mode-ui.log`). No product AudioContext is created.
+
+Only existing Windows Standalone/test targets were incrementally rebuilt. No
+new package, installer or version bump. Original markup and local logo edits
+remain intact. No broader hardware/DAW/platform or production-readiness claim.

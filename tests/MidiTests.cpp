@@ -68,6 +68,14 @@ void midiTests(){
   }
   f.send(144,36,100);f.send(144,36,127);check(f.latest.tracks[0].state==S::recording&&f.latest.midi.actions==1,"Global pulse repair retains loop-note debounce");
  }
+ // A formerly held loop key may be reassigned to a global mode before release.
+ for(const unsigned block:{64u,128u})for(const unsigned target:{30u,31u,32u}){
+  Fixture f(block);f.send(144,36,100);f.advance(128);const auto length=f.latest.tracks[0].length;
+  MidiSettings settings;settings.enabled=true;settings.bindings[0]=0;settings.bindings[target]=midiBinding(1,36);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Reassign held loop note to global mode");f.process(0);
+  f.send(144,36,127);check(target==32?f.latest.midi.sustain:f.latest.midi.mode==static_cast<int>(target-29),"Original global NoteOn bypasses a cancelled former loop press");
+  f.send(144,36,1);check(f.latest.midi.mode==0&&!f.latest.midi.sustain,"Reassigned global note toggles again without release");
+  f.send(128,36,0);check(f.latest.midi.mode==0&&!f.latest.midi.sustain&&f.latest.tracks[0].state==S::recording&&f.latest.tracks[0].length>length,"Old loop release neither toggles global mode nor finishes the take");
+ }
  // Native CC/PC mode bindings retain their existing edge and burst contracts.
  for(const unsigned block:{64u,128u}){
   Fixture f(block);MidiSettings settings;settings.enabled=true;settings.bindings[30]=midiBinding(2,20);settings.bindings[31]=midiBinding(3,0);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"CC/PC mode mapping");
@@ -238,6 +246,23 @@ void midiTests(){
   check(latest.tracks[0].length==80001&&latest.tracks[0].waveformId,"Recovered note commits exact ten-second-plus-one-sample span");check(engine->enqueueExport({0,engine->generation(),latest.tracks[0].waveformId}),"export recovered stereo take");watch=true;engine->process(nullptr,0,0);watch=false;
   WavExport output;bool ready=false;for(unsigned n=0;n<10000&&!ready;++n){ready=engine->popExport(output);if(!ready)std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(ready&&output.bytes.size()>44,"Recovered stereo WAV ready");check(std::any_of(output.bytes.begin()+44,output.bytes.end(),[](auto sample){return sample!=0;}),"Recovered stereo WAV oracle must contain signal");
   if(recoveredPcm.empty())recoveredPcm=output.bytes;else check(recoveredPcm==output.bytes,"Recovered NoteOn captures byte-identical stereo WAV versus direct commands at 64/128");
+ }
+ // Reassigning a held main key to each global mode must preserve recorded PCM.
+ std::vector<std::uint8_t> reassignedPcm;
+ for(const unsigned block:{64u,128u})for(const unsigned target:{30u,31u,32u})for(const bool fromMidi:{false,true}){
+  auto engine=std::make_unique<Engine>();engine->prepare(8000,8192);engine->setMonitoring(false);engine->setTarget(1);
+  MidiSettings settings;settings.enabled=fromMidi;check(engine->configureMidi(settings),"Reassigned stereo configuration");
+  if(!fromMidi)check(engine->enqueueLoop({A::record,0,1,engine->generation(),17,0}),"Direct reassignment capture oracle");
+  check(engine->enqueueLoop({A::finish,0,2,engine->generation(),900,0}),"Finish reassigned capture");
+  for(unsigned offset=0;offset<1024;offset+=block){
+   if(offset==128){settings.bindings[0]=0;settings.bindings[target]=midiBinding(1,36);++settings.revision;check(engine->configureMidi(settings),"Reassign main key during nonzero stereo capture");}
+   std::array<MidiEvent,4> events{};unsigned count=0;for(auto e:std::array<MidiEvent,4>{{{17,144,36,100,3},{145,144,36,127,3},{146,144,36,1,3},{147,128,36,0,3}}})if(fromMidi&&e.offset>=offset&&e.offset<offset+block){e.offset-=offset;events[count++]=e;}
+   float l[128],r[128];for(unsigned i=0;i<block;++i){l[i]=0.3f*std::sin((offset+i)*0.021f);r[i]=0.2f*std::cos((offset+i)*0.033f);}float* audio[]={l,r};watch=true;engine->process(audio,2,block,{events.data(),count});watch=false;EngineView discard;while(engine->popView(discard)){}
+  }
+  EngineView latest{},view{};for(unsigned n=0;n<10000;++n){watch=true;engine->process(nullptr,0,0);watch=false;while(engine->popView(view))latest=view;if(!engine->finalizationPending()&&latest.tracks[0].state==S::playing)break;std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+  check(latest.tracks[0].length==883&&latest.midi.mode==0&&!latest.midi.sustain,"Reassigned mode repeats/release preserve exact capture span and final modes");check(engine->enqueueExport({0,engine->generation(),latest.tracks[0].waveformId}),"Export reassigned stereo take");watch=true;engine->process(nullptr,0,0);watch=false;
+  WavExport output;bool ready=false;for(unsigned n=0;n<10000&&!ready;++n){ready=engine->popExport(output);if(!ready)std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(ready&&output.bytes.size()>44,"Reassigned stereo WAV ready");check(std::any_of(output.bytes.begin()+44,output.bytes.end(),[](auto sample){return sample!=0;}),"Reassigned stereo oracle contains signal");
+  if(reassignedPcm.empty())reassignedPcm=output.bytes;else check(reassignedPcm==output.bytes,"Reassigned OD/SUB/SUS keys preserve byte-identical stereo WAV versus direct capture at 64/128");
  }
  check(allocations.load()==0,"MIDI callback zero new/delete");std::cout<<"PASS: MIDI sample timing, Note/CC/PC mappings, debounce, four-second origin/release, sustain, panic and no callback new/delete\n";
 }

@@ -793,3 +793,9 @@ nothing to these modes. Loop note debounce, held-loop release and stale recovery
 are unchanged. Learned global CC bindings keep positive-edge/zero rearm, and
 Program Changes keep their first-packet-anchored burst window. No DSP, IPC schema,
 APVTS state version or interface change is needed.
+
+Global NoteOn routing resolves the current mapping before held-loop debounce.
+Transport-binding replacement can leave an old, suppressed loop press waiting for
+release. That entry must not block a key that has become OD/SUB/SUS; its eventual
+NoteOff still releases only the suppressed old owner and cannot finish the take.
+Current loop bindings retain normal debounce and strict >10s recovery.

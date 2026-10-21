@@ -33,6 +33,12 @@ int main(){
    }
    for(int i=0;i<80;++i)packets.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),i%2?18:17);
    const auto state=run();check(!static_cast<bool>(state["midi"]["sustain"])&&static_cast<int>(state["midi"]["overflows"])==0,"Repeated mode pulses never exhaust held-press storage");
+   packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),17);run();
+   const auto config=[&](const char* json){check(modes->request({juce::JSON::parse(json)}).getProperty("ok",false),"Reassigned mode configuration accepted");};
+   config(R"({"operation":"midiConfig","action":"clear","target":0})");config(R"({"operation":"midiConfig","action":"learn","target":30})");run();
+   packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{127}),18);run();run();
+   packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{1}),19);auto reassigned=run();check(static_cast<int>(reassigned["midi"]["mode"])==1&&reassigned["tracks"][0]["state"].toString()=="recording","Learned global NoteOn bypasses its former held loop press without touching capture");
+   packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{127}),20);packets.addEvent(juce::MidiMessage::noteOff(1,36),21);reassigned=run();check(static_cast<int>(reassigned["midi"]["mode"])==0&&reassigned["tracks"][0]["state"].toString()=="recording","Reassigned mode repeat/release preserves former recording");
   }
   for(const int cancellation:{252,120,123,300})for(const bool staleViews:{false,true}){
    auto cancelled=std::make_unique<AionProcessor>();cancelled->setPlayConfigDetails(2,2,8000,block);cancelled->prepareToPlay(8000,block);

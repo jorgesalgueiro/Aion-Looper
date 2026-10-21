@@ -373,3 +373,11 @@ store global NoteOns as held loop gestures or apply the loop debounce/10s recove
 Retain original handler/toggle comparisons on all channels, zero-velocity/releases,
 mutual exclusion, actual MidiBuffer offsets and original visible mode indicators at
 64/128. Learned global CC buttons keep zero rearm and PC keeps 20ms burst filtering.
+
+Global NoteOn routing must resolve the current binding before consulting held loop
+entries: a former loop press may survive transport-binding cancellation until its
+NoteOff. Reassigning that key to OD/SUB/SUS must bypass the old entry immediately,
+without finishing its former take. Retain unchanged original reassignment dispatch,
+exact nonzero stereo WAV versus direct capture at 64/128, real clear/learn/MidiBuffer
+and mouse reassignment/repeat/release checks. Preserve ordinary loop debounce,
+CC rearm, PC burst filtering and old-release cancellation protection.

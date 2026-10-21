@@ -3,8 +3,13 @@
 #include <memory>
 #include <iostream>
 int main(int argc,char** argv){
- if(argc==2&&std::string(argv[1])=="modes"){
+ if((argc==2&&std::string(argv[1])=="modes")||(argc==3&&std::string(argv[1])=="reassigned-mode")){
   auto engine=std::make_unique<aion::Engine>();engine->prepare(8000,8192);aion::MidiSettings settings;settings.enabled=true;if(!engine->configureMidi(settings))return 2;
+  if(argc==3){
+   const std::string value=argv[2];if(value!="30"&&value!="31"&&value!="32")return 2;const unsigned target=value=="30"?30:value=="31"?31:32;
+   const aion::MidiEvent held{0,144,36,100,3};engine->process(nullptr,0,1,{&held,1});aion::EngineView discard{};while(engine->popView(discard)){}
+   settings.bindings[0]=0;settings.bindings[target]=aion::midiBinding(1,36);++settings.revision;if(!engine->configureMidi(settings))return 2;
+  }
   unsigned status,a,b,size;while(std::cin>>status>>a>>b>>size){if(status>255||a>127||b>127||size>3)return 2;
    const aion::MidiEvent e{0,static_cast<std::uint8_t>(status),static_cast<std::uint8_t>(a),static_cast<std::uint8_t>(b),static_cast<std::uint8_t>(size)};
    engine->process(nullptr,0,1,{&e,1});aion::EngineView view{},latest{};while(engine->popView(view))latest=view;

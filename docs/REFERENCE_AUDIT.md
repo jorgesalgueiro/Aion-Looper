@@ -521,3 +521,20 @@ note/CC mixer comparisons remain. Separately, Jorge's physical AudioBox USB CC27
 volume response/display was confirmed after the focused-slider repair at a21f8b5;
 that supersedes the earlier deferred-expression notes above for that setup only.
 Calibration, audible performance and other drivers/controllers remain separate.
+
+### Held loop note reassigned to a global mode (2026-10-21)
+
+The original MIDI handler directly dispatches global modes before the loop press
+map. Native code fixed new global presses at 2e8cc4f but still consulted a former
+loop entry before resolving a changed binding. Clearing a held loop assignment,
+then learning its key as OD/SUB/SUS, could therefore ignore the new mode command
+until NoteOff or stale-entry recovery. The retained core regression reproduces
+this (`build/midi-reassigned-mode-repro.log`). Routing now resolves the current
+binding first and bypasses former held entries for global NoteOns only.
+
+The unchanged original handler, press/release and global toggle methods verify
+reassignment to each of OD/SUB/SUS. Native tests also preserve the former ongoing
+recording through repeated mode presses and eventual old NoteOff, with exact
+stereo WAV equality against direct capture at 64/128. Existing loop debounce,
+10s recovery, CC edge and PC burst contracts remain. No alternative interaction,
+new interface or next feature was introduced.

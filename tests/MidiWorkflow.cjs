@@ -38,6 +38,13 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
   for(let n=0;n<100;++n){if(await evaluate(`document.getElementById('${indicator}').style.display==='none'`))break;await delay(20);}assert(await evaluate(`document.getElementById('${indicator}').style.display==='none'`),'Mode indicator follows repeated NoteOn without release');
   await inject([[128,note,0,3,19],[144,note,0,3,20]]);s=await snapshot();assert.equal(s.midi.mode,0);assert.equal(s.midi.sustain,false);
  }
+ // Clear/learn can reassign a key while its old loop press is still held.
+ await inject([[144,36,100,3,17]]);await wait(s=>s.tracks[0].state==='recording','held loop before mode reassignment');
+ await click('#map-midi-0','right');await wait(s=>s.midi.bindings[0]===0,'clear old held-loop binding');await click('#map-midi-30');await wait(s=>s.midi.learnTarget===30,'learn global OD from held loop key');await inject([[144,36,127,3,17]]);await wait(s=>s.midi.bindings[30]===(1|(36<<2))&&s.midi.learnTarget===-1,'held loop key learned as global OD');
+ await inject([[144,36,1,3,17]]);await wait(s=>s.midi.mode===1&&s.tracks[0].state==='recording','reassigned key toggles OD without release');await inject([[144,36,127,3,18],[128,36,0,3,19]]);await wait(s=>s.midi.mode===0&&s.tracks[0].state==='recording','reassigned repeat/release preserves recording');
+ s=await snapshot();assert((await rpc({operation:'loop',action:'clear',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks[0].state==='empty','reassignment capture cleanup');
+ await click('#map-midi-30','right');await wait(s=>s.midi.bindings[30]===0,'clear reassignment fixture');
+ for(const [target,note] of [[0,36],[30,46]]){await click('#map-midi-'+target);await wait(s=>s.midi.learnTarget===target,'restore original mode fixture');await inject([[144,note,100,3,17],[128,note,0,3,18]]);await wait(s=>s.midi.bindings[target]===(1|(note<<2))&&s.midi.learnTarget===-1,'restore original note mapping');}
  // Missing NoteOff must not strand a real loop main key indefinitely.
  await inject([[144,36,100,3,17]]);await wait(s=>s.tracks[0].state==='recording','lost-release recording');await delay(10100);s=await snapshot();assert.equal(s.tracks[0].state,'recording','An intentional long hold is not auto-finished');await inject([[144,36,100,3,17],[128,36,0,3,18]]);s=await wait(s=>s.tracks[0].state==='playing'&&s.tracks[0].waveformId,'fresh note recovers missing release after original ten-second ceiling');
  assert((await rpc({operation:'loop',action:'clear',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks[0].state==='empty','lost-release fixture cleanup');

@@ -71,3 +71,12 @@ for(let channel=0;channel<16;++channel)for(const note of [46,47,48])for(const pa
 for(const note of [46,47,46,46,48,48]){const packet=[144,note,100];modePackets.push([...packet,3]);modeExpected.push(Array.from(sandbox.modeOracle(packet)));}
 const modeRun=spawnSync(process.argv[2],['modes'],{input:modePackets.map(row=>row.join(' ')).join('\n')+'\n',encoding:'utf8'});assert.equal(modeRun.status,0,modeRun.stderr);assert.deepEqual(modeRun.stdout.trim().split('\n').map(row=>row.trim().split(/\s+/).map(Number)),modeExpected);
 console.log('PASS: unchanged original OD/SUB/SUS toggles on every NoteOn, repeated presses without release and velocity-zero/NoteOff across 16 channels');
+
+// Reassignment must not route global NoteOns through an older loop press entry.
+for(const target of [30,31,32]){
+ vm.runInContext(`state.keyMapping.midi=${mapping[1]};state.globalOverdubMode=false;state.globalSubstituteMode=false;state.globalSusMode=false;state.inputPressTimers={};state.loops=[{state:'recording'}];App.handleMIDIMessage({data:[144,36,100]});if(!state.inputPressTimers.midi_36)throw Error('Original loop press fixture missing');state.keyMapping.midi[0]=null;state.keyMapping.midi[${target}]=36;`,sandbox);
+ const packets=[[144,36,127,3],[144,36,1,3],[128,36,0,3]],expected=packets.map(row=>Array.from(sandbox.modeOracle(row.slice(0,3))));
+ assert.deepEqual(expected,[target===32?[0,1]:[target-29,0],[0,0],[0,0]]);
+ const run=spawnSync(process.argv[2],['reassigned-mode',String(target)],{input:packets.map(row=>row.join(' ')).join('\n')+'\n',encoding:'utf8'});assert.equal(run.status,0,run.stderr);assert.deepEqual(run.stdout.trim().split('\n').map(row=>row.trim().split(/\s+/).map(Number)),expected);
+}
+console.log('PASS: unchanged original global mode dispatch bypasses a prior loop press after reassignment, for OD/SUB/SUS');
