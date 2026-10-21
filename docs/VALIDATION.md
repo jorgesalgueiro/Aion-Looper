@@ -2314,3 +2314,32 @@ Acceptance:
 Only existing Windows Standalone/test targets were incrementally rebuilt. No
 new package, installer or version bump. Original markup and local logo edits
 remain intact. No broader hardware/DAW/platform or production-readiness claim.
+
+### Architecture and complete portable baseline audit (2026-10-21)
+
+`MIGRATION_BLUEPRINT.md` inventories actual owners and current CMake targets,
+separately from planned synth/tracker/FX/transport/project modules. Original
+reference/assets and all audio/MIDI/control sources are unchanged by this audit.
+README's stale claim that all export and MIDI learn are pending is corrected:
+raw WAV and loop/volume/pan MIDI learn exist; broader paths remain incomplete.
+CMake now installs the audited blueprint alongside architecture/build docs.
+
+- Existing Windows JUCE configure/generation succeeds with the cached pinned
+  dependencies and Standalone/VST3/CLAP/ASIO enabled
+  (`build/architecture-audit-cmake.log`); generated cmake_install.cmake includes
+  MIGRATION_BLUEPRINT.md. Preset listing succeeds. No SDK or wrapper upgrade.
+- All portable/reference targets incrementally rebuilt; full MSVC suite 18/18,
+  256.80s (`build/architecture-audit-windows.log`).
+- All portable/reference targets incrementally rebuilt; full Ubuntu suite 18/18,
+  446.04s (`build/architecture-audit-ubuntu.log`).
+- Original asset identity/tamper rejection and all retained MIDI, core realtime,
+  frontend, WAV/merge, waveform/STUT/Start/count-in/metronome, DSP/sync, multiply,
+  history/reverse/NORM/state comparisons pass. No tolerance or case was removed.
+
+Prior native processor, actual WebView2 GUI/browser-audio and sanitizer results
+for e66a86c are retained, not rerun for documentation/install-list changes.
+No new package, installer, DSP feature or interface redesign. The user's local
+logo override remains untouched/unstaged. Available CMake targets are not proof
+of current plugin host, physical driver, Apple device or commercial acceptance;
+full feature parity and arbitrary C malloc/host allocation certification remain
+unestablished.

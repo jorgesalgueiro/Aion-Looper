@@ -1,5 +1,10 @@
 # Native architecture blueprint
 
+For the audited current implementation versus planned modules, see
+[MIGRATION_BLUEPRINT.md](MIGRATION_BLUEPRINT.md). The reference-to-native module
+names in the initial design below include future components; they are not a claim
+that synths, tracker, full clock sync or project persistence are already ported.
+
 ## Reference audit
 
 Source: `.reference/Ascii-Looper`, version string `v0.76.16`. It is a browser

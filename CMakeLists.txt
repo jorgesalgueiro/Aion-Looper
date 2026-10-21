@@ -183,7 +183,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Required for a WebKit view in plugin hosts, not just standalone apps.
     juce_link_with_embedded_linux_subprocess(AionLooper)
 endif()
-install(FILES README.md docs/ARCHITECTURE.md docs/BUILDING.md docs/PARITY.md
+install(FILES README.md docs/ARCHITECTURE.md docs/MIGRATION_BLUEPRINT.md docs/BUILDING.md docs/PARITY.md
     docs/LICENSING.md docs/VALIDATION.md docs/SDKS.md docs/REFERENCE_AUDIT.md DESTINATION share/doc/Aion-Looper)
 # Primary source notices accompany local preview packages; the full release inventory
 # remains a separate gate documented in LICENSING.md.

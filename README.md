@@ -1,7 +1,8 @@
 # Aion-Looper — native JUCE migration
 
 Version 0.4.3 is a **native loop preview**, not a completed port or commercial release.
-See [ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
+See the [audited blueprint](docs/MIGRATION_BLUEPRINT.md),
+[ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
 [SDKS](docs/SDKS.md) and [PARITY](docs/PARITY.md).
 
 - JUCE 9.0.4 and CLAP extension sources are pinned. CMake targets cover Standalone,
@@ -20,8 +21,10 @@ See [ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
   Unmute Input control; choose devices/ASIO and buffer size in the window's Options.
 - **Recorded audio is temporary and is not included in DAW/project state yet.**
   Same-rate reprepare retains PCM and stops loops; a sample-rate change clears PCM
-  and reports the reset. Export, projects, synths, tracker, effects, MIDI learn
-  and full host/MIDI clock synchronization remain pending.
+  and reports the reset. Raw loop WAV export and MIDI loop/volume/pan learning
+  are implemented; projects, remaining import/export paths, synths, tracker,
+  effects, other MIDI learn targets and full host/MIDI clock synchronization
+  remain pending. See PARITY for the exact tested scope.
 
 ```sh
 cmake --preset core
