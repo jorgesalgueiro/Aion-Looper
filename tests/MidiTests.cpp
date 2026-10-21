@@ -39,6 +39,26 @@ void midiTests(){
   settings.learnTarget=54;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn during STOP hold");f.process(0);
   f.advance(15999);check(f.latest.tracks[0].length==length,"Learn preserves original four-second STOP deadline");f.send(128,36,0);check(f.latest.tracks[0].state==S::empty,"Uninterrupted STOP hold still deletes at four seconds after unrelated learn");
  }
+ // A held CC button must receive its zero/release even if slider learn consumes it.
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);MidiSettings settings;settings.enabled=true;settings.bindings[0]=midiBinding(2,20);settings.revision=++f.revision;
+  check(f.engine->configureMidi(settings),"held CC mapping");f.process(0);f.tap(48);
+  f.send(176,20,127);f.advance(128);check(f.latest.tracks[0].state==S::recording,"held CC SUS record fixture");
+  settings.learnTarget=34;settings.learnGeneration=f.engine->generation();++settings.learnToken;settings.revision=++f.revision;
+  check(f.engine->configureMidi(settings),"slider learn while CC held");f.process(0);f.send(176,20,0);f.wait();
+  check(f.latest.tracks[0].state==S::playing,"Consumed CC learn packet must still release its owned SUS recording");
+  MidiLearnResult learned;check(f.engine->popMidiLearn(learned)&&learned.target==34&&learned.binding==midiBinding(2,20),"Owned release still reaches learn validation");
+  f.send(176,20,127);check(!f.latest.tracks[0].muted,"Rejected provisional CC must not trigger an extra action before acknowledgement");
+  settings.learnTarget=-1;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"reject overlapping CC learn");f.process(0);
+  f.send(176,20,127);check(f.latest.tracks[0].muted,"Released CC rearms after rejected learn");
+  settings.learnTarget=54;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn during held CC mute");f.process(0);
+  f.send(191,20,0);check(f.latest.tracks[0].muted,"Other MIDI channel cannot release owned CC mute");
+  f.send(176,20,0);check(!f.latest.tracks[0].muted,"Owned CC zero restores SUS mute even while rejected learn awaits acknowledgement");
+  settings.learnTarget=-1;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"cancel CC mute learn");f.process(0);
+  f.command(A::stopImmediate);f.send(176,20,127);check(f.latest.tracks[0].state==S::playing,"held CC plays stopped clip");
+  settings.learnTarget=34;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn during held CC play");f.process(0);
+  f.send(176,20,0);check(f.latest.tracks[0].state==S::stopped&&f.latest.tracks[0].length>0,"Owned CC release stops momentary playback without deleting PCM");
+ }
  // A continuous controller may send the learn packet and movement in one block.
  for(const unsigned block:{64u,128u}){
   Fixture f(block);MidiSettings settings;settings.enabled=true;settings.learnTarget=33;settings.learnToken=17;settings.learnGeneration=f.engine->generation();settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn burst fixture");f.process(0);
@@ -135,14 +155,14 @@ void midiTests(){
   else check(expressionReference==pcm,"MIDI expression renders exact stereo PCM versus scheduled UI parameters at 64/128");
  }
  std::vector<std::uint8_t> reference;
- for(const unsigned block:{64u,128u})for(const unsigned controlMode:{0u,1u,2u}){
-  const bool fromMidi=controlMode!=0,heldLearn=controlMode==2;
+ for(const unsigned block:{64u,128u})for(const unsigned controlMode:{0u,1u,2u,3u}){
+  const bool fromMidi=controlMode!=0,heldLearn=controlMode>=2,heldCC=controlMode==3;
   auto engine=std::make_unique<Engine>();engine->prepare(8000,8192);engine->setMonitoring(false);engine->setTarget(1);
-  MidiSettings settings;settings.enabled=fromMidi;settings.revision=1;check(engine->configureMidi(settings),"MIDI/audio comparison config");
+  MidiSettings settings;settings.enabled=fromMidi;settings.revision=1;if(heldCC)settings.bindings[0]=midiBinding(2,20);check(engine->configureMidi(settings),"MIDI/audio comparison config");
   if(!fromMidi){check(engine->enqueueLoop({A::record,0,1,engine->generation(),17,0})&&engine->enqueueLoop({A::finish,0,2,engine->generation(),900,0}),"sample-scheduled direct record/finish");}
   float l[128],r[128];float* input[]={l,r};
   for(unsigned offset=0;offset<1024;offset+=block){
-   if(heldLearn&&(offset==256||offset==512)){
+   if(heldLearn&&(offset==256||(!heldCC&&offset==512))){
     settings.learnTarget=offset==256?34:-1;++settings.learnToken;settings.learnGeneration=engine->generation();++settings.revision;
     if(offset==512)settings.bindings[34]=midiBinding(2,13);
     check(engine->configureMidi(settings),"Held SUS PCM learn/acknowledgement config");
@@ -150,7 +170,8 @@ void midiTests(){
    std::array<MidiEvent,6> events{};std::size_t count=0;
    const std::array<MidiEvent,6> heldSequence{{{0,144,48,100,3},{1,128,48,0,3},{17,144,36,100,3},{300,176,13,0,3},{301,176,13,127,3},{900,128,36,0,3}}};
    const std::array<MidiEvent,4> tapSequence{{{17,144,36,100,3},{18,128,36,0,3},{900,144,36,100,3},{901,128,36,0,3}}};
-   const auto sequence=heldLearn?std::span<const MidiEvent>(heldSequence):std::span<const MidiEvent>(tapSequence);
+   const std::array<MidiEvent,4> ccSequence{{{0,144,48,100,3},{1,128,48,0,3},{17,176,20,127,3},{900,176,20,0,3}}};
+   const auto sequence=heldCC?std::span<const MidiEvent>(ccSequence):heldLearn?std::span<const MidiEvent>(heldSequence):std::span<const MidiEvent>(tapSequence);
    for(const auto& e:sequence)if(fromMidi&&e.offset>=offset&&e.offset<offset+block){auto local=e;local.offset-=offset;events[count++]=local;}
    for(unsigned i=0;i<block;++i){l[i]=0.4f*std::sin((offset+i)*0.11f);r[i]=0.2f*std::cos((offset+i)*0.093f);}
    watch=true;engine->process(input,2,static_cast<int>(block),{events.data(),count});watch=false;

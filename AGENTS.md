@@ -323,3 +323,12 @@ performance actions. Retain unchanged context-menu/CC/Escape routing, exact
 stereo WAV against direct capture at 64/128, full-queue production MidiBuffer
 checks and actual mouse-learn/Escape with a held synthetic note. No physical
 expression claim follows from these synthetic gates.
+
+CC zero/release must reach its existing performance owner even when slider learn
+consumes or rejects that packet. Match exact kind/channel/key; never trigger a
+new press or steal an overlapping transport mapping. Preserve first-packet learn
+consumption, pending-conflict protection, normal continuous-parameter ordering,
+SUS capture/play/mute release and next-positive-edge recovery. Retain the failing
+release-during-learn regression, exact stereo WAV against direct capture at
+64/128, production MidiBuffer and real original-interface mouse cases. CC button
+routing is a native extension; unchanged-JS CC mixer parity is a separate gate.

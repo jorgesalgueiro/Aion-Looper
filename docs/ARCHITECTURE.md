@@ -753,3 +753,12 @@ The displayed learnTarget comes from accepted message-owner settings under the
 non-audio settings mutex, so the indicator clears without another audio callback.
 Enabled/mode/action/audio telemetry retain their existing audio-owned reporting.
 No DSP algorithm, callback allocation/locking or UI layout was added.
+
+### Owned CC release during learn
+
+Slider learn consumes candidate packets, including zero, and validates duplicate
+mappings off audio. Before that interception, a CC zero releases any already-held
+performance action with the same kind/channel/key. This also applies while an
+invalid provisional mapping awaits rejection. It neither starts a new action nor
+bypasses duplicate validation. Ordinary continuous-parameter dispatch order stays
+unchanged; storage and release scans remain fixed and bounded on the callback.

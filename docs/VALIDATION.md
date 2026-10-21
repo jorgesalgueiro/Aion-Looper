@@ -1995,3 +1995,46 @@ Version remains 0.4.3; only existing binaries were incrementally rebuilt, with
 no installer/ZIP/additional format package. Original assets and local logo edits
 are preserved. Physical expression remains deferred to the requested hardware
 check; synthetic tests do not establish listening/driver/DAW/platform parity.
+
+### CC pedal release intercepted by slider learn (2026-10-21)
+
+The retained failing case (`build/midi-cc-release-repro.log`) reproduced a held
+CC SUS recording stranded by its zero/release being consumed as a slider-learn
+candidate. A conflicting pending learn also swallowed subsequent owned releases.
+The audio owner now delivers a CC zero to its existing exact kind/channel/key
+owner before learn interception. The packet still undergoes normal learn and
+atomic duplicate validation; it cannot steal the transport binding or cause a
+new press. Ordinary continuous-parameter dispatch order is preserved.
+
+Acceptance:
+
+- Windows focused core/MIDI/frontend/assets plus unchanged-JS DSP/state/sync:
+  7/7, 52.38s (`build/midi-cc-release-windows.log`). Ubuntu focused checks: 4/4,
+  11.68s (`build/midi-cc-release-ubuntu.log`).
+- ASan/UBSan with leak detection: 4/4, 20.95s
+  (`build/midi-cc-release-asan.log`). Callback new/delete remains zero.
+- Core cases retain SUS record/play/mute, different-channel isolation,
+  duplicate/provisional rejection and next-positive-edge recovery. Captured
+  stereo WAV is byte-identical to direct sample-scheduled commands at 64/128,
+  including a CC release consumed by pending slider learn at sample 900.
+  Previous normal-tap and held-note/learn PCM comparisons remain intact.
+- Production JUCE MidiBuffer at 64/128 passes recording release, conflicting
+  mapping preservation, commit to playback, rearmed press and mute release
+  (`build/midi-cc-release-processor.log`). All earlier persistence/full-queue/
+  legacy/overflow and processBlock allocation checks remain.
+- Actual original mouse mapping/right-click slider learn with injected synthetic
+  CC press/release passes at 64/128 (`build/midi-cc-release-mouse.log`), including
+  duplicate rejection, subsequent press and momentary mute restoration.
+- Connected unchanged-JS capture/overdub/substitute audio audit: 126 cases,
+  965826 samples, maximum error 7.394757495227111e-8 at unchanged 1e-6
+  (`build/midi-cc-release-audio.log`). Browser envelopes/resampling, latency
+  compensation and sync are outside this committed-PCM comparison.
+
+- Original native 20-card UI/keyboard smoke and actual WebAudio count-in, nudge,
+  analyser and STUT references pass (`build/midi-cc-release-ui.log`).
+
+CC transport mapping is a native extension, not a claim that original JS offered
+CC button transport. The retained original-JS note and continuous-mixer gates
+cover their own behavior. Physical expression/listening and driver/DAW/platform
+acceptance remain separate. No new feature/layout/package or version bump;
+existing Windows binaries were incrementally rebuilt and local logo edits kept.

@@ -86,6 +86,11 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     else return;
     if(e.data1>127||e.data2>127)return;
     ++messages;
+    // A learn packet may be consumed/rejected, but must still release an action
+    // owned by this exact kind/channel/key. Otherwise CC zero strands SUS holds.
+    const unsigned key=(kind<<12)|(channel<<7)|e.data1;
+    const bool learnRelease=up&&kind==2&&settings.learnTarget>=static_cast<int>(MidiSettings::volumeBase);
+    if(learnRelease){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);}
     // Continuous CC learn accepts zero and consumes the event; Note/PC keep
     // their transport mappings while a slider waits for CC, as in the original.
     if(settings.learnTarget>=static_cast<int>(MidiSettings::volumeBase)&&kind==2){
@@ -113,8 +118,7 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     if(continuousTarget>=static_cast<int>(MidiSettings::volumeBase)){
         continuous(continuousTarget,e.data2,d);return;
     }
-    const unsigned key=(kind<<12)|(channel<<7)|e.data1;
-    if(up){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);return;}
+    if(up){if(!learnRelease){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);}return;}
     if(!down)return;
     for(const auto& p:presses)if(p.active&&p.key==key)return;
     const int target=targetFor(settings,e);

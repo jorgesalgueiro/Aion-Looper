@@ -12,6 +12,23 @@ int main(){
  juce::ScopedJuceInitialiser_GUI gui;
  for(const int block:{64,128}){
   {
+   auto cc=std::make_unique<AionProcessor>();cc->setPlayConfigDetails(2,2,8000,block);cc->prepareToPlay(8000,block);
+   const auto request=[&](const juce::String& json){auto result=cc->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};
+   juce::AudioBuffer<float> buffer(2,block);buffer.clear();juce::MidiBuffer packets;packets.ensureSize(8192);
+   const auto run=[&]{audioWatch=true;cc->processBlock(buffer,packets);audioWatch=false;packets.clear();};
+   request(R"({"operation":"setParameter","id":"syncMode","value":0})");request(R"({"operation":"midiConfig","action":"learn","target":0})");run();
+   packets.addEvent(juce::MidiMessage::controllerEvent(1,20,127),17);run();request(R"({"operation":"snapshot"})");run();
+   packets.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),0);packets.addEvent(juce::MidiMessage::noteOff(1,48),1);packets.addEvent(juce::MidiMessage::controllerEvent(1,20,127),17);run();
+   check(request(R"({"operation":"snapshot"})")["tracks"][0]["state"].toString()=="recording","Production CC SUS recording fixture");
+   request(R"({"operation":"midiConfig","action":"learn","target":34})");run();packets.addEvent(juce::MidiMessage::controllerEvent(1,20,0),17);run();
+   auto state=request(R"({"operation":"snapshot"})");check(state["tracks"][0]["state"].toString()!="recording","Learn-consumed CC zero still finishes production SUS recording");
+   check(static_cast<int>(state["midi"]["bindings"][0])==aion::midiBinding(2,20)&&static_cast<int>(state["midi"]["bindings"][34])==0&&state["midi"]["status"].toString().contains("already assigned"),"Conflicting release does not steal transport binding");
+   for(int i=0;i<1000&&state["tracks"][0]["state"].toString()!="playing";++i){juce::Thread::sleep(1);run();state=request(R"({"operation":"snapshot"})");}
+   check(state["tracks"][0]["state"].toString()=="playing","CC release commits playable PCM");packets.addEvent(juce::MidiMessage::controllerEvent(1,20,127),17);run();check(static_cast<bool>(request(R"({"operation":"snapshot"})")["tracks"][0]["muted"]),"CC rearmed after rejected learn");
+   request(R"({"operation":"midiConfig","action":"learn","target":54})");run();packets.addEvent(juce::MidiMessage::controllerEvent(1,20,0),17);run();
+   check(!static_cast<bool>(request(R"({"operation":"snapshot"})")["tracks"][0]["muted"]),"Learn-consumed CC zero restores production momentary mute");
+  }
+  {
    auto held=std::make_unique<AionProcessor>();held->setPlayConfigDetails(2,2,8000,block);held->prepareToPlay(8000,block);
    const auto request=[&](const juce::String& json){auto result=held->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};
    juce::AudioBuffer<float> buffer(2,block);buffer.clear();juce::MidiBuffer packets;packets.ensureSize(8192);
