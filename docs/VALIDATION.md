@@ -2124,3 +2124,50 @@ The post-fix native/rendered values are recorded in
 `build/midi-slider-focus-hardware.log`. This closes the physical expression
 response/display gate for this AudioBox USB/CC27 setup; endpoint calibration,
 audible performance and other controllers/platforms remain separate.
+
+### MIDI mapping focus/blur and Tab repair (2026-10-21)
+
+The native click-only mapping handler left learning armed after clicking away,
+unlike unchanged KeyMapManager.handleInputFocus/handleInputBlur. The actual GUI
+failure is retained (`build/midi-field-focus-repro.log`). A focused field now
+learns through mouse or Tab, cancels on blur and releases focus after accepted
+completion. A re-click before the next render restarts learning. Original table
+markup stays intact; existing EN/ES/PT MIDI instructions describe the behavior.
+
+Newly received replies/snapshots are fenced to the active field. Native
+cancelLearn optionally scopes cancellation to a validated target; delayed blur
+cannot cancel a different field/slider. Generic Escape/editor cancellation is
+unchanged, including capacity-independent fallback. Unsupported drone fields
+remain hidden or disabled. No audio-thread or DSP implementation changed.
+
+Acceptance evidence:
+
+- Final Windows original-assets/MIDI/frontend 3/3, 5.36s
+  (`build/midi-field-focus-windows.log`); Ubuntu 3/3, 7.97s
+  (`build/midi-field-focus-ubuntu.log`). Original focus/blur methods execute
+  unchanged. Frontend tests retain stale reply/snapshot protection, completion
+  blur without extra cancellation, failed-learn retry and slider handoff.
+- Production JUCE MidiBuffer checks pass at 64/128
+  (`build/midi-field-focus-processor.log`), including target mismatch while
+  callbacks are paused, immediate matching-target cancellation, invalid scopes,
+  full 31-entry queue for both scoped blur and generic Escape, no stale assignment
+  after resume and fresh-learn recovery. Earlier persistence/legacy/panic/overflow
+  and zero processBlock new/delete checks remain.
+- Actual MIDI mouse/Tab/blur workflows at 64/128 are retained in
+  `build/midi-field-focus-mouse.log`: leaving the field prevents a later PC from
+  learning, Tab arms the next field, accepted learn releases focus, rapid re-click
+  restarts, reload/save works and previous focused expression/drag cases remain.
+- Windows unchanged-JS DSP/state/sync 3/3, 22.24s
+  (`build/midi-field-focus-parity.log`). Connected original/native capture,
+  overdub and substitute audit passes 126 cases, 965826 samples, maximum error
+  7.394757495227111e-8 at unchanged 1e-6 (`build/midi-field-focus-audio.log`).
+  Browser envelopes/resampling, sync and input latency compensation are outside
+  that committed-PCM audit. Prior sanitizer evidence is retained, not rerun.
+
+- Final original 20-card UI/keyboard smoke and actual WebAudio count-in, nudge,
+  analyser and STUT comparisons pass (`build/midi-field-focus-ui.log`).
+
+Only existing Windows Standalone/test targets were rebuilt, with no installer,
+ZIP, new format package or version bump. Original assets and local logo edits
+are preserved. The physical CC27 response/display confirmation remains valid for
+its tested setup; this change does not establish other hardware/platform parity.

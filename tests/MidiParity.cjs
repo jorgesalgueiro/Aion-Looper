@@ -48,3 +48,7 @@ sandbox.originalContextMenu({target:slider,preventDefault(){}});
 vm.runInContext(`OriginalKeyboard.handleKeyboardPress({code:'Escape',key:'Escape',target:{tagName:'INPUT',type:'range'}});`,sandbox);assert.equal(sandbox.heldEdges.length,1,'Original learn cancellation does not release held note');
 vm.runInContext(`App.handleMIDIMessage({data:[128,36,0]});`,sandbox);assert.deepEqual(JSON.parse(JSON.stringify(sandbox.heldEdges)),[['down',0],['up',0]]);
 console.log('PASS: unchanged original slider learn, acknowledgement and Escape preserve a held note until its NoteOff');
+
+const fieldMethod=name=>{const a=source.indexOf('    static '+name+'('),b=source.indexOf('\n    }',a)+6;assert(a>=0);return source.slice(a,b);};
+vm.runInContext(`class OriginalMapping{${fieldMethod('handleInputFocus')}${fieldMethod('handleInputBlur')}static setStatus(){}};globalThis.mappingElement={value:'',classList:{add(){},remove(){}},id:'map-midi-0'};OriginalMapping.handleInputFocus('midi',0,mappingElement);globalThis.originalFieldActive=state.listeningForInput.active;OriginalMapping.handleInputBlur(mappingElement);globalThis.originalFieldCancelled=!state.listeningForInput.active&&state.listeningForInput.element===null;`,sandbox);assert.equal(sandbox.originalFieldActive,true);assert.equal(sandbox.originalFieldCancelled,true);
+console.log('PASS: unchanged original mapping-field focus arms learning and blur cancels it');

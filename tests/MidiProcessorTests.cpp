@@ -106,14 +106,19 @@ int main(){
   rpc(R"({"operation":"midiConfig","action":"learn","target":18})");process();p->cancelMidiLearn();process();midi.addEvent(juce::MidiMessage::programChange(1,3),0);process();state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["bindings"][18])==0,"Editor cancellation leaves old binding intact");
   rpc(R"({"operation":"midiConfig","action":"learn","target":17})");process();state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["learnTarget"])==17,"Learn indicator armed before pause");
   rpc(R"({"operation":"midiConfig","action":"cancelLearn"})");state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["learnTarget"])==-1,"Cancelled learn indicator must clear before another audio callback");process();
+  rpc(R"({"operation":"midiConfig","action":"learn","target":17})");
+  rpc(R"({"operation":"midiConfig","action":"cancelLearn","target":16})");check(static_cast<int>(rpc(R"({"operation":"snapshot"})")["midi"]["learnTarget"])==17,"Blur of old mapping cannot cancel newer field learn before callbacks resume");
+  rpc(R"({"operation":"midiConfig","action":"cancelLearn","target":17})");check(static_cast<int>(rpc(R"({"operation":"snapshot"})")["midi"]["learnTarget"])==-1,"Matching field blur cancels learn immediately");process();
   // Pause callbacks and fill all 31 usable MIDI configuration entries.
+  for(const bool scoped:{false,true}){
   rpc(R"({"operation":"midiConfig","action":"learn","target":18})");
   for(int i=0;i<30;++i)rpc("{\"operation\":\"midiConfig\",\"action\":\"mode\",\"mode\":"+juce::String(i%3)+"}");
-  const auto cancelled=p->request({juce::JSON::parse(R"({"operation":"midiConfig","action":"cancelLearn"})")});check(cancelled.getProperty("ok",false),"Escape cancellation must succeed when audio is paused and MIDI configuration queue is full");
+  const auto cancelled=p->request({juce::JSON::parse(scoped?R"({"operation":"midiConfig","action":"cancelLearn","target":18})":R"({"operation":"midiConfig","action":"cancelLearn"})")});check(cancelled.getProperty("ok",false),"Field/Escape cancellation must succeed when audio is paused and MIDI configuration queue is full");
   process();midi.addEvent(juce::MidiMessage::programChange(1,3),0);process();state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["learnTarget"])==-1&&static_cast<int>(state["midi"]["bindings"][18])==0,"Cancelled full-queue learn cannot revive after callbacks resume");
+  }
   rpc(R"({"operation":"midiConfig","action":"learn","target":18})");process();midi.addEvent(juce::MidiMessage::programChange(1,5),0);process();rpc(R"({"operation":"snapshot"})");process();state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["bindings"][18])==aion::midiBinding(3,5)&&state["tracks"][18]["state"].toString()=="empty","Fresh learn works after full-queue cancellation and consumes its packet");
   midi.clear();for(int i=0;i<300;++i)midi.addEvent(juce::MidiMessage::noteOn(1,40,juce::uint8{100}),0);process();state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["overflows"])>0,"Bounded MidiBuffer overflow reported and held actions cancelled");
-  for(const auto* request:{R"({"operation":"midiConfig","action":"learn","target":20})",R"({"operation":"midiConfig","action":"mode","mode":7})",R"({"operation":"midiConfig","action":"enable","enabled":1})"})check(!p->request({juce::JSON::parse(request)}).getProperty("ok",false),"Invalid MIDI IPC rejected");
+  for(const auto* request:{R"({"operation":"midiConfig","action":"learn","target":20})",R"({"operation":"midiConfig","action":"mode","mode":7})",R"({"operation":"midiConfig","action":"enable","enabled":1})",R"({"operation":"midiConfig","action":"cancelLearn","target":20})",R"({"operation":"midiConfig","action":"cancelLearn","target":"17"})"})check(!p->request({juce::JSON::parse(request)}).getProperty("ok",false),"Invalid MIDI IPC rejected");
  }
  check(audioAllocations.load()==0,"Production processBlock MIDI path must perform zero new/delete");
  std::cout<<"PASS: actual juce::MidiBuffer offsets, PC0 learn/consume, state roundtrip/invalid rollback, cancellation/overflow/IPC and zero processBlock new/delete at 64/128\n";

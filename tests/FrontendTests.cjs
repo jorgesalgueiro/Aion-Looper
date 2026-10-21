@@ -448,3 +448,16 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  assert.equal(nativeLearn,-1,'Escape must cancel MIDI learn even when the original native name field stops key bubbling');
  console.log('PASS: MIDI Escape survives focused loop-name keyboard isolation');
 }
+
+(async()=>{
+ const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),native);
+ const requests=[],waiting=[],errors=[];let focused=null,helper;
+ const element=id=>({blurs:0,blur(){++this.blurs;focused=null;helper.blur(id,this);}}),a=element(0),b=element(1);
+ helper=new native.window.AionMidiFieldLearn({active:()=>focused,notify:message=>errors.push(message),send:request=>{requests.push(request);return request.action==='learn'?new Promise((resolve,reject)=>waiting.push({resolve,reject})):Promise.resolve({ok:true});}});
+ focused=a;helper.focus(0,a);helper.render({revision:0,learnTarget:-1});assert.equal(a.blurs,0,'Pre-learn snapshot cannot blur field');helper.blur(0,a);focused=b;helper.focus(1,b);
+ waiting[0].resolve({revision:4});await Promise.resolve();helper.render({revision:99,learnTarget:-1});assert.equal(b.blurs,0,'Old focus reply cannot complete newer field');
+ waiting[1].resolve({revision:5});await Promise.resolve();helper.render({revision:4,learnTarget:-1});assert.equal(b.blurs,0,'Old snapshot cannot complete accepted field');helper.render({revision:5,learnTarget:1});assert.equal(b.blurs,0);helper.render({revision:6,learnTarget:-1});assert.equal(b.blurs,1,'Accepted completion releases focus');assert.equal(requests.filter(r=>r.action==='cancelLearn').length,1,'Completion blur cannot issue another cancellation');assert.equal(requests[1].target,0,'Explicit blur cancellation is target scoped');
+ focused=a;helper.focus(0,a);waiting[2].reject(Error('queue full'));await Promise.resolve();await Promise.resolve();assert.equal(a.blurs,1,'Failed learn releases focus for retry');assert.deepEqual(errors,['queue full']);
+ focused=a;helper.focus(0,a);waiting[3].resolve({revision:8});await Promise.resolve();helper.render({revision:9,learnTarget:33});assert.equal(a.blurs,2,'New slider learn releases old field without cancelling slider');assert.equal(requests.filter(r=>r.action==='cancelLearn').length,1);
+ console.log('PASS: MIDI mapping focus/blur ownership, delayed replies/snapshots, completion blur, failed retry and slider handoff');
+})().catch(error=>{console.error(error);process.exitCode=1;});

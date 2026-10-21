@@ -349,3 +349,12 @@ outside release, pointer cancellation/lost capture and blur; resume hardware
 updates when editing ends. Retain focused volume/pan and real mapped-drag tests
 at 64/128 plus frontend ownership checks. Preserve the user's logo hunk separately
 when editing looper.js; stage only the slider integration hunks.
+
+MIDI mapping fields retain original focus/blur semantics: pointer or Tab focus
+arms learning, leaving cancels that field, accepted completion releases focus,
+and an immediate re-click can restart even before rendering catches up. Preserve
+reply/revision fencing and scoped cancellation so an old field cannot cancel a
+different field/slider. Retain unchanged original focus/blur methods, actual Tab,
+blur/no-later-assignment, rapid re-click, reload/save, full-queue scoped AND Escape
+cancellation, and all MIDI/learned-slider gates. Hidden/unported drone fields must
+not become keyboard-navigation traps. Keep original mapping-table markup intact.

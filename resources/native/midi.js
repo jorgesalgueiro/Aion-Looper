@@ -23,13 +23,32 @@ window.AionMidiSliderEdit=class {
     }
     update(value,bound){if(!this.pointers.size&&!this.keys.size&&(this.active()!==this.element||bound))this.element.value=value;}
 };
+// Mapping fields learn on focus, cancel on blur and release focus after completion.
+window.AionMidiFieldLearn=class {
+    constructor({send,notify,active=()=>document.activeElement}){this.send=send;this.notify=notify;this.active=active;this.pending=null;}
+    focus(target,element){
+        const pending=this.pending={target,element,revision:null};
+        return this.send({action:'learn',target}).then(reply=>{if(this.pending===pending)pending.revision=reply.revision;}).catch(error=>{
+            if(this.pending===pending){this.pending=null;if(this.active()===element)element.blur();}this.notify(error.message);
+        });
+    }
+    blur(target,element){
+        if(this.pending?.target!==target||this.pending.element!==element)return;
+        this.pending=null;this.send({action:'cancelLearn',target}).catch(error=>this.notify(error.message));
+    }
+    render(midi){
+        const p=this.pending;if(!p||p.revision===null||midi.revision<p.revision||midi.learnTarget===p.target)return;
+        this.pending=null;if(this.active()===p.element)p.element.blur();
+    }
+};
 window.AionMidiSetup=({rpc,notify,setMode})=>{
     window.AionMidiMarkup();let current=null;const modeSync=new window.AionMidiMode();
     const button=document.getElementById('enableMidiBtn'),status=document.getElementById('midiStatus'),mappingStatus=document.getElementById('mapping-status');
     const send=async request=>{const reply=await rpc({operation:'midiConfig',...request});if(!reply.ok)throw Error(reply.error);return reply;};
+    const fieldLearn=new window.AionMidiFieldLearn({send,notify});
     const route=document.createElement('div');route.id='native-midi-routing';route.className='module-content';
-    const hint=document.createElement('p');hint.textContent='Click a MIDI field, then send a Note, CC or Program Change. Right-click to clear; Escape cancels. PC = one tap; CC = rising edge. Only held notes can cut/delete (600 ms / 4 s).';
-    const manual={en:['Native MIDI looper controls','Use INPUT MAPPING & CONTROLS → MIDI. Click a field and send a Note, CC or Program Change; right-click clears it and Escape cancels learning. Save Mappings stores bindings in native app/plugin state. PC sends one tap; a CC must return to zero before its next positive edge. Only a NOTE held from STOP can delete after 4 s; PC/CC triggers never hold-delete. Route native inputs here in Standalone, or through your DAW in plugins. Right-click a loop volume or pan slider to learn an expression/fader CC (including zero); Shift+right-click clears it. Escape or 10 s cancels learning. Slider CC values are continuous and never trigger loop actions. Other expression targets, synth MIDI, clock sync and gamepad mapping are still being migrated.'],es:['Controles MIDI nativos del looper','Usa INPUT MAPPING & CONTROLS → MIDI. Haz clic en un campo y envía Note, CC o Program Change; clic derecho borra y Escape cancela el aprendizaje. Save Mappings guarda las asignaciones en el estado nativo. PC es una pulsación; un CC debe volver a cero antes del siguiente valor positivo. Solo una NOTE mantenida desde STOP borra después de 4 s; PC/CC nunca borran por mantener. Selecciona entradas aquí en Standalone o en tu DAW para plugins. Clic derecho en volumen o panorama de un loop aprende CC continuo; Mayús+clic derecho borra. Escape o 10 s cancela. Otros parámetros, sintetizador MIDI, reloj y gamepad siguen en migración.'],pt:['Controlos MIDI nativos do looper','Usa INPUT MAPPING & CONTROLS → MIDI. Clica num campo e envia Note, CC ou Program Change; botão direito limpa e Escape cancela a aprendizagem. Save Mappings guarda as atribuições no estado nativo. PC é um toque; um CC tem de voltar a zero antes do próximo valor positivo. Só uma NOTE mantida desde STOP apaga após 4 s; PC/CC nunca apagam por manter. Escolhe entradas aqui em Standalone ou na DAW para plugins. Botão direito no volume ou panorama de um loop aprende CC contínuo; Shift+botão direito limpa. Escape ou 10 s cancela. Outros parâmetros, sintetizador MIDI, relógio e gamepad continuam em migração.']};
+    const hint=document.createElement('p');hint.textContent='Click or Tab into a MIDI field, then send a Note, CC or Program Change. Leaving the field cancels learning. Right-click to clear; Escape cancels. PC = one tap; CC = rising edge. Only held notes can cut/delete (600 ms / 4 s).';
+    const manual={en:['Native MIDI looper controls','Use INPUT MAPPING & CONTROLS → MIDI. Click or Tab into a field and send a Note, CC or Program Change; leaving the field cancels learning. Right-click clears it and Escape cancels learning. Save Mappings stores bindings in native app/plugin state. PC sends one tap; a CC must return to zero before its next positive edge. Only a NOTE held from STOP can delete after 4 s; PC/CC triggers never hold-delete. Route native inputs here in Standalone, or through your DAW in plugins. Right-click a loop volume or pan slider to learn an expression/fader CC (including zero); Shift+right-click clears it. Escape or 10 s cancels learning. Slider CC values are continuous and never trigger loop actions. Other expression targets, synth MIDI, clock sync and gamepad mapping are still being migrated.'],es:['Controles MIDI nativos del looper','Usa INPUT MAPPING & CONTROLS → MIDI. Haz clic o usa Tab para entrar en un campo y envía Note, CC o Program Change; salir del campo cancela el aprendizaje. Clic derecho borra y Escape cancela. Save Mappings guarda las asignaciones en el estado nativo. PC es una pulsación; un CC debe volver a cero antes del siguiente valor positivo. Solo una NOTE mantenida desde STOP borra después de 4 s; PC/CC nunca borran por mantener. Selecciona entradas aquí en Standalone o en tu DAW para plugins. Clic derecho en volumen o panorama de un loop aprende CC continuo; Mayús+clic derecho borra. Escape o 10 s cancela. Otros parámetros, sintetizador MIDI, reloj y gamepad siguen en migración.'],pt:['Controlos MIDI nativos do looper','Usa INPUT MAPPING & CONTROLS → MIDI. Clica ou usa Tab para entrar num campo e envia Note, CC ou Program Change; sair do campo cancela a aprendizagem. Botão direito limpa e Escape cancela. Save Mappings guarda as atribuições no estado nativo. PC é um toque; um CC tem de voltar a zero antes do próximo valor positivo. Só uma NOTE mantida desde STOP apaga após 4 s; PC/CC nunca apagam por manter. Escolhe entradas aqui em Standalone ou na DAW para plugins. Botão direito no volume ou panorama de um loop aprende CC contínuo; Shift+botão direito limpa. Escape ou 10 s cancela. Outros parâmetros, sintetizador MIDI, relógio e gamepad continuam em migração.']};
     for(const [language,[title,text]] of Object.entries(manual)){const panel=document.getElementById('manual-'+language);if(panel){const note=document.createElement('section');note.className='native-midi-manual';const heading=document.createElement('h4'),paragraph=document.createElement('p');heading.textContent=title;paragraph.textContent=text;note.append(heading,paragraph);panel.prepend(note);}}
     const refresh=document.createElement('button');refresh.className='std-btn small';refresh.textContent='REFRESH MIDI INPUTS';refresh.disabled=false;
     const devices=document.createElement('div');devices.id='native-midi-devices';route.append(hint,refresh,devices);document.getElementById('keyMappingUI').append(route);
@@ -42,8 +61,10 @@ window.AionMidiSetup=({rpc,notify,setMode})=>{
     refresh.addEventListener('click',listDevices);
     const tabs=[...document.querySelectorAll('#keyMappingUI .tab-btn')];for(const tab of tabs){tab.disabled=tab.dataset.tab==='gamepad';if(!tab.disabled)tab.addEventListener('click',()=>{for(const t of tabs)t.classList.toggle('active',t===tab);for(const panel of document.querySelectorAll('#keyMappingUI .tab-content'))panel.classList.toggle('active',panel.id==='tab-'+tab.dataset.tab);});}
     tabs.find(t=>t.dataset.tab==='midi').click();
-    for(let i=0;i<33;++i){const input=document.getElementById('map-midi-'+i);if(!input)continue;input.disabled=false;input.title='Learn Note / CC / Program Change; right-click clears';
-        input.addEventListener('click',()=>send({action:'learn',target:i}).then(listDevices).catch(e=>notify(e.message)));
+    for(let i=0;i<33;++i){const input=document.getElementById('map-midi-'+i);if(!input)continue;input.disabled=i>=20&&i<30;if(input.disabled)continue;input.title='Learn Note / CC / Program Change; right-click clears';
+        input.addEventListener('focus',()=>{fieldLearn.focus(i,input).then(listDevices);});
+        input.addEventListener('pointerdown',e=>{if(e.button===0&&document.activeElement===input)fieldLearn.focus(i,input).then(listDevices);});
+        input.addEventListener('blur',()=>fieldLearn.blur(i,input));
         input.addEventListener('contextmenu',e=>{e.preventDefault();send({action:'clear',target:i}).catch(e=>notify(e.message));});
     }
     const save=document.getElementById('saveMappingsBtn');save.disabled=false;save.addEventListener('click',()=>send({action:'save'}).catch(e=>notify(e.message)));
@@ -54,7 +75,7 @@ window.AionMidiSetup=({rpc,notify,setMode})=>{
     const kbd=['1','2','3','4','5','6','7','8','9','0'];for(let i=0;i<20;++i){const input=document.getElementById('map-kbd-'+i);if(input)input.value=i<10?kbd[i]:'Shift+'+kbd[i-10];}
     listDevices();
     return {mode:value=>{const sequence=modeSync.begin();return send({action:'mode',mode:value}).then(reply=>modeSync.ack(sequence,reply.revision)).catch(e=>{modeSync.fail(sequence);notify(e.message);});},render:midi=>{
-        if(!midi)return;current=midi;
+        if(!midi)return;current=midi;fieldLearn.render(midi);
         const next=modeSync.observe(midi);if(next!==null)setMode(next);
         button.textContent=midi.enabled?'Disable Midi':'Enable Midi';
         document.getElementById('susModeIndicator').style.display=midi.sustain?'':'none';

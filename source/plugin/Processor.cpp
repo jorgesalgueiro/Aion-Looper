@@ -393,7 +393,10 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             ++next.learnToken;next.learnGeneration=engine.generation();next.learnTarget=action=="learn"?id:-1;
             if(action=="learn")next.enabled=true;else next.bindings[static_cast<unsigned>(id)]=0;
         }else if(action=="cancelLearn"){
-            cancelMidiLearn(); // Escape uses the same queue-independent path as editor close.
+            const auto target=request.getProperty("target",{});
+            if(!target.isVoid()&&(!target.isInt()||static_cast<int>(target)<0||static_cast<int>(target)>=static_cast<int>(aion::MidiSettings::bindingCount)||(static_cast<int>(target)>=20&&static_cast<int>(target)<30)))return fail("Invalid MIDI cancellation target");
+            // A delayed blur of one field must not cancel another field/slider.
+            if(target.isVoid()||static_cast<int>(target)==midiSettings.learnTarget)cancelMidiLearn();
             result->setProperty("ok",true);result->setProperty("revision",static_cast<int>(midiSettings.revision));return reply;
         }
         else if(action=="mode"){

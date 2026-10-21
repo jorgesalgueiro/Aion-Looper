@@ -503,3 +503,21 @@ Frontend tests compose the production name-field and MIDI handlers with standard
 capture/bubble ordering. Actual CDP tests retain right-click/immediate Escape and
 focused-name cancellation at 64/128. This repairs existing behavior only; physical
 expression verification remains deferred to the scheduled user check.
+
+### Mapping-field focus and keyboard navigation (2026-10-21)
+
+Unchanged KeyMapManager.handleInputFocus and handleInputBlur arm learning on focus
+and cancel when leaving. The native click-only handler had no blur cancellation:
+actual mouse focus loss left target 16 armed and able to learn a later packet
+(`build/midi-field-focus-repro.log`). Native mapping fields now use focus/blur,
+including Tab. Accepted completion releases focus; re-clicking an already-focused
+field restarts learning before the next snapshot. Revision/reply ownership fences
+prevent stale completion from blurring a newer field, and optional target-scoped
+cancel requests cannot cancel a different active field/slider. Escape remains
+unscoped and keeps the full-queue fallback. The original table is unchanged.
+
+This repairs existing input behavior only; it adds no DSP feature. The original
+note/CC mixer comparisons remain. Separately, Jorge's physical AudioBox USB CC27
+volume response/display was confirmed after the focused-slider repair at a21f8b5;
+that supersedes the earlier deferred-expression notes above for that setup only.
+Calibration, audible performance and other drivers/controllers remain separate.
