@@ -378,8 +378,10 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     } else if(operation=="midiConfig"){
         std::lock_guard guard(midiSettingsMutex);auto next=midiSettings;
         const auto action=request.getProperty("action",{}).toString();
-        if(action=="enable"){
-            const auto value=request.getProperty("enabled",{});if(!value.isBool())return fail("Expected MIDI enable flag");next.enabled=static_cast<bool>(value);next.learnTarget=-1;++next.learnToken;
+        if(action=="enable"||action=="toggle"){
+            if(action=="toggle")next.enabled=!midiSettings.enabled;
+            else {const auto value=request.getProperty("enabled",{});if(!value.isBool())return fail("Expected MIDI enable flag");next.enabled=static_cast<bool>(value);}
+            next.learnTarget=-1;++next.learnToken;
         }else if(action=="learn"||action=="clear"){
             const auto target=request.getProperty("target",{});if(!target.isInt())return fail("Expected MIDI target");const int id=target;
             if(id<0||id>=static_cast<int>(aion::MidiSettings::bindingCount)||(id>=20&&id<30))return fail("MIDI target unavailable");
@@ -397,7 +399,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         const bool enableDevices=!midiSettings.enabled&&next.enabled;
         if(!updateMidi(next))return fail("MIDI configuration is invalid or queue is full");
         if(action=="learn")midiLearnDeadline=next.learnTarget>=static_cast<int>(aion::MidiSettings::volumeBase)?juce::Time::getMillisecondCounterHiRes()+10000:0;
-        else if(action=="clear"||action=="cancelLearn"||action=="enable")midiLearnDeadline=0;
+        else if(action=="clear"||action=="cancelLearn"||action=="enable"||action=="toggle")midiLearnDeadline=0;
         midiStatus=action=="learn"?"Waiting for MIDI Note, CC or Program Change...":action=="cancelLearn"?"MIDI learn cancelled":"MIDI configuration queued";
        #if JucePlugin_Build_Standalone
         if(enableDevices)if(auto* holder=juce::StandalonePluginHolder::getInstance())

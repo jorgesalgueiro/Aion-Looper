@@ -32,7 +32,7 @@ window.AionMidiSetup=({rpc,notify,setMode})=>{
         input.addEventListener('contextmenu',e=>{e.preventDefault();send({action:'clear',target:i}).catch(e=>notify(e.message));});
     }
     const save=document.getElementById('saveMappingsBtn');save.disabled=false;save.addEventListener('click',()=>send({action:'save'}).catch(e=>notify(e.message)));
-    button.disabled=false;button.addEventListener('click',()=>send({action:'enable',enabled:!current?.enabled}).then(listDevices).catch(e=>notify(e.message)));
+    button.disabled=false;button.addEventListener('click',()=>send({action:'toggle'}).then(listDevices).catch(e=>notify(e.message)));
     document.addEventListener('keydown',e=>{if(e.code==='Escape'&&current?.learnTarget>=0){e.preventDefault();send({action:'cancelLearn'}).catch(e=>notify(e.message));}});
     document.addEventListener('contextmenu',e=>{const target=window.AionMidiSliderTarget(e.target.id||'');if(target<0||e.target.disabled)return;
         e.preventDefault();send({action:e.shiftKey?'clear':'learn',target}).then(listDevices).catch(error=>notify(error.message));});

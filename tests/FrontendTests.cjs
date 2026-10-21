@@ -403,3 +403,13 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  for(const id of ['loop-vol-slider-20','loop-vol-slider--1','loop-fbk-slider-0','loop-speed-slider-0','master','map-midi-0','loop-pan-slider-0-extra'])assert.equal(target(id),-1,'Unported/non-slider targets never start continuous learn');
  console.log('PASS: original volume/pan slider MIDI target routing, all 20 loops and unsupported controls');
 }
+
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),listener=source.split(/\r?\n/).find(l=>l.includes("button.disabled=false;button.addEventListener('click'"));assert(listener);
+ for(const initial of [false,true]){
+  const native={enabled:initial};let press;
+  const context={current:{enabled:initial},button:{addEventListener:(event,callback)=>{assert.equal(event,'click');press=callback;}},send:async request=>{if(request.action==='enable')native.enabled=request.enabled;else if(request.action==='toggle')native.enabled=!native.enabled;else assert.fail('Unexpected MIDI enable action');return{ok:true};},listDevices:()=>{},notify:message=>assert.fail(message)};
+  vm.runInNewContext(listener,context);press();press();assert.equal(native.enabled,initial,'Two rapid clicks before a new snapshot must preserve MIDI enable state');press();assert.equal(native.enabled,!initial,'Third rapid click must toggle once');
+ }
+ console.log('PASS: rapid MIDI enable/disable clicks before snapshot updates preserve every gesture');
+}

@@ -717,3 +717,15 @@ magenta outline. Escape or a native message-thread 10s deadline cancels it;
 navigation/editor teardown retains native cancellation. Shift+right-click clears
 only the selected binding. The existing MIDI table/layout stays unchanged, with
 binding details in slider tooltips and the existing status/manual panels.
+
+### Ordered MIDI enable/disable gestures
+
+The existing native button sends a relative toggle request. Processor resolves
+it from the latest accepted desired MIDI settings while holding the existing
+non-audio configuration mutex, then queues an immutable configuration. Multiple
+clicks before a new audio snapshot therefore retain their order. The existing
+explicit enable(bool) operation remains idempotent and backward compatible.
+Toggle and explicit enable both cancel pending learn and its deadline. The UI
+continues to render acknowledged audio state, with no new optimistic state or
+layout. This concerns the native enable/disable extension; the original browser
+button requests Web MIDI access rather than implementing a disable toggle.

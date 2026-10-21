@@ -292,3 +292,12 @@ channel/omni mapping protection, unchanged-JS learn comparisons, exact nonzero
 stereo PCM for preassigned AND provisionally learned controls, actual MidiBuffer
 and 64/128 native mouse burst checks. Physical pedal verification remains deferred
 to the user's scheduled check; synthetic messages are not hardware evidence.
+
+MIDI enable/disable clicks are relative gestures: resolve each toggle against
+the message owner's latest accepted settings under its non-audio mutex, never
+against a stale audio snapshot. Keep explicit enable(bool) idempotent for existing
+callers. Both actions cancel learn/deadlines; accepted queue order must preserve
+every click before audio resumes. Retain frontend double/triple-click cases from
+both initial states, actual processor queued-state/persistence checks and real
+64/128 pointer events. Keep the large-decimal saved-state rejection regression;
+malformed input must preserve the complete previous mappings/APVTS state.

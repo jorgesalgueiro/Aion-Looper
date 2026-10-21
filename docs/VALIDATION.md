@@ -1843,3 +1843,51 @@ The earlier muted test app was gracefully closed only after checking that all
 Version remains 0.4.3 with no installer/ZIP/additional format package. The updated
 Windows executable is ready for the deferred physical check; tests do not prove
 physical expression response/listening or general browser-envelope parity.
+
+### Ordered MIDI enable/disable repair (2026-10-21)
+
+Work stayed within the current MIDI feature while the physical expression test
+remains deferred to today after 19:45 Europe/Lisbon. No next feature was started.
+
+A deterministic test using the production frontend listener reproduced a native
+race: two rapid clicks before another audio snapshot both requested enabled=true,
+so one toggle disappeared (`build/midi-toggle-repro.log`, actual true/expected
+false). The existing button now sends relative toggle intent. Processor resolves
+each request against its latest accepted desired state under the existing
+non-audio mutex and queues immutable settings. Explicit enable(bool) stays
+idempotent; both operations cancel learn and its deadline. No DSP algorithm or
+interface layout changed. Original browser requestMIDIAccess is not a toggle;
+this repairs the already existing native enable/disable extension.
+
+Acceptance:
+
+- Frontend double/triple clicks from both initial states without snapshot updates
+  pass (`build/midi-toggle-frontend.log`). The original failing case is retained.
+- Actual native processor checks two queued toggles before another audio block,
+  persisted desired state after each and final audio-owned enabled state, at
+  64/128. Prior MIDI learn/expression/PC burst/legacy state/overflow/no-editor
+  cases and zero processBlock new/delete pass (`build/midi-toggle-processor.log`).
+- A new saved-state boundary test rejects binding decimal 18446744073709551616
+  while preserving the complete previous state. It passed before the toggle fix
+  (`build/midi-state-overflow-repro.log`); no numeric-parser failure/rewrite is
+  claimed. This complements existing invalid duplicate-state rollback tests.
+- Windows focused core/MIDI/frontend 3/3, 29.78s
+  (`build/midi-toggle-windows.log`); Ubuntu 3/3, 10.15s
+  (`build/midi-toggle-ubuntu.log`). ASan/UBSan core/MIDI/frontend with leak
+  detection passes 3/3, 18.90s (`build/midi-toggle-asan.log`). Core/DSP sources
+  are unchanged, so their existing binaries were reused for these checks.
+  The modified production Processor is tested in the Windows native targets.
+- Real CDP press/release/press/release preserves both MIDI revisions and final
+  enable state at 64/128, retaining the existing full MIDI workflow cases
+  (`build/midi-toggle-mouse.log`).
+- Unchanged NativeUiSmoke and actual WebAudio count-in/nudge/analyser/STUT gates
+  pass (`build/midi-toggle-ui.log`); original 20 cards, IPC validation, disabled
+  unported controls and no product AudioContext remain intact.
+- Connected audio audits pass on both Windows and Ubuntu: each 126 cases,
+  965826 samples, maximum error 7.394757495227111e-8 at unchanged 1e-6
+  (`build/midi-toggle-audio-windows.log`, `build/midi-toggle-audio-ubuntu.log`).
+
+Only existing Windows Standalone and test binaries were incrementally rebuilt.
+Version remains 0.4.3 with no installer, ZIP or additional format package. Original
+UI assets and the user's separate logo edits are preserved. Physical expression,
+listening, broader drivers/DAWs and platform parity remain separate acceptance.

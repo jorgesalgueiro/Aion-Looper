@@ -461,3 +461,25 @@ This repairs an original-behavior mismatch within the existing MIDI feature. No
 new UI or feature/package was introduced, and the original source remains intact.
 Browser automation-envelope identity and physical expression listening/response
 remain separate acceptance work.
+
+### Rapid MIDI enable/disable audit (2026-10-21)
+
+The native button previously inverted its last audio snapshot. Two rapid clicks
+could both request enabled=true, losing one gesture. A deterministic regression
+using the actual frontend listener failed (actual true versus expected false,
+build/midi-toggle-repro.log). The native message owner now resolves relative
+toggles from the latest accepted settings. Existing explicit enable flags and
+original interface markup remain intact; this is a repair to the native toggle
+extension, not an original-browser toggle comparison.
+
+Frontend tests retain double/triple clicks from both initial states without any
+snapshot update. Actual processor tests enqueue two toggles before another audio
+callback and inspect desired persisted state after each, then final audio state.
+Native CDP mouse tests send press/release/press/release without waiting for IPC
+and require both revisions and final state, at 64/128 blocks. Prior learning,
+same-block expression, PC burst and no-editor tests remain in place.
+
+The saved-state decimal-overflow probe passed on the current pinned JUCE build:
+18446744073709551616 is rejected without losing mappings or partially replacing
+state. It is retained as a regression; no parser bug or parser rewrite is claimed.
+Physical expression verification remains deferred to the user's scheduled test.

@@ -18,6 +18,11 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
  assert((await rpc({operation:'loop',action:'clearAll',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks.every(t=>t.state==='empty'),'clear');
  if(s.midi.enabled)assert((await rpc({operation:'midiConfig',action:'enable',enabled:false})).ok);await wait(s=>!s.midi.enabled,'disabled start');await delay(150);
  await click('#enableMidiBtn');await wait(s=>s.midi.enabled,'native MIDI enabled');
+ // Queue two actual pointer clicks together, before waiting on IPC/snapshots.
+ const beforeRapidMidiRevision=(await snapshot()).midi.revision;
+ const rapidMidi=await evaluate(`(()=>{const e=document.getElementById('enableMidiBtn');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+ await Promise.all(['mousePressed','mouseReleased','mousePressed','mouseReleased'].map(type=>call('Input.dispatchMouseEvent',{type,...rapidMidi,button:'left',clickCount:1})));
+ await wait(s=>s.midi.enabled&&s.midi.revision>=beforeRapidMidiRevision+2,'rapid MIDI disable/enable retains both gestures');
  await inject([[144,36,100,3,17],[128,36,0,3,18]]);await wait(s=>s.tracks[0].state==='recording','default note record');await delay(250);await inject([[144,36,100,3,0],[144,36,0,3,1]]);s=await wait(s=>s.tracks[0].state==='playing'&&s.tracks[0].waveformId,'default note finish');const length=s.tracks[0].length;
  await click('#map-midi-0');await wait(s=>s.midi.learnTarget===0,'learn loop one');await inject([[192,0,0,2,0]]);s=await wait(s=>s.midi.bindings[0]===3&&s.midi.learnTarget===-1,'learn FCB PC zero');assert.equal(s.tracks[0].state,'playing','Learn consumes incoming command');
  await inject([[192,0,0,2,0],[192,0,0,2,1],[192,0,0,2,2]]);await wait(s=>s.tracks[0].state==='stopped','physical triple-PC burst stops once');await delay(4200);s=await snapshot();assert.equal(s.tracks[0].length,length,'Program Change never creates a delete hold');
