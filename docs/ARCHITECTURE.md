@@ -804,3 +804,21 @@ Transport-binding replacement can leave an old, suppressed loop press waiting fo
 release. That entry must not block a key that has become OD/SUB/SUS; its eventual
 NoteOff still releases only the suppressed old owner and cannot finish the take.
 Current loop bindings retain normal debounce and strict >10s recovery.
+
+### Browser document / native completion correlation
+
+Each bridge document creates a private correlation token; its local numeric
+request IDs may restart on reload. The message-thread processor echoes a valid
+optional `_aionSession` (1..128 characters) on both successful and failed replies.
+The bridge accepts only the current token and a pending ID, then removes that
+private field before resolving the existing UI response object. Old-document,
+missing-envelope and duplicate/unknown completions cannot resolve a current
+request or clear its deadline. The 128-pending bound, five-second timeout and
+pagehide rejection remain intact. UUID generation uses platform crypto with
+getRandomValues and non-security fallback paths for older browser environments.
+
+This token correlates responses; it is not authentication and does not cancel
+already accepted audio/native commands. Generation/expiry checks, export picker
+sequence guards and native navigation cleanup remain independently required.
+Direct native clients may omit the token for legacy requests. Nothing is added
+to APVTS state, audio queues or processBlock; JSON/string handling stays off audio.

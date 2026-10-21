@@ -2343,3 +2343,60 @@ logo override remains untouched/unstaged. Available CMake targets are not proof
 of current plugin host, physical driver, Apple device or commercial acceptance;
 full feature parity and arbitrary C malloc/host allocation certification remain
 unestablished.
+
+### IPC document correlation across reload (2026-10-21)
+
+A failing-then-fixed VM lifecycle regression reproduces numeric request ID reuse:
+close an old document with request 1 pending, open a new bridge with request 1,
+then deliver the obsolete response to the new document. Previously it resolved
+the new promise and removed its deadline (`build/bridge-session-repro.log`).
+The bridge now attaches a per-document `_aionSession`; native message-thread
+success/error replies echo a validated optional token. The frontend requires a
+matching token AND pending ID, then strips the private field before resolving.
+Direct legacy native clients without a token retain their response shape.
+No audio/core/HTML/CSS/control behavior changes; no interface redesign.
+
+Acceptance:
+
+- Windows focused original-assets/core/MIDI/frontend/bridge and unchanged-JS
+  DSP/sync/state 8/8, 61.23s (`build/bridge-session-windows.log`).
+- Ubuntu original-assets/core/MIDI/frontend/bridge 5/5, 13.33s
+  (`build/bridge-session-ubuntu.log`). Expanded Windows and Ubuntu unit runs
+  additionally cover missing/malformed envelopes, frozen caller payloads,
+  caller-token override protection, duplicate/unknown IDs, reordered success/
+  error, unchanged 128-pending/5s deadline bounds, timeout-slot recovery, pagehide
+  rejection and crypto UUID/getRandomValues/older-environment fallback
+  (`build/bridge-session-unit.log`, `build/bridge-session-ubuntu-unit.log`).
+- Production processor/no-editor checks pass at 64/128
+  (`build/bridge-session-processor.log`): native success/error echo, invalid and
+  oversized tokens, legacy direct clients and all prior MIDI persistence/
+  cancellation/passthrough/zero processBlock new/delete checks remain.
+- Actual production WebView2/editor MIDI workflows pass at 64/128
+  (`build/bridge-session-mouse.log`). At each reload a harmless hello is held
+  locally; the test delivers an old-token envelope with its current numeric ID
+  through JUCE's real inbound dispatcher, asserts it stays pending, then forwards
+  the held request to C++ and accepts only the genuine current response. This
+  injection exists in CDP test code, not a product RPC or hardware-MIDI claim.
+- Existing Standalone 20-card UI/keyboard/IPC and actual browser count-in, nudge,
+  analyser and STUT audio gates pass (`build/bridge-session-ui.log`).
+- Production main/export/merge pointer workflows pass at 64/128
+  (`build/bridge-session-main-export-merge.log`): arm/cancel/record/play/stop,
+  actual PCM, STATIC/DYNAMIC sync, rapid and held-button cases, Start/Q/nudge/
+  STUT, WAV byte/cancel/replacement/overwrite/DEL guards and merge/confirmation/
+  Undo/Redo/source ownership. `-SkipMidi` avoids repeating the already-passed
+  focused MIDI run; default coverage is unchanged. Contradictory MidiOnly /
+  SkipMidi is rejected. No timeout, hold boundary or audio tolerance was loosened.
+- Connected original/native capture/overdub/substitute PCM audit: 126 cases,
+  965826 samples, maximum absolute error 7.394757495227111e-8 at unchanged 1e-6
+  (`build/bridge-session-audio.log`). The explicit unit watchdog prevents a
+  never-resolved mocked promise from silently exiting the test successfully.
+
+The token correlates replies only. It does not authenticate callers or cancel
+already accepted native/audio commands; existing generation/expiry, native
+navigation and picker lifetime/sequence guards remain required. No APVTS state
+version change, arbitrary C malloc certification or new hardware/platform claim.
+Previous sanitizer results are retained, not rerun for this message-thread and
+frontend-only change. Existing app/test targets only; no package/version bump.
+The user's local logo edits remain untouched/unstaged. The original keyboard
+`*` SUS shortcut/custom keyboard mapping gap found while choosing the next
+increment is explicitly recorded in PARITY, not represented as implemented.

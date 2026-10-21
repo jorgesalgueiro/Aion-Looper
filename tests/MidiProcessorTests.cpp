@@ -98,6 +98,13 @@ int main(){
   }
   auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);
   const auto rpc=[&](const juce::String& json){auto result=p->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};
+  for(const auto* operation:{"hello","not-supported"}){
+   const auto request=juce::JSON::parse("{\"operation\":\""+juce::String(operation)+"\",\"_aionSession\":\"current-document\"}");const auto reply=p->request({request});check(reply["_aionSession"].toString()=="current-document","Native success/error replies echo document correlation token");
+  }
+  for(const auto* token:{"null","17","\"\"","[]","{}"}){const auto reply=p->request({juce::JSON::parse("{\"operation\":\"hello\",\"_aionSession\":"+juce::String(token)+"}")});
+   // Void/null represents a legacy request with no correlation envelope.
+   if(juce::String(token)!="null")check(!reply.getProperty("ok",false),"Invalid native bridge session rejected");}
+  auto longSession=juce::JSON::parse(R"({"operation":"hello"})");longSession.getDynamicObject()->setProperty("_aionSession",juce::String::repeatedString("x",129));check(!p->request({longSession}).getProperty("ok",false),"Oversized bridge token rejected");
   juce::AudioBuffer<float> audio(2,block);juce::MidiBuffer midi;midi.ensureSize(8192);
   const auto process=[&]{const int events=midi.getNumEvents();for(int c=0;c<2;++c)for(int i=0;i<block;++i)audio.setSample(c,i,c?0.17f:0.25f);audioWatch=true;p->processBlock(audio,midi);audioWatch=false;check(midi.getNumEvents()==events,"Incoming host MIDI remains available for pass-through");midi.clear();};
   rpc(R"({"operation":"midiConfig","action":"enable","enabled":true})");process();

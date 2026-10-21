@@ -5,7 +5,7 @@
 | Original runtime assets | 16 files preserved with SHA256 | Automated byte identity checks |
 | Native build formats | CMake targets/platform guards configured | Compile/load/validate each OS+format |
 | Original UI runtime | Original loop cards, module placement, tabs and keyboard gestures; legacy audio JS blocked | Full view adapter and original interaction tests |
-| IPC/APVTS | Coherent snapshots, generation/expiry validation, loop commands, master/monitor/auto-play APVTS and persisted MIDI bindings | Session/generation tests, gestures, automation/state stress |
+| IPC/APVTS | Coherent snapshots, generation/expiry validation, per-document reply correlation, loop commands, master/monitor/auto-play APVTS and persisted MIDI bindings | Reused-ID/obsolete-reply, native echo and real WebView2 reload gates; broader automation/state stress remains |
 | Audio owner | 20-slot native looper, bounded pool, smoothed gain/mute, finite protection | Hardware/DAW audio, 64/128 stress and allocation instrumentation |
 | Host transport | BPM/PPQ/play observation | Meter/cycle/seek and sample-accurate scheduling/sync |
 | Loop recording/play/stop/overdub/substitute | Single capture owner and worker finalization; manual and static/dynamic zero-latency committed PCM comparisons pass | Hardware capture, latency compensation and long-session tests |
@@ -29,6 +29,7 @@
 | Drone voices/sampler/tracker/FX | Not ported | Algorithm/timing/CPU and saved-state fixtures |
 | MIDI looper control/learn | Native Note/CC/Program Change actions, original mapping focus/blur/Tab, loop-note lost-release recovery after >10s, OD/SUB/SUS, standalone routing and persisted bindings; works without editor | Original default-note oracle, processor/allocation and native 64/128 tests pass; physical AudioBox USB PC 0 learn/record/play/stop confirmed after triple-PC burst repair; broader hardware/reconnect tests pending |
 | MIDI loop volume/pan expression | Original slider right-click learn, zero/repeated CC values, native sample timing, pan integer steps, saved mappings and legacy state migration | Original handler/setter and exact connected stereo PCM, no-editor processor and 64/128 mouse gates; physical AudioBox USB channel-1 CC27 volume learn/response/display confirmed; calibration/listening/other hardware remain separate |
+| Keyboard SUS / custom keyboard mappings | Original `*` SUS shortcut and editable/persisted keyboard mappings remain unported; native MIDI SUS is implemented separately | Original keyboard/held-gesture/audio parity required before enabling this increment |
 | Other MIDI expression/synth/HID | Other continuous targets, synth keyboard/pitch/modulation and gamepad not ported | Controller matrix, voice/parameter behavior and original reference fixtures |
 | MIDI clock I/O | Designed, not implemented | PLL jitter/timeout/start/stop/SPP/host-loop tests |
 | `.alp` / native projects | Not ported | Existing project fixtures, no missing features/data |

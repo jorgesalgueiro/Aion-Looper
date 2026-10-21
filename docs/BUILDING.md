@@ -439,3 +439,13 @@ plugin-format rebuild, SDK cache or version bump is required. Extract it and run
 records the executable SHA256, source commit and any tracked local overrides
 (including a locally edited logo), so a local preview is not mistaken for a clean
 commit build. Physical audio/driver and DAW validation remain separate gates.
+
+### IPC reload regression
+
+`native_bridge_lifecycle` exercises old-document completions with reused numeric
+IDs, current-token success/error, queue/deadline recovery and pagehide cleanup.
+`tools/TestMouseWorkflow.ps1 -MidiOnly` also tests actual WebView2 reload delivery
+against the production native processor at 64/128. After that focused run, use
+`tools/TestMouseWorkflow.ps1 -SkipMidi` for main/WAV/merge acceptance without
+repeating MIDI; the default runner still runs every workflow. These are existing
+local test targets and do not require a new package.

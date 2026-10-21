@@ -199,6 +199,11 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     const auto fail = [result, &reply](const char* reason) { result->setProperty("error", reason); return reply; };
     if (args.size() != 1 || args[0].getDynamicObject() == nullptr) return fail("Expected one request object");
     const auto& request = args[0];
+    const auto session=request.getProperty("_aionSession",{});
+    if(!session.isVoid()){
+        if(!session.isString()||session.toString().isEmpty()||session.toString().length()>128)return fail("Invalid bridge session");
+        result->setProperty("_aionSession",session); // Echo on success AND failure, message thread only.
+    }
     const auto operation = request.getProperty("operation", {}).toString();
     // Consume acknowledged clears before reading/editing labels. Only fixed-size
     // epochs cross from audio; string allocation and destruction stay here.

@@ -1,5 +1,6 @@
-param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly)
+param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi)
 $ErrorActionPreference = 'Stop'
+if ($SkipMidi -and $MidiOnly) { throw 'SkipMidi cannot be combined with MidiOnly.' }
 $repo = Split-Path -Parent $PSScriptRoot
 $hostPath = Join-Path $repo 'build/windows/Release/aion_mouse_host.exe'
 if (!(Test-Path -LiteralPath $hostPath)) { throw 'Build target aion_mouse_host first.' }
@@ -27,7 +28,7 @@ foreach ($block in $Blocks) {
             & node (Join-Path $repo 'tests/MergeWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Merge workflow failed at $block samples." }
         }
-        if (!$ExportOnly -and !$MergeOnly) {
+        if (!$SkipMidi -and !$ExportOnly -and !$MergeOnly) {
             & node (Join-Path $repo 'tests/MidiWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "MIDI workflow failed at $block samples." }
         }

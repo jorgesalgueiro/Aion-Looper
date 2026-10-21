@@ -381,3 +381,12 @@ without finishing its former take. Retain unchanged original reassignment dispat
 exact nonzero stereo WAV versus direct capture at 64/128, real clear/learn/MidiBuffer
 and mouse reassignment/repeat/release checks. Preserve ordinary loop debounce,
 CC rearm, PC burst filtering and old-release cancellation protection.
+
+Bridge replies must carry the requesting document's correlation token. Numeric
+request IDs restart on reload and cannot alone identify the owner. Retain stale
+completion/reused-ID regressions, native success/error token echo, timeout/128-slot
+bounds, pagehide cleanup, legacy untagged direct requests and actual WebView2
+reload delivery tests. Strip the private token before exposing replies to UI
+callers. Correlation is not authentication or cancellation of old native commands;
+keep existing audio generation/expiry and native close/reload cancellation guards.
+Do not introduce browser/JSON allocation or locks on audio.
