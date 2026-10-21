@@ -312,3 +312,14 @@ then-fixed full 31-entry queue/resume/no-stale-assignment/fresh-learn recovery,
 paused indicator, immediate Escape, focused-name, actual 64/128 pointer/key and
 unchanged original range/text-field Escape comparisons. No audio-thread locks,
 allocations or extra package are permitted.
+
+Slider MIDI learning must not release an already-held performance gesture.
+Starting, acknowledging, cancelling, timing out or closing learn preserves held
+SUS recording/mute, normal STOP deadlines, deferred tasks and PC burst ownership.
+Clear learn/provisional state independently; the full-queue fallback uses its own
+atomic learn cancellation, applied after queued configurations. Disable, panic,
+device changes, overflow and transport-binding replacement still cancel owned
+performance actions. Retain unchanged context-menu/CC/Escape routing, exact
+stereo WAV against direct capture at 64/128, full-queue production MidiBuffer
+checks and actual mouse-learn/Escape with a held synthetic note. No physical
+expression claim follows from these synthetic gates.

@@ -53,7 +53,7 @@ bool AionProcessor::updateMidi(aion::MidiSettings next){
 void AionProcessor::cancelMidiLearn(){
     std::lock_guard guard(midiSettingsMutex);
     if(midiSettings.learnTarget>=0){auto next=midiSettings;next.learnTarget=-1;++next.learnToken;
-        if(!updateMidi(next)){midiSettings.learnTarget=-1;++midiSettings.learnToken;engine.cancelMidi();}
+        if(!updateMidi(next)){midiSettings.learnTarget=-1;++midiSettings.learnToken;engine.cancelMidiLearn();}
         midiStatus="MIDI learn cancelled";midiLearnDeadline=0;
     }
 }

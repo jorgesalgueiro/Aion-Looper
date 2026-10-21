@@ -64,6 +64,8 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     auto midiContext=midiDispatch();midi->begin(midiContext);
     const auto midiRevision=midiCancellation.load(std::memory_order_acquire);
     if(midiRevision!=seenMidiCancellation){midi->cancel(midiContext);seenMidiCancellation=midiRevision;}
+    const auto learnRevision=midiLearnCancellation.load(std::memory_order_acquire);
+    if(learnRevision!=seenMidiLearnCancellation){midi->cancelLearn();seenMidiLearnCancellation=learnRevision;}
     const auto overflowRevision=midiOverflowRevision.load(std::memory_order_acquire);
     if(overflowRevision!=seenMidiOverflow){midi->overflow(midiContext);seenMidiOverflow=overflowRevision;}
     if(midiEvents.size()>256){midi->overflow(midiContext);midiEvents={};}

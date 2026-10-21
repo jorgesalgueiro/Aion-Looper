@@ -61,6 +61,7 @@ public:
     bool configureMidi(const MidiSettings& settings) noexcept {return midi->configure(settings);}
     bool popMidiLearn(MidiLearnResult& result) noexcept {return midi->popLearn(result);}
     void cancelMidi() noexcept {midiCancellation.fetch_add(1,std::memory_order_release);}
+    void cancelMidiLearn() noexcept {midiLearnCancellation.fetch_add(1,std::memory_order_release);}
     void midiOverflow() noexcept {midiOverflowRevision.fetch_add(1,std::memory_order_release);}
     void setMidiInputAvailable(bool available) noexcept {midiInputAvailable=available;}
     bool popMeter(Meter& meter) noexcept { return meters.pop(meter); }
@@ -74,6 +75,8 @@ private:
     std::unique_ptr<MidiController> midi=std::make_unique<MidiController>();
     std::atomic<std::uint32_t> midiCancellation{0};
     std::uint32_t seenMidiCancellation=0;
+    std::atomic<std::uint32_t> midiLearnCancellation{0};
+    std::uint32_t seenMidiLearnCancellation=0;
     std::atomic<std::uint32_t> midiOverflowRevision{0};
     std::uint32_t seenMidiOverflow=0;
     bool midiInputAvailable=true;

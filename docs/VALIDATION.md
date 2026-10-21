@@ -1949,3 +1949,49 @@ expression/listening or general browser-envelope/driver/DAW parity.
 Only existing Windows Standalone and test tools were incrementally rebuilt;
 version remains 0.4.3 with no installer/ZIP/additional format package. Original
 UI assets and the user's separate logo edits remain preserved.
+
+### MIDI learn during held performance (2026-10-21)
+
+The retained failing regression (`build/midi-held-learn-repro.log`) showed that
+starting an unrelated slider learn prematurely finished a held SUS recording.
+The same global cancellation also restored a held momentary mute and suppressed
+an uninterrupted STOP-origin delete deadline. Slider acknowledgement and the
+full-queue cancel fallback shared this performance-cancellation path.
+
+Learn/provisional ownership now clears independently. Held performance remains
+owned until release; disable, panic, overflow, device changes and transport-binding
+replacement retain their previous safety cancellation. No layout or DSP algorithm
+changed and no new feature was started.
+
+Acceptance evidence:
+
+- Windows and Ubuntu core/MIDI/frontend/original-assets checks: 4/4 each
+  (`build/midi-held-windows.log`, `build/midi-held-ubuntu.log`). The retained
+  four-second boundary and disable/panic cases pass. Captured stereo WAV is
+  byte-identical between direct commands, normal MIDI taps and held SUS across
+  learn/CC movement/acknowledgement, at both 64/128 sample blocks.
+- ASan/UBSan with leak detection: 4/4 (`build/midi-held-asan.log`), including
+  zero callback new/delete and the final exact held-recording PCM regression.
+- Production JUCE MidiBuffer tests pass at 64/128
+  (`build/midi-held-processor.log`), including a full 31-entry configuration
+  queue, cancelled learn with recording still held, then the owned NoteOff.
+  The immediate-release fixture explicitly disables sync; dynamic sync may
+  legitimately queue the recording finish until its grid boundary.
+- Actual native mouse right-click/learn acknowledgement/Escape preserves a held
+  synthetic recording/mute at 64/128 (`build/midi-held-mouse.log`). Existing PC
+  burst, expression, timeout, mapping, reload and cancellation cases remain.
+- Unchanged original context-menu, MIDI message and Escape methods preserve
+  a note's press/release routing. This spy comparison establishes input ownership,
+  not reference DSP; previous 16384 default and 4256 continuous cases remain.
+- Windows unchanged-JS DSP/state/sync gates: 3/3
+  (`build/midi-held-parity-windows.log`). Windows and Ubuntu connected capture/
+  overdub/substitute audit: 126 cases, 965826 samples, maximum absolute error
+  7.394757495227111e-8 at unchanged 1e-6
+  (`build/midi-held-audio-windows.log`, `build/midi-held-audio-ubuntu.log`).
+- Unchanged 20-card native UI/keyboard and actual WebAudio count-in, nudge,
+  analyser and STUT comparisons pass (`build/midi-held-ui.log`).
+
+Version remains 0.4.3; only existing binaries were incrementally rebuilt, with
+no installer/ZIP/additional format package. Original assets and local logo edits
+are preserved. Physical expression remains deferred to the requested hardware
+check; synthetic tests do not establish listening/driver/DAW/platform parity.

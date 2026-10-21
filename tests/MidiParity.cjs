@@ -35,3 +35,16 @@ console.log('PASS: unchanged JS learn-event consumption and immediate following 
 const escapeStart=source.indexOf('static handleKeyboardPress('),escapeEnd=source.indexOf('\n    }',escapeStart)+6;assert(escapeStart>=0&&escapeEnd>escapeStart);
 vm.runInContext(`class OriginalKeyboard{${source.slice(escapeStart,escapeEnd)}};state.midiLearn={active:true};OriginalKeyboard.handleKeyboardPress({code:'Escape',key:'Escape',target:{tagName:'INPUT',type:'range'}});globalThis.originalEscapeActive=state.midiLearn.active;state.midiLearn={active:true};OriginalKeyboard.handleKeyboardPress({code:'Escape',key:'Escape',target:{tagName:'INPUT',type:'text'}});globalThis.originalTextEscapeActive=state.midiLearn.active;`,sandbox);assert.equal(sandbox.originalEscapeActive,false);assert.equal(sandbox.originalTextEscapeActive,false);
 console.log('PASS: unchanged original keyboard Escape cancels active MIDI learn');
+
+// Execute the original context-menu and Escape paths between a NoteOn/NoteOff.
+// The spy observes performance ownership, not simulated audio/DSP behavior.
+const touchStart=source.indexOf('    static setupTouchSafety('),touchEnd=source.indexOf('\n    }',touchStart)+6;assert(touchStart>=0);
+sandbox.document.addEventListener=(type,handler)=>{if(type==='contextmenu')sandbox.originalContextMenu=handler;};sandbox.clearTimeout=()=>{};
+vm.runInContext(`class OriginalTouch{${source.slice(touchStart,touchEnd)}};OriginalTouch.setupTouchSafety();globalThis.heldEdges=[];App.handleInputPress=id=>heldEdges.push(['down',id]);App.handleInputRelease=id=>heldEdges.push(['up',id]);state.midiLearn={active:false};App.handleMIDIMessage({data:[144,36,100]});`,sandbox);
+const slider={tagName:'INPUT',type:'range',min:'0',max:'2',style:{},matches:()=>false,getAttribute:()=>"UIManager.setLoopVolume(1, this.value)"};
+sandbox.originalContextMenu({target:slider,preventDefault(){}});assert.equal(sandbox.heldEdges.length,1,'Original learn does not release held note');
+sandbox.ccOracle([176,13,0]);assert.equal(sandbox.heldEdges.length,1,'Original binding acknowledgement does not release held note');
+sandbox.originalContextMenu({target:slider,preventDefault(){}});
+vm.runInContext(`OriginalKeyboard.handleKeyboardPress({code:'Escape',key:'Escape',target:{tagName:'INPUT',type:'range'}});`,sandbox);assert.equal(sandbox.heldEdges.length,1,'Original learn cancellation does not release held note');
+vm.runInContext(`App.handleMIDIMessage({data:[128,36,0]});`,sandbox);assert.deepEqual(JSON.parse(JSON.stringify(sandbox.heldEdges)),[['down',0],['up',0]]);
+console.log('PASS: unchanged original slider learn, acknowledgement and Escape preserve a held note until its NoteOff');

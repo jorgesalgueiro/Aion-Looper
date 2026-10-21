@@ -1,4 +1,5 @@
 #include "core/MidiController.h"
+#include <algorithm>
 #include <cmath>
 namespace aion {
 bool MidiController::valid(const MidiSettings& s) noexcept {
@@ -29,7 +30,7 @@ void MidiController::release(Press& p,Dispatch& d) noexcept {
     p.active=false;
 }
 void MidiController::cancel(Dispatch& d,int track) noexcept {
-    if(track<0){++epoch;read=write=0;settings.learnTarget=-1;learnCaptured=false;provisionalTarget=-1;provisionalBinding=0;programPulses={};}
+    if(track<0){++epoch;read=write=0;cancelLearn();programPulses={};}
     for(auto& p:presses)if(p.active&&(track<0||p.track==static_cast<unsigned>(track))){
         const auto copy=p;release(p,d);p=copy;p.suppressed=true;p.sustainAction=0;
     }
@@ -41,7 +42,11 @@ void MidiController::overflow(Dispatch& d) noexcept {++overflows;cancel(d);}
 void MidiController::begin(Dispatch& d) noexcept {
     MidiSettings next;
     for(unsigned n=0;n<31&&configs.pop(next);++n){
-        if(next.enabled!=settings.enabled||next.bindings!=settings.bindings||next.learnToken!=settings.learnToken||next.learnTarget!=settings.learnTarget||next.learnGeneration!=settings.learnGeneration)cancel(d);
+        // Slider learning owns no transport gesture. Keep held notes, deadlines,
+        // deferred actions and PC burst suppression when only learn/mixer changes.
+        const bool transportChanged=!std::equal(next.bindings.begin(),next.bindings.begin()+MidiSettings::volumeBase,settings.bindings.begin());
+        if(next.enabled!=settings.enabled||transportChanged)cancel(d);
+        else if(next.bindings!=settings.bindings||next.learnToken!=settings.learnToken||next.learnTarget!=settings.learnTarget||next.learnGeneration!=settings.learnGeneration)cancelLearn();
         if(next.modeOverride>=0){mode=next.modeOverride;++modeRevision;}
         settings=next;settings.modeOverride=-1;
         if(settings.learnGeneration!=d.generation)settings.learnTarget=-1;

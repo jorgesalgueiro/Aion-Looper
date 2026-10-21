@@ -21,6 +21,24 @@ struct Fixture {
 }
 void midiTests(){
  using namespace aion;using A=LoopAction;using S=LoopState;
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);f.tap(48);f.send(144,36,100);f.advance(128);
+  MidiSettings settings;settings.enabled=true;settings.learnTarget=34;settings.learnToken=1;settings.learnGeneration=f.engine->generation();settings.revision=++f.revision;
+  check(f.engine->configureMidi(settings),"learn while SUS recording");f.process(0);
+  check(f.latest.tracks[0].state==S::recording,"Starting unrelated slider learn must not release held SUS recording");
+  f.send(176,13,0);settings.bindings[34]=midiBinding(2,13);settings.learnTarget=-1;++settings.learnToken;settings.revision=++f.revision;
+  check(f.engine->configureMidi(settings),"acknowledge slider learn while holding SUS");f.process(0);
+  check(f.latest.tracks[0].state==S::recording,"Acknowledging slider learn must preserve held SUS recording");
+  f.send(128,36,0);f.wait();check(f.latest.tracks[0].state==S::playing,"Original note release still finishes held recording after learn");
+  f.send(144,36,100);check(f.latest.tracks[0].muted,"SUS mute fixture");
+  settings.learnTarget=54;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn during SUS mute");f.process(0);
+  check(f.latest.tracks[0].muted,"Starting learn must not restore an unrelated held mute");
+  settings.learnTarget=-1;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"cancel during SUS mute");f.process(0);
+  check(f.latest.tracks[0].muted,"Cancelling learn must not restore an unrelated held mute");f.send(128,36,0);check(!f.latest.tracks[0].muted,"SUS release restores mute after learn cancellation");
+  f.tap(48);const auto length=f.latest.tracks[0].length;f.send(144,36,100);f.advance(16000);
+  settings.learnTarget=54;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn during STOP hold");f.process(0);
+  f.advance(15999);check(f.latest.tracks[0].length==length,"Learn preserves original four-second STOP deadline");f.send(128,36,0);check(f.latest.tracks[0].state==S::empty,"Uninterrupted STOP hold still deletes at four seconds after unrelated learn");
+ }
  // A continuous controller may send the learn packet and movement in one block.
  for(const unsigned block:{64u,128u}){
   Fixture f(block);MidiSettings settings;settings.enabled=true;settings.learnTarget=33;settings.learnToken=17;settings.learnGeneration=f.engine->generation();settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn burst fixture");f.process(0);
@@ -117,14 +135,23 @@ void midiTests(){
   else check(expressionReference==pcm,"MIDI expression renders exact stereo PCM versus scheduled UI parameters at 64/128");
  }
  std::vector<std::uint8_t> reference;
- for(const unsigned block:{64u,128u})for(const bool fromMidi:{false,true}){
+ for(const unsigned block:{64u,128u})for(const unsigned controlMode:{0u,1u,2u}){
+  const bool fromMidi=controlMode!=0,heldLearn=controlMode==2;
   auto engine=std::make_unique<Engine>();engine->prepare(8000,8192);engine->setMonitoring(false);engine->setTarget(1);
   MidiSettings settings;settings.enabled=fromMidi;settings.revision=1;check(engine->configureMidi(settings),"MIDI/audio comparison config");
   if(!fromMidi){check(engine->enqueueLoop({A::record,0,1,engine->generation(),17,0})&&engine->enqueueLoop({A::finish,0,2,engine->generation(),900,0}),"sample-scheduled direct record/finish");}
   float l[128],r[128];float* input[]={l,r};
   for(unsigned offset=0;offset<1024;offset+=block){
-   std::array<MidiEvent,4> events{};std::size_t count=0;
-   for(const auto& e:std::array<MidiEvent,4>{{{17,144,36,100,3},{18,128,36,0,3},{900,144,36,100,3},{901,128,36,0,3}}})if(fromMidi&&e.offset>=offset&&e.offset<offset+block){auto local=e;local.offset-=offset;events[count++]=local;}
+   if(heldLearn&&(offset==256||offset==512)){
+    settings.learnTarget=offset==256?34:-1;++settings.learnToken;settings.learnGeneration=engine->generation();++settings.revision;
+    if(offset==512)settings.bindings[34]=midiBinding(2,13);
+    check(engine->configureMidi(settings),"Held SUS PCM learn/acknowledgement config");
+   }
+   std::array<MidiEvent,6> events{};std::size_t count=0;
+   const std::array<MidiEvent,6> heldSequence{{{0,144,48,100,3},{1,128,48,0,3},{17,144,36,100,3},{300,176,13,0,3},{301,176,13,127,3},{900,128,36,0,3}}};
+   const std::array<MidiEvent,4> tapSequence{{{17,144,36,100,3},{18,128,36,0,3},{900,144,36,100,3},{901,128,36,0,3}}};
+   const auto sequence=heldLearn?std::span<const MidiEvent>(heldSequence):std::span<const MidiEvent>(tapSequence);
+   for(const auto& e:sequence)if(fromMidi&&e.offset>=offset&&e.offset<offset+block){auto local=e;local.offset-=offset;events[count++]=local;}
    for(unsigned i=0;i<block;++i){l[i]=0.4f*std::sin((offset+i)*0.11f);r[i]=0.2f*std::cos((offset+i)*0.093f);}
    watch=true;engine->process(input,2,static_cast<int>(block),{events.data(),count});watch=false;
   }
@@ -132,7 +159,7 @@ void midiTests(){
   check(latest.tracks[0].length==883,"MIDI/direct sample-identical capture span");
   check(engine->enqueueExport({0,engine->generation(),latest.tracks[0].waveformId}),"MIDI comparison stored PCM");watch=true;engine->process(nullptr,0,0);watch=false;WavExport output;bool ready=false;
   for(unsigned n=0;n<10000&&!ready;++n){ready=engine->popExport(output);if(!ready)std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(ready&&!output.bytes.empty(),"MIDI stored PCM completed");
-  if(reference.empty())reference=output.bytes;else check(reference==output.bytes,"MIDI and direct gestures capture exact stereo PCM at 64/128");
+  if(reference.empty())reference=output.bytes;else check(reference==output.bytes,"MIDI tap/held SUS with slider learn and direct gestures capture exact stereo PCM at 64/128");
  }
  check(allocations.load()==0,"MIDI callback zero new/delete");std::cout<<"PASS: MIDI sample timing, Note/CC/PC mappings, debounce, four-second origin/release, sustain, panic and no callback new/delete\n";
 }

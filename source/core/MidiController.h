@@ -33,6 +33,7 @@ public:
     void event(const MidiEvent&,Dispatch&) noexcept;
     void tick(Dispatch&) noexcept;
     void cancel(Dispatch&,int track=-1) noexcept;
+    void cancelLearn() noexcept {settings.learnTarget=-1;learnCaptured=false;provisionalTarget=-1;provisionalBinding=0;}
     void prepare(Dispatch&) noexcept;
     void overflow(Dispatch&) noexcept;
     MidiView view() const noexcept;

@@ -732,6 +732,14 @@ button requests Web MIDI access rather than implementing a disable toggle.
 
 ### MIDI learn cancellation while audio is paused
 
+Learn cancellation has a dedicated atomic revision, independent of performance
+panic. The audio owner consumes it after queued configurations so a full queue
+cannot revive a cancelled learn or release an unrelated held SUS recording/mute.
+Learn token/target/generation and mixer-binding changes clear provisional learn
+ownership only. Enable changes and transport-binding replacement retain global
+performance cancellation; panic, device removal and overflow are unchanged.
+Held-note deadlines, pending tasks and PC burst suppression survive slider learn.
+
 Escape is a cancellation intent, not an operation gated by the last audio view.
 The capture-phase key listener sends cancelLearn before a loop-name field stops
 key bubbling; unrelated keys keep existing field/shortcut isolation. The native

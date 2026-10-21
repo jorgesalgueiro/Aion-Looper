@@ -11,6 +11,26 @@ void operator delete(void* p,std::size_t) noexcept {::operator delete(p);}void o
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
  for(const int block:{64,128}){
+  {
+   auto held=std::make_unique<AionProcessor>();held->setPlayConfigDetails(2,2,8000,block);held->prepareToPlay(8000,block);
+   const auto request=[&](const juce::String& json){auto result=held->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};
+   juce::AudioBuffer<float> buffer(2,block);buffer.clear();juce::MidiBuffer packets;packets.ensureSize(8192);
+   const auto run=[&]{audioWatch=true;held->processBlock(buffer,packets);audioWatch=false;packets.clear();};
+   request(R"({"operation":"setParameter","id":"syncMode","value":0})");
+   request(R"({"operation":"midiConfig","action":"enable","enabled":true})");
+   packets.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),0);packets.addEvent(juce::MidiMessage::noteOff(1,48),1);packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),2);run();
+   check(request(R"({"operation":"snapshot"})")["tracks"][0]["state"].toString()=="recording","Held SUS processor fixture records");
+   request(R"({"operation":"midiConfig","action":"learn","target":34})");run();
+   check(request(R"({"operation":"snapshot"})")["tracks"][0]["state"].toString()=="recording","Production slider learn preserves held recording");
+   packets.addEvent(juce::MidiMessage::controllerEvent(1,13,0),17);run();request(R"({"operation":"snapshot"})");run();
+   check(request(R"({"operation":"snapshot"})")["tracks"][0]["state"].toString()=="recording","Production learned binding acknowledgement preserves held recording");
+   request(R"({"operation":"midiConfig","action":"learn","target":54})");
+   for(int i=0;i<30;++i)request("{\"operation\":\"midiConfig\",\"action\":\"mode\",\"mode\":"+juce::String(i%3)+"}");
+   request(R"({"operation":"midiConfig","action":"cancelLearn"})");run();
+   auto state=request(R"({"operation":"snapshot"})");check(state["tracks"][0]["state"].toString()=="recording"&&static_cast<int>(state["midi"]["learnTarget"])==-1,"Full-queue learn cancellation preserves held SUS recording while clearing learn");
+   packets.addEvent(juce::MidiMessage::noteOff(1,36),17);run();
+   check(request(R"({"operation":"snapshot"})")["tracks"][0]["state"].toString()!="recording","Owned NoteOff still finishes SUS recording after full-queue cancellation");
+  }
   auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);
   const auto rpc=[&](const juce::String& json){auto result=p->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};
   juce::AudioBuffer<float> audio(2,block);juce::MidiBuffer midi;midi.ensureSize(8192);

@@ -23,6 +23,16 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
  const rapidMidi=await evaluate(`(()=>{const e=document.getElementById('enableMidiBtn');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
  await Promise.all(['mousePressed','mouseReleased','mousePressed','mouseReleased'].map(type=>call('Input.dispatchMouseEvent',{type,...rapidMidi,button:'left',clickCount:1})));
  await wait(s=>s.midi.enabled&&s.midi.revision>=beforeRapidMidiRevision+2,'rapid MIDI disable/enable retains both gestures');
+ // Keep a real synthetic MidiBuffer note held across original mouse learn/Escape.
+ await inject([[144,48,100,3,0],[128,48,0,3,1],[144,37,100,3,2]]);await wait(s=>s.midi.sustain&&s.tracks[1].state==='recording','held SUS recording');
+ await click('#loop-vol-slider-19','right');s=await wait(s=>s.midi.learnTarget===52,'learn while holding record');assert.equal(s.tracks[1].state,'recording','Mouse learn preserves held recording');
+ await inject([[176,16,0,3,17]]);s=await wait(s=>s.midi.bindings[52]===(2|(16<<2))&&s.midi.learnTarget===-1,'learn acknowledgement while recording');assert.equal(s.tracks[1].state,'recording','Learn acknowledgement preserves held recording');
+ await inject([[128,37,0,3,17]]);await wait(s=>s.tracks[1].state==='playing'&&s.tracks[1].waveformId,'NoteOff finishes held recording');
+ await inject([[144,37,100,3,17]]);await wait(s=>s.tracks[1].muted,'held SUS mute');
+ await click('#loop-pan-slider-19','right');s=await wait(s=>s.midi.learnTarget===72,'learn while held mute');assert(s.tracks[1].muted,'Mouse learn preserves held mute');
+ await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});s=await wait(s=>s.midi.learnTarget===-1,'Escape during held mute');assert(s.tracks[1].muted,'Escape preserves held mute');
+ await inject([[128,37,0,3,17],[144,48,100,3,18],[128,48,0,3,19]]);await wait(s=>!s.tracks[1].muted&&!s.midi.sustain,'Owned NoteOff restores mute');
+ s=await snapshot();assert((await rpc({operation:'loop',action:'clear',track:1,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks[1].state==='empty','held fixture cleanup');
  await inject([[144,36,100,3,17],[128,36,0,3,18]]);await wait(s=>s.tracks[0].state==='recording','default note record');await delay(250);await inject([[144,36,100,3,0],[144,36,0,3,1]]);s=await wait(s=>s.tracks[0].state==='playing'&&s.tracks[0].waveformId,'default note finish');const length=s.tracks[0].length;
  await click('#map-midi-0');await wait(s=>s.midi.learnTarget===0,'learn loop one');await inject([[192,0,0,2,0]]);s=await wait(s=>s.midi.bindings[0]===3&&s.midi.learnTarget===-1,'learn FCB PC zero');assert.equal(s.tracks[0].state,'playing','Learn consumes incoming command');
  await inject([[192,0,0,2,0],[192,0,0,2,1],[192,0,0,2,2]]);await wait(s=>s.tracks[0].state==='stopped','physical triple-PC burst stops once');await delay(4200);s=await snapshot();assert.equal(s.tracks[0].length,length,'Program Change never creates a delete hold');
