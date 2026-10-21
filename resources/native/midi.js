@@ -8,6 +8,21 @@ window.AionMidiMode = class {
     observe(view){if(this.pending&&(this.fence===null||view.revision<this.fence))return null;this.pending=false;if(view.modeRevision===this.last)return null;this.last=view.modeRevision;return ['normal','overdub','substitute'][view.mode];}
 };
 window.AionMidiSliderTarget=id=>{const m=/^loop-(vol|pan)-slider-(\d+)$/.exec(id);return m&&Number(m[2])<20?(m[1]==='vol'?33:53)+Number(m[2]):-1;};
+// Focus alone must not hide hardware updates after right-click learning.
+window.AionMidiSliderEdit=class {
+    constructor(element,{events=window,active=()=>document.activeElement}={}){
+        this.element=element;this.active=active;this.pointers=new Set();this.keys=new Set();
+        const clear=()=>{this.pointers.clear();this.keys.clear();};
+        element.addEventListener('pointerdown',e=>{if(e.button===0&&e.isPrimary!==false)this.pointers.add(e.pointerId);});
+        const release=e=>this.pointers.delete(e.pointerId);
+        events.addEventListener('pointerup',release,true);events.addEventListener('pointercancel',release,true);
+        element.addEventListener('lostpointercapture',release);
+        element.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(e.code))this.keys.add(e.code);});
+        events.addEventListener('keyup',e=>this.keys.delete(e.code),true);
+        events.addEventListener('blur',clear);element.addEventListener('blur',clear);
+    }
+    update(value,bound){if(!this.pointers.size&&!this.keys.size&&(this.active()!==this.element||bound))this.element.value=value;}
+};
 window.AionMidiSetup=({rpc,notify,setMode})=>{
     window.AionMidiMarkup();let current=null;const modeSync=new window.AionMidiMode();
     const button=document.getElementById('enableMidiBtn'),status=document.getElementById('midiStatus'),mappingStatus=document.getElementById('mapping-status');

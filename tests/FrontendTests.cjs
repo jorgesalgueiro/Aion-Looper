@@ -10,6 +10,18 @@ const root=path.resolve(__dirname,'..');
  assert.equal(sync.observe({revision:2,modeRevision:2,mode:2}),'substitute');assert.equal(sync.observe({revision:2,modeRevision:3,mode:1}),'overdub','Subsequent hardware mode reaches UI');
  const failed=sync.begin();sync.fail(failed);assert.equal(sync.observe({revision:2,modeRevision:3,mode:1}),'overdub','Failed edit restores authoritative mode');
  console.log('PASS: MIDI/UI mode acknowledgement fence, stale reply/snapshot protection, hardware updates and failure recovery');}
+// Learned sliders update while focused; only an active drag/key owns their value.
+{const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),native);
+ const target=()=>({listeners:{},addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);},send(type,event={}){for(const fn of this.listeners[type]||[])fn(event);}});
+ const element=target(),events=target();element.value=1;let focus=element;
+ const edit=new native.window.AionMidiSliderEdit(element,{events,active:()=>focus});
+ edit.update(2,false);assert.equal(element.value,1);edit.update(2,true);assert.equal(element.value,2,'Focused bound slider follows hardware');
+ element.send('pointerdown',{button:2,pointerId:2});edit.update(0,true);assert.equal(element.value,0,'Right-click does not hold a drag');
+ element.send('pointerdown',{button:0,pointerId:3});edit.update(2,true);assert.equal(element.value,0,'Drag protected');events.send('pointerup',{pointerId:4});edit.update(2,true);assert.equal(element.value,0);events.send('pointerup',{pointerId:3});edit.update(2,true);assert.equal(element.value,2);
+ element.send('keydown',{code:'ArrowLeft'});element.send('keydown',{code:'ArrowLeft'});edit.update(0,true);assert.equal(element.value,2,'Key repeat protected');events.send('keyup',{code:'ArrowLeft'});edit.update(0,true);assert.equal(element.value,0);
+ for(const end of ['pointercancel','lostpointercapture','blur']){element.send('pointerdown',{button:0,pointerId:5});(end==='lostpointercapture'?element:events).send(end,{pointerId:5});edit.update(1,true);assert.equal(element.value,1);}
+ focus=null;edit.update(2,false);assert.equal(element.value,2);
+ console.log('PASS: focused learned sliders follow MIDI; drag/key/repeat/cancel/blur and unassigned focus behavior retained');}
 // Merge confirmations follow successful native commits, never stale editor
 // snapshots or a source/destination replacement while the prompt is pending.
 {const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);

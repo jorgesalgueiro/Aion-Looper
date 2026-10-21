@@ -2083,3 +2083,44 @@ No new feature or package was introduced. Version stays 0.4.3; existing Windows
 binaries were incrementally rebuilt. Original assets and the user's local logo
 edits are preserved. Physical expression/listening, broader driver/DAW and Apple
 platform acceptance remain separate work.
+
+### Physical expression exposed focused-slider display failure (2026-10-21)
+
+Jorge reported learn waiting, then successful learn with a stationary slider.
+Live AudioBox USB diagnostics first observed no packets; after a numbered
+footswitch press they observed real channel-1 CC27 movement. Loop 1 learned CC27
+(binding 110), and native volume reached 0.015748031437397 for CC value 1 with
+MASTER zero. This establishes real CC arrival/learning/parameter routing. It does
+not establish calibration or audible/driver latency quality.
+
+The focused range was excluded from snapshot rendering indefinitely. Prior GUI
+checks asserted native metadata, missing the visible defect. The strengthened
+focused-DOM test failed on the previous binary
+(`build/midi-slider-focus-repro.log`). Learned volume/pan now follow native state
+while idle even if focused; explicit pointer/range-key edit ownership protects
+ongoing local edits and clears on release/cancel/lost capture/blur. Unassigned
+focused controls retain their existing behavior. Original markup is unchanged.
+
+Acceptance:
+
+- Windows original assets/MIDI/frontend 3/3, 6.65s
+  (`build/midi-slider-focus-windows.log`); Ubuntu 3/3, 8.14s
+  (`build/midi-slider-focus-ubuntu.log`). Frontend cases cover focus, right-click,
+  drag ownership, unrelated release, key repeat, cancellation and blur.
+- Real native focused volume/pan DOM positions follow injected MIDI at 64/128;
+  an actual mapped mouse drag remains locally editable while native CC moves,
+  then visibly resumes hardware state on release
+  (`build/midi-slider-focus-mouse.log`). Prior MIDI cases remain intact.
+- Original native 20-card UI/keyboard and actual WebAudio count-in, nudge,
+  analyser and STUT references pass (`build/midi-slider-focus-ui.log`).
+- Core/processor/DSP sources were unchanged; their prior exact stereo PCM and
+  sanitizer acceptance is retained, not claimed as rerun for this UI-only repair.
+
+Only existing Standalone/test-host binaries were incrementally rebuilt; no
+package or version bump. Original UI assets and the user's separate logo edits
+are preserved. The fixed app reopened with the user's real CC27 mapping retained;
+Jorge confirmed that the visible slider now follows the real pedal while focused.
+The post-fix native/rendered values are recorded in
+`build/midi-slider-focus-hardware.log`. This closes the physical expression
+response/display gate for this AudioBox USB/CC27 setup; endpoint calibration,
+audible performance and other controllers/platforms remain separate.

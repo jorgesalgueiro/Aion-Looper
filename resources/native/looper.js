@@ -279,6 +279,7 @@
                 const volume=bind(row.querySelector(`#loop-vol-slider-${i}`),e=>queueControl('volume',i,Number(e.target.value)),'input');
                 const feedback=bind(row.querySelector(`#loop-fbk-slider-${i}`),e=>queueControl('feedback',i,Number(e.target.value)),'input');
                 const pan=bind(row.querySelector(`#loop-pan-slider-${i}`),e=>queueControl('pan',i,Number(e.target.value)),'input');
+                const volumeMidi=new window.AionMidiSliderEdit(volume),panMidi=new window.AionMidiSliderEdit(pan);
                 const start=bind(row.querySelector(`#loop-start-slider-${i}`),e=>queueControl('startDelay',i,Number(e.target.value)),'input');
                 start.addEventListener('change',e=>{e.stopPropagation();command('applyStart',i);});
                 const quantize=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='Q'),()=>command('quantizeStart',i));
@@ -312,7 +313,7 @@
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const canvas=row.querySelector('canvas');canvas.title='Click to Export WAV';
                 canvas.addEventListener('click',e=>{e.stopPropagation();exportLoop(i);});
-                rows.push({row,main,name,volume,feedback,pan,start,quantize,speed,half,reset,mute,solo,retrigger,stut,normalize,mergeSource,mergeGo,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
+                rows.push({row,main,name,volume,feedback,pan,volumeMidi,panMidi,start,quantize,speed,half,reset,mute,solo,retrigger,stut,normalize,mergeSource,mergeGo,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
         function refresh() {
@@ -351,11 +352,11 @@
                 r.row.querySelector(`#loop-state-symbol-${i}`).textContent=symbols[t.state];
                 r.row.querySelector(`#loop-state-text-${i}`).textContent=t.state==='finalizing'?'SAVING':t.state.toUpperCase();
                 r.row.querySelector(`#loop-extra-info-${i}`).textContent=`${t.muted?'[MUTED] ':''}${t.length?`(${(t.length/snapshot.sampleRate/t.playbackRate).toFixed(1)}s)`:''}`;
-                if(document.activeElement!==r.volume)r.volume.value=t.volume;
+                r.volumeMidi.update(t.volume,!!snapshot.midi?.bindings[33+i]);
                 if(document.activeElement!==r.feedback)r.feedback.value=t.feedback;
                 r.row.querySelector(`#loop-vol-display-${i}`).textContent=t.volume>0?`${(20*Math.log10(t.volume)).toFixed(1)}dB`:'-inf';
                 r.row.querySelector(`#loop-fbk-display-${i}`).textContent=`${Math.round(t.feedback*100)}%`;
-                if(document.activeElement!==r.pan)r.pan.value=t.pan;
+                r.panMidi.update(t.pan,!!snapshot.midi?.bindings[53+i]);
                 if(document.activeElement!==r.speed)r.speed.value=t.playbackRate;
                 if(document.activeElement!==r.start)r.start.value=t.startDelay??0;
                 r.row.querySelector(`#loop-delay-display-${i}`).textContent=`${Math.floor((t.startDelay??0)*(t.length/snapshot.sampleRate*1000))}ms`;

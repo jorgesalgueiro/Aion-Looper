@@ -341,3 +341,11 @@ telemetry, immediately serialized state and next-callback no-revival checks for
 MIDI Stop, CC120/123 and overflow at 64/128. Keep fresh-learn recovery, normal
 accepted mappings and all held/continuous/PC gates. Cancellation after an already
 accepted mapping does not erase that mapping. No audio locks or dynamic storage.
+
+MIDI mixer acceptance must check actual DOM slider positions, not just native
+metadata. Focus left after right-click/ordinary selection must not freeze learned
+volume/pan sliders. Preserve active primary-pointer drags, range-key repeats,
+outside release, pointer cancellation/lost capture and blur; resume hardware
+updates when editing ends. Retain focused volume/pan and real mapped-drag tests
+at 64/128 plus frontend ownership checks. Preserve the user's logo hunk separately
+when editing looper.js; stage only the slider integration hunks.

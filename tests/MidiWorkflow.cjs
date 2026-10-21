@@ -63,11 +63,19 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
  await click('#loop-vol-slider-0','right');await wait(s=>s.midi.learnTarget===33,'right-click volume learns CC');
  const previousVolume=(await snapshot()).tracks[0].volume;
  await inject([[191,11,0,3,17]]);s=await wait(s=>s.midi.bindings[33]===(2|(11<<2))&&s.midi.learnTarget===-1,'zero learns CC');assert.equal(s.tracks[0].volume,previousVolume,'Learn consumes zero');
+ await evaluate(`document.getElementById('loop-vol-slider-0').focus()`);
  await inject([[176,11,127,3,17]]);s=await wait(s=>s.tracks[0].volume===2,'expression maximum');assert.equal(s.tracks[0].state,'playing');
+ for(let n=0;n<50;++n){if(await evaluate(`Number(document.getElementById('loop-vol-slider-0').value)===2`))break;await delay(20);}
+ assert(await evaluate(`document.activeElement===document.getElementById('loop-vol-slider-0')&&Number(document.getElementById('loop-vol-slider-0').value)===2`),'Focused learned volume slider must visibly follow MIDI, not just native metadata');
+ // Actual drag stays locally editable while hardware moves its native parameter.
+ const drag=await evaluate(`(()=>{const r=document.getElementById('loop-vol-slider-0').getBoundingClientRect();return{x:r.x+r.width*0.35,y:r.y+r.height/2};})()`);
+ await call('Input.dispatchMouseEvent',{type:'mousePressed',...drag,button:'left',clickCount:1});await delay(120);const heldValue=await evaluate(`document.getElementById('loop-vol-slider-0').value`);await inject([[176,11,127,3,17]]);await wait(s=>s.tracks[0].volume===2,'hardware during drag');await delay(120);assert.equal(await evaluate(`document.getElementById('loop-vol-slider-0').value`),heldValue,'Active mouse drag must not be overwritten by MIDI');await call('Input.dispatchMouseEvent',{type:'mouseReleased',...drag,button:'left',clickCount:1});
+ for(let n=0;n<50;++n){if(await evaluate(`Number(document.getElementById('loop-vol-slider-0').value)===2`))break;await delay(20);}assert(await evaluate(`Number(document.getElementById('loop-vol-slider-0').value)===2`),'MIDI display resumes after drag release');
  await inject([[176,11,64,3,0],[176,11,63,3,17]]);s=await wait(s=>Math.abs(s.tracks[0].volume-126/127)<1e-7,'positive expression values do not debounce');
  await inject([[176,11,0,3,0]]);await wait(s=>s.tracks[0].volume===0,'zero expression is silence');
  await click('#loop-pan-slider-0','right');await wait(s=>s.midi.learnTarget===53,'right-click pan learns');await inject([[176,12,0,3,0]]);await wait(s=>s.midi.bindings[53]===(2|(12<<2)),'pan CC learned');
- for(const value of [0,63,64,126,127]){await inject([[176,12,value,3,17]]);await wait(s=>s.tracks[0].pan===Math.floor(value/127*10),'original pan quantization');}
+ await evaluate(`document.getElementById('loop-pan-slider-0').focus()`);
+ for(const value of [0,63,64,126,127]){await inject([[176,12,value,3,17]]);await wait(s=>s.tracks[0].pan===Math.floor(value/127*10),'original pan quantization');for(let n=0;n<50;++n){if(await evaluate(`Number(document.getElementById('loop-pan-slider-0').value)===${Math.floor(value/127*10)}`))break;await delay(20);}assert(await evaluate(`Number(document.getElementById('loop-pan-slider-0').value)===${Math.floor(value/127*10)}`),'Focused learned pan slider visibly follows MIDI');}
  await click('#map-midi-2');await wait(s=>s.midi.learnTarget===2,'button learn cannot steal expression');await inject([[176,11,100,3,0]]);s=await wait(s=>s.midi.learnTarget===-1&&s.midi.status.includes('already assigned'),'continuous/button duplicate rejects atomically');assert.equal(s.midi.bindings[33],2|(11<<2));
  await click('#loop-vol-slider-1','right');await wait(s=>s.midi.learnTarget===34,'CC timeout starts');await delay(10300);await wait(s=>s.midi.learnTarget===-1&&s.midi.status.includes('timed out'),'native ten second CC timeout');
  const beforeImmediateCancel=(await snapshot()).midi.revision;
