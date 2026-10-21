@@ -762,3 +762,14 @@ performance action with the same kind/channel/key. This also applies while an
 invalid provisional mapping awaits rejection. It neither starts a new action nor
 bypasses duplicate validation. Ordinary continuous-parameter dispatch order stays
 unchanged; storage and release scans remain fixed and bounded on the callback.
+
+### Cancellation of captured MIDI learn results
+
+Each internal learn result carries the audio owner's lock-free cancellation
+serial. Clearing learn/provisional ownership advances that serial. The message
+owner checks it when receiving a result and again before accepting a pending
+result; a cancelled capture uses the existing learn-cancellation path instead of
+updating saved mappings. This fence is independent of the bounded snapshot queue,
+which can contain only pre-panic views. Token/generation/target validation remains
+in place, and mappings already accepted before cancellation remain intact.
+The serial is internal; saved-state version and frontend protocol are unchanged.

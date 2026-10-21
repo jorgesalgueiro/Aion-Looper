@@ -59,6 +59,20 @@ void midiTests(){
   settings.learnTarget=34;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn during held CC play");f.process(0);
   f.send(176,20,0);check(f.latest.tracks[0].state==S::stopped&&f.latest.tracks[0].length>0,"Owned CC release stops momentary playback without deleting PCM");
  }
+ // Audio cancellation invalidates captured learns independently of UI telemetry.
+ for(const unsigned block:{64u,128u})for(const unsigned cancellation:{0u,1u,2u,3u,4u,5u}){
+  Fixture f(block);MidiSettings settings;settings.enabled=true;settings.learnTarget=19;settings.learnToken=71;settings.learnGeneration=f.engine->generation();settings.revision=++f.revision;
+  check(f.engine->configureMidi(settings),"panic learn config");f.send(192,3,0,2);MidiLearnResult learned;
+  check(f.engine->popMidiLearn(learned)&&f.engine->midiLearnCurrent(learned),"Captured learn current before cancellation");
+  if(cancellation==0)f.send(252,0,0,1);
+  else if(cancellation==1||cancellation==2)f.send(176,cancellation==1?120:123,0);
+  else if(cancellation==3){f.engine->midiOverflow();f.process(0);}
+  else if(cancellation==4){f.engine->cancelMidi();f.process(0);}
+  else {f.engine->cancelMidiLearn();f.process(0);}
+  check(!f.engine->midiLearnCurrent(learned),"Panic/overflow/device/learn cancellation invalidates already-popped result");
+  settings.learnTarget=18;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"fresh learn after audio cancellation");f.send(192,5,0,2);
+  check(f.engine->popMidiLearn(learned)&&f.engine->midiLearnCurrent(learned)&&learned.target==18&&learned.binding==midiBinding(3,5),"Fresh audio-owned learn valid after cancellation");
+ }
  // A continuous controller may send the learn packet and movement in one block.
  for(const unsigned block:{64u,128u}){
   Fixture f(block);MidiSettings settings;settings.enabled=true;settings.learnTarget=33;settings.learnToken=17;settings.learnGeneration=f.engine->generation();settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn burst fixture");f.process(0);

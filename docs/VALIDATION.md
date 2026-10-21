@@ -2038,3 +2038,48 @@ CC button transport. The retained original-JS note and continuous-mixer gates
 cover their own behavior. Physical expression/listening and driver/DAW/platform
 acceptance remain separate. No new feature/layout/package or version bump;
 existing Windows binaries were incrementally rebuilt and local logo edits kept.
+
+### Panic after MIDI learn capture, before acknowledgement (2026-10-21)
+
+A new production regression exposed a stale mapping commit: capture a Program
+Change for learning, then receive MIDI Stop/CC120/CC123 or an overflow before
+message-thread acceptance. Audio cleared learn/provisional state, but the queued
+result still matched the message owner's token and generation. The first audio
+snapshot hid the commit; immediately saved state contained the cancelled binding.
+The failing assertion is retained (`build/midi-learn-panic-repro.log`).
+
+Captured results now carry an internal audio-published lock-free cancellation
+serial. Newly received and pending results must still match it before acceptance.
+Cancelled results use the existing native learn-cancellation path. The snapshot
+queue is not a validity oracle; previously accepted mappings remain intact.
+Saved-state version, frontend protocol, original layout and DSP are unchanged.
+
+Acceptance evidence:
+
+- Windows focused core/MIDI/frontend/assets and unchanged-JS DSP/state/sync:
+  7/7, 59.86s (`build/midi-learn-panic-windows.log`).
+- Ubuntu focused checks: 4/4, 14.30s (`build/midi-learn-panic-ubuntu.log`);
+  ASan/UBSan plus leak detection: 4/4, 21.24s
+  (`build/midi-learn-panic-asan.log`). Callback new/delete remains zero; earlier
+  exact stereo capture/expression, held release and four-second gates remain.
+- Final production JUCE MidiBuffer cases pass at 64/128 with both ordinary and
+  saturated/stale telemetry. MIDI Stop, CC120, CC123 and a subsequent 300-message
+  overflow cannot persist a cancelled mapping or revive it on the next callback.
+  Fresh learn recovers and consumes its packet
+  (`build/midi-learn-panic-processor.log`). Core cases also invalidate an already
+  popped result after device/global or queue-independent learn cancellation.
+- Actual original mapping clicks and synthetic same-block PC/panic messages pass
+  at 64/128, with no later mapping revival and successful fresh-learn recovery
+  (`build/midi-learn-panic-mouse.log`). All previous MIDI mouse cases remain.
+- Connected unchanged-JS capture/overdub/substitute audio audit passes 126 cases,
+  965826 samples, maximum absolute error 7.394757495227111e-8 at unchanged 1e-6
+  (`build/midi-learn-panic-audio.log`). Browser envelopes/resampling, input latency
+  compensation and sync remain outside this committed-PCM comparison.
+
+- Final unchanged 20-card native UI/keyboard smoke and actual WebAudio count-in,
+  nudge, analyser and STUT comparisons pass (`build/midi-learn-panic-ui.log`).
+
+No new feature or package was introduced. Version stays 0.4.3; existing Windows
+binaries were incrementally rebuilt. Original assets and the user's local logo
+edits are preserved. Physical expression/listening, broader driver/DAW and Apple
+platform acceptance remain separate work.

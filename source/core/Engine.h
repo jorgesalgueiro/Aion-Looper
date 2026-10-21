@@ -60,6 +60,7 @@ public:
     void process(float* const* channels, int channelCount, int frames,std::span<const MidiEvent> midiEvents={}) noexcept;
     bool configureMidi(const MidiSettings& settings) noexcept {return midi->configure(settings);}
     bool popMidiLearn(MidiLearnResult& result) noexcept {return midi->popLearn(result);}
+    bool midiLearnCurrent(const MidiLearnResult& result) const noexcept {return midi->learnCurrent(result);}
     void cancelMidi() noexcept {midiCancellation.fetch_add(1,std::memory_order_release);}
     void cancelMidiLearn() noexcept {midiLearnCancellation.fetch_add(1,std::memory_order_release);}
     void midiOverflow() noexcept {midiOverflowRevision.fetch_add(1,std::memory_order_release);}

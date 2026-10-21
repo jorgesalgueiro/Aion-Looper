@@ -23,6 +23,12 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
  const rapidMidi=await evaluate(`(()=>{const e=document.getElementById('enableMidiBtn');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
  await Promise.all(['mousePressed','mouseReleased','mousePressed','mouseReleased'].map(type=>call('Input.dispatchMouseEvent',{type,...rapidMidi,button:'left',clickCount:1})));
  await wait(s=>s.midi.enabled&&s.midi.revision>=beforeRapidMidiRevision+2,'rapid MIDI disable/enable retains both gestures');
+ // A captured learn followed by same-block panic must never commit on a later callback.
+ for(const panic of [[252,0,0,1,18],[176,120,0,3,18],[176,123,0,3,18]]){
+  await click('#map-midi-17');await wait(s=>s.midi.learnTarget===17,'learn before same-block panic');await inject([[192,4,0,2,17],panic]);
+  s=await wait(s=>s.midi.learnTarget===-1,'panic cancels captured learn');assert.equal(s.midi.bindings[17],0,'Panic invalidates unacknowledged mapping');await delay(120);s=await snapshot();assert.equal(s.midi.bindings[17],0,'Cancelled mapping never revives on later callbacks');
+ }
+ await click('#map-midi-17');await wait(s=>s.midi.learnTarget===17,'fresh learn after panic');await inject([[192,5,0,2,17]]);s=await wait(s=>s.midi.bindings[17]===(3|(5<<2))&&s.midi.learnTarget===-1,'fresh learn recovers after panic');assert.equal(s.tracks[17].state,'empty','Fresh learn consumes packet');await click('#map-midi-17','right');await wait(s=>s.midi.bindings[17]===0,'panic fixture cleanup');
  // Keep a real synthetic MidiBuffer note held across original mouse learn/Escape.
  await inject([[144,48,100,3,0],[128,48,0,3,1],[144,37,100,3,2]]);await wait(s=>s.midi.sustain&&s.tracks[1].state==='recording','held SUS recording');
  await click('#loop-vol-slider-19','right');s=await wait(s=>s.midi.learnTarget===52,'learn while holding record');assert.equal(s.tracks[1].state,'recording','Mouse learn preserves held recording');

@@ -62,9 +62,13 @@ void AionProcessor::serviceMidi(){
     std::lock_guard guard(midiSettingsMutex);
     if(midiSettings.learnTarget>=static_cast<int>(aion::MidiSettings::volumeBase)&&midiLearnDeadline>0&&juce::Time::getMillisecondCounterHiRes()>=midiLearnDeadline){cancelMidiLearn();midiStatus="MIDI Learn timed out";}
     aion::MidiLearnResult result;
-    while(engine.popMidiLearn(result))if(result.token==midiSettings.learnToken&&result.generation==engine.generation()&&result.target==midiSettings.learnTarget)pendingMidiLearn=result;
+    while(engine.popMidiLearn(result))if(result.token==midiSettings.learnToken&&result.generation==engine.generation()&&result.target==midiSettings.learnTarget){
+        if(engine.midiLearnCurrent(result))pendingMidiLearn=result;
+        else cancelMidiLearn(); // Panic may invalidate capture before message-thread acknowledgement.
+    }
     if(pendingMidiLearn){const auto learned=*pendingMidiLearn;
         if(learned.token!=midiSettings.learnToken||learned.generation!=engine.generation()){pendingMidiLearn.reset();}
+        else if(!engine.midiLearnCurrent(learned)){pendingMidiLearn.reset();cancelMidiLearn();}
         else {auto next=midiSettings;next.bindings[static_cast<unsigned>(learned.target)]=learned.binding;next.learnTarget=-1;++next.learnToken;
             const bool valid=aion::MidiController::valid(next);if(!valid)next.bindings=midiSettings.bindings;
             if(updateMidi(next)){midiStatus=valid?"MIDI binding learned":"MIDI binding already assigned; previous mapping kept";pendingMidiLearn.reset();}

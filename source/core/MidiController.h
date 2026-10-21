@@ -12,7 +12,7 @@ struct MidiSettings {
     int learnTarget=-1,modeOverride=-1;
 };
 struct MidiEvent {std::uint32_t offset=0;std::uint8_t status=0,data1=0,data2=0,size=0;};
-struct MidiLearnResult {int target=-1;std::uint16_t binding=0;std::uint32_t token=0,generation=0;};
+struct MidiLearnResult {int target=-1;std::uint16_t binding=0;std::uint32_t token=0,generation=0,cancellation=0;};
 struct MidiObservation {std::uint64_t frame=0;MidiEvent event{};};
 struct MidiView {
     std::array<std::uint16_t,MidiSettings::bindingCount> bindings{};
@@ -29,11 +29,12 @@ public:
     static int targetFor(const MidiSettings&,const MidiEvent&) noexcept;
     bool configure(const MidiSettings& value) noexcept {return valid(value)&&configs.push(value);}
     bool popLearn(MidiLearnResult& value) noexcept {return learned.pop(value);}
+    bool learnCurrent(const MidiLearnResult& value) const noexcept {return value.cancellation==learnCancellation.load(std::memory_order_acquire);}
     void begin(Dispatch&) noexcept;
     void event(const MidiEvent&,Dispatch&) noexcept;
     void tick(Dispatch&) noexcept;
     void cancel(Dispatch&,int track=-1) noexcept;
-    void cancelLearn() noexcept {settings.learnTarget=-1;learnCaptured=false;provisionalTarget=-1;provisionalBinding=0;}
+    void cancelLearn() noexcept {learnCancellation.fetch_add(1,std::memory_order_release);settings.learnTarget=-1;learnCaptured=false;provisionalTarget=-1;provisionalBinding=0;}
     void prepare(Dispatch&) noexcept;
     void overflow(Dispatch&) noexcept;
     MidiView view() const noexcept;
@@ -49,6 +50,7 @@ private:
     };
     SpscQueue<MidiSettings,32> configs;
     SpscQueue<MidiLearnResult,8> learned;
+    std::atomic<std::uint32_t> learnCancellation{0}; // Audio publishes; message owner validates captured results.
     MidiSettings settings;
     std::array<MidiObservation,8> recent{};
     std::uint32_t observed=0;

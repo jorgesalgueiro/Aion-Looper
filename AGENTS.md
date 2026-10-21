@@ -332,3 +332,12 @@ SUS capture/play/mute release and next-positive-edge recovery. Retain the failin
 release-during-learn regression, exact stereo WAV against direct capture at
 64/128, production MidiBuffer and real original-interface mouse cases. CC button
 routing is a native extension; unchanged-JS CC mixer parity is a separate gate.
+
+Audio cancellation must invalidate an unacknowledged MIDI learn result even after
+it has left the result queue. Keep an audio-published lock-free cancellation
+serial on each captured result and validate both newly popped and pending results
+before accepting a mapping. Never depend on snapshot freshness: retain saturated
+telemetry, immediately serialized state and next-callback no-revival checks for
+MIDI Stop, CC120/123 and overflow at 64/128. Keep fresh-learn recovery, normal
+accepted mappings and all held/continuous/PC gates. Cancellation after an already
+accepted mapping does not erase that mapping. No audio locks or dynamic storage.

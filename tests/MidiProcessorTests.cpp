@@ -11,6 +11,25 @@ void operator delete(void* p,std::size_t) noexcept {::operator delete(p);}void o
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
  for(const int block:{64,128}){
+  for(const int cancellation:{252,120,123,300})for(const bool staleViews:{false,true}){
+   auto cancelled=std::make_unique<AionProcessor>();cancelled->setPlayConfigDetails(2,2,8000,block);cancelled->prepareToPlay(8000,block);
+   const auto request=[&](const juce::String& json){auto result=cancelled->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};
+   juce::AudioBuffer<float> buffer(2,block);buffer.clear();juce::MidiBuffer packets;packets.ensureSize(8192);
+   const auto run=[&]{audioWatch=true;cancelled->processBlock(buffer,packets);audioWatch=false;packets.clear();};
+   request(R"({"operation":"midiConfig","action":"learn","target":19})");run();
+   if(staleViews)for(int n=0;n<10;++n)run(); // Saturate telemetry before learn/panic.
+   packets.addEvent(juce::MidiMessage::programChange(1,3),17);
+   if(cancellation==252)packets.addEvent(juce::MidiMessage::midiStop(),18);
+   else if(cancellation!=300)packets.addEvent(juce::MidiMessage::controllerEvent(1,cancellation,0),18);
+   run();
+   if(cancellation==300){for(int n=0;n<300;++n)packets.addEvent(juce::MidiMessage::noteOn(1,40,juce::uint8{100}),0);run();}
+   auto state=request(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["bindings"][19])==0,"Panic/overflow after learn capture must invalidate unacknowledged binding");
+   juce::MemoryBlock saved;cancelled->getStateInformation(saved);auto xml=juce::AudioProcessor::getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));
+   check(xml->getChildByName("MidiSettings")->getIntAttribute("binding19")==0,"Cancelled learn must not persist a stale binding before audio acknowledges it");
+   run();state=request(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["bindings"][19])==0,"Cancelled binding cannot revive on the next callback");
+   request(R"({"operation":"midiConfig","action":"learn","target":19})");run();packets.addEvent(juce::MidiMessage::programChange(1,5),17);run();request(R"({"operation":"snapshot"})");run();
+   state=request(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["bindings"][19])==aion::midiBinding(3,5)&&state["tracks"][19]["state"].toString()=="empty","Fresh learning recovers after panic invalidates previous capture");
+  }
   {
    auto cc=std::make_unique<AionProcessor>();cc->setPlayConfigDetails(2,2,8000,block);cc->prepareToPlay(8000,block);
    const auto request=[&](const juce::String& json){auto result=cc->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};

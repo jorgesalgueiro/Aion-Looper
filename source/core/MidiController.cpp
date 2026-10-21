@@ -95,7 +95,7 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     // their transport mappings while a slider waits for CC, as in the original.
     if(settings.learnTarget>=static_cast<int>(MidiSettings::volumeBase)&&kind==2){
         if(!learnCaptured){
-            if(learned.push({settings.learnTarget,midiBinding(2,e.data1),settings.learnToken,d.generation})){
+            if(learned.push({settings.learnTarget,midiBinding(2,e.data1),settings.learnToken,d.generation,learnCancellation.load(std::memory_order_relaxed)})){
                 learnCaptured=true;
                 // Learning is omni: reject any overlapping channel assignment,
                 // without mutating the persisted configuration on audio.
@@ -111,7 +111,7 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
         if(((provisionalBinding>>2)&127)==e.data1){continuous(provisionalTarget,e.data2,d);return;}
     }
     if(settings.learnTarget>=0&&settings.learnTarget<static_cast<int>(MidiSettings::volumeBase)&&down){
-        if(!learnCaptured&&learned.push({settings.learnTarget,midiBinding(kind,e.data1),settings.learnToken,d.generation}))learnCaptured=true;
+        if(!learnCaptured&&learned.push({settings.learnTarget,midiBinding(kind,e.data1),settings.learnToken,d.generation,learnCancellation.load(std::memory_order_relaxed)}))learnCaptured=true;
         return;
     }
     const int continuousTarget=kind==2?targetFor(settings,e):-1;
