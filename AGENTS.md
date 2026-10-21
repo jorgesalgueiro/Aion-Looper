@@ -301,3 +301,14 @@ every click before audio resumes. Retain frontend double/triple-click cases from
 both initial states, actual processor queued-state/persistence checks and real
 64/128 pointer events. Keep the large-decimal saved-state rejection regression;
 malformed input must preserve the complete previous mappings/APVTS state.
+
+MIDI learn cancellation must not depend on configuration capacity or a fresh
+audio snapshot. Escape calls the native cancellation path even before its learn
+snapshot arrives; listen in capture phase so loop-name keyboard isolation cannot
+block it. Preserve ordinary typing/shortcut guards. cancelLearn RPC shares editor
+close/timeout's bounded-queue fallback, and UI learnTarget reports accepted
+message-owner intent so cancellation clears while audio is paused. Retain failed-
+then-fixed full 31-entry queue/resume/no-stale-assignment/fresh-learn recovery,
+paused indicator, immediate Escape, focused-name, actual 64/128 pointer/key and
+unchanged original range/text-field Escape comparisons. No audio-thread locks,
+allocations or extra package are permitted.

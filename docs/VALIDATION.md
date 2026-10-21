@@ -1891,3 +1891,61 @@ Only existing Windows Standalone and test binaries were incrementally rebuilt.
 Version remains 0.4.3 with no installer, ZIP or additional format package. Original
 UI assets and the user's separate logo edits are preserved. Physical expression,
 listening, broader drivers/DAWs and platform parity remain separate acceptance.
+
+### MIDI learn cancellation repair (2026-10-21)
+
+No new feature was started while physical expression testing remains deferred to
+the user's reminder for today after 19:45 Europe/Lisbon. This audit found and
+fixed four cancellation failures within the existing MIDI feature:
+
+- Native cancelLearn rejected when paused audio left the 31 usable configuration
+  slots full (`build/midi-cancel-full-repro.log`).
+- Escape before the first/updated MIDI snapshot did not request cancellation
+  (`build/midi-cancel-stale-repro.log`).
+- The learn indicator stayed active until another audio callback, despite
+  successful cancellation (`build/midi-cancel-paused-view-repro.log`).
+- Focused loop-name input stopped the event before the document listener
+  (`build/midi-cancel-name-repro.log`).
+
+All failing assertions are retained. Escape now reaches the native cancellation
+fallback in capture phase; the message owner's accepted intent drives the learn
+indicator. Unrelated keys, ordinary name-field isolation, audio-thread bounds
+and persisted mappings remain intact. No DSP algorithm or interface layout changed.
+
+Acceptance:
+
+- Windows core/MIDI/frontend 3/3, 27.57s (`build/midi-cancel-windows.log`);
+  Ubuntu 3/3, 10.04s (`build/midi-cancel-ubuntu.log`); sanitized core/MIDI/frontend
+  with leak detection 3/3, 19.04s (`build/midi-cancel-asan.log`).
+- Final additional focus/reference checks pass Windows 2/2, 3.27s
+  (`build/midi-cancel-focus-windows.log`), Ubuntu 2/2, 6.05s
+  (`build/midi-cancel-focus-ubuntu.log`), and ASan/UBSan MIDI probe/frontend 2/2,
+  5.98s (`build/midi-cancel-focus-asan.log`). Core/DSP sources are unchanged;
+  existing exact stereo PCM, timing and zero-callback-new/delete gates remain.
+- Final actual production processor checks pass at 64/128, including a full
+  configuration queue with no callbacks, cancellation/resume without stale
+  assignment, fresh-learn recovery and cancelled indicator before another block
+  (`build/midi-cancel-focus-processor.log`). All previous native MidiBuffer,
+  state/legacy/overflow/editor-closed cases and zero processBlock new/delete pass.
+- Real 64/128 right-click/immediate Escape and Escape while a loop-name field
+  owns focus pass, along with the retained full MIDI workflow
+  (`build/midi-cancel-focus-mouse.log`).
+- Original keyboard Escape is executed unchanged for range/text input targets.
+  All previous 16384 default and 4256 continuous message comparisons, immediate
+  learned movement and original mapping markup comparisons are retained.
+- The connected Ubuntu audio audit passes 126 cases, 965826 samples, maximum
+  error 7.394757495227111e-8 at unchanged 1e-6
+  (`build/midi-cancel-audio-ubuntu.log`). Windows connected-audio acceptance
+  from the preceding increment is retained; no core/DSP processing code changed.
+
+The earlier GUI/UI runs passed before the final focus refinement
+(`build/midi-cancel-mouse.log`, `build/midi-cancel-ui.log`,
+`build/midi-cancel-final-mouse.log`, `build/midi-cancel-final-ui.log`). Final
+unchanged NativeUiSmoke and actual WebAudio count-in/nudge/analyser/STUT evidence
+is in build/midi-cancel-focus-ui.log. These gates supplement the original 20-card,
+IPC/no-product-AudioContext and unchanged asset checks; they do not prove physical
+expression/listening or general browser-envelope/driver/DAW parity.
+
+Only existing Windows Standalone and test tools were incrementally rebuilt;
+version remains 0.4.3 with no installer/ZIP/additional format package. Original
+UI assets and the user's separate logo edits remain preserved.

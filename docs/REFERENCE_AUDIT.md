@@ -483,3 +483,23 @@ The saved-state decimal-overflow probe passed on the current pinned JUCE build:
 18446744073709551616 is rejected without losing mappings or partially replacing
 state. It is retained as a regression; no parser bug or parser rewrite is claimed.
 Physical expression verification remains deferred to the user's scheduled test.
+
+### MIDI Escape/cancellation audit (2026-10-21)
+
+Four related cases were reproduced and retained before repair: Escape before the
+learn snapshot arrived was ignored; cancelLearn failed with all 31 configuration
+entries occupied while callbacks were paused; a cancelled indicator remained
+active until another callback; and a focused loop-name field blocked Escape
+bubbling. Original App.handleKeyboardPress cancels MIDI learn before its text-
+field guard; the unchanged method is now explicitly compared for range and text
+inputs, with all prior MIDI/default/continuous/learn-burst comparisons retained.
+
+The UI sends Escape cancellation in capture phase without requiring telemetry.
+The RPC shares existing native editor-close/timeout cancellation fallback, and
+displays accepted learn intent from the message owner. Actual processor tests
+fill the queue without processing, cancel, resume, reject stale assignment and
+successfully learn again; a separate assertion checks immediate paused status.
+Frontend tests compose the production name-field and MIDI handlers with standard
+capture/bubble ordering. Actual CDP tests retain right-click/immediate Escape and
+focused-name cancellation at 64/128. This repairs existing behavior only; physical
+expression verification remains deferred to the scheduled user check.

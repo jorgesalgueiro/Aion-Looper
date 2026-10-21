@@ -729,3 +729,19 @@ Toggle and explicit enable both cancel pending learn and its deadline. The UI
 continues to render acknowledged audio state, with no new optimistic state or
 layout. This concerns the native enable/disable extension; the original browser
 button requests Web MIDI access rather than implementing a disable toggle.
+
+### MIDI learn cancellation while audio is paused
+
+Escape is a cancellation intent, not an operation gated by the last audio view.
+The capture-phase key listener sends cancelLearn before a loop-name field stops
+key bubbling; unrelated keys keep existing field/shortcut isolation. The native
+RPC uses the same cancelMidiLearn path as editor close and timeout. If its full
+immutable configuration cannot be queued, that existing path advances the desired
+learn token/clears the target and publishes the atomic cancellation revision.
+On resumed processing, stale queued learn configurations cannot reactivate it;
+ordinary new learning remains available afterwards.
+
+The displayed learnTarget comes from accepted message-owner settings under the
+non-audio settings mutex, so the indicator clears without another audio callback.
+Enabled/mode/action/audio telemetry retain their existing audio-owned reporting.
+No DSP algorithm, callback allocation/locking or UI layout was added.

@@ -31,3 +31,7 @@ const learnBurst=[[176,13,0,3],[176,13,127,3],[191,13,64,3],[176,13,0,3],[176,13
 const learnedRun=spawnSync(process.argv[2],['learn-volume'],{input:learnBurst.map(c=>c.join(' ')).join('\n')+'\n',encoding:'utf8'});assert.equal(learnedRun.status,0,learnedRun.stderr);
 const learnedActual=learnedRun.stdout.trim().split('\n').map(l=>l.trim().split(/\s+/).map(Number));assert.equal(learnedActual.length,learnExpected.length);learnedActual.forEach((row,i)=>row.forEach((v,j)=>assert(Math.abs(v-learnExpected[i][j])<=1e-7,`immediate learned CC ${i}: ${v} != ${learnExpected[i][j]}`)));
 console.log('PASS: unchanged JS learn-event consumption and immediate following expression, without message-thread acknowledgement');
+
+const escapeStart=source.indexOf('static handleKeyboardPress('),escapeEnd=source.indexOf('\n    }',escapeStart)+6;assert(escapeStart>=0&&escapeEnd>escapeStart);
+vm.runInContext(`class OriginalKeyboard{${source.slice(escapeStart,escapeEnd)}};state.midiLearn={active:true};OriginalKeyboard.handleKeyboardPress({code:'Escape',key:'Escape',target:{tagName:'INPUT',type:'range'}});globalThis.originalEscapeActive=state.midiLearn.active;state.midiLearn={active:true};OriginalKeyboard.handleKeyboardPress({code:'Escape',key:'Escape',target:{tagName:'INPUT',type:'text'}});globalThis.originalTextEscapeActive=state.midiLearn.active;`,sandbox);assert.equal(sandbox.originalEscapeActive,false);assert.equal(sandbox.originalTextEscapeActive,false);
+console.log('PASS: unchanged original keyboard Escape cancels active MIDI learn');

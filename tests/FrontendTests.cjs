@@ -413,3 +413,26 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: rapid MIDI enable/disable clicks before snapshot updates preserve every gesture');
 }
+
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),listener=source.split(/\r?\n/).find(l=>l.includes("document.addEventListener('keydown'"));assert(listener);
+ for(const current of [undefined,{learnTarget:-1},{learnTarget:33}]){
+  let nativeLearn=33,keyDown;
+  const context={current,document:{addEventListener:(event,callback)=>{assert.equal(event,'keydown');keyDown=callback;}},send:async request=>{assert.equal(request.action,'cancelLearn');nativeLearn=-1;return{ok:true};},notify:message=>assert.fail(message)};
+  vm.runInNewContext(listener,context);keyDown({code:'Escape',preventDefault(){}});assert.equal(nativeLearn,-1,'Escape must cancel accepted learning even before its snapshot arrives');
+  nativeLearn=33;keyDown({code:'KeyA',preventDefault(){assert.fail('Ordinary keys must be unaffected');}});assert.equal(nativeLearn,33);
+ }
+ console.log('PASS: Escape cancellation before first/updated MIDI snapshot, with unrelated keys preserved');
+}
+
+{
+ const midiSource=fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),looper=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const docLine=midiSource.split(/\r?\n/).find(l=>l.includes("document.addEventListener('keydown'")),nameLine=looper.split(/\r?\n/).find(l=>l.includes("name.addEventListener('keydown'"));assert(docLine&&nameLine);
+ let docHandler,nameHandler,capture=false,nativeLearn=33,stopped=false;
+ const context={current:{learnTarget:33},document:{addEventListener:(type,handler,options)=>{docHandler=handler;capture=options===true||options?.capture===true;}},name:{addEventListener:(type,handler)=>{nameHandler=handler;},blur(){}},send:async()=>{nativeLearn=-1;return{ok:true};},notify:message=>assert.fail(message)};
+ vm.runInNewContext(docLine+'\n'+nameLine,context);
+ const event={code:'Escape',key:'Escape',preventDefault(){},stopPropagation(){stopped=true;}};
+ if(capture)docHandler(event);nameHandler(event);if(!stopped)docHandler(event);
+ assert.equal(nativeLearn,-1,'Escape must cancel MIDI learn even when the original native name field stops key bubbling');
+ console.log('PASS: MIDI Escape survives focused loop-name keyboard isolation');
+}

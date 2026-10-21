@@ -223,7 +223,8 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         midiView->setProperty("recent",recentMidi);
         midiView->setProperty("bindings",bindings);midiView->setProperty("enabled",latest.midi.enabled);midiView->setProperty("revision",static_cast<int>(latest.midi.revision));
         midiView->setProperty("mode",latest.midi.mode);midiView->setProperty("modeRevision",static_cast<int>(latest.midi.modeRevision));midiView->setProperty("sustain",latest.midi.sustain);
-        midiView->setProperty("learnTarget",latest.midi.learnTarget);midiView->setProperty("messages",static_cast<int>(latest.midi.messages));midiView->setProperty("overflows",static_cast<int>(latest.midi.overflows));midiView->setProperty("rejected",static_cast<int>(latest.midi.rejected));midiView->setProperty("actions",static_cast<int>(latest.midi.actions));
+        {std::lock_guard guard(midiSettingsMutex);midiView->setProperty("learnTarget",midiSettings.learnTarget);}
+        midiView->setProperty("messages",static_cast<int>(latest.midi.messages));midiView->setProperty("overflows",static_cast<int>(latest.midi.overflows));midiView->setProperty("rejected",static_cast<int>(latest.midi.rejected));midiView->setProperty("actions",static_cast<int>(latest.midi.actions));
         midiView->setProperty("status",midiStatus);result->setProperty("midi",midiReply);
         const float masterValue = master->load();
         result->setProperty("masterGain", std::isfinite(masterValue) ? juce::jlimit(0.0f, 2.0f, masterValue) : 0.0f);
@@ -387,7 +388,10 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             if(id<0||id>=static_cast<int>(aion::MidiSettings::bindingCount)||(id>=20&&id<30))return fail("MIDI target unavailable");
             ++next.learnToken;next.learnGeneration=engine.generation();next.learnTarget=action=="learn"?id:-1;
             if(action=="learn")next.enabled=true;else next.bindings[static_cast<unsigned>(id)]=0;
-        }else if(action=="cancelLearn"){next.learnTarget=-1;++next.learnToken;}
+        }else if(action=="cancelLearn"){
+            cancelMidiLearn(); // Escape uses the same queue-independent path as editor close.
+            result->setProperty("ok",true);result->setProperty("revision",static_cast<int>(midiSettings.revision));return reply;
+        }
         else if(action=="mode"){
             const auto value=request.getProperty("mode",{});if(!value.isInt()||static_cast<int>(value)<0||static_cast<int>(value)>2)return fail("Invalid performance mode");next.modeOverride=static_cast<int>(value);
         }else if(action=="save"){
@@ -399,8 +403,8 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         const bool enableDevices=!midiSettings.enabled&&next.enabled;
         if(!updateMidi(next))return fail("MIDI configuration is invalid or queue is full");
         if(action=="learn")midiLearnDeadline=next.learnTarget>=static_cast<int>(aion::MidiSettings::volumeBase)?juce::Time::getMillisecondCounterHiRes()+10000:0;
-        else if(action=="clear"||action=="cancelLearn"||action=="enable"||action=="toggle")midiLearnDeadline=0;
-        midiStatus=action=="learn"?"Waiting for MIDI Note, CC or Program Change...":action=="cancelLearn"?"MIDI learn cancelled":"MIDI configuration queued";
+        else if(action=="clear"||action=="enable"||action=="toggle")midiLearnDeadline=0;
+        midiStatus=action=="learn"?"Waiting for MIDI Note, CC or Program Change...":"MIDI configuration queued";
        #if JucePlugin_Build_Standalone
         if(enableDevices)if(auto* holder=juce::StandalonePluginHolder::getInstance())
             for(const auto& device:juce::MidiInput::getAvailableDevices())holder->deviceManager.setMidiInputDeviceEnabled(device.identifier,true);
