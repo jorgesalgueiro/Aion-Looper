@@ -411,8 +411,8 @@ With sync enabled, STOPPING waits for the grid boundary, then stays STOPPED.
 ### MIDI expression: loop volume and pan
 
 Right-click an existing loop volume or pan slider, then move an expression pedal,
-knob or fader that sends MIDI CC. Wait until learning clears before adjusting it.
-The learn event is consumed, including CC zero; later values control the slider.
+knob or fader that sends MIDI CC. Only the learn event is consumed, including CC zero. Following movement controls
+the slider immediately, even before its mapping acknowledgement reaches the UI.
 Volume follows the original 0..2 range. Pan follows the original integer 0..10
 steps. Repeated positive CC values are continuous, unlike button CC mappings.
 Shift+right-click clears that slider's binding; Escape or 10 seconds cancels learn.

@@ -29,6 +29,8 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
  await click('#saveMappingsBtn');await wait(s=>s.midi.status.includes('saved'),'native mappings save');
  await click('#enableMidiBtn');await wait(s=>!s.midi.enabled,'disable');await inject([[192,0,0,2,0]]);s=await snapshot();assert.equal(s.tracks[0].state,'playing','Disabled MIDI leaves audio unchanged');
  // Original slider context-menu gesture: continuous expression and cancellation.
+ await click('#loop-vol-slider-2','right');await wait(s=>s.midi.learnTarget===35,'same-block expression learn');await inject([[176,14,0,3,17],[176,14,127,3,18]]);
+ s=await wait(s=>s.midi.bindings[35]===(2|(14<<2))&&s.tracks[2].volume===2,'learn burst reaches final value without another pedal movement');assert.equal(s.tracks[2].state,'empty','Expression learn burst never records');
  await click('#loop-vol-slider-0','right');await wait(s=>s.midi.learnTarget===33,'right-click volume learns CC');
  const previousVolume=(await snapshot()).tracks[0].volume;
  await inject([[191,11,0,3,17]]);s=await wait(s=>s.midi.bindings[33]===(2|(11<<2))&&s.midi.learnTarget===-1,'zero learns CC');assert.equal(s.tracks[0].volume,previousVolume,'Learn consumes zero');

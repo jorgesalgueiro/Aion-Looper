@@ -280,3 +280,15 @@ nonzero stereo PCM equality against scheduled UI controls at 64/128, zero callba
 new/delete, native MidiBuffer persistence/legacy rollback, and actual pointer/
 keyboard/reload/timeout tests. Unported effect/master/synth/expression targets stay
 disabled; this gate does not establish physical expression-pedal or clock parity.
+
+Continuous MIDI learn must retain the failing-then-fixed same-block burst case:
+consume only the first valid learn CC, then apply following values at their sample
+offsets without waiting for the editor/message thread. A fixed provisional target
+may bridge acknowledgement only after a bounded overlap check; never mutate
+persisted settings or allocate/lock on audio. Mode-only configurations must not
+reset captured learn or enqueue duplicate results. Token/target/generation/binding
+changes and global cancellation clear provisional ownership. Keep conflicting
+channel/omni mapping protection, unchanged-JS learn comparisons, exact nonzero
+stereo PCM for preassigned AND provisionally learned controls, actual MidiBuffer
+and 64/128 native mouse burst checks. Physical pedal verification remains deferred
+to the user's scheduled check; synthetic messages are not hardware evidence.

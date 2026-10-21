@@ -25,6 +25,8 @@ int main(){
   rpc(R"({"operation":"midiConfig","action":"learn","target":33})");process();midi.addEvent(juce::MidiMessage::controllerEvent(1,11,0),17);process();rpc(R"({"operation":"snapshot"})");process();
   state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["bindings"][33])==aion::midiBinding(2,11)&&static_cast<double>(state["tracks"][0]["volume"])==1,"CC zero learns volume without moving it");
   midi.addEvent(juce::MidiMessage::controllerEvent(16,11,127),17);process();state=rpc(R"({"operation":"snapshot"})");check(static_cast<double>(state["tracks"][0]["volume"])==2&&state["tracks"][0]["state"].toString()=="recording","Actual CC reaches volume, never finishes capture");
+  rpc(R"({"operation":"midiConfig","action":"learn","target":53})");process();midi.addEvent(juce::MidiMessage::controllerEvent(1,12,0),17);midi.addEvent(juce::MidiMessage::controllerEvent(1,12,127),18);process();
+  state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["tracks"][0]["pan"])==10,"Following expression in same MidiBuffer applies before message-thread learn acknowledgement");process();
   juce::MemoryBlock saved;p->getStateInformation(saved);
   auto restored=std::make_unique<AionProcessor>();restored->setPlayConfigDetails(2,2,8000,block);restored->prepareToPlay(8000,block);restored->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));
   juce::MemoryBlock roundtrip;restored->getStateInformation(roundtrip);check(saved==roundtrip,"MIDI mappings persist immediately, including before resumed audio callbacks");

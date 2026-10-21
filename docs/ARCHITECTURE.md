@@ -705,7 +705,12 @@ are continuous controls, without press slots/hold timers. Values dispatch at the
 MidiBuffer sample offset through existing LoopBank control/smoothing. Learn
 accepts CC zero and consumes the learn event; the message owner validates and
 acknowledges the mapping through the existing bounded configuration queue.
-Subsequent performance uses the acknowledged configuration without an editor.
+Subsequent movement uses a bounded audio-owned provisional target until the
+message owner acknowledges the configuration, so events in the same audio block
+are not discarded. One linear scan of the fixed binding array rejects conflicts
+before provisional use; persisted settings remain owned by the message thread.
+Mode-only updates preserve the provisional target. Token/target/generation or
+binding changes, panic, disable, overflow and prepare invalidate it.
 
 Original volume/pan slider right-clicks initiate CC learn, with the original
 magenta outline. Escape or a native message-thread 10s deadline cancels it;

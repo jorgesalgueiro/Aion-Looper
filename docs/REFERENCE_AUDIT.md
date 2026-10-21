@@ -438,3 +438,26 @@ instead of silently triggering transport or reassigning another target. This is
 a documented safety improvement, not a claim that every original CC mapping is
 ported. Physical expression response/listening, other controllers, DAWs and
 non-Windows native UI remain separate acceptance work.
+
+### Immediate movement after MIDI learn (2026-10-21)
+
+A new same-block regression failed on b7c0992: CC 13 value 0 learned loop volume,
+but value 127 one sample later was discarded until the message thread accepted
+the mapping. The unchanged JavaScript learns from the first packet and applies
+the next packet immediately. MidiParity now retains that actual handler/setter
+comparison in addition to the 16384 default and 4256 assigned-CC comparisons.
+
+An audio-owned provisional target now permits subsequent movement after one
+bounded conflict check, without changing persisted configuration or allocating.
+Only the learn packet is consumed; other assigned continuous controls still work.
+Mode-only settings preserve pending movement and do not publish duplicate learn
+results. Global cancellation and ownership changes clear the provisional target;
+an overlapping channel-specific mapping cannot be stolen by an omni learn.
+The existing exact stereo PCM test retains both prior assigned/direct cases and
+adds provisional learning with no message-thread service, at 64/128 blocks.
+Actual production MidiBuffer and GUI tests retain the two-event burst.
+
+This repairs an original-behavior mismatch within the existing MIDI feature. No
+new UI or feature/package was introduced, and the original source remains intact.
+Browser automation-envelope identity and physical expression listening/response
+remain separate acceptance work.

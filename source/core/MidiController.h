@@ -59,9 +59,11 @@ private:
     std::uint64_t epoch=0,nextDeadline=std::numeric_limits<std::uint64_t>::max();
     std::uint32_t modeRevision=0,messages=0,overflows=0,actions=0,rejections=0;
     int mode=0;bool sustain=false,learnCaptured=false;
+    int provisionalTarget=-1;std::uint16_t provisionalBinding=0;
     void push(Task,Dispatch&) noexcept;
     void main(unsigned,int,Dispatch&) noexcept;
     void release(Press&,Dispatch&) noexcept;
     bool apply(LoopAction,unsigned,double,Dispatch&) noexcept;
+    void continuous(int,std::uint8_t,Dispatch&) noexcept;
 };
 }

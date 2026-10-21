@@ -1788,3 +1788,58 @@ claim is made. The earlier user-confirmed physical PC record/play/stop repair
 remains accepted. The optional check does not authorize inferring hardware success
 from synthetic injection. Only existing binaries/test tools were incrementally
 rebuilt; version remains 0.4.3, with no installer/ZIP/additional format package.
+
+### MIDI learn burst repair (2026-10-21)
+
+The user deferred physical expression testing until today after 19:45 Lisbon;
+a one-time app reminder is scheduled. Work stayed within MIDI volume/pan rather
+than starting another feature. Physical acceptance remains pending.
+
+A retained new core regression failed before the fix: learn from CC 13 value 0
+at sample 17, then send value 127 at sample 18 in the same block. The old native
+code discarded movement until the message thread acknowledged the mapping
+(`build/midi-learn-burst-repro.log`, failed core gate, 27.71s). The unchanged
+JavaScript consumes the first packet and applies the next one immediately.
+
+Fixed with one bounded audio-owned provisional target after a linear overlap
+check; persisted settings remain message-owned. Mode-only configurations keep
+that target without duplicating learn results. Cancellation/changed ownership
+clears it; conflicting omni/channel assignments remain blocked. No callback
+allocation, lock, unbounded queue or UI redesign was introduced.
+
+Acceptance:
+
+- Windows core/MIDI/frontend 3/3, 32.23s
+  (`build/midi-learn-burst-windows.log`); Ubuntu 3/3, 10.29s
+  (`build/midi-learn-burst-ubuntu.log`). These are focused repair gates; prior
+  complete 18/18 regression evidence remains recorded above.
+- ASan/UBSan with leak detection 3/3, 17.49s
+  (`build/midi-learn-burst-asan.log`). Existing tests/tolerances are retained.
+- Unchanged-JS MIDI oracle now also compares learn-packet consumption and
+  immediate next CC, without native message-thread acknowledgement. Retains all
+  prior 16384 default and 4256 assigned continuous message comparisons.
+- Core same-block movement, mode-only update, single learn-result publication,
+  cancellation and conflicting channel-specific assignment protection pass.
+  Existing exact nonzero stereo PCM comparison retains direct/preassigned
+  variants and adds provisionally learned volume, at both 64/128 block sizes.
+- Actual production JUCE MidiBuffer applies a pan learn and immediate movement
+  at samples 17/18 before the message owner runs; state migration/persistence,
+  editor-closed performance, overflow and zero processBlock new/delete pass
+  (`build/midi-learn-burst-processor.log`).
+- Actual CDP slider right-click plus same-block learn/movement reaches the final
+  volume without another input event, at 64/128; existing MIDI cases also pass
+  (`build/midi-learn-burst-mouse.log`).
+- Unchanged NativeUiSmoke and actual WebAudio count-in/nudge/analyser/STUT pass
+  (`build/midi-learn-burst-ui.log`). No product AudioContext is created; original
+  resources/ui remains byte-identical.
+- Connected audio audits pass on Windows and Ubuntu: each 126 cases, 965826
+  samples, maximum error 7.394757495227111e-8 at unchanged 1e-6
+  (`build/midi-learn-burst-audio-windows.log`,
+  `build/midi-learn-burst-audio-ubuntu.log`).
+
+Only existing Windows Standalone/test tools and core probes were rebuilt.
+The earlier muted test app was gracefully closed only after checking that all
+20 tracks were empty and MASTER was zero; no recorded audio was discarded.
+Version remains 0.4.3 with no installer/ZIP/additional format package. The updated
+Windows executable is ready for the deferred physical check; tests do not prove
+physical expression response/listening or general browser-envelope parity.

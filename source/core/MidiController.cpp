@@ -29,7 +29,7 @@ void MidiController::release(Press& p,Dispatch& d) noexcept {
     p.active=false;
 }
 void MidiController::cancel(Dispatch& d,int track) noexcept {
-    if(track<0){++epoch;read=write=0;settings.learnTarget=-1;learnCaptured=false;programPulses={};}
+    if(track<0){++epoch;read=write=0;settings.learnTarget=-1;learnCaptured=false;provisionalTarget=-1;provisionalBinding=0;programPulses={};}
     for(auto& p:presses)if(p.active&&(track<0||p.track==static_cast<unsigned>(track))){
         const auto copy=p;release(p,d);p=copy;p.suppressed=true;p.sustainAction=0;
     }
@@ -41,9 +41,9 @@ void MidiController::overflow(Dispatch& d) noexcept {++overflows;cancel(d);}
 void MidiController::begin(Dispatch& d) noexcept {
     MidiSettings next;
     for(unsigned n=0;n<31&&configs.pop(next);++n){
-        if(next.enabled!=settings.enabled||next.bindings!=settings.bindings||next.learnToken!=settings.learnToken)cancel(d);
+        if(next.enabled!=settings.enabled||next.bindings!=settings.bindings||next.learnToken!=settings.learnToken||next.learnTarget!=settings.learnTarget||next.learnGeneration!=settings.learnGeneration)cancel(d);
         if(next.modeOverride>=0){mode=next.modeOverride;++modeRevision;}
-        settings=next;settings.modeOverride=-1;learnCaptured=false;
+        settings=next;settings.modeOverride=-1;
         if(settings.learnGeneration!=d.generation)settings.learnTarget=-1;
     }
 }
@@ -61,6 +61,13 @@ void MidiController::main(unsigned id,int requestedMode,Dispatch& d) noexcept {
     else if(t.state==S::queued||t.state==S::stopping)apply(A::stop,id,0,d);
     else apply(A::finish,id,0,d);
 }
+void MidiController::continuous(int target,std::uint8_t cc,Dispatch& d) noexcept {
+    const bool pan=target>=static_cast<int>(MidiSettings::panBase);
+    const auto track=static_cast<unsigned>(target)-(pan?MidiSettings::panBase:MidiSettings::volumeBase);
+    // Original setLoopPan uses parseInt after mapping 0..127 onto 0..10.
+    const double value=pan?std::floor((cc/127.0)*10):(cc/127.0)*2;
+    apply(pan?LoopAction::pan:LoopAction::volume,track,value,d);
+}
 void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     if(!settings.enabled)return;
     recent[observed%recent.size()]={d.frame,e};++observed;
@@ -77,20 +84,29 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     // Continuous CC learn accepts zero and consumes the event; Note/PC keep
     // their transport mappings while a slider waits for CC, as in the original.
     if(settings.learnTarget>=static_cast<int>(MidiSettings::volumeBase)&&kind==2){
-        if(!learnCaptured&&learned.push({settings.learnTarget,midiBinding(2,e.data1),settings.learnToken,d.generation}))learnCaptured=true;
-        return;
+        if(!learnCaptured){
+            if(learned.push({settings.learnTarget,midiBinding(2,e.data1),settings.learnToken,d.generation})){
+                learnCaptured=true;
+                // Learning is omni: reject any overlapping channel assignment,
+                // without mutating the persisted configuration on audio.
+                bool overlap=false;
+                for(unsigned i=0;i<MidiSettings::bindingCount;++i)if(i!=static_cast<unsigned>(settings.learnTarget)){
+                    const auto b=settings.bindings[i];if((b&3)==2&&((b>>2)&127)==e.data1){overlap=true;break;}
+                }
+                if(!overlap){provisionalTarget=settings.learnTarget;provisionalBinding=midiBinding(2,e.data1);}
+            }
+            return; // Only the learn packet is consumed for a valid assignment.
+        }
+        if(provisionalTarget<0)return; // Await rejection; never trigger the conflicting button.
+        if(((provisionalBinding>>2)&127)==e.data1){continuous(provisionalTarget,e.data2,d);return;}
     }
     if(settings.learnTarget>=0&&settings.learnTarget<static_cast<int>(MidiSettings::volumeBase)&&down){
         if(!learnCaptured&&learned.push({settings.learnTarget,midiBinding(kind,e.data1),settings.learnToken,d.generation}))learnCaptured=true;
         return;
     }
-    const int continuous=kind==2?targetFor(settings,e):-1;
-    if(continuous>=static_cast<int>(MidiSettings::volumeBase)){
-        const bool pan=continuous>=static_cast<int>(MidiSettings::panBase);
-        const auto track=static_cast<unsigned>(continuous)-(pan?MidiSettings::panBase:MidiSettings::volumeBase);
-        // Original setLoopPan uses parseInt after mapping 0..127 onto 0..10.
-        const double value=pan?std::floor((e.data2/127.0)*10):(e.data2/127.0)*2;
-        apply(pan?LoopAction::pan:LoopAction::volume,track,value,d);return;
+    const int continuousTarget=kind==2?targetFor(settings,e):-1;
+    if(continuousTarget>=static_cast<int>(MidiSettings::volumeBase)){
+        continuous(continuousTarget,e.data2,d);return;
     }
     const unsigned key=(kind<<12)|(channel<<7)|e.data1;
     if(up){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);return;}

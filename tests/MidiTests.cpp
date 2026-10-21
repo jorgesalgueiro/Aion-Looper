@@ -21,6 +21,16 @@ struct Fixture {
 }
 void midiTests(){
  using namespace aion;using A=LoopAction;using S=LoopState;
+ // A continuous controller may send the learn packet and movement in one block.
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);MidiSettings settings;settings.enabled=true;settings.learnTarget=33;settings.learnToken=17;settings.learnGeneration=f.engine->generation();settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn burst fixture");f.process(0);
+  const std::array<MidiEvent,2> burst{{{17,176,13,0,3},{18,176,13,127,3}}};f.process(block,burst);
+  check(f.latest.tracks[0].volume==2&&f.latest.tracks[0].state==S::empty,"CC movement immediately after learn must not wait for the editor/message thread");
+  settings.modeOverride=1;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"mode change during pending learn");f.send(191,13,64);
+  check(f.latest.tracks[0].volume==static_cast<float>(128/127.0)&&f.latest.midi.mode==1,"mode-only configuration preserves pending learned movement");
+  MidiLearnResult learned;check(f.engine->popMidiLearn(learned)&&learned.target==33&&learned.binding==midiBinding(2,13)&&!f.engine->popMidiLearn(learned),"movement does not enqueue duplicate learn results");
+  f.send(252,0,0,1);f.send(176,13,0);check(f.latest.tracks[0].volume==static_cast<float>(128/127.0),"panic cancels provisional movement before persisted acknowledgement");
+ }
  MidiSettings config;check(MidiController::valid(config),"original MIDI defaults valid");config.bindings[10]=midiBinding(1,36);check(!MidiController::valid(config),"overlapping omni mappings rejected");config.bindings[10]=midiBinding(3,0,16);check(MidiController::valid(config),"channel program binding valid");config.bindings[11]=midiBinding(2,123);check(!MidiController::valid(config),"panic controllers cannot be bound");
  for(const unsigned block:{64u,128u}){
   Fixture f(block);
@@ -84,16 +94,24 @@ void midiTests(){
   f.send(144,36,100);check(f.latest.tracks[0].state==S::recording,"Notes retain performance during continuous CC learn");f.send(128,36,0);
   settings.learnTarget=-1;settings.enabled=false;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"disable continuous");f.process(0);f.send(176,11,127);check(f.latest.tracks[0].volume==static_cast<float>(160/127.0),"disabled CC preserves value");
  }
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);MidiSettings settings;settings.enabled=true;settings.bindings[34]=midiBinding(2,13,16);settings.learnTarget=33;settings.learnToken=31;settings.learnGeneration=f.engine->generation();settings.revision=++f.revision;check(f.engine->configureMidi(settings),"conflicting pending learn");f.process(0);
+  const std::array<MidiEvent,2> burst{{{0,191,13,0,3},{1,191,13,127,3}}};f.process(block,burst);
+  check(f.latest.tracks[0].volume==1&&f.latest.tracks[1].volume==1&&f.latest.midi.actions==0,"overlapping omni learn burst cannot alter existing controls");
+  settings.learnTarget=-1;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"cancel rejected learn");f.send(191,13,127);check(f.latest.tracks[1].volume==2,"prior channel-specific control survives rejected learn");
+ }
  std::vector<float> expressionReference;
- for(const unsigned block:{64u,128u})for(const bool midiControls:{false,true}){
+ for(const unsigned block:{64u,128u})for(const unsigned controlMode:{0u,1u,2u}){
+  const bool midiControls=controlMode!=0;
   Fixture f(block);f.command(A::record);
   for(unsigned n=0;n<1024;n+=block){float l[128],r[128];for(unsigned i=0;i<block;++i){l[i]=0.4f*std::sin((n+i)*0.11f);r[i]=0.2f*std::cos((n+i)*0.093f);}float* input[]={l,r};watch=true;f.engine->process(input,2,block);watch=false;}
   f.command(A::finish);f.wait();
-  MidiSettings settings;settings.enabled=true;settings.bindings[33]=midiBinding(2,11);settings.bindings[53]=midiBinding(2,12);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"CC PCM comparison config");f.process(0);
+  MidiSettings settings;settings.enabled=true;settings.bindings[33]=midiBinding(2,11);settings.bindings[53]=midiBinding(2,12);if(controlMode==2){settings.bindings[33]=0;settings.learnTarget=33;settings.learnToken=37;settings.learnGeneration=f.engine->generation();}
+  settings.revision=++f.revision;check(f.engine->configureMidi(settings),"CC PCM comparison config");f.process(0);
   const auto origin=f.engine->clock();
   const std::array<MidiEvent,8> sequence{{{17,176,11,0,3},{257,176,11,127,3},{402,176,12,0,3},{630,176,12,64,3},{755,176,12,127,3},{1023,176,11,70,3},{1157,176,11,60,3},{1281,176,12,33,3}}};
   if(!midiControls)for(const auto& e:sequence)check(f.engine->enqueueLoop({e.data1==11?A::volume:A::pan,0,++f.request,f.engine->generation(),origin+e.offset,e.data1==11?2*e.data2/127.0:std::floor(10*e.data2/127.0)}),"scheduled direct expression parameter");
-  std::vector<float> pcm;for(unsigned n=0;n<2048;n+=block){std::array<MidiEvent,8> events{};unsigned count=0;if(midiControls)for(auto e:sequence)if(e.offset>=n&&e.offset<n+block){e.offset-=n;events[count++]=e;}
+  std::vector<float> pcm;for(unsigned n=0;n<2048;n+=block){std::array<MidiEvent,9> events{};unsigned count=0;if(controlMode==2&&n==0)events[count++]={0,176,11,0,3};if(midiControls)for(auto e:sequence)if(e.offset>=n&&e.offset<n+block){e.offset-=n;events[count++]=e;}
    float l[128]{},r[128]{};float* audio[]={l,r};watch=true;f.engine->process(audio,2,block,{events.data(),count});watch=false;for(unsigned i=0;i<block;++i){pcm.push_back(l[i]);pcm.push_back(r[i]);}}
   if(expressionReference.empty()){expressionReference=pcm;check(std::any_of(pcm.begin(),pcm.end(),[](float v){return std::abs(v)>0.01f;}),"expression PCM oracle must contain audible signal");}
   else check(expressionReference==pcm,"MIDI expression renders exact stereo PCM versus scheduled UI parameters at 64/128");
