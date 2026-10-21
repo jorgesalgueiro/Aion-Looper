@@ -11,6 +11,16 @@ void operator delete(void* p,std::size_t) noexcept {::operator delete(p);}void o
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
  for(const int block:{64,128}){
+  {
+   auto retry=std::make_unique<AionProcessor>();retry->setPlayConfigDetails(2,2,8000,block);retry->prepareToPlay(8000,block);
+   const auto request=[&](const juce::String& json){auto result=retry->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};
+   juce::AudioBuffer<float> buffer(2,block);buffer.clear();juce::MidiBuffer packets;packets.ensureSize(256);
+   const auto run=[&]{const auto count=packets.getNumEvents();audioWatch=true;retry->processBlock(buffer,packets);audioWatch=false;check(packets.getNumEvents()==count,"Recovered note preserves host MIDI");packets.clear();};
+   request(R"({"operation":"setParameter","id":"syncMode","value":0})");request(R"({"operation":"midiConfig","action":"enable","enabled":true})");packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),17);run();
+   for(int offset=block;offset<80000;offset+=block)run();
+   packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),17);packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),18);run();request(R"({"operation":"snapshot"})");run();
+   const auto state=request(R"({"operation":"snapshot"})");check(state["tracks"][0]["state"].toString()!="recording"&&static_cast<int>(state["tracks"][0]["length"])==80001,"Production NoteOn recovers lost release strictly after ten seconds at its sample offset");
+  }
   for(const int cancellation:{252,120,123,300})for(const bool staleViews:{false,true}){
    auto cancelled=std::make_unique<AionProcessor>();cancelled->setPlayConfigDetails(2,2,8000,block);cancelled->prepareToPlay(8000,block);
    const auto request=[&](const juce::String& json){auto result=cancelled->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};

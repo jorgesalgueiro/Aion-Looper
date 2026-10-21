@@ -59,6 +59,18 @@ void midiTests(){
   settings.learnTarget=34;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn during held CC play");f.process(0);
   f.send(176,20,0);check(f.latest.tracks[0].state==S::stopped&&f.latest.tracks[0].length>0,"Owned CC release stops momentary playback without deleting PCM");
  }
+ // Match original lost-NoteOff recovery: retry only strictly after ten seconds.
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);f.send(144,36,100);f.advance(79999);f.send(144,36,100);
+  check(f.latest.tracks[0].state==S::recording&&f.latest.midi.actions==1,"Exact ten-second repeat remains debounced");
+  f.send(144,36,100);f.wait();check(f.latest.tracks[0].state==S::playing&&f.latest.tracks[0].length==80001,"Fresh NoteOn after ten seconds recovers a lost NoteOff");
+  f.send(128,36,0);f.send(144,36,100);f.send(128,36,0);check(f.latest.tracks[0].state==S::stopped,"Recovered note rearms its ordinary next tap");
+  f.command(A::clear);f.send(144,37,100);f.advance(90000);check(f.latest.tracks[1].state==S::recording,"Ten-second recovery never auto-ends an intentional long recording");f.send(128,37,0);f.tap(37);f.wait();
+ }
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);MidiSettings settings;settings.enabled=true;settings.bindings[0]=midiBinding(2,20);check(f.engine->configureMidi(settings),"CC long-edge configuration");f.send(176,20,127);f.advance(90000);f.send(176,20,64);
+  check(f.latest.tracks[0].state==S::recording,"Loop-note recovery must never retrigger a held CC after ten seconds");f.send(176,20,0);f.send(176,20,127);f.wait();check(f.latest.tracks[0].state==S::playing,"CC zero still rearms after a long hold");
+ }
  // Audio cancellation invalidates captured learns independently of UI telemetry.
  for(const unsigned block:{64u,128u})for(const unsigned cancellation:{0u,1u,2u,3u,4u,5u}){
   Fixture f(block);MidiSettings settings;settings.enabled=true;settings.learnTarget=19;settings.learnToken=71;settings.learnGeneration=f.engine->generation();settings.revision=++f.revision;
@@ -195,6 +207,22 @@ void midiTests(){
   check(engine->enqueueExport({0,engine->generation(),latest.tracks[0].waveformId}),"MIDI comparison stored PCM");watch=true;engine->process(nullptr,0,0);watch=false;WavExport output;bool ready=false;
   for(unsigned n=0;n<10000&&!ready;++n){ready=engine->popExport(output);if(!ready)std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(ready&&!output.bytes.empty(),"MIDI stored PCM completed");
   if(reference.empty())reference=output.bytes;else check(reference==output.bytes,"MIDI tap/held SUS with slider learn and direct gestures capture exact stereo PCM at 64/128");
+ }
+ // Lost-release recovery must capture the same nonzero stereo take as direct actions.
+ std::vector<std::uint8_t> recoveredPcm;
+ for(const unsigned block:{64u,128u})for(const bool fromMidi:{false,true}){
+  auto engine=std::make_unique<Engine>();engine->prepare(8000,131072);engine->setMonitoring(false);engine->setTarget(1);
+  MidiSettings settings;settings.enabled=fromMidi;check(engine->configureMidi(settings),"lost-release PCM configuration");
+  if(!fromMidi)check(engine->enqueueLoop({A::record,0,1,engine->generation(),17,0})&&engine->enqueueLoop({A::finish,0,2,engine->generation(),80018,0}),"direct ten-second capture oracle");
+  for(unsigned offset=0;offset<80128;offset+=block){
+   std::array<MidiEvent,4> events{};unsigned count=0;for(auto e:std::array<MidiEvent,4>{{{17,144,36,100,3},{80017,144,36,100,3},{80018,144,36,100,3},{80019,128,36,0,3}}})if(fromMidi&&e.offset>=offset&&e.offset<offset+block){e.offset-=offset;events[count++]=e;}
+   float l[128],r[128];for(unsigned i=0;i<block;++i){l[i]=0.3f*std::sin((offset+i)*0.021f);r[i]=0.2f*std::cos((offset+i)*0.033f);}float* audio[]={l,r};watch=true;engine->process(audio,2,block,{events.data(),count});watch=false;
+   EngineView discard;while(engine->popView(discard)){}
+  }
+  EngineView latest{},view{};for(unsigned n=0;n<10000;++n){watch=true;engine->process(nullptr,0,0);watch=false;while(engine->popView(view))latest=view;if(!engine->finalizationPending()&&latest.tracks[0].state==S::playing)break;std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+  check(latest.tracks[0].length==80001&&latest.tracks[0].waveformId,"Recovered note commits exact ten-second-plus-one-sample span");check(engine->enqueueExport({0,engine->generation(),latest.tracks[0].waveformId}),"export recovered stereo take");watch=true;engine->process(nullptr,0,0);watch=false;
+  WavExport output;bool ready=false;for(unsigned n=0;n<10000&&!ready;++n){ready=engine->popExport(output);if(!ready)std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(ready&&output.bytes.size()>44,"Recovered stereo WAV ready");check(std::any_of(output.bytes.begin()+44,output.bytes.end(),[](auto sample){return sample!=0;}),"Recovered stereo WAV oracle must contain signal");
+  if(recoveredPcm.empty())recoveredPcm=output.bytes;else check(recoveredPcm==output.bytes,"Recovered NoteOn captures byte-identical stereo WAV versus direct commands at 64/128");
  }
  check(allocations.load()==0,"MIDI callback zero new/delete");std::cout<<"PASS: MIDI sample timing, Note/CC/PC mappings, debounce, four-second origin/release, sustain, panic and no callback new/delete\n";
 }

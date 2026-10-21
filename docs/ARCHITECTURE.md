@@ -773,3 +773,13 @@ updating saved mappings. This fence is independent of the bounded snapshot queue
 which can contain only pre-panic views. Token/generation/target validation remains
 in place, and mappings already accepted before cancellation remain intact.
 The serial is internal; saved-state version and frontend protocol are unchanged.
+
+### Original lost-NoteOff recovery
+
+A repeated loop NoteOn is suppressed until its existing press is strictly older
+than ten seconds. A fresh press after that point discards the expired entry and
+runs the current loop action, matching original App.handleInputPress. This is
+sample-clocked and bounded; it does not synthesize NoteOff, automatically finish
+long recordings, extend the threshold on repeats, or change CC edge/PC pulse or
+global mode-note handling. Accepted deferred actions keep their existing FIFO
+and source/clear-generation guards. No callback storage allocation is introduced.

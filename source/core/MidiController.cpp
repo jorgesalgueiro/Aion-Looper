@@ -120,7 +120,12 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     }
     if(up){if(!learnRelease){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);}return;}
     if(!down)return;
-    for(const auto& p:presses)if(p.active&&p.key==key)return;
+    for(auto& held:presses)if(held.active&&held.key==key){
+        // Original handleInputPress discards a lost-release entry only when a
+        // fresh loop NoteOn arrives strictly after ten seconds; never a timer.
+        if(kind!=1||held.track>=20||d.frame-held.start<=static_cast<std::uint64_t>(std::ceil(d.rate*10.0)))return;
+        held.active=false;break;
+    }
     const int target=targetFor(settings,e);
     if(target<0)return;
     if(pulse){

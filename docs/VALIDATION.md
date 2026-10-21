@@ -2171,3 +2171,56 @@ Only existing Windows Standalone/test targets were rebuilt, with no installer,
 ZIP, new format package or version bump. Original assets and local logo edits
 are preserved. The physical CC27 response/display confirmation remains valid for
 its tested setup; this change does not establish other hardware/platform parity.
+
+### Original lost-NoteOff recovery (2026-10-21)
+
+The retained core failure (`build/midi-note-recovery-repro.log`) showed native
+loop NoteOn remained debounced forever after a lost release. Unchanged original
+App.handleInputPress discards a stale press only when a new press arrives more
+than ten seconds later. The native loop-note path now follows that rule using
+sample time. Exactly ten seconds remains debounced. Ignored repeats do not reset
+the age; long holds are never automatically finished. CC positive-edge/rearm,
+PC bursts and global mode-note handling are unchanged. No alternative behavior
+or new interface was introduced.
+
+Acceptance:
+
+- Windows focused core/MIDI/frontend/assets and unchanged-JS DSP/state/sync:
+  7/7, 62.44s (`build/midi-note-recovery-windows.log`).
+- Ubuntu focused checks: 4/4, 13.53s (`build/midi-note-recovery-ubuntu.log`);
+  ASan/UBSan with leak detection: 4/4, 27.05s
+  (`build/midi-note-recovery-asan.log`). Zero callback new/delete remains enforced.
+- The actual original MIDI/press/release methods run unchanged for before,
+  exactly-at and strictly-after-ten-second cases. Native core tests retain
+  ordinary tap recovery, uninterrupted long recording, and CC still requiring
+  zero even after a long positive hold.
+- Nonzero stereo capture at samples 17..80017, finished by a recovered NoteOn
+  at 80018, yields byte-identical WAV to direct sample-scheduled commands at
+  both 64/128 blocks. Existing normal/held/expression PCM comparisons remain.
+- Production juce::MidiBuffer verifies the repeated events at offsets 17/18
+  in the callback beginning at sample 80000: only the latter recovers and ends
+  an 80001-frame take. MIDI passthrough and zero processBlock new/delete pass
+  (`build/midi-note-recovery-processor.log`).
+
+- Connected original/native capture, overdub and substitute audit: 126 cases,
+  965826 samples, maximum absolute error 7.394757495227111e-8 against the unchanged
+  1e-6 tolerance (`build/midi-note-recovery-audio.log`).
+- Full production editor/processor MIDI pointer/key workflows pass at 64/128
+  (`build/midi-note-recovery-mouse-final.log`), including the actual long-hold /
+  lost-release case and earlier learn, focused-slider, panic, reload/save cases.
+  The expanded test exposed an intermittent background click after page reload:
+  captured pointer events had no control ID and no native save request was sent
+  (`build/midi-save-trace.log`). DOM readiness alone did not establish settled
+  scroll/layout. The fixture now requires a fresh initialized document and stable,
+  hit-tested pointer coordinates before dispatching real pointer events. Save and
+  cancellation assertions are unchanged; no product save behavior was altered.
+
+- Existing Standalone original 20-card UI/keyboard/IPC smoke and real WebAudio
+  count-in, nudge, live analyser and STUT comparisons pass
+  (`build/midi-note-recovery-ui.log`). No product AudioContext is created.
+
+Only existing Windows app/test targets were incrementally rebuilt; version stays
+0.4.3, without a new package. Original assets and the user's logo edits are kept.
+The previously confirmed physical PC0 and CC27 checks remain valid for their
+specific setup; other hardware/driver/platform and listening acceptance remain
+separate work.

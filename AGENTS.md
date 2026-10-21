@@ -358,3 +358,11 @@ different field/slider. Retain unchanged original focus/blur methods, actual Tab
 blur/no-later-assignment, rapid re-click, reload/save, full-queue scoped AND Escape
 cancellation, and all MIDI/learned-slider gates. Hidden/unported drone fields must
 not become keyboard-navigation traps. Keep original mapping-table markup intact.
+
+Original loop-note lost-release recovery is press-driven, not automatic: repeats
+at or before ten seconds remain debounced; a fresh loop NoteOn strictly after it
+discards the old press entry and executes the current main action. Do not end an
+intentional long hold, reset its age on ignored repeats, or apply this rule to CC
+positive edges/PC pulses/global mode notes. Retain unchanged original MIDI/press/
+release boundary comparison, exact nonzero stereo WAV against direct capture at
+64/128, actual MidiBuffer offsets and real GUI lost-release/long-hold checks.

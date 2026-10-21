@@ -52,3 +52,12 @@ console.log('PASS: unchanged original slider learn, acknowledgement and Escape p
 const fieldMethod=name=>{const a=source.indexOf('    static '+name+'('),b=source.indexOf('\n    }',a)+6;assert(a>=0);return source.slice(a,b);};
 vm.runInContext(`class OriginalMapping{${fieldMethod('handleInputFocus')}${fieldMethod('handleInputBlur')}static setStatus(){}};globalThis.mappingElement={value:'',classList:{add(){},remove(){}},id:'map-midi-0'};OriginalMapping.handleInputFocus('midi',0,mappingElement);globalThis.originalFieldActive=state.listeningForInput.active;OriginalMapping.handleInputBlur(mappingElement);globalThis.originalFieldCancelled=!state.listeningForInput.active&&state.listeningForInput.element===null;`,sandbox);assert.equal(sandbox.originalFieldActive,true);assert.equal(sandbox.originalFieldCancelled,true);
 console.log('PASS: unchanged original mapping-field focus arms learning and blur cancels it');
+
+// Execute original note press/release debounce; capture DSP is tested separately.
+const inputMethod=name=>{const a=source.indexOf('    static '+name+'('),b=source.indexOf('\n    }',a)+6;assert(a>=0);return source.slice(a,b);};
+sandbox.Date={now:()=>sandbox.noteTime};sandbox.setTimeout=()=>1;sandbox.clearTimeout=()=>{};sandbox.noteTime=1000;sandbox.LoopManager.handleAction=()=>{sandbox.noteActions++;};sandbox.noteActions=0;
+vm.runInContext(`state.inputPressTimers={};state.globalSusMode=false;state.loops=[{state:'recording'}];class OriginalPress{${inputMethod('handleInputPress')}${inputMethod('handleInputRelease')}};App.handleInputPress=OriginalPress.handleInputPress;App.handleInputRelease=OriginalPress.handleInputRelease;`,sandbox);
+const retry=[[17,144,36,100,3],[80016,144,36,100,3],[80017,144,36,100,3],[80018,144,36,100,3],[80019,128,36,0,3]],retryExpected=[];
+for(const [frame,...message] of retry){sandbox.noteTime=1000+frame/8;sandbox.ccOracle(message.slice(0,3));retryExpected.push(sandbox.noteActions);}
+assert.deepEqual(retryExpected,[1,1,1,2,2]);const retryRun=spawnSync(process.argv[2],['stale-note'],{input:retry.map(row=>row.join(' ')).join('\n')+'\n',encoding:'utf8'});assert.equal(retryRun.status,0,retryRun.stderr);assert.deepEqual(retryRun.stdout.trim().split(/\s+/).map(Number),retryExpected);
+console.log('PASS: unchanged original MIDI/press/release stale recovery, before/exactly/strictly-after ten seconds');
