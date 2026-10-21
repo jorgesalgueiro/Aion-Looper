@@ -59,6 +59,21 @@ void midiTests(){
   settings.learnTarget=34;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"learn during held CC play");f.process(0);
   f.send(176,20,0);check(f.latest.tracks[0].state==S::stopped&&f.latest.tracks[0].length>0,"Owned CC release stops momentary playback without deleting PCM");
  }
+ // Original global mode notes are pulses, unlike loop press/release gestures.
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);for(const unsigned note:{46u,47u,48u}){
+   f.send(144,note,1);check(note==48?f.latest.midi.sustain:f.latest.midi.mode==static_cast<int>(note-45),"Mode note first press toggles on");
+   f.send(144,note,127);check(f.latest.midi.mode==0&&!f.latest.midi.sustain,"Repeated global NoteOn toggles off without release");
+   f.send(128,note,0);f.send(144,note,0);check(f.latest.midi.mode==0&&!f.latest.midi.sustain,"Global NoteOff and velocity-zero never toggle");
+  }
+  f.send(144,36,100);f.send(144,36,127);check(f.latest.tracks[0].state==S::recording&&f.latest.midi.actions==1,"Global pulse repair retains loop-note debounce");
+ }
+ // Native CC/PC mode bindings retain their existing edge and burst contracts.
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);MidiSettings settings;settings.enabled=true;settings.bindings[30]=midiBinding(2,20);settings.bindings[31]=midiBinding(3,0);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"CC/PC mode mapping");
+  f.send(176,20,127);f.send(176,20,64);check(f.latest.midi.mode==1,"Mode CC positive repeats remain debounced");f.send(176,20,0);f.send(176,20,127);check(f.latest.midi.mode==0,"Mode CC zero rearms next toggle");
+  f.send(192,0,0,2);f.send(192,0,0,2);check(f.latest.midi.mode==2,"Mode PC burst toggles only once");f.advance(160);f.send(192,0,0,2);check(f.latest.midi.mode==0,"Mode PC later pulse toggles again");
+ }
  // Match original lost-NoteOff recovery: retry only strictly after ten seconds.
  for(const unsigned block:{64u,128u}){
   Fixture f(block);f.send(144,36,100);f.advance(79999);f.send(144,36,100);

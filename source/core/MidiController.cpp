@@ -136,7 +136,10 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
         previous={d.frame,key,true};
     }
     Press* p=nullptr;
-    if(!pulse){for(auto& slot:presses)if(!slot.active){p=&slot;break;}if(!p){overflow(d);return;}
+    // Original global mode NoteOns bypass handleInputPress: every positive
+    // packet toggles, with no held entry or dependency on a matching NoteOff.
+    // Learned CC mode buttons still require zero to rearm; PC keeps burst filtering.
+    if(!pulse&&!(kind==1&&target>=30)){for(auto& slot:presses)if(!slot.active){p=&slot;break;}if(!p){overflow(d);return;}
         *p={};p->active=true;p->key=key;p->track=static_cast<unsigned>(target);p->start=d.frame;
     }
     if(target>=30){if(target==32)sustain=!sustain;else mode=mode==target-29?0:target-29;++modeRevision;return;}

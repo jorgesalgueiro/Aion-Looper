@@ -783,3 +783,13 @@ sample-clocked and bounded; it does not synthesize NoteOff, automatically finish
 long recordings, extend the threshold on repeats, or change CC edge/PC pulse or
 global mode-note handling. Accepted deferred actions keep their existing FIFO
 and source/clear-generation guards. No callback storage allocation is introduced.
+
+### Global MIDI mode notes
+
+The original handler dispatches OD/SUB/SUS directly, outside the loop press map.
+Native positive NoteOns for these three targets now toggle immediately without
+claiming a held-press slot or waiting for NoteOff. NoteOff and velocity-zero do
+nothing to these modes. Loop note debounce, held-loop release and stale recovery
+are unchanged. Learned global CC bindings keep positive-edge/zero rearm, and
+Program Changes keep their first-packet-anchored burst window. No DSP, IPC schema,
+APVTS state version or interface change is needed.

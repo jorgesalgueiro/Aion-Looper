@@ -30,6 +30,14 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
  const rapidMidi=await evaluate(`(()=>{const e=document.getElementById('enableMidiBtn');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
  await Promise.all(['mousePressed','mouseReleased','mousePressed','mouseReleased'].map(type=>call('Input.dispatchMouseEvent',{type,...rapidMidi,button:'left',clickCount:1})));
  await wait(s=>s.midi.enabled&&s.midi.revision>=beforeRapidMidiRevision+2,'rapid MIDI disable/enable retains both gestures');
+ // The original mode keys toggle on every positive NoteOn without a release.
+ for(const [note,field,on,indicator] of [[46,'mode',1,'odModeIndicator'],[47,'mode',2,'subModeIndicator'],[48,'sustain',true,'susModeIndicator']]){
+  await inject([[144,note,1,3,17]]);await wait(s=>s.midi[field]===on,'mode NoteOn enables '+note);
+  for(let n=0;n<100;++n){if(await evaluate(`document.getElementById('${indicator}').style.display!=='none'`))break;await delay(20);}assert(await evaluate(`document.getElementById('${indicator}').style.display!=='none'`),'Mode indicator follows first NoteOn');
+  await inject([[144,note,127,3,18]]);await wait(s=>s.midi.mode===0&&!s.midi.sustain,'repeated mode NoteOn disables '+note);
+  for(let n=0;n<100;++n){if(await evaluate(`document.getElementById('${indicator}').style.display==='none'`))break;await delay(20);}assert(await evaluate(`document.getElementById('${indicator}').style.display==='none'`),'Mode indicator follows repeated NoteOn without release');
+  await inject([[128,note,0,3,19],[144,note,0,3,20]]);s=await snapshot();assert.equal(s.midi.mode,0);assert.equal(s.midi.sustain,false);
+ }
  // Missing NoteOff must not strand a real loop main key indefinitely.
  await inject([[144,36,100,3,17]]);await wait(s=>s.tracks[0].state==='recording','lost-release recording');await delay(10100);s=await snapshot();assert.equal(s.tracks[0].state,'recording','An intentional long hold is not auto-finished');await inject([[144,36,100,3,17],[128,36,0,3,18]]);s=await wait(s=>s.tracks[0].state==='playing'&&s.tracks[0].waveformId,'fresh note recovers missing release after original ten-second ceiling');
  assert((await rpc({operation:'loop',action:'clear',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks[0].state==='empty','lost-release fixture cleanup');

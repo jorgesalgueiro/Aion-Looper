@@ -21,6 +21,19 @@ int main(){
    packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),17);packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),18);run();request(R"({"operation":"snapshot"})");run();
    const auto state=request(R"({"operation":"snapshot"})");check(state["tracks"][0]["state"].toString()!="recording"&&static_cast<int>(state["tracks"][0]["length"])==80001,"Production NoteOn recovers lost release strictly after ten seconds at its sample offset");
   }
+  {
+   auto modes=std::make_unique<AionProcessor>();modes->setPlayConfigDetails(2,2,8000,block);modes->prepareToPlay(8000,block);
+   check(modes->request({juce::JSON::parse(R"({"operation":"midiConfig","action":"enable","enabled":true})")}).getProperty("ok",false),"Enable no-editor mode-note fixture");
+   juce::AudioBuffer<float> buffer(2,block);buffer.clear();juce::MidiBuffer packets;packets.ensureSize(1024);
+   const auto run=[&]{const auto count=packets.getNumEvents();audioWatch=true;modes->processBlock(buffer,packets);audioWatch=false;check(packets.getNumEvents()==count,"Mode toggles preserve host MIDI");packets.clear();return modes->request({juce::JSON::parse(R"({"operation":"snapshot"})")});};
+   for(const int note:{46,47,48}){
+    packets.addEvent(juce::MidiMessage::noteOn(1,note,juce::uint8{1}),17);auto state=run();check(note==48?static_cast<bool>(state["midi"]["sustain"]):static_cast<int>(state["midi"]["mode"])==note-45,"First mode NoteOn toggles on at offset 17");
+    packets.addEvent(juce::MidiMessage::noteOn(1,note,juce::uint8{127}),18);state=run();check(static_cast<int>(state["midi"]["mode"])==0&&!static_cast<bool>(state["midi"]["sustain"]),"Second mode NoteOn toggles off without NoteOff");
+    packets.addEvent(juce::MidiMessage::noteOff(1,note),19);packets.addEvent(juce::MidiMessage::noteOn(1,note,juce::uint8{0}),20);state=run();check(static_cast<int>(state["midi"]["mode"])==0&&!static_cast<bool>(state["midi"]["sustain"]),"Mode releases never toggle");
+   }
+   for(int i=0;i<80;++i)packets.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),i%2?18:17);
+   const auto state=run();check(!static_cast<bool>(state["midi"]["sustain"])&&static_cast<int>(state["midi"]["overflows"])==0,"Repeated mode pulses never exhaust held-press storage");
+  }
   for(const int cancellation:{252,120,123,300})for(const bool staleViews:{false,true}){
    auto cancelled=std::make_unique<AionProcessor>();cancelled->setPlayConfigDetails(2,2,8000,block);cancelled->prepareToPlay(8000,block);
    const auto request=[&](const juce::String& json){auto result=cancelled->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};

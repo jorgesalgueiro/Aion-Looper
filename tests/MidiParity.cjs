@@ -61,3 +61,13 @@ const retry=[[17,144,36,100,3],[80016,144,36,100,3],[80017,144,36,100,3],[80018,
 for(const [frame,...message] of retry){sandbox.noteTime=1000+frame/8;sandbox.ccOracle(message.slice(0,3));retryExpected.push(sandbox.noteActions);}
 assert.deepEqual(retryExpected,[1,1,1,2,2]);const retryRun=spawnSync(process.argv[2],['stale-note'],{input:retry.map(row=>row.join(' ')).join('\n')+'\n',encoding:'utf8'});assert.equal(retryRun.status,0,retryRun.stderr);assert.deepEqual(retryRun.stdout.trim().split(/\s+/).map(Number),retryExpected);
 console.log('PASS: unchanged original MIDI/press/release stale recovery, before/exactly/strictly-after ten seconds');
+
+// Global mode notes bypass handleInputPress in the original: every positive
+// NoteOn toggles, even when a controller omits NoteOff. Releases never toggle.
+sandbox.UIManager.updateStatus=()=>{};
+vm.runInContext(`class OriginalModes{${inputMethod('toggleGlobalOverdub')}${inputMethod('toggleGlobalSubstitute')}${inputMethod('toggleGlobalSus')}};App.toggleGlobalOverdub=OriginalModes.toggleGlobalOverdub;App.toggleGlobalSubstitute=OriginalModes.toggleGlobalSubstitute;App.toggleGlobalSus=OriginalModes.toggleGlobalSus;App.updateModeIndicators=()=>{};state.listeningForInput={active:false};state.globalOverdubMode=false;state.globalSubstituteMode=false;state.globalSusMode=false;globalThis.modeOracle=data=>{App.handleMIDIMessage({data});return [state.globalSubstituteMode?2:state.globalOverdubMode?1:0,Number(state.globalSusMode)];};`,sandbox);
+const modePackets=[],modeExpected=[];
+for(let channel=0;channel<16;++channel)for(const note of [46,47,48])for(const packet of [[144+channel,note,1],[144+channel,note,127],[128+channel,note,0],[144+channel,note,0]]){modePackets.push([...packet,3]);modeExpected.push(Array.from(sandbox.modeOracle(packet)));}
+for(const note of [46,47,46,46,48,48]){const packet=[144,note,100];modePackets.push([...packet,3]);modeExpected.push(Array.from(sandbox.modeOracle(packet)));}
+const modeRun=spawnSync(process.argv[2],['modes'],{input:modePackets.map(row=>row.join(' ')).join('\n')+'\n',encoding:'utf8'});assert.equal(modeRun.status,0,modeRun.stderr);assert.deepEqual(modeRun.stdout.trim().split('\n').map(row=>row.trim().split(/\s+/).map(Number)),modeExpected);
+console.log('PASS: unchanged original OD/SUB/SUS toggles on every NoteOn, repeated presses without release and velocity-zero/NoteOff across 16 channels');

@@ -427,3 +427,15 @@ against scheduled native slider controls at 64/128. TestMouseWorkflow.ps1 -MidiO
 covers real slider right-click/clear, CC zero/repeats/pan steps, duplicate mapping
 rejection, ten-second timeout, Escape and reload. The default runner retains all
 main/export/merge tests. No new package or version bump is needed.
+
+### Minimal Windows test distribution
+
+After the existing Release Standalone passes its gates, run
+`powershell -NoProfile -ExecutionPolicy Bypass -File tools/PackageStandalone.ps1`.
+It packages only the already-built Standalone, test instructions, current scope
+and dependency notices into one commit-labelled ZIP under `dist/`. No installer,
+plugin-format rebuild, SDK cache or version bump is required. Extract it and run
+`Standalone/Aion-Looper.exe`; Evergreen WebView2 Runtime is required. The manifest
+records the executable SHA256, source commit and any tracked local overrides
+(including a locally edited logo), so a local preview is not mistaken for a clean
+commit build. Physical audio/driver and DAW validation remain separate gates.

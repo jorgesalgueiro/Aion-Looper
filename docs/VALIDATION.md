@@ -2224,3 +2224,47 @@ Only existing Windows app/test targets were incrementally rebuilt; version stays
 The previously confirmed physical PC0 and CC27 checks remain valid for their
 specific setup; other hardware/driver/platform and listening acceptance remain
 separate work.
+
+### Original repeated global MIDI mode notes (2026-10-21)
+
+Unchanged App.handleMIDIMessage dispatches OD/SUB/SUS directly on every positive
+NoteOn, bypassing the loop handleInputPress map. Native code incorrectly retained
+these notes as held presses and ignored later NoteOns until release. The retained
+before-fix run fails both core and original-JS comparison
+(`build/midi-mode-repro.log`). Native global NoteOns now remain pulses, with no
+held slot; NoteOff and velocity-zero never toggle. Loop-note debounce/600ms cut/
+4s delete/>10s lost-release recovery are unchanged. Native global CC mappings
+still require zero rearm; global PC mappings retain the 20ms burst window.
+This restores original behavior rather than introducing an alternative.
+
+Acceptance:
+
+- Windows core/MIDI/frontend/original assets plus unchanged-JS DSP/sync/state:
+  7/7, 58.82s (`build/midi-mode-windows-final.log`). The original handler AND all
+  three original toggle methods execute unchanged across 16 channels, repeated
+  positives without release, NoteOff/velocity-zero and OD/SUB mutual exclusion.
+  VM arrays are copied into the test realm before strict value comparison;
+  tolerances and expected values are unchanged.
+- Ubuntu 4/4, 13.12s (`build/midi-mode-ubuntu-final.log`); ASan/UBSan with leak
+  detection 4/4, 27.56s (`build/midi-mode-asan.log`). Core checks retain ordinary
+  loop debounce and native CC zero rearm / PC burst behavior at 64/128.
+- Actual production juce::MidiBuffer/no-editor tests pass at 64/128, with offsets
+  17/18/19/20, host MIDI passthrough, eighty same-block mode pulses, no overflow
+  and zero processBlock new/delete (`build/midi-mode-processor.log`).
+- Production processor/editor GUI MIDI checks pass at 64/128
+  (`build/midi-mode-mouse.log`), including the original visible OD/SUB/SUS
+  indicators after each repeated NoteOn and all prior learning, slider drag,
+  PC burst, lost-release, panic, timeout, cancellation and reload/save cases.
+- Original 20-card Standalone UI/keyboard/IPC smoke and actual WebAudio count-in,
+  nudge, analyser and STUT comparisons pass (`build/midi-mode-ui.log`).
+- Connected unchanged-JS/native capture, overdub and substitute PCM audit passes
+  126 cases / 965826 samples, maximum absolute error 7.394757495227111e-8 at the
+  unchanged 1e-6 tolerance (`build/midi-mode-audio.log`).
+
+No original markup or user logo edit was changed. Only existing Standalone/test
+targets were rebuilt. The requested distribution is one Standalone-only Windows
+ZIP, generated from the already-tested executable by tools/PackageStandalone.ps1,
+with current docs, dependency notices and source/local-override/executable-hash
+manifest. Version stays 0.4.3. No plugin/installer package or production-ready
+claim follows. Physical drivers, listening, other platforms and DAW hosts remain
+separate acceptance work.

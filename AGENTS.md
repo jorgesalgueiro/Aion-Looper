@@ -366,3 +366,10 @@ intentional long hold, reset its age on ignored repeats, or apply this rule to C
 positive edges/PC pulses/global mode notes. Retain unchanged original MIDI/press/
 release boundary comparison, exact nonzero stereo WAV against direct capture at
 64/128, actual MidiBuffer offsets and real GUI lost-release/long-hold checks.
+
+Global OD/SUB/SUS NoteOns bypass the original loop handleInputPress entirely:
+every positive NoteOn toggles, including repeated packets without NoteOff. Do not
+store global NoteOns as held loop gestures or apply the loop debounce/10s recovery.
+Retain original handler/toggle comparisons on all channels, zero-velocity/releases,
+mutual exclusion, actual MidiBuffer offsets and original visible mode indicators at
+64/128. Learned global CC buttons keep zero rearm and PC keeps 20ms burst filtering.
