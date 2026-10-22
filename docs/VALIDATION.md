@@ -2660,3 +2660,57 @@ changed; preceding full 19/19 Windows/Ubuntu, sanitizer 5/5 and MIDI GUI evidenc
 from the host-observation increment is retained rather than rerun for this
 frontend-only recovery fix. No hardware, host-sync or production-ready claim is
 made, and no next feature was enabled while this gate was under verification.
+
+
+## 22 October 2026: reject malformed CC before panic cancellation
+
+The new native core regression first reproduced “Malformed CC120/123 must not
+finish a held SUS recording” (`build/midi-panic-validation-repro.log`). That panic
+fast path ran before the existing seven-bit data check. Moving it after validation
+rejects corrupt framed host CC values before performance/learn cancellation. No
+new MIDI action, UI, binding, queue, allocation or lock is introduced. Valid
+seven-bit cancellation behavior, including the existing acceptance of value 127,
+is retained. This is not stricter channel-mode semantics or a wire-stream parser.
+Primary MIDI Association format guidance and the boundary are in ARCHITECTURE.md.
+
+New core tests inject values 128/255 for CC120/123 on all 16 channels at 64/128.
+A SUS take and transport Learn stay active until a real NoteOff; the recorded
+nonzero stereo WAV must be byte-identical to the same capture without malformed
+packets. Valid panic controls on every channel still restore a held SUS mute and
+preserve PCM, with releases rearming normally. Allocation instrumentation remains
+active. Real raw juce::MidiBuffer tests additionally preserve a slider Learn and
+capture through 64 malformed packets, then verify normal release and valid panic.
+The original reference source/cases/tolerances remain unchanged.
+
+Fresh checks completed:
+
+- Extended production processor malformed/valid panic, MIDI, persistence,
+  cancellation/IPC and host-observation PCM checks at 64/128, with zero tracked
+  processBlock new/delete (`build/midi-panic-validation-processor.log`).
+- Real WebView2 MIDI workflows at 64/128 (`build/midi-panic-validation-gui.log`):
+  held recording and actual right-click volume Learn survive every-channel
+  malformed CC; Escape still cancels learning, real NoteOff commits audio and
+  the take plays nonzero PCM. Valid panic releases a held mute without changing
+  length. Earlier controller, slider, reload and bridge regressions remain.
+- Ubuntu ASan/UBSan core/MIDI/frontend/bridge: 4/4, 26.15s
+  (`build/midi-panic-validation-asan.log`, leak detection enabled).
+- Connected unchanged-JS/native committed capture/overdub/substitute PCM audit:
+  126 cases / 965826 samples, maximum absolute error 7.394757495227111e-8 at
+  unchanged 1e-6 (`build/midi-panic-validation-audio.log`). Browser playback
+  envelopes/resampling and physical latency remain outside that scope.
+- Muted Standalone original 20-card UI/keyboard/IPC/partial-host fields and
+  actual browser count-in, nudge, analyser and STUT sound oracles pass
+  (`build/midi-panic-validation-ui.log`); no product AudioContext exists.
+- Windows full unchanged-JS/native suite: 19/19, 266.46s
+  (`build/midi-panic-validation-windows.log`).
+
+- Ubuntu full unchanged-JS/native suite: 19/19, 460.02s
+  (`build/midi-panic-validation-ubuntu.log`).
+
+Only existing test targets and the Standalone were rebuilt. No version bump or
+package was created; original UI assets and the user's separate logo edit were
+preserved. The MIDI GUI workflows were rerun for this fix; the full mouse
+export/merge workflows retain their previous baseline. These results do not
+establish physical-controller, DAW-host or all-platform acceptance, or complete
+application parity. No new import, synth, clock or transport-follow feature was
+enabled in this increment.

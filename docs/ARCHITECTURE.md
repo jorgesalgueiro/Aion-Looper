@@ -910,3 +910,23 @@ than adding a wall-clock timeout or a second time source. The behavioral oracle
 is the unchanged original keyboard dispatcher/press method, including exact
 10000/10001ms boundaries. This is recovery on a fresh event, not a ten-second
 recording limit. Keyboard SUS/custom key mapping remain separate migration work.
+
+
+## Framed MIDI panic validation (22 October 2026)
+
+CC120/123 cancellation now follows the same seven-bit data validation as other
+controller events. Previously that fast path ran before validation, so a framed
+host CC packet with an invalid high-bit value could finish an active SUS capture
+or cancel pending learn. Reordering the existing checks rejects it before any
+performance/learn cancellation. Diagnostic observation may still record the raw
+packet; it cannot execute an action. No storage, queue, callback allocation or
+lock is added. Valid Note/CC/PC dispatch, pending/continuous learn and panic
+ordering retain their previous behavior.
+
+Research: the [MIDI Association message summary](https://midi.org/summary-of-midi-1-0-messages)
+defines seven-bit CC data, including channel-mode messages. This validates
+already-framed JUCE host messages; serial-wire parsing and interleaved realtime
+bytes belong upstream. Existing native acceptance of any seven-bit value for
+CC120/123 and global cancellation are preserved. This is not a claim of complete
+channel-mode conformance or new MIDI clock functionality. The original UI,
+controller assignments and valid MIDI behavior remain unchanged.

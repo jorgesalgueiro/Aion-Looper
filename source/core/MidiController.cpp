@@ -78,13 +78,14 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     recent[observed%recent.size()]={d.frame,e};++observed;
     const unsigned type=e.status&240,channel=(e.status&15)+1;
     if(e.status==252&&e.size==1){apply(LoopAction::stopAll,0,0,d);return;}
-    if(type==176&&e.size==3&&(e.data1==120||e.data1==123)){cancel(d);return;}
     unsigned kind=0;bool down=false,up=false,pulse=false;
     if((type==144||type==128)&&e.size==3){kind=1;down=type==144&&e.data2>0;up=!down;}
     else if(type==176&&e.size==3){kind=2;down=e.data2>0;up=!down;}
     else if(type==192&&e.size==2){kind=3;down=pulse=true;}
     else return;
     if(e.data1>127||e.data2>127)return;
+    // Panic is still a CC message: reject malformed data before any cancellation.
+    if(type==176&&e.size==3&&(e.data1==120||e.data1==123)){cancel(d);return;}
     ++messages;
     // A learn packet may be consumed/rejected, but must still release an action
     // owned by this exact kind/channel/key. Otherwise CC zero strands SUS holds.

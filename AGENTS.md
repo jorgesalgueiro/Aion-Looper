@@ -436,3 +436,11 @@ action; other held keys remain valid. Retain unchanged original keyboard/press
 boundary comparisons for all 20 loops, monotonic-zero origin, deferred callback
 and ownership tests, plus actual >10s recording/no-repeat/fresh-finish/nonzero-PCM
 playback at 64/128. Preserve four-second STOP deletion and unported SUS/keymaps.
+
+Validate framed CC data bytes (0..127) before CC120/123 cancellation. Malformed
+panic must not finish a held SUS take, restore mute, invalidate MIDI Learn or
+alter committed PCM. Retain every-channel 128/255 rejection, exact nonzero stereo
+WAV against no-packet capture, real raw juce::MidiBuffer and actual GUI/learn/audio
+checks at 64/128, zero callback new/delete, and valid panic/release recovery. Keep
+existing accepted seven-bit panic values/omni cancellation; stricter channel-mode
+semantics and wire-stream parsing are separate work, not part of this fix.

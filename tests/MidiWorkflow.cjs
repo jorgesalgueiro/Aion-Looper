@@ -38,6 +38,18 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
  const rapidMidi=await evaluate(`(()=>{const e=document.getElementById('enableMidiBtn');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
  await Promise.all(['mousePressed','mouseReleased','mousePressed','mouseReleased'].map(type=>call('Input.dispatchMouseEvent',{type,...rapidMidi,button:'left',clickCount:1})));
  await wait(s=>s.midi.enabled&&s.midi.revision>=beforeRapidMidiRevision+2,'rapid MIDI disable/enable retains both gestures');
+ // Malformed panic must pass through real MidiBuffer validation without side effects.
+ await inject([[144,48,100,3,1],[144,36,100,3,17]]);await wait(s=>s.midi.sustain&&s.tracks[0].state==='recording','malformed panic SUS capture');await delay(180);
+ await click('#loop-vol-slider-0','right');await wait(s=>s.midi.learnTarget===33,'slider learn during malformed panic fixture');
+ const malformed=[];for(let channel=0;channel<16;channel++)for(const cc of [120,123])for(const bad of [128,255])malformed.push([176+channel,cc,bad,3,17]);await inject(malformed);
+ s=await snapshot();assert.equal(s.tracks[0].state,'recording','Malformed panic cannot finish a held native take');assert.equal(s.midi.learnTarget,33,'Malformed panic cannot cancel actual slider learn');
+ await call('Input.dispatchKeyEvent',{type:'keyDown',code:'Escape',key:'Escape',windowsVirtualKeyCode:27});await call('Input.dispatchKeyEvent',{type:'keyUp',code:'Escape',key:'Escape',windowsVirtualKeyCode:27});await wait(s=>s.midi.learnTarget===-1,'leave malformed-panic learn');
+ await inject([[128,36,0,3,17]]);s=await wait(s=>s.tracks[0].state==='playing'&&s.tracks[0].length>128,'normal release commits malformed-panic PCM');const malformedLength=s.tracks[0].length;
+ assert((await rpc({operation:'setParameter',id:'masterGain',value:1})).ok);await wait(s=>s.outputPeak>0.02,'malformed-packet take produces nonzero PCM');
+ for(const [status,cc,value] of [[176,120,0],[191,123,127]]){await inject([[144,36,100,3,17]]);await wait(s=>s.tracks[0].muted,'valid panic owns SUS mute');await inject([[status,cc,value,3,17]]);s=await wait(s=>!s.tracks[0].muted,'valid panic still restores held mute');assert.equal(s.tracks[0].length,malformedLength);await inject([[128,36,0,3,17]]);}
+ await inject([[144,48,100,3,0]]);await wait(s=>!s.midi.sustain,'malformed fixture leaves SUS');assert((await rpc({operation:'setParameter',id:'masterGain',value:0})).ok);
+ s=await snapshot();assert((await rpc({operation:'loop',action:'clear',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks[0].state==='empty','malformed-panic fixture cleanup');
+ console.log('PASS: real raw malformed panic preserves held recording/MIDI learn/nonzero PCM; valid panic releases without PCM loss');
  // The original mode keys toggle on every positive NoteOn without a release.
  for(const [note,field,on,indicator] of [[46,'mode',1,'odModeIndicator'],[47,'mode',2,'subModeIndicator'],[48,'sustain',true,'susModeIndicator']]){
   await inject([[144,note,1,3,17]]);await wait(s=>s.midi[field]===on,'mode NoteOn enables '+note);

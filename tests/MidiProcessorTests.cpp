@@ -19,6 +19,23 @@ int main(){
  juce::ScopedJuceInitialiser_GUI gui;
  for(const int block:{64,128}){
   {
+   auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);
+   const auto rpc=[&](const char* json){auto reply=p->request({juce::JSON::parse(json)});check(reply.getProperty("ok",false),json);return reply;};
+   rpc(R"({"operation":"midiConfig","action":"enable","enabled":true})");rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");
+   juce::AudioBuffer<float> buffer(2,block);juce::MidiBuffer packets;packets.ensureSize(4096);
+   const auto run=[&]{for(int c=0;c<2;++c)for(int i=0;i<block;++i)buffer.setSample(c,i,c?-0.1f:0.2f);const auto count=packets.getNumEvents();audioWatch=true;p->processBlock(buffer,packets);audioWatch=false;check(packets.getNumEvents()==count,"Malformed panic preserves incoming raw MIDI");packets.clear();return rpc(R"({"operation":"snapshot"})");};
+   packets.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),1);packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),17);run();run();run();
+   rpc(R"({"operation":"midiConfig","action":"learn","target":33})");run();
+   for(unsigned channel=0;channel<16;++channel)for(unsigned cc:{120u,123u})for(unsigned bad:{128u,255u}){const juce::uint8 bytes[]={static_cast<juce::uint8>(176+channel),static_cast<juce::uint8>(cc),static_cast<juce::uint8>(bad)};packets.addEvent(bytes,3,17);}
+   auto state=run();check(state["tracks"][0]["state"].toString()=="recording"&&static_cast<int>(state["midi"]["learnTarget"])==33,"Actual malformed MidiBuffer packets preserve SUS capture and slider learn on every channel");
+   rpc(R"({"operation":"midiConfig","action":"cancelLearn"})");run();packets.addEvent(juce::MidiMessage::noteOff(1,36),17);state=run();
+   for(unsigned n=0;n<10000&&state["tracks"][0]["state"].toString()=="finalizing";++n){std::this_thread::sleep_for(std::chrono::milliseconds(1));state=run();}
+   check(state["tracks"][0]["state"].toString()=="playing"&&static_cast<int>(state["tracks"][0]["length"])>=128,"Real release still commits malformed-packet test audio");
+   for(int cc:{120,123}){packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),17);state=run();check(static_cast<bool>(state["tracks"][0]["muted"]),"Valid panic control starts held mute");packets.addEvent(juce::MidiMessage::controllerEvent(16,cc,0),17);state=run();check(!static_cast<bool>(state["tracks"][0]["muted"]),"Actual valid panic retains cancellation");packets.addEvent(juce::MidiMessage::noteOff(1,36),17);run();}
+   std::cout<<"PASS: actual malformed CC120/123 preserves SUS/learn; valid panic still releases at "<<block<<" samples\n";
+  }
+
+  {
    TestPlayHead head;auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,block);p->prepareToPlay(48000,block);p->setPlayHead(&head);
    juce::AudioBuffer<float> buffer(2,block);buffer.clear();juce::MidiBuffer midi;midi.ensureSize(256);
    const auto snapshot=[&]{return p->request({juce::JSON::parse(R"({"operation":"snapshot"})")});};

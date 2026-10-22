@@ -21,6 +21,29 @@ struct Fixture {
 }
 void midiTests(){
  using namespace aion;using A=LoopAction;using S=LoopState;
+ // Malformed high-bit CC data must never invoke the native panic path.
+ for(const unsigned block:{64u,128u})for(const unsigned cc:{120u,123u}){
+  std::vector<std::uint8_t> baseline;
+  for(const bool inject:{false,true}){
+   Fixture f(block);f.tap(48);f.send(144,36,100);f.advance(256);
+   const auto start=f.latest.tracks[0].captureStartFrame;
+   MidiSettings learn;learn.enabled=true;learn.learnTarget=19;learn.learnToken=1;learn.learnGeneration=f.engine->generation();learn.revision=++f.revision;check(f.engine->configureMidi(learn),"Learn during held malformed-panic test");f.process(0);
+   for(unsigned channel=0;channel<16;++channel)for(unsigned bad:{128u,255u}){
+    if(inject)f.send(176+channel,cc,bad);else f.process(1);
+    check(f.latest.tracks[0].state==S::recording,"Malformed CC120/123 must not finish a held SUS recording");check(f.latest.midi.learnTarget==19,"Malformed panic must not cancel pending MIDI learn");
+   }
+   const auto length=f.latest.frame-start;f.send(128,36,0);f.wait();check(f.latest.tracks[0].length==length&&f.latest.tracks[0].state==S::playing,"Normal NoteOff finishes the entire uncorrupted take");
+   check(f.engine->enqueueExport({0,f.engine->generation(),f.latest.tracks[0].waveformId}),"Export malformed-panic stereo PCM");f.process(0);WavExport wav;bool ready=false;
+   for(unsigned n=0;n<10000&&!ready;++n){ready=f.engine->popExport(wav);if(!ready)std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+   check(ready&&wav.bytes.size()>44&&std::any_of(wav.bytes.begin()+44,wav.bytes.end(),[](auto v){return v!=0;}),"Malformed-panic comparison contains actual stereo audio");
+   if(!inject)baseline=wav.bytes;else check(wav.bytes==baseline,"Malformed CC panic packets preserve exact recorded stereo WAV at 64/128");
+   learn.learnTarget=-1;++learn.learnToken;learn.revision=++f.revision;check(f.engine->configureMidi(learn),"Leave learn before valid panic controls");f.process(0);
+   for(unsigned channel=0;channel<16;++channel)for(unsigned value:{0u,127u}){
+    f.send(144,36,100);check(f.latest.tracks[0].muted,"Valid panic test owns a SUS mute");f.send(176+channel,cc,value);check(!f.latest.tracks[0].muted&&f.latest.tracks[0].length==length,"Valid seven-bit panic retains existing cancellation and PCM");f.send(128,36,0);
+   }
+  }
+ }
+
  for(const unsigned block:{64u,128u}){
   Fixture f(block);f.tap(48);f.send(144,36,100);f.advance(128);
   MidiSettings settings;settings.enabled=true;settings.learnTarget=34;settings.learnToken=1;settings.learnGeneration=f.engine->generation();settings.revision=++f.revision;
