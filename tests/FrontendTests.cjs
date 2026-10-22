@@ -539,3 +539,23 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  assert.equal(timers.size,0);assert.equal(keyboard.presses.size,0);
  console.log('PASS: unchanged original keypad characters, Shift stays on loops 1-10, NumLock navigation ignored, physical release and repeat/modifier/text guards');
 }
+
+
+// Original input-wheel hardening must survive disabling legacy main.js.
+{
+ const source=fs.readFileSync(path.join(root,'.reference/Ascii-Looper/main.js'),'utf8');
+ const begin=source.indexOf("window.addEventListener('wheel', (e) => {");
+ assert(begin>=0);const end=source.indexOf('// Force uppercase',begin);
+ let originalHandler,originalOptions,nativeHandler,nativeOptions;
+ vm.runInNewContext(source.slice(begin,end),{window:{addEventListener(type,fn,options){assert.equal(type,'wheel');originalHandler=fn;originalOptions=options;}}});
+ const native={window:{addEventListener(type,fn,options){assert.equal(type,'wheel');nativeHandler=fn;nativeOptions=options;}}};
+ vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ assert.equal(typeof nativeHandler,'function','Native adapter must install original wheel protection');
+ assert.equal(nativeOptions.capture,originalOptions.capture);assert.equal(nativeOptions.passive,originalOptions.passive);
+ let cases=0;
+ for(const tagName of ['INPUT','TEXTAREA','SELECT','BUTTON','DIV'])for(const type of ['range','number','text','checkbox','radio','button','file'])for(const shiftKey of [false,true])for(const deltaMode of [0,1,2])for(const deltaY of [-120,0,120]){
+  const invoke=handler=>{const events=[];const target={tagName,type,disabled:false,blur(){assert.equal(this,target,'blur receiver');events.push('blur');}};handler({target,shiftKey,deltaY,deltaMode,preventDefault(){events.push('preventDefault');},stopPropagation(){events.push('stopPropagation');}});return events;};
+  assert.deepEqual(invoke(nativeHandler),invoke(originalHandler),'Original wheel semantics '+JSON.stringify({tagName,type,shiftKey,deltaMode,deltaY}));++cases;
+ }
+ console.log('PASS: original wheel protection, capture/passive options, focus/propagation and Shift bypass: '+cases+' cases');
+}

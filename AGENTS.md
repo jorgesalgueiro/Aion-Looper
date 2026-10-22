@@ -491,3 +491,12 @@ Do not disable failures to pass it. Preserve explicit unsupported/platform skips
 and the JUCE void state-load random-data warning; it is not evidence that random
 bytes changed the processor state. CLAP GUI, allocation, real DAW/device workflows
 and other OS/format acceptance remain separate from this vendor suite.
+
+
+Original input-wheel hardening belongs in the native adapter because preserved
+main.js is not executed: window capture, passive:false, non-Shift INPUT range/
+number only, in original preventDefault/stopPropagation/blur order. Shift bypass
+must not invent custom wheel increments; text/other targets keep normal behavior.
+Retain the unchanged original listener oracle (630 cases) and trusted WebView2
+wheel tests at 64/128 with focus/default prevention and unchanged native MASTER,
+loop volume, BPM and loop-command counters. No original asset or DSP change.

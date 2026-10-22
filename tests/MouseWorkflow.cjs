@@ -51,6 +51,32 @@ let socket;
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
     await wait(s=>s.audioReady&&s.inputAvailable&&s.inputPeak>0.1,'Synthetic native input active');
     await evaluate(`window.mouseErrors=[];window.addEventListener('error',e=>window.mouseErrors.push(e.message));document.documentElement.style.scrollBehavior='auto'`);
+    // Real trusted wheel events, not DOM dispatchEvent: original capture guard.
+    await evaluate(`window.wheelEvidence=[];window.addEventListener('wheel',e=>window.wheelEvidence?.push({id:e.target.id,shift:e.shiftKey,prevented:e.defaultPrevented,trusted:e.isTrusted,focused:document.activeElement===e.target}),{capture:true,passive:false});`);
+    for(const selector of ['#native-master','#loop-vol-slider-0','#bpmInput','#loop-name-0']){
+        // Track-name ID follows the original markup; obtain it semantically below.
+        const actual=selector==='#loop-name-0'?'#loop-0 .track-name':selector;
+        for(const shifted of [false,true]){
+            const before=await snapshot();
+            const rect=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(actual)});e.scrollIntoView({block:'center',behavior:'instant'});e.focus();window.wheelEvidence=[];const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,value:e.value,id:e.id,protected:e.type==='range'||e.type==='number'};})()`);
+            await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:rect.x,y:rect.y});
+            await call('Input.dispatchMouseEvent',{type:'mouseWheel',x:rect.x,y:rect.y,deltaX:0,deltaY:120,modifiers:shifted?8:0});
+            let evidence;for(let n=0;n<100;++n){evidence=await evaluate('window.wheelEvidence');if(evidence.length)break;await delay(10);}
+            assert.equal(evidence.length,1,'One real wheel event reaches window capture');
+            const event=evidence[0],blocked=rect.protected&&!shifted;
+            assert.equal(event.id,rect.id,'Wheel targets original control');assert(event.trusted,'Use real browser input');assert.equal(event.shift,shifted);
+            assert.equal(event.prevented,blocked,'Original Shift bypass / protected target');assert.equal(event.focused,!blocked,'Only protected non-Shift wheel blurs');
+            if(blocked){
+                assert.equal(await evaluate(`document.querySelector(${JSON.stringify(actual)}).value`),rect.value,'Blocked wheel preserves DOM value');
+                const after=await snapshot();assert.equal(after.masterGain,before.masterGain);assert.equal(after.syncBpm,before.syncBpm);assert.equal(after.tracks[0].volume,before.tracks[0].volume);assert.equal(after.lastRequestId,before.lastRequestId,'Blocked wheel issues no loop command');
+            }
+            // Restore any platform default Shift-wheel edit through the real controls.
+            await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(actual)});if(e.value!==${JSON.stringify(rect.value)}){e.value=${JSON.stringify(rect.value)};e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}e.blur();})()`);
+            await delay(50);
+        }
+    }
+    await evaluate('window.wheelEvidence=null');
+    console.log('PASS: trusted native wheel protection on MASTER, loop volume and BPM; Shift bypass/text focus; blocked values and audio controls unchanged');
     await parameter('#bpmInput',120);await parameter('#numBars',1);await parameter('#timeSigNum',4);
     await click('#countInVisual');
     await mode('off');

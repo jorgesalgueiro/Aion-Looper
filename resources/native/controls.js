@@ -1,6 +1,13 @@
 // Native routing for the reference keyboard gestures. No browser audio code.
 (() => {
     'use strict';
+    // Original main.js input hardening; legacy JS is not executed natively.
+    // Capture must be non-passive so focused controls cannot change on scroll.
+    if(typeof window.addEventListener==='function')window.addEventListener('wheel',e=>{
+        if(!e.shiftKey&&e.target.tagName==='INPUT'&&(e.target.type==='range'||e.target.type==='number')){
+            e.preventDefault();e.stopPropagation();e.target.blur();
+        }
+    },{passive:false,capture:true});
     // Message-thread only. Resolve gestures against the latest acknowledged state.
     window.AionCommandQueue = class {
         static wait = Symbol('waitForState');

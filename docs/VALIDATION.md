@@ -2976,3 +2976,59 @@ count-in/nudge/live-input/STUT oracles (build/clap-state-ui.log): 20 original lo
 cards, working native IPC, MASTER zero and no product AudioContext. No physical
 expression/footswitch test was repeated or newly inferred. All test processes
 closed normally. The user's logo whitespace hunk remains unchanged and unstaged.
+
+
+## Original slider/number wheel protection (22 October 2026)
+
+Baseline 8997232. Disabling legacy main.js also omitted its global wheel guard:
+focused slider/number fields were not blurred/protected on non-Shift scrolling.
+The unchanged original listener fixture failed before the repair: the native
+listener was absent (build/wheel-repro.log). The adapter now installs the original
+window capture/non-passive listener in controls.js, preserving the precise
+preventDefault, stopPropagation, target.blur sequence for non-Shift range/number
+inputs. Shift and all other targets pass through; no wheel increment algorithm,
+layout, UI control, C++ DSP, parameter encoding or package/version changed.
+The user's separate 4-addition/2-deletion logo hunk remains untouched.
+
+Original listener oracle passes 630 cases (build/wheel-frontend.log), including
+both Shift states, range/number/text/checkbox/radio/button/file, multiple target
+tags, wheel directions and delta modes, listener options and blur receiver.
+Trusted Input.dispatchMouseEvent mouseWheel tests exercise MASTER, loop Volume,
+BPM and loop-name targets, verify Shift bypass and text focus, preventDefault and
+focus loss, and prove blocked events preserve DOM/native masterGain/syncBpm/loop
+volume plus lastRequestId. These are actual native WebView2 events, not synthetic
+DOM dispatchEvent proofs. Shift default editing, if the platform performs it, is
+restored through existing control events before other workflows continue.
+
+The connected capture/OD/SUB audit passed 126 cases / 965826 samples with max error
+7.394757495227111e-8 against unchanged tolerance 1e-6 (build/wheel-audio.log), with
+its retained scope exclusions. Native binaries/test host rebuilt incrementally
+(build/wheel-plugin-build.log). Actual CLAP and VST3 validation initially passed
+2/2 (build/wheel-formats.log): CLAP retains its documented 33 passes/10 skips/one
+JUCE void state-load warning; VST3 retains level-9 GUI/automation/state coverage.
+These are scoped tests, not full Ascii-Looper parity or real DAW/device/ASIO,
+Apple/Linux GUI or allocation certification. No fresh sanitizer run is claimed
+for a frontend-only change; existing C++ processor/core evidence is unchanged.
+
+
+Fresh Windows portable suite passed 19/19 in 267.43s
+(build/wheel-windows.log). Trusted wheel tests passed on both 64/128 hosts;
+the full 64-sample workflow also passed mouse/capture/playback, sync, keyboard,
+hold/delete, export, merge, and MIDI checks (build/wheel-gui.log).
+
+
+Ubuntu completed 19/19 in 458.91s (build/wheel-ubuntu.log), including the new
+unchanged-JS frontend comparison. Both complete 64/128 production mouse host
+workflows passed (build/wheel-gui.log): original capture/playback, static/dynamic
+sync/count-in, Start/Q/nudge/RTRG/STUT, 4s hold deletion/cancellation, keyboard/
+keypad/missed-release, WAV export, MERGE/confirmation/history and MIDI control/
+learn/continuous/panic/reload checks. No physical controller evidence was inferred.
+
+
+Final format checks were rerun serially after the synthetic GUI host closed:
+CLAP + VST3 2/2 in 29.17s (build/wheel-formats-final.log), followed by the muted
+Standalone NativeUiSmoke and actual browser audio-reference comparisons
+(build/wheel-ui.log). They pass with all 20 original cards, working IPC, MASTER
+zero, no legacy product AudioContext, and no runtime gesture exceptions. The
+original 16 asset SHA gate remains passed; all test hosts closed normally.
+No new package, platform/driver certification or overall bug-free claim is made.

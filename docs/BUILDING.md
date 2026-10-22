@@ -554,3 +554,20 @@ void, so the wrapper cannot report rejected random bytes; direct processor tests
 verify rejection without state mutation/host notification. This gate does not
 test the GUI or prove zero allocation, actual DAW/device operation, other OSes,
 complete project persistence or full Ascii-Looper parity.
+
+
+## Original input-wheel behavior
+
+Scrolling over a slider or number field without Shift leaves its value unchanged
+and removes focus, matching Ascii-Looper. Holding Shift lets the browser handle
+that wheel gesture normally; it does not add a custom adjustment mode. Text
+fields and other targets retain ordinary scrolling/focus behavior. Native audio
+parameters are still changed through the existing IPC controls.
+
+The portable native_frontend_commands test compares the unchanged original
+listener across 630 cases, including capture/passive flags and blur receiver.
+TestMouseWorkflow.ps1 additionally sends trusted browser wheel events to MASTER,
+loop Volume, BPM and a loop name, at 64 and 128 samples, then runs the existing
+mouse/audio/export/merge/MIDI workflows. The host uses synthetic PCM and opens no
+physical audio device. Browser cancellation uses explicit passive:false as in
+[the wheel-event documentation](https://developer.mozilla.org/en-US/docs/Web/API/Element/wheel_event).
