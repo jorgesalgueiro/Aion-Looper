@@ -523,3 +523,14 @@ Retain native midiDevices diagnostics requiring no watch/no OS devices with no
 holder, actual Standalone UI smoke requiring deviceWatchRequested, raw MIDI
 performance/panic/learn and all 64/128 processor/audio/GUI gates. This diagnostic
 means subscription was requested, not that physical hotplug was tested.
+
+Linux VST3 wrapper acceptance is opt-in through AION_LINUX_PLUGINVAL_EXECUTABLE
+and linux_vst3_pluginval (tools/TestLinuxVst3.py). Keep official Linux 1.0.4
+archive/executable pins, level 9/seed 1337, editor tests enabled and all 15 rate/
+buffer combinations plus required completion markers. No display or wrong tool
+must fail; inherited pluginval options must not weaken coverage. Preserve child-
+only environment sanitization, owned-process timeout and before/after module
+hashes in result.json. The vendor binary omits allocation tests and no external
+Steinberg validator is configured. Editor lifecycle does not prove HTML workflow,
+physical audio/MIDI, real DAW sessions or Release latency. Keep original-JS/PCM
+gates independent; do not alter the UI or create packages for this host check.

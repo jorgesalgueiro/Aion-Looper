@@ -117,3 +117,22 @@ and [MidiDeviceListConnection API](https://docs.juce.com/master/classjuce_1_1Mid
 plus the actual pinned holder constructor: currentInstance is assigned before
 processor creation. The existing connection remains owned/reset by AionProcessor
 in Standalone; plugin hosts supply their MIDI through processBlock.
+
+
+## Optional Linux x86_64 pluginval
+
+Official [Tracktion pluginval v1.0.4](https://github.com/Tracktion/pluginval/releases/tag/v1.0.4)
+asset: pluginval_Linux.zip, downloaded directly from that release (no third-party
+mirror). The release API supplies no digest for this historical asset; these
+SHA256 values pin the downloaded official archive and its sole binary:
+
+- Archive: c01c49d8063965c4c2dea8324468336768f5c9139e0b1caebde14c2400b55352
+- Executable: d3d342ea92293b0699a5c983937211e3faf2b0f38145b31cb8d78424a25e10ba
+- Ignored location: .toolchain/pluginval/1.0.4-linux/pluginval.
+
+TestLinuxVst3.py --download-tool reads only the expected pluginval ZIP member,
+checks both hashes and runs the opt-in gate. Ordinary CMake builds never download
+it. This official binary is built with JUCE 8.0.3; the product retains pinned
+JUCE 9.0.4. No dependency upgrade, system install or redistribution is implied.
+GUI checks require an X display; see BUILDING.md for commands and VALIDATION.md
+for outcomes and the omitted allocation/external-validator limitations.

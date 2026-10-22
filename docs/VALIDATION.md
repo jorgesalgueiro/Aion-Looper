@@ -3165,3 +3165,80 @@ results remain applicable. Linux GTK/WebKit interaction, real JACK/ALSA audio/
 MIDI/controllers/DAWs, Linux LV2/VST3 host workflows, Release latency/CPU, Apple
 platforms and remaining original features stay unverified/unported as tracked
 in PARITY.md. No package/version bump or full commercial-readiness claim.
+
+
+## Linux VST3 wrapper acceptance (22 October 2026)
+
+This increment closes the missing Linux VST3 public-host gate. It does not add a
+looper feature or change product DSP/UI/state, original reference assets or the
+user's local logo edit. The existing 0.4.3 Debug bundle from the MIDI-routing
+repair was used; no new app/plugin package or version bump was needed.
+
+The official Tracktion pluginval 1.0.4 Linux x86_64 binary was obtained directly
+from its tagged release, with archive/executable SHA256 pins in SDKS.md and
+TestLinuxVst3.py. The historical release API exposes no publisher digest, so
+these are pins of the fetched official asset, not a claimed publisher signature.
+The binary reports its own JUCE 8.0.3 runtime; product JUCE remains pinned 9.0.4.
+The machine is the existing Ubuntu 24.04.3 WSL environment with WSLg DISPLAY :0.
+No system installation, physical audio/MIDI device or user's live session was
+used. The optional helper creates only its own temporary validator editor hosts.
+
+Acceptance recorded:
+
+- Direct Linux VST3 validation passed at level 9 / seed 1337 in 21.90s:
+  build/linux-vst3-initial.log and
+  build/linux-pluginval/20261022T222527Z-24d09bdf/result.json.
+- New registered linux_vst3_pluginval CTest passed 1/1 in 24.40s (24.52s total),
+  build/linux-vst3-registered.log and
+  build/linux-pluginval/20261022T223006Z-e0b7b3fe/result.json. All required editor,
+  editor-while-processing, audio, automation, state/restoration, background/thread
+  safety and fuzz tests completed, with all 15 combinations of 44100/48000/96000
+  Hz and 64/128/256/512/1024 samples present. There were no JUCE assertion/leak
+  messages and only one plugin was discovered.
+- The registered run deliberately inherited SKIP_GUI_TESTS=1,
+  DISABLED_TESTS=/missing/aion-disabled-tests.txt and BLOCK_SIZES=4096. The helper
+  removed these only in the child environment: the full required GUI/rate/block
+  coverage still passed and the caller's three values remained identical.
+- Negative checks rejected no DISPLAY (build/linux-vst3-no-display.log) and an
+  unpinned validator (build/linux-vst3-wrong-tool.log) before launching it. Python
+  compilation succeeded. No test was disabled or tolerance relaxed.
+- Connected committed-PCM audit passed 126 cases / 965826 samples, maximum error
+  7.394757495227111e-8 against the unchanged 1e-6 threshold
+  (build/linux-vst3-audio.log). Its existing capture/OD/SUB scope excludes full
+  browser envelopes/resampling, hardware latency and sync scheduling.
+
+The VST3 .so SHA256 was identical before/after both runs:
+840e8eba642e446b1b77b19f9d4e155e7145f5f30b1596d2a0195df5be600155.
+result.json records source/local changes, harness/tool/module identities, command,
+timing, required completions, matrix and limitations. CMake registration is
+opt-in and serial; the helper's 240-second timeout kills only its process group.
+
+Expected WebKit CSP messages explicitly reject the original inline scripts and
+legacy WebAudio modules. These do not imply that the native adapter failed, nor
+do editor-lifecycle tests prove that the rendered HTML controls work. WSLg also
+prints the existing libEGL/DRI3 acceleration warning. Linux HTML interaction,
+accelerated rendering and actual DAW/recorded-loop/controller sessions remain
+separate. The official pluginval binary omits allocation tests and no external
+Steinberg validator is configured; both result flags are false. This pass is not
+arbitrary-malloc, JACK/ALSA driver, Release latency/CPU, Apple-platform or complete
+feature-parity/commercial-readiness certification. Earlier pending Linux VST3
+host-workflow statements above are historical; this closes the vendor wrapper
+subset only. Broader DAW/hardware and LV2-host workflows remain pending.
+
+
+Additional unchanged-behavior regressions for this gate addition:
+
+- Windows portable/reference CTest: 19/19, 262.32s
+  (build/linux-vst3-windows-core.log), including original asset bytes and all
+  existing frontend/MIDI/DSP/sync/edit/export comparisons.
+- Existing Linux native processor and CLAP CTests: 2/2, 13.73s total
+  (build/linux-vst3-native-regressions.log). The processor passes at 64/128 with
+  strict assertion/leak checks and tracked zero callback new/delete. CLAP retains
+  its complete 44-test accounting and documented skips/void-load warning.
+- Ubuntu portable/reference CTest: 19/19, 435.81s
+  (build/linux-vst3-ubuntu-core.log), retaining the same original-JS/audio gates.
+
+All sessions launched for this increment completed. Product DSP and UI were not
+changed, so no native binary rebuild or repeat Windows GUI workflow was needed.
+The existing VST3 module was verified by before/after hashes; current coverage
+limits above are retained. No package or version change was created.

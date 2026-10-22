@@ -618,3 +618,42 @@ Only an actual Standalone holder requests that watcher. This allows native
 processor/host tests without an ALSA sequencer device while retaining Standalone
 hotplug cancellation. midiDevices.deviceWatchRequested is routing diagnostics,
 not proof that a physical controller or OS notification was tested.
+
+## Optional Linux VST3 host validation
+
+The existing Linux VST3 can be checked through the official Tracktion pluginval
+1.0.4 host. This gate requires an X display (WSLg works); editor tests stay
+enabled. It needs no audio device, plugin installation or package. From Ubuntu
+at the repository root, after building AionLooper_VST3:
+
+```sh
+# Explicit one-time project-local tool download and validation:
+python3 tools/TestLinuxVst3.py --download-tool
+cmake -S . -B build/linux \
+  -DAION_LINUX_PLUGINVAL_EXECUTABLE="$PWD/.toolchain/pluginval/1.0.4-linux/pluginval"
+ctest --test-dir build/linux -R '^linux_vst3_pluginval$' \
+  --no-tests=error --output-on-failure
+# Subsequent direct runs need no network; override --plugin for another tree:
+python3 tools/TestLinuxVst3.py
+```
+
+The helper pins both official archive and executable hashes, uses level 9 and
+seed 1337, and requires completed editor/automation/state/thread/fuzz tests plus
+all 15 combinations of 44100/48000/96000 Hz and 64/128/256/512/1024 samples.
+Inherited pluginval options are removed only from the child environment so
+SKIP_GUI_TESTS or DISABLED_TESTS cannot weaken coverage. The parent environment
+is unchanged. An outer 240-second timeout terminates only the owned validator
+process group. stdout/stderr and result.json record source, tool, harness,
+before/after module hashes and explicit test limits under build/linux-pluginval.
+The serial optional CTest has a 300-second limit; default builds need no tool.
+
+This tests the public VST3 wrapper and editor lifecycle, not the rendered HTML
+control workflow. The runtime policy deliberately blocks original inline scripts
+and legacy WebAudio modules; WebKit may print CSP refusal messages for those
+blocked resources. Native adapters are injected separately as JUCE user scripts.
+The recorded WSLg run also reports a libEGL/DRI3 acceleration warning. Neither
+message is evidence of HTML interaction or accelerated-rendering acceptance.
+The official binary omits the allocation test, and no external Steinberg
+validator is configured: result.json records both as false. Actual DAW sessions,
+recorded-loop project recall, JACK/ALSA hardware, Release latency/CPU and Apple
+platforms remain separate gates.

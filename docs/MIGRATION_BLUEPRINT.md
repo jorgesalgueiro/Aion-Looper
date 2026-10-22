@@ -231,3 +231,14 @@ Standalone holder subscribes to physical device-list changes; plugin MIDI arrive
 through the DAW. This keeps device discovery off audio and avoids requiring ALSA
 sequencer hardware just to instantiate a plugin or synthetic processor. The
 Standalone input/configuration interface remains unchanged.
+
+
+### Linux VST3 acceptance entry point (22 October 2026)
+
+AION_LINUX_PLUGINVAL_EXECUTABLE adds the opt-in serial linux_vst3_pluginval
+CTest against the actual JUCE VST3 bundle. TestLinuxVst3.py pins official Linux
+pluginval 1.0.4 and requires editor, state, automation and thread/fuzz completion
+at level 9 with the recorded sample-rate/buffer matrix. It reuses the existing
+Engine/LoopBank/MIDI/IPC/editor architecture without a Linux-specific DSP path.
+This wrapper/editor-lifecycle gate is distinct from HTML interaction, actual
+DAW/controller sessions, Release performance and allocation certification.
