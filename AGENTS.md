@@ -390,3 +390,10 @@ reload delivery tests. Strip the private token before exposing replies to UI
 callers. Correlation is not authentication or cancellation of old native commands;
 keep existing audio generation/expiry and native close/reload cancellation guards.
 Do not introduce browser/JSON allocation or locks on audio.
+
+A synchronous bridge send/serialization exception must remove the pending ID and
+clear its timer before rejecting. Preserve the original error and full 128-slot
+capacity immediately, without waiting for the five-second reply deadline. Retain
+transport/circular-payload/getter failures, more-than-capacity retries and actual
+WebView2 recovery after injected send failures. Do not weaken existing session,
+reply, timeout, queue or pagehide guards.

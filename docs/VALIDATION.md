@@ -2400,3 +2400,45 @@ frontend-only change. Existing app/test targets only; no package/version bump.
 The user's local logo edits remain untouched/unstaged. The original keyboard
 `*` SUS shortcut/custom keyboard mapping gap found while choosing the next
 increment is explicitly recorded in PARITY, not represented as implemented.
+
+### Bridge synchronous-send failure recovery (2026-10-22)
+
+The retained regression (`build/bridge-send-failure-repro.log`) showed a failed
+native send rejected its promise but left a timer/pending entry until five seconds
+later. Enough failures therefore exhausted the 128-request budget. The bridge
+now removes that ID and timer immediately when payload serialization or transport
+throws, then rejects with the original error. Successful request/reply shape,
+session correlation, deadline, queue bound, pagehide and native commands are
+unchanged. No HTML/CSS, audio/C++ DSP, APVTS or device behavior change.
+
+Acceptance:
+
+- Expanded BridgeTests exercises transport failure, circular JSON and a throwing
+  payload getter, then more than 256 immediate failures and recovery using all
+  128 pending slots without waiting for a timeout. Earlier stale-session/ID,
+  malformed-envelope, crypto fallback, queue/deadline and close checks remain.
+  A real watchdog still prevents an unresolved mock promise from silently exiting.
+- Windows focused original-assets/core/MIDI/frontend/bridge and unchanged-JS
+  DSP/sync/state 8/8, 61.23s (`build/bridge-send-failure-windows.log`);
+  Ubuntu focused checks 5/5, 14.09s (`build/bridge-send-failure-ubuntu.log`).
+- Actual production WebView2 MIDI/reload workflows pass at 64/128
+  (`build/bridge-send-failure-midi.log`). Each reload injects 256 synchronous
+  send failures for a harmless hello at the real JUCE outbound boundary, verifies
+  the original error each time, restores transport and accepts a genuine native
+  hello immediately. The prior obsolete-completion/reused-ID and all MIDI cases
+  continue afterward. Injection exists only in CDP tests, not a product RPC.
+- Production processor/no-editor checks retain native echo/validation, original
+  MIDI persistence/panic/held gestures and zero processBlock new/delete at 64/128
+  (`build/bridge-send-failure-processor.log`).
+- Existing Standalone 20-card UI/keyboard/IPC and real browser count-in, nudge,
+  analyser and STUT audio checks pass (`build/bridge-send-failure-ui.log`).
+- Connected unchanged-JS/native capture/overdub/substitute PCM audit passes
+  126 cases / 965826 samples, maximum error 7.394757495227111e-8 at unchanged
+  1e-6 (`build/bridge-send-failure-audio.log`). Browser playback envelopes,
+  resampling, physical latency and external sync remain outside that scope.
+
+Previous full main/export/merge 64/128 and sanitizer evidence is retained, not
+rerun for this failed-send cleanup. No threshold/case was relaxed. Only existing
+Windows Standalone/test targets rebuilt; no new package or version bump. Original
+assets and local logo edits are preserved. No next feature was enabled and no
+broader device/host/platform or production-ready claim is made.

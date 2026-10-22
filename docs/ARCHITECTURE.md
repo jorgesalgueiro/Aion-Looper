@@ -822,3 +822,9 @@ already accepted audio/native commands. Generation/expiry checks, export picker
 sequence guards and native navigation cleanup remain independently required.
 Direct native clients may omit the token for legacy requests. Nothing is added
 to APVTS state, audio queues or processBlock; JSON/string handling stays off audio.
+
+A failed synchronous backend send never becomes an in-flight request. Serialization
+(including circular payloads or throwing getters) and transport exceptions remove
+that request's pending entry and timeout immediately, then reject with the same
+error. Ordinary native responses still own their existing five-second deadline.
+This preserves all 128 slots for valid recovery requests after failed sends.

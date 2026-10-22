@@ -6,9 +6,24 @@ const document=(session,crypto={randomUUID:()=>session})=>{
  const backend={addEventListener:(type,fn)=>events.set(type,fn),emitEvent:(type,value)=>outgoing.push(value)};
  const context={window:{__JUCE__:{backend},crypto,addEventListener:(type,fn)=>page.set(type,fn)},document:{addEventListener(){},querySelectorAll:()=>[]},setTimeout:(fn,ms)=>{assert.equal(ms,5000);const id=++serial;timers.set(id,()=>{timers.delete(id);fn();});return id;},clearTimeout:id=>timers.delete(id)};
  vm.runInNewContext(source,context);
- return {api:context.window.AionNative,outgoing,timers,close:()=>page.get('pagehide')(),complete:message=>events.get('__juce__complete')(message)};
+ return {api:context.window.AionNative,backend,outgoing,timers,close:()=>page.get('pagehide')(),complete:message=>events.get('__juce__complete')(message)};
 };
 (async()=>{
+ const failed=document('transport-failure'),send=failed.backend.emitEvent;
+ failed.backend.emitEvent=()=>{throw Error('transport unavailable');};
+ await assert.rejects(failed.api.request({operation:'snapshot'}),/transport unavailable/);
+ assert.equal(failed.timers.size,0,'Failed native send must immediately release its timeout and pending slot');
+ // More failures than the entire queue must not block a later valid request.
+ for(let n=0;n<256;++n)await assert.rejects(failed.api.request({operation:'snapshot'}),/transport unavailable/);
+ assert.equal(failed.timers.size,0);
+ failed.backend.emitEvent=(type,value)=>{JSON.stringify(value);send(type,value);};
+ const circular={operation:'snapshot'};circular.self=circular;await assert.rejects(failed.api.request(circular),/circular/i);assert.equal(failed.timers.size,0,'Serialization failure releases its slot');
+ const getter={operation:'hello',get bad(){throw Error('payload getter failed');}};await assert.rejects(failed.api.request(getter),/payload getter failed/);assert.equal(failed.timers.size,0);
+ failed.backend.emitEvent=send;
+ const recovered=[];for(let n=0;n<128;++n)recovered.push(failed.api.request({operation:'hello'}));assert.equal(failed.timers.size,128,'All 128 slots remain available after failed sends');
+ for(const request of failed.outgoing)failed.complete({promiseId:request.resultId,result:{ok:true,_aionSession:request.params[0]._aionSession}});
+ assert((await Promise.all(recovered)).every(reply=>reply.ok));assert.equal(failed.timers.size,0);
+ console.log('PASS: failed transport/serialization/getter cleanup and full pending-capacity recovery without waiting for timeout');
  const old=document('old-document'),current=document('current-document');
  const before=old.api.request({operation:'snapshot'}).catch(error=>error.message),stale=old.outgoing[0];old.close();assert.equal(await before,'Editor closed');assert.equal(old.timers.size,0);
  let value;const after=current.api.request({operation:'snapshot'}).then(reply=>value=reply),active=current.outgoing[0];assert.equal(stale.resultId,active.resultId,'Exercise actual ID reuse after reload');

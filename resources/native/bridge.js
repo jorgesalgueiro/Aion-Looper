@@ -24,7 +24,12 @@
             return new Promise((resolve, reject) => {
                 const timer = setTimeout(() => { pending.delete(id); reject(new Error('Native request timed out')); }, 5000);
                 pending.set(id, {resolve, reject, timer});
-                backend.emitEvent('__juce__invoke', {name: 'aionRequest', params: [{...payload, _aionSession: session}], resultId: id});
+                try {
+                    backend.emitEvent('__juce__invoke', {name: 'aionRequest', params: [{...payload, _aionSession: session}], resultId: id});
+                } catch (error) {
+                    // Failed serialization/transport never owns an in-flight slot.
+                    pending.delete(id); clearTimeout(timer); reject(error);
+                }
             });
         }
     });
