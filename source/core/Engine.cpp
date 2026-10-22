@@ -14,6 +14,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     loops.resetTimeline();liveInput->cancel();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
+    transport={};
     frame = 0; gain = target = increment = renderedMasterPeak = 0.0f; remaining = 0;
     rampLength = static_cast<std::uint32_t>(std::clamp(rate * 0.02, 1.0, 38400.0));
     GainCommand discard{}; while (commands.pop(discard)) {};
@@ -136,7 +137,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
         if(loops.copyWaveform(id,revision,event.peaks)&&waveforms->push(event)){sentWaveforms[id]=revision;++emitted;}
         else break; // Closed/slow editor: retry later, never wait.
     }
-    (void) views->push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame),midi->view()});
+    (void) views->push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame),midi->view(),transport});
 }
 bool Engine::enqueueExport(ExportRequest request) noexcept {
     if(exportOutstanding||request.generation!=generation()||!request.generation||request.track>=LoopBank::trackCount||!request.waveformId)return false;

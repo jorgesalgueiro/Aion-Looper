@@ -3,6 +3,7 @@
 Audit baseline: source commit `e66a86c`, 21 October 2026. This document describes
 what exists and separates it from the remaining target. It does not replace the
 working implementation or claim complete Ascii-Looper parity.
+Host-observation increment updated 22 October 2026; fresh evidence is in VALIDATION.md.
 
 ## Repository and original reference
 
@@ -46,7 +47,7 @@ flowchart LR
 | `Engine` | Sample clock, input/loop/output path, command dispatch, parameter smoothing, bounded MIDI/telemetry | Complete transport arbitration, other DSP modules |
 | `LoopBank` | 20 tracks, capture/OD/SUB, immutable PCM, local/global history, MULT/NORM/reverse, Start/RTRG/STUT, merge/export | Remaining editing/import/project state and broader audio acceptance |
 | `MidiController` | Notes/CC/PC, 73 binding slots, loop volume/pan learn, OD/SUB/SUS, panic/overflow/disconnect cancellation | Other parameter learn, synth pitch/mod/velocity, MIDI clock and HID |
-| `AionProcessor` | JUCE buses, processBlock, APVTS, saved parameters/MIDI, native device routing, IPC, WAV picker/write | Full session/project persistence and complete host sync |
+| `AionProcessor` | JUCE buses, processBlock, APVTS, saved parameters/MIDI, native device routing, IPC, WAV picker/write and validated block-stamped host observations | Full session/project persistence and host sync scheduling/arbitration |
 | `AionWebEditor` | Embedded resources, WebView2 selection on Windows, native RPC, close/reload cancellation | Apple/Linux browser/device acceptance |
 
 Names such as DroneBank, Tracker, FxRack, TransportArbiter and ProjectService in
@@ -161,8 +162,10 @@ once its gates pass; the existing Standalone packager does not rebuild plugins.
    persistence. Preserve audio/history on failure.
 4. Complete host transport (meter, loop range, seeks, starts/stops), MIDI clock
    input/output and explicit host/MIDI/internal arbitration. Current code observes
-   host BPM/PPQ/play; its internal loop sync still uses the configured internal
-   clock. It does not yet implement full DAW sync or MIDI clock.
+   host tempo/PPQ/sample/seconds, meter/bar/cycle markers and play/record state;
+   its internal loop sync still uses the configured internal clock. Host fields
+   are optional, audio-owned and published coherently, not a host sync scheduler.
+   Full DAW sync and MIDI clock remain unimplemented.
 5. Add remaining learn targets, synth MIDI and HID/gamepads as individually tested
    original interactions. Hardware evidence must come from actual devices, not
    synthetic packets. Existing PC0 and CC27 confirmations cover only that setup.

@@ -2541,3 +2541,66 @@ assets and the user's unstaged logo hunk are preserved. No new C++ DSP or RT sou
 changed. The preceding 19/19 Windows/Ubuntu full suites and sanitizer/MIDI GUI
 results remain retained baseline evidence rather than fresh reruns here. No new
 hardware, DAW, Apple-platform or production-ready claim follows from these checks.
+
+
+## 22 October 2026: coherent native host transport observation
+
+Baseline `40da70f` read BPM/PPQ/play only and published none of that host input.
+The new fake-head processor test first failed with “Host transport snapshot must
+be published” (`build/host-transport-repro.log`). The native processor now reads
+JUCE PositionInfo once per callback, validates its optional fields and transfers
+one block-stamped POD observation through the existing bounded EngineView SPSC.
+IPC exposes available play/record/loop flags, tempo, PPQ, signed sample/seconds
+position, meter, last-bar and cycle boundaries; unavailable optional fields are
+null. This does not implement host-follow scheduling or MIDI clock. Original
+UI/assets, internal sync controls and audio algorithms are unchanged.
+
+Portable tests cover nonfinite/nonpositive values, meter/range validation, signed
+preroll, absent host reset/prepare and snapshot saturation/recovery at 64/128.
+Seven observations fit the original queue; dropped telemetry cannot mix a host
+position with another audio block. Storage remains construction-time heap owned.
+Native fake-head tests exercise real AudioPlayHead/PositionInfo, missing/empty
+positions, negative/fractional timelines, malformed fields, changing meter,
+backward seek/cycle wrap, host stop/detach and zero-sample callbacks. State save
+and IPC never call the playhead. The extended production allocation watch remains
+active around processing. Paired host/no-host processors compare nonzero monitored
+stereo PCM bit-for-bit while host tempo/meter/seek/play/cycle state changes.
+
+Implementation research and primary JUCE, VST3 and CLAP sources are recorded in
+ARCHITECTURE.md. JUCE's optional-field/callback-start model is the boundary; this
+increment does not assume all wrappers/hosts supply identical information or
+handle sample-offset tempo ramps. No actual DAW or hardware evidence is inferred
+from the fake host. Arbitrary C malloc/driver internals remain outside new/delete
+instrumentation.
+
+Fresh checks completed:
+
+- Windows full portable/reference suite: 19/19, 260.02s
+  (`build/host-transport-windows.log`).
+- Production host/PCM and existing MIDI, cancellation, persistence, IPC and zero
+  processBlock new/delete at 64/128 (`build/host-transport-processor.log`).
+- Connected original-JS/native committed capture/overdub/substitute PCM audit:
+  126 cases / 965826 samples, maximum absolute error 7.394757495227111e-8 at
+  unchanged 1e-6 (`build/host-transport-audio.log`). Browser envelopes/resampling,
+  physical latency and external sync remain outside this scope.
+
+- Ubuntu ASan/UBSan focused core/frontend/bridge/STUT/sync: 5/5, 171.22s
+  (`build/host-transport-asan.log`, leak detection enabled).
+
+- Ubuntu full portable/reference suite: 19/19, 447.33s
+  (`build/host-transport-ubuntu.log`).
+- Full actual WebView2 mouse/main, WAV export, merge and MIDI workflows at 64/128
+  (`build/host-transport-gui.log`), retaining X/DEL ALL, held-STUT navigation,
+  mapped-slider, stale-session and original pointer/key/PCM regressions.
+- Muted Standalone original UI/keyboard/IPC and actual browser count-in, nudge,
+  analyser and STUT audio oracles (`build/host-transport-ui.log`). Real IPC checks
+  musical fields are null while JUCE Standalone's supplied device sample/seconds
+  counters remain numeric and consistent. Its `available:true` means partial
+  PositionInfo, not DAW tempo or playing state. Missing-playhead behavior remains
+  independently tested in the fake-head processor. No product AudioContext exists.
+
+Only existing Windows Standalone/test targets rebuilt; no new package or version
+bump. The user-local logo changes remain unstaged and original runtime assets are
+unchanged. These gates establish the observation boundary and retained looper
+behavior, not actual REAPER/Ardour sync, wrapper/platform certification, physical
+ASIO latency or a completed migration. No next scheduling feature was enabled.

@@ -34,6 +34,12 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert(!visible.overlay&&visible.mainVisible,JSON.stringify(visible));
  assert(await evaluate(`!document.getElementById('loopContainer').textContent.includes('undefined')`),'Missing renderer field');assert(!visible.text.includes('\u00c3'),'Garbled native status text');
  const snapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);assert(snapshot.ok&&snapshot.tracks.length===20);
+ assert.equal(snapshot.hostTransport.available,true,'JUCE Standalone supplies a partial device playhead');
+ for(const key of ['bpm','ppq','numerator','denominator','loopStartPpq','loopEndPpq','barStartPpq'])assert.equal(snapshot.hostTransport[key],null,'Unavailable musical host field crosses real native IPC as null: '+key);
+ assert(Number.isSafeInteger(snapshot.hostTransport.samplePosition)&&snapshot.hostTransport.samplePosition>=0&&Number.isFinite(snapshot.hostTransport.seconds)&&Math.abs(snapshot.hostTransport.seconds-snapshot.hostTransport.samplePosition/snapshot.sampleRate)<1e-9,'Standalone publishes actual device sample/seconds position');
+ for(const key of ['playing','recording','looping'])assert.equal(snapshot.hostTransport[key],false,'Standalone device counters do not fabricate DAW transport flags');
+ assert(Number.isSafeInteger(snapshot.hostTransport.callbackFrame)&&snapshot.hostTransport.callbackFrame<=snapshot.frame,'Host observation retains callback-start stamp through real IPC');
+
  assert(snapshot.tracks.every(t=>t.state==='empty'),'Smoke test must not capture audio');
  assert(await evaluate(`!document.getElementById('loop-start-slider-0').disabled`),'Original Start slider enabled');
  await evaluate(`(()=>{const s=document.getElementById('loop-start-slider-0');s.value='0.333';s.dispatchEvent(new Event('input',{bubbles:true}));s.dispatchEvent(new Event('change',{bubbles:true}));})()`);

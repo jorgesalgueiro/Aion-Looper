@@ -3,14 +3,66 @@
 #include <cstdlib>
 #include <iostream>
 #include <new>
+#include <limits>
 namespace {thread_local bool audioWatch=false;std::atomic<int> audioAllocations{0};void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}}
 void* operator new(std::size_t n){if(audioWatch)++audioAllocations;if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
 void operator delete(void* p) noexcept {if(audioWatch)++audioAllocations;std::free(p);}
 void* operator new[](std::size_t n){return ::operator new(n);}void operator delete[](void* p) noexcept {::operator delete(p);}
 void operator delete(void* p,std::size_t) noexcept {::operator delete(p);}void operator delete[](void* p,std::size_t) noexcept {::operator delete(p);}
+class TestPlayHead final : public juce::AudioPlayHead {
+public:
+ juce::Optional<PositionInfo> position;
+ mutable unsigned calls=0,outsideAudio=0;
+ juce::Optional<PositionInfo> getPosition() const override {++calls;if(!audioWatch)++outsideAudio;return position;}
+};
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
  for(const int block:{64,128}){
+  {
+   TestPlayHead head;auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,block);p->prepareToPlay(48000,block);p->setPlayHead(&head);
+   juce::AudioBuffer<float> buffer(2,block);buffer.clear();juce::MidiBuffer midi;midi.ensureSize(256);
+   const auto snapshot=[&]{return p->request({juce::JSON::parse(R"({"operation":"snapshot"})")});};
+   const auto run=[&]{audioWatch=true;p->processBlock(buffer,midi);audioWatch=false;return snapshot();};
+   auto state=run(),host=state["hostTransport"];check(host.isObject(),"Host transport snapshot must be published");
+   check(!static_cast<bool>(host["available"])&&host["bpm"].isVoid()&&host["samplePosition"].isVoid(),"Missing host does not invent timing");
+   juce::AudioPlayHead::PositionInfo position;position.setBpm(137.3);position.setPpqPosition(-1.25);position.setTimeInSamples(-12000);position.setTimeInSeconds(-0.25);
+   position.setTimeSignature(juce::AudioPlayHead::TimeSignature{7,8});position.setLoopPoints(juce::AudioPlayHead::LoopPoints{-8,6});position.setPpqPositionOfLastBarStart(-3.5);
+   position.setIsPlaying(true);position.setIsRecording(true);position.setIsLooping(true);head.position=position;
+   state=run();host=state["hostTransport"];
+   check(static_cast<bool>(host["available"])&&static_cast<bool>(host["playing"])&&static_cast<bool>(host["recording"])&&static_cast<bool>(host["looping"]),"Host playback/record/cycle state");
+   check(static_cast<double>(host["bpm"])==137.3&&static_cast<double>(host["ppq"])==-1.25&&static_cast<juce::int64>(host["samplePosition"])==-12000&&static_cast<double>(host["seconds"])==-0.25,"Fractional tempo and negative preroll remain exact");
+   check(static_cast<int>(host["numerator"])==7&&static_cast<int>(host["denominator"])==8&&static_cast<double>(host["loopStartPpq"])==-8&&static_cast<double>(host["loopEndPpq"])==6&&static_cast<double>(host["barStartPpq"])==-3.5,"Host meter/bar/cycle markers");
+   check(static_cast<juce::int64>(host["callbackFrame"])==static_cast<juce::int64>(state["frame"])-block,"Host position describes block start, not end");
+   check(static_cast<double>(state["syncBpm"])==120,"Observing host tempo never overwrites internal sync settings");
+   buffer.setSize(2,0);state=run();host=state["hostTransport"];check(static_cast<juce::int64>(host["callbackFrame"])==static_cast<juce::int64>(state["frame"])&&static_cast<double>(host["bpm"])==137.3,"Zero-sample host callbacks publish position without advancing local time");buffer.setSize(2,block);buffer.clear();
+   const auto calls=head.calls;juce::MemoryBlock saved;p->getStateInformation(saved);snapshot();check(head.calls==calls&&head.outsideAudio==0,"Host is queried only once per audio callback, never IPC/state save");
+   for(const double invalid:{std::numeric_limits<double>::quiet_NaN(),std::numeric_limits<double>::infinity(),-std::numeric_limits<double>::infinity()}){
+    position.setBpm(invalid);position.setPpqPosition(invalid);position.setTimeInSeconds(invalid);position.setPpqPositionOfLastBarStart(invalid);position.setLoopPoints(juce::AudioPlayHead::LoopPoints{0,invalid});position.setTimeSignature(juce::AudioPlayHead::TimeSignature{0,0});head.position=position;
+    state=run();host=state["hostTransport"];for(const auto* key:{"bpm","ppq","seconds","barStartPpq","loopStartPpq","loopEndPpq","numerator","denominator"})check(host[key].isVoid(),"Invalid optional host data clears previous valid field");
+    check(!juce::JSON::toString(host).contains("nan")&&!juce::JSON::toString(host).contains("inf"),"IPC has no nonfinite host numbers");
+   }
+   for(const double bpm:{0.0,-1.0}){position.setBpm(bpm);head.position=position;check(run()["hostTransport"]["bpm"].isVoid(),"Nonpositive host tempo is unavailable");}
+   for(const auto points:{juce::AudioPlayHead::LoopPoints{8,2},juce::AudioPlayHead::LoopPoints{4,4}}){position.setLoopPoints(points);head.position=position;check(run()["hostTransport"]["loopStartPpq"].isVoid(),"Reversed/empty host loop interval is unavailable");}
+   position={};position.setTimeSignature(juce::AudioPlayHead::TimeSignature{3,4});position.setLoopPoints(juce::AudioPlayHead::LoopPoints{2,8});position.setPpqPosition(7.9);position.setTimeInSamples(24000);head.position=position;run();
+   position.setPpqPosition(2);position.setTimeInSamples(0);head.position=position;host=run()["hostTransport"];check(static_cast<double>(host["ppq"])==2&&static_cast<juce::int64>(host["samplePosition"])==0&&!static_cast<bool>(host["playing"]),"Backward seek/cycle wrap and stopped host remain observable");
+   head.position=juce::AudioPlayHead::PositionInfo{};host=run()["hostTransport"];check(static_cast<bool>(host["available"])&&host["ppq"].isVoid()&&host["numerator"].isVoid()&&host["loopStartPpq"].isVoid(),"Empty PositionInfo clears every optional field");
+   head.position.reset();check(!static_cast<bool>(run()["hostTransport"]["available"]),"Missing PositionInfo clears availability");p->setPlayHead(nullptr);check(!static_cast<bool>(run()["hostTransport"]["available"]),"Detached host cannot leave old playing state");
+   check(head.outsideAudio==0,"Every host read stayed on audio");
+   auto reference=std::make_unique<AionProcessor>();reference->setPlayConfigDetails(2,2,48000,block);reference->prepareToPlay(48000,block);p->setPlayHead(&head);
+   for(auto* processor:{p.get(),reference.get()})for(const auto* json:{R"({"operation":"setParameter","id":"masterGain","value":1})",R"({"operation":"setParameter","id":"inputMonitor","value":1})",R"({"operation":"setParameter","id":"syncMode","value":0})"})check(processor->request({juce::JSON::parse(json)}).getProperty("ok",false),"Configure monitored PCM control");
+   juce::AudioBuffer<float> expected(2,block);bool heard=false;
+   for(int n=0;n<40;++n){
+    position={};position.setBpm(90.25+n);position.setPpqPosition(n%3==0?-4.0:double(n%8));position.setTimeInSamples(n%3==0?-24000:n*block);position.setIsPlaying(n%2==0);position.setIsLooping(n%3==0);position.setTimeSignature(juce::AudioPlayHead::TimeSignature{n%2?7:3,n%2?8:4});position.setLoopPoints(juce::AudioPlayHead::LoopPoints{-4,12});head.position=n%5?juce::Optional<juce::AudioPlayHead::PositionInfo>{position}:juce::Optional<juce::AudioPlayHead::PositionInfo>{};
+    for(int c=0;c<2;++c)for(int i=0;i<block;++i){const auto sample=float((n*block+i)%101-50)/150*(c?0.7f:1.0f);buffer.setSample(c,i,sample);expected.setSample(c,i,sample);}
+    audioWatch=true;p->processBlock(buffer,midi);reference->processBlock(expected,midi);audioWatch=false;
+    for(int c=0;c<2;++c)for(int i=0;i<block;++i){check(buffer.getSample(c,i)==expected.getSample(c,i),"Host tempo/play/meter/loop/seek observation leaves actual PCM bit-identical");heard=heard||std::abs(buffer.getSample(c,i))>0.01f;}
+    state=snapshot();check(static_cast<double>(state["syncBpm"])==120&&static_cast<int>(state["syncMode"])==0,"Host observation does not change internal user controls");
+   }
+   check(heard&&head.outsideAudio==0,"Host comparison checks nonzero PCM with audio-only reads");p->setPlayHead(nullptr);
+   std::cout<<"PASS: production host optional/malformed/seek/meter/cycle snapshots and identical monitored PCM at "<<block<<" samples\n";
+
+  }
+
   {
    auto retry=std::make_unique<AionProcessor>();retry->setPlayConfigDetails(2,2,8000,block);retry->prepareToPlay(8000,block);
    const auto request=[&](const juce::String& json){auto result=retry->request({juce::JSON::parse(json)});check(result.getProperty("ok",false),json.toRawUTF8());return result;};

@@ -412,3 +412,18 @@ reset queued work on cancellation; acceptance cancels STUT, held timers and olde
 before the bank clear. Retain unchanged original keyboard dispatch and real
 WebView2 dialog accept/cancel, stored PCM/identity, paused-queue and four-second
 no-revival tests at 64/128. Custom key mapping remains a separate feature.
+
+Host timing observations must be read only inside processBlock and published with
+one coherent audio snapshot, never queried from IPC/UI/state save. Preserve
+explicit missing/invalid-field handling, signed preroll/seek positions, fractional
+tempo, meter/bar/cycle flags and zero-sample callbacks. Keep callback-start local
+frame distinct from host sample/PPQ positions and snapshot block end. Retain
+fake-head and portable saturation/reset/loss tests, bit-identical nonzero monitored
+PCM with changing host data, zero callback new/delete and 64/128 checks. Observing
+host transport must not overwrite internal sync parameters or imply scheduling,
+MIDI clock, sample-offset tempo ramps or actual DAW/wrapper acceptance.
+
+JUCE Standalone supplies partial device PositionInfo. Do not treat hostTransport
+available as proof of DAW tempo/sync: preserve real sample/seconds counters while
+missing musical timing stays null and unspecified play/record/loop flags stay
+false. Keep the actual Standalone IPC regression as well as no-playhead tests.

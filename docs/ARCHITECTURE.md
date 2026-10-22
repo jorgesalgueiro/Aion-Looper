@@ -846,3 +846,44 @@ A failed synchronous backend send never becomes an in-flight request. Serializat
 that request's pending entry and timeout immediately, then reject with the same
 error. Ordinary native responses still own their existing five-second deadline.
 This preserves all 128 slots for valid recovery requests after failed sends.
+
+
+## Validated host transport observations (22 October 2026)
+
+`processBlock` reads `AudioPlayHead::getPosition()` once, exclusively on audio.
+A fixed POD `Transport` captures callback-start local frame, host PPQ, signed
+sample/seconds position, BPM, meter, last-bar and loop boundaries, and play/record/
+loop flags. Core validation requires finite numbers, positive tempo and meter,
+and a finite increasing loop interval. Negative timeline/preroll positions and
+fractional tempos remain valid. Missing/invalid optional fields have presence
+flags; they never masquerade as inferred host tempo/position. Host/position loss
+and prepare clear old observations. Loop-active state remains independent of
+whether the host supplied valid loop points.
+
+The existing construction-time heap SPSC snapshot includes the entire observation
+alongside its generation/audio frame. A slow editor may lose telemetry, as before,
+but cannot pair a new host position with an old audio block. IPC `hostTransport`
+uses null for unavailable optional fields. Its `callbackFrame` is local block
+start, whereas snapshot `frame` is local block end; `samplePosition` is the host's
+signed timeline, not the local processing clock. `available` means PositionInfo
+was supplied, not that a DAW sync source exists: the pinned JUCE Standalone
+AudioProcessorPlayer supplies sample/seconds counters without musical timing.
+Future arbitration must examine actual timing availability, not this bit alone.
+Existing snapshot generation/
+audioReady fencing still applies. JSON/object creation remains on the message
+thread; no new queue producer, audio allocation/free or lock is introduced.
+
+Research: [JUCE PositionInfo](https://docs.juce.com/master/classjuce_1_1AudioPlayHead_1_1PositionInfo.html)
+explicitly models optional host timing at callback start. [VST3 ProcessContext](https://steinbergmedia.github.io/vst3_doc/vstinterfaces/structSteinberg_1_1Vst_1_1ProcessContext.html)
+and [CLAP transport events](https://github.com/free-audio/clap/blob/main/include/clap/events.h)
+provide validity/state flags; use JUCE's wrapper translation rather than reading
+host APIs on UI or inventing timing for absent fields. The pinned local JUCE
+VST3 wrapper already requests cycle and time-signature ProcessContext fields.
+CLAP sample-offset tempo
+updates/ramps and wrapper-specific behavior need separate sync/host acceptance.
+
+This is an observation boundary for the future transport arbiter, not completed
+DAW synchronization: internal BPM/grid/source scheduling remains user-controlled.
+Host start/stop/seek does not yet schedule loop actions, MIDI clock is unported,
+and fake-head tests do not certify REAPER/Ardour or all plugin wrappers/platforms.
+The original UI and its controls are unchanged.

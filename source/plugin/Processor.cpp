@@ -149,13 +149,18 @@ void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuff
     engine.setAutoPlay(autoPlay->load(std::memory_order_relaxed) >= 0.5f);
     engine.configureSync({static_cast<aion::SyncMode>(static_cast<unsigned>(syncMode->load())),syncBpm->load(),
         static_cast<unsigned>(syncBars->load()),static_cast<unsigned>(syncNum->load()),static_cast<unsigned>(syncDen->load()),countIn->load()>=0.5f,countInAudio->load()>=0.5f});
-    engine.transport = {};
+    aion::Transport host;host.callbackFrame=engine.clock();
     if (auto* head = getPlayHead()) if (auto position = head->getPosition()) {
-        engine.transport.hostValid = true;
-        engine.transport.playing = position->getIsPlaying();
-        if (auto bpm = position->getBpm(); bpm && std::isfinite(*bpm) && *bpm > 0.0) engine.transport.bpm = *bpm;
-        if (auto ppq = position->getPpqPosition(); ppq && std::isfinite(*ppq)) engine.transport.ppq = *ppq;
+        host.hostValid=true;host.playing=position->getIsPlaying();host.recording=position->getIsRecording();host.looping=position->getIsLooping();
+        if(auto value=position->getBpm()){host.hasBpm=true;host.bpm=*value;}
+        if(auto value=position->getPpqPosition()){host.hasPpq=true;host.ppq=*value;}
+        if(auto value=position->getTimeInSamples()){host.hasSamples=true;host.samplePosition=*value;}
+        if(auto value=position->getTimeInSeconds()){host.hasSeconds=true;host.seconds=*value;}
+        if(auto value=position->getTimeSignature()){host.hasTimeSignature=true;host.numerator=value->numerator;host.denominator=value->denominator;}
+        if(auto value=position->getPpqPositionOfLastBarStart()){host.hasBarStart=true;host.barStartPpq=*value;}
+        if(auto value=position->getLoopPoints()){host.hasLoopPoints=true;host.loopStartPpq=value->ppqStart;host.loopEndPpq=value->ppqEnd;}
     }
+    engine.transport=aion::validatedTransport(host);
     std::size_t midiCount=0,inspected=0;bool midiOverflow=false;
     engine.setMidiInputAvailable(getTotalNumInputChannels()>0&&midiInputReady.load(std::memory_order_acquire));
     for(const auto metadata:incomingMidi){
@@ -223,6 +228,16 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     if (operation == "hello" || operation == "snapshot") {
         result->setProperty("ok", true); result->setProperty("stage", "native-loop-preview");
         result->setProperty("legacyAudioEnabled", false);
+        const auto& host=latest.hostTransport;auto* hostData=new juce::DynamicObject();juce::var hostReply(hostData);
+        hostData->setProperty("available",host.hostValid);hostData->setProperty("callbackFrame",static_cast<juce::int64>(host.callbackFrame));
+        hostData->setProperty("playing",host.playing);hostData->setProperty("recording",host.recording);hostData->setProperty("looping",host.looping);
+        hostData->setProperty("bpm",host.hasBpm?juce::var(host.bpm):juce::var());hostData->setProperty("ppq",host.hasPpq?juce::var(host.ppq):juce::var());
+        hostData->setProperty("samplePosition",host.hasSamples?juce::var(static_cast<juce::int64>(host.samplePosition)):juce::var());
+        hostData->setProperty("seconds",host.hasSeconds?juce::var(host.seconds):juce::var());
+        hostData->setProperty("numerator",host.hasTimeSignature?juce::var(host.numerator):juce::var());hostData->setProperty("denominator",host.hasTimeSignature?juce::var(host.denominator):juce::var());
+        hostData->setProperty("loopStartPpq",host.hasLoopPoints?juce::var(host.loopStartPpq):juce::var());hostData->setProperty("loopEndPpq",host.hasLoopPoints?juce::var(host.loopEndPpq):juce::var());
+        hostData->setProperty("barStartPpq",host.hasBarStart?juce::var(host.barStartPpq):juce::var());result->setProperty("hostTransport",hostReply);
+
         auto* midiView=new juce::DynamicObject();juce::var midiReply(midiView);juce::Array<juce::var> bindings;
         for(const auto binding:latest.midi.bindings)bindings.add(static_cast<int>(binding));
         juce::Array<juce::var> recentMidi;

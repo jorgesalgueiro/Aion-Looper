@@ -1,5 +1,6 @@
 #pragma once
 #include "core/SpscQueue.h"
+#include "core/Transport.h"
 #include "core/LoopBank.h"
 #include "core/Metronome.h"
 #include "core/CountIn.h"
@@ -8,7 +9,6 @@
 #include <cstdint>
 namespace aion {
 struct GainCommand { std::uint64_t frame; float gain; };
-struct Transport { double bpm = 120.0; double ppq = 0.0; bool playing = false; bool hostValid = false; };
 struct Meter { std::uint64_t frame; float peak; };
 struct LoopCommand {
     LoopAction action{};
@@ -33,6 +33,7 @@ struct EngineView {
     float masterPeak=0;
     unsigned countInFlash=0;
     MidiView midi{};
+    Transport hostTransport{};
 };
 // Audio owner only for prepare/process/target/transport. The message thread is
 // the sole producer of commands; the message thread alone consumes meters.

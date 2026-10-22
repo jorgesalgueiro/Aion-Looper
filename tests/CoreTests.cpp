@@ -31,7 +31,34 @@ void mergeTests();
 void midiTests();
 void waveformTests();
 void liveInputTests();
+static void hostTransportTests() {
+    aion::Transport good;good.hostValid=true;good.playing=good.recording=good.looping=true;good.callbackFrame=64;
+    good.hasBpm=good.hasPpq=good.hasSamples=good.hasSeconds=good.hasTimeSignature=good.hasBarStart=good.hasLoopPoints=true;
+    good.bpm=137.3;good.ppq=-1.25;good.samplePosition=-12000;good.seconds=-0.25;good.numerator=7;good.denominator=8;good.barStartPpq=-3.5;good.loopStartPpq=-8;good.loopEndPpq=6;
+    auto valid=aion::validatedTransport(good);check(valid.hasBpm&&valid.bpm==137.3&&valid.hasPpq&&valid.ppq==-1.25&&valid.hasSamples&&valid.samplePosition==-12000&&valid.hasTimeSignature&&valid.numerator==7&&valid.denominator==8&&valid.hasLoopPoints&&valid.loopStartPpq==-8,"Valid host fractional meter/tempo/negative preroll");
+    for(double bad:{std::numeric_limits<double>::quiet_NaN(),std::numeric_limits<double>::infinity(),-std::numeric_limits<double>::infinity()}){
+        auto t=good;t.bpm=t.ppq=t.seconds=t.barStartPpq=t.loopStartPpq=bad;const auto clean=aion::validatedTransport(t);
+        check(!clean.hasBpm&&!clean.hasPpq&&!clean.hasSeconds&&!clean.hasBarStart&&!clean.hasLoopPoints&&clean.bpm==120&&clean.ppq==0&&clean.seconds==0&&clean.barStartPpq==0&&clean.loopStartPpq==0&&clean.loopEndPpq==0,"Nonfinite host fields never escape validation");
+    }
+    for(double bad:{0.0,-1.0}){auto t=good;t.bpm=bad;check(!aion::validatedTransport(t).hasBpm,"Host tempo must be positive");}
+    for(int bad:{0,-1}){auto t=good;t.denominator=bad;check(!aion::validatedTransport(t).hasTimeSignature,"Host denominator must be positive");t=good;t.numerator=bad;check(!aion::validatedTransport(t).hasTimeSignature,"Host numerator must be positive");}
+    auto t=good;t.loopEndPpq=t.loopStartPpq;check(!aion::validatedTransport(t).hasLoopPoints,"Empty host cycle unavailable");t.loopEndPpq-=1;check(!aion::validatedTransport(t).hasLoopPoints,"Reversed host cycle unavailable");
+    t=good;t.hostValid=false;valid=aion::validatedTransport(t);check(!valid.hostValid&&!valid.playing&&!valid.recording&&!valid.looping&&!valid.hasBpm&&!valid.hasPpq&&!valid.hasSamples&&!valid.hasSeconds&&!valid.hasTimeSignature&&!valid.hasBarStart&&!valid.hasLoopPoints&&valid.callbackFrame==64,"Host loss resets every stale flag, retaining callback stamp");
+    for(int block:{64,128}){
+        auto engine=std::make_unique<aion::Engine>();engine->prepare(48000,8192);std::array<float,128> left{},right{};float* channels[]={left.data(),right.data()};
+        for(unsigned n=0;n<32;++n){t=good;t.callbackFrame=engine->clock();t.ppq=double(n);engine->transport=aion::validatedTransport(t);watch=true;engine->process(channels,2,block);watch=false;}
+        aion::EngineView view;unsigned popped=0;
+        while(engine->popView(view)){++popped;check(view.hostTransport.callbackFrame+block==view.frame&&view.hostTransport.ppq==double(view.hostTransport.callbackFrame/block),"Saturated snapshot queue never mixes host position and audio block");}
+        check(popped==7,"Host telemetry retains bounded original snapshot capacity");
+        engine->transport={};engine->transport.callbackFrame=engine->clock();watch=true;engine->process(channels,2,block);watch=false;
+        check(engine->popView(view)&&!view.hostTransport.hostValid&&view.hostTransport.callbackFrame+block==view.frame,"Host loss publishes after slow-editor recovery");
+        engine->transport=good;engine->prepare(48000,8192);check(!engine->transport.hostValid&&!engine->transport.hasBpm,"Prepare resets prior host observation");
+    }
+    check(allocations==0,"Host snapshot callback allocation/free");
+    std::cout<<"PASS: optional host validation, preroll, meter/cycle, loss/reset and coherent bounded snapshots at 64/128\n";
+}
 int main() {
+    hostTransportTests();
     aion::SpscQueue<unsigned, 8> q; unsigned value=0;
     for(unsigned i=0;i<7;++i) check(q.push(i),"queue capacity");
     check(!q.push(99),"overflow must reject");
