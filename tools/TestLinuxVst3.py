@@ -9,6 +9,7 @@ import platform
 import re
 import signal
 import subprocess
+import sys
 import time
 import urllib.request
 import zipfile
@@ -39,11 +40,13 @@ def sha(path):
         return digest.hexdigest()
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def main(plugin_format='VST3'):
+    if plugin_format not in ('VST3', 'LV2'):
+        raise ValueError('Unsupported validation format')
+    parser = argparse.ArgumentParser(description=f'Opt-in Linux {plugin_format} pluginval gate, including editor tests; no audio device.')
     parser.add_argument('--validator', type=Path, default=TOOL / 'pluginval')
-    parser.add_argument('--plugin', type=Path, default=ROOT / 'build/linux/AionLooper_artefacts/Debug/VST3/Aion-Looper.vst3')
-    parser.add_argument('--output-directory', type=Path, default=ROOT / 'build/linux-pluginval')
+    parser.add_argument('--plugin', type=Path, default=ROOT / f'build/linux/AionLooper_artefacts/Debug/{plugin_format}/Aion-Looper.{plugin_format.lower()}')
+    parser.add_argument('--output-directory', type=Path, default=ROOT / ('build/linux-pluginval' if plugin_format == 'VST3' else 'build/linux-lv2-pluginval'))
     parser.add_argument('--download-tool', action='store_true')
     args = parser.parse_args()
     if platform.system() != 'Linux' or platform.machine() not in ('x86_64', 'AMD64'):
@@ -68,8 +71,13 @@ def main():
     validator, plugin = args.validator.resolve(strict=True), args.plugin.resolve(strict=True)
     if sha(validator) != EXECUTABLE_HASH:
         raise RuntimeError('Use the pinned official Linux pluginval 1.0.4 executable')
-    binary = plugin / 'Contents/x86_64-linux/Aion-Looper.so'
+    if plugin.suffix != '.' + plugin_format.lower():
+        parser.error('Expected a ' + plugin_format + ' bundle')
+    binary = plugin / ('Contents/x86_64-linux/Aion-Looper.so' if plugin_format == 'VST3' else 'libAion-Looper.so')
     binary_hash = sha(binary)
+    # An LV2 module is discovered through its RDF files, not the .so alone.
+    bundle_files = [binary] + ([plugin / name for name in ('manifest.ttl', 'dsp.ttl', 'ui.ttl')] if plugin_format == 'LV2' else [])
+    bundle_hashes = {str(path.relative_to(plugin)): sha(path) for path in bundle_files}
     run_dir = args.output_directory.resolve() / (time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '-' + os.urandom(4).hex())
     run_dir.mkdir(parents=True)
     command = [str(validator), '--validate-in-process', '--strictness-level', '9',
@@ -81,9 +89,12 @@ def main():
                   startedUtc=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                   sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                   trackedChanges=subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=ROOT, text=True).splitlines(),
-                  harnessSha256=sha(Path(__file__)), validatorVersion='1.0.4',
+                  harnessSha256=sha(Path(__file__)), format=plugin_format,
+                  entryPoint=str(Path(sys.argv[0]).resolve()),
+                  entryPointSha256=sha(Path(sys.argv[0]).resolve()), validatorVersion='1.0.4',
                   validatorSha256=EXECUTABLE_HASH, archiveSha256=ARCHIVE_HASH,
                   pluginPath=str(plugin), binarySha256=binary_hash, binarySha256After=None,
+                  bundleSha256=bundle_hashes, bundleSha256After=None,
                   strictness=9, seed=1337, sampleRates=RATES, blockSizes=BLOCKS,
                   command=command, guiTestsRequired=True, requiredTests=REQUIRED,
                   missingTests=[], missingMatrix=[], allocationTestExecuted=False,
@@ -111,15 +122,18 @@ def main():
         result['allocationTestExecuted'] = 'Allocations during process' in completed
         result['externalSteinbergValidatorExecuted'] = ('vst3 validator' in completed and 'Skipping vst3 validator' not in text)
         result['binarySha256After'] = sha(binary)
+        result['bundleSha256After'] = {str(path.relative_to(plugin)): sha(path) for path in bundle_files}
         result['passed'] = (result['exitCode'] == 0 and re.search(r'^SUCCESS\r?$', text, re.MULTILINE) is not None
                             and re.search(r'^Num plugins found: 1\r?$', text, re.MULTILINE) is not None
                             and not result['missingTests'] and not result['missingMatrix']
                             and 'JUCE Assertion failure' not in text + stderr
                             and 'Leaked objects detected' not in text + stderr
-                            and result['binarySha256After'] == binary_hash)
+                            and result['binarySha256After'] == binary_hash
+                            and result['bundleSha256After'] == bundle_hashes
+                            and re.search(r'^Testing plugin: ' + plugin_format + r'-Aion-Looper-', text, re.MULTILINE) is not None)
         if not result['passed']:
-            raise RuntimeError('Linux VST3 validation failed or incomplete; see ' + str(run_dir))
-        print('PASS: actual Linux VST3, pluginval 1.0.4 level 9, editor tests enabled, seed 1337')
+            raise RuntimeError('Linux ' + plugin_format + ' validation failed or incomplete; see ' + str(run_dir))
+        print('PASS: actual Linux ' + plugin_format + ', pluginval 1.0.4 level 9, editor tests enabled, seed 1337')
         print('Evidence:', run_dir / 'result.json')
     except Exception as error:
         result['error'] = str(error)

@@ -3242,3 +3242,102 @@ All sessions launched for this increment completed. Product DSP and UI were not
 changed, so no native binary rebuild or repeat Windows GUI workflow was needed.
 The existing VST3 module was verified by before/after hashes; current coverage
 limits above are retained. No package or version change was created.
+
+
+## Linux LV2 host and nonzero stereo acceptance (22 October 2026)
+
+This increment validates the existing 0.4.3 Debug LV2 bundle through its public
+host interface. No product DSP/UI/parameter/state code, original reference bytes,
+MIDI assignments or user's local logo edit changed. No rebuild/package/version
+bump was required: the existing compiled bundle was used and its identity was
+checked. Both the vendor tool and ABI probe ran in the existing Ubuntu/WSLg
+environment without opening a physical audio or MIDI device.
+
+The official pluginval 1.0.4 release explicitly adds LV2 support. TestLinuxLv2.py
+reuses the existing pinned official Linux runner in TestLinuxVst3.py; the VST3
+entry point/defaults remain compatible. The shared runner now records format,
+entry-point and shared-harness hashes, requires the correct format/name scan,
+and checks module/RDF hashes before/after LV2 validation. No supported test was
+filtered or assertion/leak rule weakened. Limits remain explicit: the vendor
+binary omits allocation testing and no external Steinberg validator is configured.
+
+Initial observations:
+
+- Raw official LV2 level-9 run passed in 22.67s; logs are retained in
+  build/linux-lv2-initial/{stdout,stderr}.log.
+- Full direct pinned LV2 harness passed in 23.73s, including all required editor,
+  editor-while-processing, automation, state/restoration, background/thread-safety
+  and fuzz completions, plus all 15 rate/buffer combinations. Evidence:
+  build/linux-lv2-direct.log and
+  build/linux-lv2-pluginval/20261022T224315Z-8b1ff632/result.json.
+- Negative preflight checks reject no DISPLAY, a VST3 supplied as LV2 and missing
+  LV2 UI metadata before validator execution (build/linux-lv2-negative.log).
+  Both runner entry points compile successfully under Ubuntu Python.
+- Actual LV2 descriptor/ports/URID/options/Atom patch:Set audio probe passes all
+  six 44100/48000/96000 Hz x 64/128 cases (build/linux-lv2-audio-abi.json and
+  build/linux-lv2-audio-abi.stderr.log). It compares 24192 settled stereo samples,
+  including 13824 nonzero samples; maximum error is 0.0 against 1e-7. Default
+  mute, unity/half gain, input-monitor off, master zero and unmute recovery pass.
+  Output is first filled with NaNs, then every sample must be overwritten with
+  a finite value. Reported latency remains zero; this is the declared processing
+  latency, not a measurement of physical driver or round-trip latency.
+- The probe supplies public host structures and block-start patch:Set messages;
+  it does not include product headers or call private processor methods. It waits
+  beyond the existing 20ms master ramp before comparing PCM, so it does not claim
+  ramp-waveform or sample-offset parameter scheduling acceptance. It verifies the
+  descriptor URI, generated port metadata and module/RDF hashes, and records
+  source/harness identities. Its Python host callbacks/buffers are not realtime
+  allocation instrumentation. No editor is opened by the audio probe.
+
+LV2 module SHA256:
+faa2721ec29d77a768895f4e079780618d7626854b12755fe476d897df96a530.
+The module and all three generated RDF files are identical before/after the
+recorded runs. Their individual hashes are included in the JSON evidence.
+Expected WebKit CSP refusals of legacy browser-audio scripts and WSLg libEGL/DRI3
+warnings remain visible in vendor stderr; no policy or rendering workaround was
+introduced to pass the gate. Editor lifecycle still does not prove HTML controls.
+
+This closes only the tested LV2 wrapper/parameter/stereo subset. Actual DAW
+recorded-loop/project/MIDI/controller workflows, hardware JACK/ALSA timing,
+Linux HTML interaction, Release performance, other platforms and all remaining
+original synth/effect/project features remain separate. Historical pending-LV2
+host statements above should be read with this narrower acceptance addition;
+there is no complete feature-parity or commercial-readiness claim.
+
+
+Final registered acceptance (build/linux-lv2-final-gates.log): 5/5 in 71.58s.
+
+- Native production MIDI/audio processor: 4.80s; strict assertion/leak and
+  existing 64/128/tracked zero callback new/delete checks retained.
+- LV2 pluginval: 27.24s; final evidence
+  build/linux-lv2-pluginval/20261022T225111Z-ce18f0be/result.json.
+- LV2 public ABI stereo audio: 4.22s; registered JSON output matches the six-case
+  zero-error direct probe and before/after module/RDF identities above.
+- VST3 pluginval regression through the shared runner: 26.13s; evidence
+  build/linux-pluginval/20261022T225144Z-53b2ae47/result.json.
+- CLAP regression: 9.00s; 34 successes, nine documented unsupported skips and one
+  retained JUCE void-load warning, all 44 tests accounted for. Evidence:
+  build/linux-clap-validator/20261022T225207Z-72a8e608/result.json.
+
+The combined run inherited SKIP_GUI_TESTS=1, DISABLED_TESTS pointing to a missing
+file, BLOCK_SIZES=4096 and REPEAT=9. Both pluginval gates still completed the
+required GUI/tests and full intended matrix with repeat one. The shared runner
+sanitized only child options; all caller values were verified unchanged afterward.
+Final runner/entry-point/probe and module/RDF hashes match the evidence. No
+additional download, package, native UI change or dependency upgrade was needed.
+
+Unchanged original behavior regressions also passed:
+
+- Windows portable/reference CTest: 19/19 in 262.98s
+  (build/linux-lv2-windows-core.log).
+- Ubuntu portable/reference CTest: 19/19 in 429.73s
+  (build/linux-lv2-ubuntu-core.log).
+- Connected committed capture/OD/SUB PCM audit: 126 cases / 965826 samples,
+  maximum error 7.394757495227111e-8, unchanged tolerance 1e-6
+  (build/linux-lv2-audio.log). Its existing scope excludes full browser envelopes,
+  resampling, hardware latency and sync scheduling.
+
+All launched test processes completed. The user's running app/session was not
+replaced or closed. Since product code did not change, the existing modules were
+verified by hashes rather than producing new builds/packages. Remaining feature
+and physical-platform limits in PARITY.md are unchanged.

@@ -657,3 +657,52 @@ The official binary omits the allocation test, and no external Steinberg
 validator is configured: result.json records both as false. Actual DAW sessions,
 recorded-loop project recall, JACK/ALSA hardware, Release latency/CPU and Apple
 platforms remain separate gates.
+
+
+## Optional Linux LV2 host and stereo audio validation
+
+The existing JUCE LV2 bundle has two complementary acceptance checks: official
+pluginval 1.0.4 editor/host tests and a public LV2 ABI nonzero stereo probe. They
+use the built Debug bundle without installing a plugin or creating a package.
+From Ubuntu at the repository root, after building AionLooper_LV2:
+
+```sh
+# Reuses the same pinned official Linux tool as the VST3 gate:
+python3 tools/TestLinuxLv2.py --download-tool
+cmake -S . -B build/linux \
+  -DAION_LINUX_LV2_PLUGINVAL_EXECUTABLE="$PWD/.toolchain/pluginval/1.0.4-linux/pluginval"
+ctest --test-dir build/linux -R '^linux_lv2_(pluginval|audio)$' \
+  --no-tests=error --output-on-failure
+# Direct runs; --plugin can select another build tree:
+python3 tools/TestLinuxLv2.py
+python3 tests/Lv2AudioProbe.py \
+  --plugin build/linux/AionLooper_artefacts/Debug/LV2/Aion-Looper.lv2
+```
+
+TestLinuxLv2.py reuses the pinned runner in TestLinuxVst3.py, retaining level 9,
+seed 1337, all required completion markers, editor tests and the 15 rate/buffer
+combinations. The existing VST3 entry point and defaults remain compatible.
+LV2 reports are separate under build/linux-lv2-pluginval. They record the format,
+entry-point/shared-harness hashes and before/after hashes of libAion-Looper.so,
+manifest.ttl, dsp.ttl and ui.ttl. Missing metadata or a wrong-format bundle fails
+before host execution. No DISPLAY fails instead of silently skipping GUI tests.
+Both formats sanitize only the child pluginval environment and retain the same
+owned-process timeout, assertion/leak checks and coverage limits.
+
+Lv2AudioProbe.py loads the actual LV2 descriptor with ctypes and public LV2
+core/URID/options/atom/patch structures. It checks descriptor URI and port metadata,
+provides required host features and connects distinct stereo input/output buffers.
+It sends patch:Set masterGain/inputMonitor values through the LV2 sequence port,
+checks default mute, unity/half gain, monitor off, master zero and unmute recovery.
+At 44100/48000/96000 Hz and 64/128 samples it compares settled stereo PCM after the
+existing 20ms gain ramp, requires finite overwritten output and nonzero samples,
+and verifies zero reported latency. It hashes the module/metadata before and
+after the run and emits JSON evidence. The 90-second serial CTest rejects JUCE
+assertion/leak output. Python host buffers/URI mapping are not allocation profiling.
+
+These are public-wrapper checks, not physical audio/MIDI, full HTML interaction,
+recorded-loop/project DAW workflows or Release CPU/latency certification. The
+vendor binary still omits allocation tests. Expected blocked-legacy-script CSP
+and WSLg libEGL warnings remain documented above; no browser policy was loosened.
+The official LV2 [Atom layouts](https://github.com/lv2/lv2/blob/main/include/lv2/atom/atom.h)
+and the pinned JUCE LV2 wrapper/SDK are the ABI references used by the probe.

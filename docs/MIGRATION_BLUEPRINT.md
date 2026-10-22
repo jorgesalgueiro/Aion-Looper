@@ -242,3 +242,16 @@ at level 9 with the recorded sample-rate/buffer matrix. It reuses the existing
 Engine/LoopBank/MIDI/IPC/editor architecture without a Linux-specific DSP path.
 This wrapper/editor-lifecycle gate is distinct from HTML interaction, actual
 DAW/controller sessions, Release performance and allocation certification.
+
+
+### Linux LV2 acceptance entry points (22 October 2026)
+
+AION_LINUX_LV2_PLUGINVAL_EXECUTABLE enables linux_lv2_pluginval and linux_lv2_audio.
+The former reuses the official pinned Linux pluginval runner, with format identity
+and module/RDF hashes; the latter drives the public LV2 descriptor, required URID/
+options features, audio ports and patch:Set parameter messages directly. Both
+exercise the same production C++ processor without a Linux-specific DSP fork.
+The audio probe verifies nonzero settled stereo master/monitor behavior at 64/128,
+independently of GUI lifecycle tests. Existing Engine/LoopBank/MidiController,
+APVTS, native bridge and original ASCII UI ownership remain unchanged. DAW loop/
+controller/project workflows and hardware latency still require separate gates.

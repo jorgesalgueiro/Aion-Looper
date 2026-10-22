@@ -136,3 +136,11 @@ it. This official binary is built with JUCE 8.0.3; the product retains pinned
 JUCE 9.0.4. No dependency upgrade, system install or redistribution is implied.
 GUI checks require an X display; see BUILDING.md for commands and VALIDATION.md
 for outcomes and the omitted allocation/external-validator limitations.
+
+
+The Linux pluginval 1.0.4 pin is also used by TestLinuxLv2.py; no additional
+validator download or SDK installation is required. Lv2AudioProbe.py follows
+[official LV2 Atom layouts](https://github.com/lv2/lv2/blob/main/include/lv2/atom/atom.h)
+and the core/urid/options/atom/patch headers in the product's pinned JUCE LV2_SDK.
+It sends block-start patch:Set messages through the public sequence port. Python
+ctypes supplies only host structures/buffers, not an alternate product processor.

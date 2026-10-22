@@ -534,3 +534,17 @@ hashes in result.json. The vendor binary omits allocation tests and no external
 Steinberg validator is configured. Editor lifecycle does not prove HTML workflow,
 physical audio/MIDI, real DAW sessions or Release latency. Keep original-JS/PCM
 gates independent; do not alter the UI or create packages for this host check.
+
+
+Linux LV2 acceptance is opt-in through AION_LINUX_LV2_PLUGINVAL_EXECUTABLE,
+linux_lv2_pluginval and linux_lv2_audio. Reuse the pinned official Linux runner
+without weakening existing VST3 coverage. Keep LV2 format identity, entry-point/
+shared-harness and before/after module/RDF hashes, required GUI/matrix completion,
+child-only environment sanitization and strict assertion/leak failure checks.
+Lv2AudioProbe.py must use the actual public descriptor/ports and patch:Set, not a
+mock processor or private API. Preserve default mute, unity/half gain, monitor
+mute, master zero and unmute recovery with finite nonzero settled stereo PCM at
+44.1/48/96 kHz and 64/128. Check descriptor URI/port metadata and missing metadata/
+wrong-format/no-display failures. This is not loop-session/HTML/MIDI/physical
+hardware, gain-ramp waveform, arbitrary-malloc or Release latency certification.
+Do not modify original assets, DSP, user mappings or create a package for a gate.

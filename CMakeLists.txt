@@ -179,6 +179,22 @@ if(BUILD_TESTING AND (WIN32 OR linux_desktop))
     endif()
 endif()
 if(BUILD_TESTING AND linux_desktop)
+    set(AION_LINUX_LV2_PLUGINVAL_EXECUTABLE "" CACHE FILEPATH "Pinned official Linux pluginval 1.0.4 (optional LV2 gate)")
+    if(AION_LINUX_LV2_PLUGINVAL_EXECUTABLE)
+        if(NOT TARGET AionLooper_LV2 OR NOT EXISTS "${AION_LINUX_LV2_PLUGINVAL_EXECUTABLE}")
+            message(FATAL_ERROR "Linux LV2 pluginval requires AION_BUILD_LV2 and an existing validator")
+        endif()
+        get_target_property(aion_linux_validation_lv2 AionLooper_LV2 JUCE_PLUGIN_ARTEFACT_FILE)
+        add_test(NAME linux_lv2_pluginval COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/TestLinuxLv2.py"
+            --validator "${AION_LINUX_LV2_PLUGINVAL_EXECUTABLE}" --plugin "${aion_linux_validation_lv2}")
+        set_tests_properties(linux_lv2_pluginval PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE LABELS "host;lv2;pluginval;linux")
+        add_test(NAME linux_lv2_audio COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/Lv2AudioProbe.py" --plugin "${aion_linux_validation_lv2}")
+        set_tests_properties(linux_lv2_audio PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
+            FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected"
+            LABELS "host;lv2;audio;linux")
+    endif()
     set(AION_LINUX_PLUGINVAL_EXECUTABLE "" CACHE FILEPATH "Pinned official Linux pluginval 1.0.4 (optional VST3 gate)")
     if(AION_LINUX_PLUGINVAL_EXECUTABLE)
         if(NOT TARGET AionLooper_VST3 OR NOT EXISTS "${AION_LINUX_PLUGINVAL_EXECUTABLE}")
