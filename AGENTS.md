@@ -453,3 +453,15 @@ Digit codes use the Shift bank fallback. Keep physical code ownership on release
 when NumLock/Shift changes, unchanged-JS all-digit/navigation comparisons, and
 actual 64/128 record/finish/play/stop plus >4s PCM/timer preservation. This does not
 enable custom keyboard mappings or keyboard SUS; keep those scopes separate.
+
+
+Zero-sample host callbacks accept only offset-zero MIDI at the current audio
+frame. Dispatch bounded MIDI controls without ticking PCM/clocks or draining
+ordinary queued UI loop/gain commands; empty zero-sample callbacks retain their
+old behavior. Keep invalid positive/negative offsets and >256-event cancellation,
+MIDI pass-through, explicit MIDI Stop, CC/PC learn and release ownership. Retain
+exact nonzero stereo WAV against ordinary capture, clock/length invariance,
+production zero-/two-channel MidiBuffer tests between 64/128 blocks, and zero
+callback new/delete. JUCE permits zero-sample buffers; this native flush policy
+is separate from original browser-rendered audio, actual DAW/wrapper validation
+and MIDI clock synchronization. No UI redesign or package is required.

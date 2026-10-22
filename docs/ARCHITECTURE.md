@@ -949,3 +949,28 @@ No DSP, native routing, MIDI binding, keyboard mapping persistence or UI markup
 changes are involved. Keyboard SUS/custom mappings remain separate migration work.
 The original dispatcher oracle and actual native WebView2 record/playback tests
 cover this fix; they do not prove physical keyboard behavior on every OS/layout.
+
+
+## Zero-sample MIDI control callbacks (22 October 2026)
+
+[JUCE processBlock documentation](https://docs.juce.com/master/classjuce_1_1AudioProcessor.html)
+explicitly permits zero-sample buffers and describes MIDI timestamps relative to
+the block. [Steinberg's processor contract](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical%2BDocumentation/API%2BDocumentation/Index.html)
+also describes zero-buffer parameter flushes. Neither is evidence that a specific
+DAW delivers a particular MIDI flush sequence; actual wrapper/host tests remain.
+
+Native policy accepts offset-zero MIDI in a zero-sample callback. Both the JUCE
+adapter and core validate the same boundary. The audio owner dispatches those
+events and bounded MIDI tasks at its unchanged frame, without rendering samples,
+advancing gain/source/capture/clock positions or draining ordinary UI loop/gain
+queues. Explicit MIDI Stop still purges pending performance commands through its
+existing panic path. Empty zero callbacks retain their prior observation/config/
+worker-poll behavior. Positive offsets in zero blocks, negative adapter offsets,
+unsorted nonzero spans and the existing 256-event bound remain rejection paths.
+
+Previously offset zero was classified as overflow in a zero block: a harmless
+packet could cancel SUS capture/Learn, while an intended MIDI Stop was dropped
+before dispatch. This fix adds no queue/storage, allocation, lock, UI or binding.
+Existing event semantics are reused; the original browser has no processBlock
+zero-buffer API, so this contract is native-host compatibility, not a new JS DSP
+parity claim or MIDI clock/host transport scheduling implementation.

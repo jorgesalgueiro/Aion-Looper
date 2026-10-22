@@ -70,7 +70,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     const auto overflowRevision=midiOverflowRevision.load(std::memory_order_acquire);
     if(overflowRevision!=seenMidiOverflow){midi->overflow(midiContext);seenMidiOverflow=overflowRevision;}
     if(midiEvents.size()>256){midi->overflow(midiContext);midiEvents={};}
-    for(std::size_t n=0;n<midiEvents.size();++n)if(midiEvents[n].offset>=static_cast<unsigned>(frames)||(n&&midiEvents[n].offset<midiEvents[n-1].offset)){midi->overflow(midiContext);midiEvents={};break;}
+    for(std::size_t n=0;n<midiEvents.size();++n)if((frames==0?midiEvents[n].offset!=0:midiEvents[n].offset>=static_cast<unsigned>(frames))||(n&&midiEvents[n].offset<midiEvents[n-1].offset)){midi->overflow(midiContext);midiEvents={};break;}
     std::size_t midiRead=0;
     ExportRequest exportRequest{};
     if(exportRequests.pop(exportRequest))
@@ -82,6 +82,12 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     metronome.configure(static_cast<float>(metroClock.settings.bpm),static_cast<float>(metroClock.origin/preparedRate),metroClock.settings.numerator);
     int loopApplied = 0;
     int applied = 0; // Bound work even when many past-due commands arrive together.
+    // Hosts may flush MIDI with no samples. Dispatch at the current frame,
+    // without rendering PCM, advancing clocks or draining ordinary UI commands.
+    if(frames==0&&!midiEvents.empty()){
+        for(const auto& event:midiEvents)midi->event(event,midiContext);
+        midi->tick(midiContext);
+    }
     for (int i = 0; i < frames; ++i, ++frame) {
         if (!hasPending) hasPending = commands.pop(pending);
         while (hasPending && pending.frame <= frame && applied < 128) {

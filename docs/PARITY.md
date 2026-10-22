@@ -34,6 +34,7 @@
 | Keyboard DEL ALL / `X` | Original default physical-key fallback, confirmation and shared native button command; accepted clear cancels held/queued performance work | Unchanged original keyboard oracle and real WebView2 dialog/PCM/gesture checks at 64/128; custom key mappings and master recording remain separate |
 | Keyboard SUS / custom keyboard mappings | Original `*` SUS shortcut and editable/persisted keyboard mappings remain unported; native MIDI SUS is implemented separately | Original keyboard/held-gesture/audio parity required before enabling this increment |
 | Other MIDI expression/synth/HID | Other continuous targets, synth keyboard/pitch/modulation and gamepad not ported | Controller matrix, voice/parameter behavior and original reference fixtures |
+| Zero-sample MIDI callbacks | Offset-zero control events execute at the unchanged audio frame; held capture/learn preserved, NoteOff/PC/CC/Stop dispatched | Core exact stereo WAV and production zero-/two-channel MidiBuffer checks between 64/128 blocks; specific DAW/wrapper delivery remains unverified |
 | MIDI clock I/O | Designed, not implemented | PLL jitter/timeout/start/stop/SPP/host-loop tests |
 | `.alp` / native projects | Not ported | Existing project fixtures, no missing features/data |
 | Windows ASIO | Windows binaries compile with bundled SDK; not hardware-tested | TOPPING/other driver duplex at 64/128 |

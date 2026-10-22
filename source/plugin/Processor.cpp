@@ -167,7 +167,7 @@ void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuff
         if(++inspected>256){midiOverflow=true;break;}
         const auto* bytes=metadata.data;const int size=metadata.numBytes;
         if(size<1||size>3||bytes[0]<128||bytes[0]==240)continue;
-        if(metadata.samplePosition<0||metadata.samplePosition>=audio.getNumSamples()){midiOverflow=true;break;}
+        if(metadata.samplePosition<0||(audio.getNumSamples()==0?metadata.samplePosition!=0:metadata.samplePosition>=audio.getNumSamples())){midiOverflow=true;break;}
         midiEvents[midiCount++]={static_cast<std::uint32_t>(metadata.samplePosition),bytes[0],static_cast<std::uint8_t>(size>1?bytes[1]:0),static_cast<std::uint8_t>(size>2?bytes[2]:0),static_cast<std::uint8_t>(size)};
     }
     if(midiOverflow){engine.midiOverflow();midiCount=0;}

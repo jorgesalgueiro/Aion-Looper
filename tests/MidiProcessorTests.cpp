@@ -18,6 +18,32 @@ public:
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
  for(const int block:{64,128}){
+  for(const int zeroChannels:{0,2}){
+   auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);
+   const auto rpc=[&](const char* json){auto reply=p->request({juce::JSON::parse(json)});check(reply.getProperty("ok",false),json);return reply;};
+   rpc(R"({"operation":"midiConfig","action":"enable","enabled":true})");rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");
+   juce::AudioBuffer<float> normal(2,block),zero(zeroChannels,0);juce::MidiBuffer midi;midi.ensureSize(4096);
+   const auto run=[&](bool flush){auto& buffer=flush?zero:normal;if(!flush)for(int c=0;c<2;++c)for(int i=0;i<block;++i)buffer.setSample(c,i,c?-0.1f:0.2f);const auto count=midi.getNumEvents();audioWatch=true;p->processBlock(buffer,midi);audioWatch=false;check(midi.getNumEvents()==count,"Zero callback retains MIDI pass-through");midi.clear();return rpc(R"({"operation":"snapshot"})");};
+   midi.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),0);midi.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),0);auto state=run(true);
+   check(state["tracks"][0]["state"].toString()=="recording"&&static_cast<bool>(state["midi"]["sustain"])&&static_cast<juce::int64>(state["frame"])==0,"Actual zero-sample MIDI starts held recording at frame zero");
+   run(false);run(false);state=run(false);const auto frame=static_cast<juce::int64>(state["frame"]);check(frame==block*3,"Only nonzero callbacks advance the frame clock");
+   rpc(R"({"operation":"midiConfig","action":"learn","target":33})");run(true);midi.addEvent(juce::MidiMessage::noteOff(1,99),0);const juce::uint8 malformed[]={176,120,128};midi.addEvent(malformed,3,0);state=run(true);
+   check(state["tracks"][0]["state"].toString()=="recording"&&static_cast<int>(state["midi"]["learnTarget"])==33&&static_cast<int>(state["midi"]["overflows"])==0&&static_cast<juce::int64>(state["frame"])==frame,"Actual harmless/malformed zero MIDI preserves held recording, learn and clock");
+   midi.addEvent(juce::MidiMessage::controllerEvent(1,11,0),0);run(true);run(true);midi.addEvent(juce::MidiMessage::controllerEvent(1,11,127),0);state=run(true);
+   check(static_cast<int>(state["midi"]["bindings"][33])==aion::midiBinding(2,11)&&static_cast<double>(state["tracks"][0]["volume"])==2&&static_cast<juce::int64>(state["frame"])==frame,"Zero-sample CC learn and continuous control apply without rendering");
+   midi.addEvent(juce::MidiMessage::noteOff(1,36),0);state=run(true);
+   for(unsigned n=0;n<10000&&state["tracks"][0]["state"].toString()=="finalizing";++n){std::this_thread::sleep_for(std::chrono::milliseconds(1));state=run(true);}
+   const auto waveform=static_cast<juce::int64>(state["tracks"][0]["waveformId"]);check(waveform>0&&state["tracks"][0]["state"].toString()=="playing"&&static_cast<int>(state["tracks"][0]["length"])==frame&&static_cast<juce::int64>(state["frame"])==frame,"Zero NoteOff commits the full take without a phantom sample");
+   midi.addEvent(juce::MidiMessage::midiStop(),0);state=run(true);check(state["tracks"][0]["state"].toString()=="stopped"&&static_cast<juce::int64>(state["tracks"][0]["waveformId"])==waveform&&static_cast<juce::int64>(state["frame"])==frame,"Zero-sample MIDI Stop takes effect and preserves PCM");
+   rpc(R"({"operation":"midiConfig","action":"learn","target":19})");run(true);midi.addEvent(juce::MidiMessage::programChange(1,0),0);run(true);state=run(true);check(static_cast<int>(state["midi"]["bindings"][19])==aion::midiBinding(3,0)&&state["tracks"][19]["state"].toString()=="empty","Zero-sample PC0 learns and consumes its packet");
+   midi.addEvent(juce::MidiMessage::programChange(1,0),0);state=run(true);check(state["tracks"][19]["state"].toString()=="recording","Zero-sample PC main task dispatches without requiring rendered samples");
+   midi.addEvent(juce::MidiMessage::midiStop(),0);run(true);midi.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),1);state=run(true);check(static_cast<int>(state["midi"]["overflows"])==1,"Positive MIDI offset remains invalid in zero callback");
+   midi.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),-1);state=run(true);check(static_cast<int>(state["midi"]["overflows"])==2&&static_cast<bool>(state["midi"]["sustain"]),"Negative zero-block offset is rejected before mode dispatch");
+   for(int n=0;n<257;++n)midi.addEvent(juce::MidiMessage::noteOff(1,99),0);state=run(true);check(static_cast<int>(state["midi"]["overflows"])==3&&static_cast<juce::int64>(state["frame"])==frame,"Zero-sample event cap remains bounded without clock drift");
+   midi.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),block);state=run(false);check(static_cast<int>(state["midi"]["overflows"])==4&&static_cast<bool>(state["midi"]["sustain"])&&static_cast<juce::int64>(state["frame"])==frame+block,"Ordinary nonzero callback retains exclusive end-offset validation and normal sample clock");
+   std::cout<<"PASS: actual zero-sample MidiBuffer held capture/CC learn/PC0/Stop and frame stability with "<<zeroChannels<<" channels between "<<block<<"-sample blocks\n";
+  }
+
   {
    auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);
    const auto rpc=[&](const char* json){auto reply=p->request({juce::JSON::parse(json)});check(reply.getProperty("ok",false),json);return reply;};

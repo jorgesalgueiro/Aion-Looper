@@ -21,6 +21,29 @@ struct Fixture {
 }
 void midiTests(){
  using namespace aion;using A=LoopAction;using S=LoopState;
+ // Zero-sample callbacks carry control events at the current audio frame.
+ for(const unsigned block:{64u,128u}){
+  std::vector<std::uint8_t> baseline;
+  for(const bool flush:{false,true}){
+   Fixture f(block);f.tap(48);f.send(144,36,100);f.advance(512);
+   const auto frame=f.latest.frame,start=f.latest.tracks[0].captureStartFrame;
+   MidiSettings learn;learn.enabled=true;learn.learnTarget=33;learn.learnToken=1;learn.learnGeneration=f.engine->generation();learn.revision=++f.revision;check(f.engine->configureMidi(learn),"Zero-sample slider learn while holding recording");f.process(0);
+   const std::array<MidiEvent,3> harmless={MidiEvent{0,128,99,0,3},MidiEvent{0,144,99,100,3},MidiEvent{0,176,120,128,3}};
+   f.process(0,flush?std::span<const MidiEvent>(harmless):std::span<const MidiEvent>{});
+   check(f.latest.midi.overflows==0&&f.latest.midi.learnTarget==33&&f.latest.tracks[0].state==S::recording,"Zero-sample MIDI must preserve held recording and learn without false overflow");
+   check(f.latest.frame==frame&&f.latest.tracks[0].length==frame-start,"Zero-sample MIDI cannot advance the sample clock or capture PCM");
+   if(flush){const MidiEvent up{0,128,36,0,3};f.process(0,{&up,1});check(f.latest.frame==frame,"Zero-sample NoteOff does not render an extra frame");}else f.send(128,36,0);
+   f.wait();check(f.latest.tracks[0].length==frame-start&&f.latest.tracks[0].state==S::playing,"Zero-sample release finishes the complete take normally");
+   check(f.engine->enqueueExport({0,f.engine->generation(),f.latest.tracks[0].waveformId}),"Export zero-sample take");f.process(0);WavExport wav;bool ready=false;
+   for(unsigned n=0;n<10000&&!ready;++n){ready=f.engine->popExport(wav);if(!ready)std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+   check(ready&&wav.bytes.size()>44&&std::any_of(wav.bytes.begin()+44,wav.bytes.end(),[](auto v){return v!=0;}),"Zero-sample take contains real stereo PCM");if(!flush)baseline=wav.bytes;else check(wav.bytes==baseline,"Zero-sample control callbacks preserve byte-identical recorded stereo PCM at 64/128");
+   learn.learnTarget=-1;++learn.learnToken;learn.revision=++f.revision;check(f.engine->configureMidi(learn),"Leave zero-sample learn");f.process(0);
+   const std::array<MidiEvent,2> mute={MidiEvent{0,144,36,100,3},MidiEvent{0,128,36,0,3}};f.process(0,mute);check(!f.latest.tracks[0].muted&&f.latest.frame==(flush?frame:frame+1),"Ordered zero-sample press/release restores SUS mute without clock advance");
+   const MidiEvent stop{0,252,0,0,1};f.process(0,{&stop,1});check(f.latest.tracks[0].state==S::stopped&&f.latest.tracks[0].length==frame-start,"Explicit zero-sample MIDI Stop still stops and preserves stored PCM");
+  }
+  Fixture invalid(block);const MidiEvent outside{1,144,48,100,3};invalid.process(0,{&outside,1});check(invalid.latest.midi.overflows==1&&!invalid.latest.midi.sustain&&invalid.latest.frame==0,"Positive offset is invalid in zero-sample callback");
+  std::array<MidiEvent,257> tooMany{};invalid.process(0,tooMany);check(invalid.latest.midi.overflows==2&&invalid.latest.frame==0,"Zero-sample MIDI retains 256-event bound");
+ }
  // Malformed high-bit CC data must never invoke the native panic path.
  for(const unsigned block:{64u,128u})for(const unsigned cc:{120u,123u}){
   std::vector<std::uint8_t> baseline;

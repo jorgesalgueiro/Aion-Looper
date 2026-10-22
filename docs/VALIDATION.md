@@ -2771,3 +2771,63 @@ or version bump was created. The separate user logo hunk remains unstaged and
 original reference assets remain byte-identical. This increment closes the
 reproduced keypad routing fault only; full application parity, custom keyboard
 mapping/SUS, physical OS/layout/device and DAW/platform acceptance remain pending.
+
+
+## Zero-sample MIDI callback repair (22 October 2026)
+
+The retained core regression first failed at “Explicit zero-sample MIDI Stop
+still stops and preserves stored PCM” (`build/midi-zero-repro.log`). Offset zero
+was rejected as overflow before dispatch in both the JUCE adapter and core. A
+zero callback now processes only offset-zero MIDI at the current frame, without
+rendering or advancing clocks; empty zero callbacks and ordinary pending UI loop/
+gain work keep their prior behavior. Invalid offsets and event limits still
+cancel through the existing bounded path. Reference algorithms/assets/UI and
+MIDI assignments remain unchanged. Sources/native contract are in ARCHITECTURE.md.
+
+New core regressions compare a held SUS take with/without zero-sample control
+callbacks between 64/128 blocks. Harmless and malformed packets preserve capture
+and slider Learn; NoteOff finishes at the same exact sample span and the exported
+nonzero stereo WAV is byte-identical. Ordered press/release, explicit MIDI Stop,
+positive invalid offsets, 257-event rejection and stationary clocks are checked.
+Production juce::MidiBuffer tests additionally use both zero-channel and stereo
+zero-length buffers, exercise frame-zero recording, CC zero Learn/continuous
+updates, PC0 learn consumption/main dispatch, MIDI Stop, pass-through and bounded
+rejection. Every callback remains under the existing new/delete instrumentation.
+
+
+Fresh completed checks:
+
+- Windows full unchanged-JS/native suite: 19/19, 255.15s
+  (`build/midi-zero-windows.log`).
+- Ubuntu full unchanged-JS/native suite: 19/19, 439.05s
+  (`build/midi-zero-ubuntu.log`).
+- Production JUCE processor zero-sample cases at 64/128, both 0/2 channels:
+  recording/learn/release/PC0/Stop/pass-through/frame stability and zero tracked
+  processBlock new/delete. Negative zero-block offsets and ordinary end-exclusive
+  block offsets remain rejected (`build/midi-zero-processor.log`).
+- Ubuntu ASan/UBSan core/MIDI/frontend/bridge: 4/4, 26.68s, leak detection enabled
+  (`build/midi-zero-asan.log`).
+- Connected unchanged-JS/native committed capture/overdub/substitute PCM:
+  126 cases / 965826 samples, maximum absolute error 7.394757495227111e-8 at the
+  unchanged 1e-6 tolerance (`build/midi-zero-audio.log`).
+- Actual WebView2 MIDI/learn/expression, raw packets, PC0, malformed panic,
+  reload/bridge and native sound workflows: 64/128 passed
+  (`build/midi-zero-gui.log`). These ordinary GUI callbacks do not simulate
+  zero-sample buffers; those are covered by the production processor test above.
+- Muted Standalone original UI/keyboard/IPC/partial-host smoke and actual browser
+  count-in/nudge/analyser/STUT oracles passed (`build/midi-zero-ui.log`), with
+  20 original cards and no product AudioContext.
+
+The existing Windows VST3 and CLAP targets also compile against the changed shared
+processor (`build/midi-zero-plugin-build.log`); no plugins were installed. The
+pinned JUCE VST3 wrapper forwards zero-sample buffers with nonzero bus counts,
+but skips processAudio when sample and input/output bus counts are all zero
+(parameter-only flush). This source inspection is not actual DAW or format-load
+validation, and the zero-channel direct processor fixture is a robustness check.
+
+Only existing Standalone/plugin/test targets were rebuilt; no version bump or package.
+The user logo edit is preserved separately. Full mouse/export/merge workflows
+retain the previous keypad-fix baseline; the MIDI workflows and Standalone smoke
+were freshly rerun. Original full browser playback, physical hardware, DAW/wrapper
+and other-platform acceptance remain separate. No MIDI clock, host-follow,
+keyboard SUS, synth or new import feature was enabled in this repair.
