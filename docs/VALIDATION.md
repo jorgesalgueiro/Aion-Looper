@@ -2899,3 +2899,80 @@ marker harness through the documented CTest command passed 1/1 in 20.21s
 before/after module hashes. The core regression counts remain 19 on both systems;
 only the explicitly enabled Windows native build gains the separate wrapper test.
 All application/migration scope limits above remain in effect.
+
+
+## Windows CLAP state-cache repair and format gate (22 October 2026)
+
+Baseline: 134b0a4, with the user's pre-existing 4-addition/2-deletion logo hunk
+preserved in resources/native/looper.js. No UI/DSP behavior, parameter encoding,
+dependency version, app version or package was changed. Existing Windows
+Standalone/VST3/CLAP and synthetic mouse host were incrementally rebuilt.
+
+The official free-audio/clap-validator 0.4.1 Windows release was downloaded into
+the ignored project-local toolchain, with the archive checked against GitHub's
+published SHA256 and executable pinned (SDKS.md). The first actual CLAP module
+run failed state-reproducibility-basic, -binary and -buffered: restored APVTS
+values changed without a host rescan. See build/clap-validator/initial/stdout.json
+and stderr.log. A direct AudioProcessorListener regression independently failed
+before the repair (build/clap-state-repro.log).
+
+After accepted MIDI configuration and APVTS restore, AionProcessor now calls
+updateHostDisplay with parameterInfoChanged, outside its configuration mutex.
+The pinned CLAP wrapper maps that flag to VALUES/TEXT/INFO rescan. It does not
+mark non-parameter state dirty. Malformed/empty/queue-rejected restores do not
+notify. Direct processor tests check restored gain, exact state bytes, malformed
+rollback, bounded full-queue rejection and unchanged current gain on rejection.
+The complete processor MIDI/host/zero-block suite passed at 64/128 with zero
+tracked callback new/delete (build/clap-state-processor.log). This instrumentation
+is not arbitrary malloc or format-wrapper allocation certification.
+
+Complete fixed vendor run: 44 tests, 33 success, 10 skipped, one warning, exit 0
+(build/clap-validator/fixed/stdout.json and stderr.log). All three original
+state failures now succeed; no test was disabled or threshold changed. Skips:
+Unix RTLD_NOW, float64 processing, CLAP-native wildcard notes, preset discovery,
+and optional audio-port activation/configuration extensions. The retained
+state-invalid-random warning reflects the wrapper's documented assumption of
+success because JUCE setStateInformation returns void; the actual processor
+rejects those bytes without mutation. This is not an all-tests-success claim.
+
+The new TestClapValidator.ps1 verifies pinned tool bytes, all 44 exact test IDs,
+module paths/plugin ID, approved unsupported-test skips and the exact known
+warning, plus before/after module hashes. It refuses ancestor TOML test filters;
+a temporary configuration disabling state-reproducibility-basic was rejected.
+A direct run with a space-containing output path and explicit local setup passed
+(build/clap validator script/20261022T193205352Z-68027a4e/result.json).
+Opt-in CMake/CTest clap_validator passed 1/1 in 7.30s
+(build/clap-state-ctest.log; build/clap-validator/20261022T193331421Z-69af0c12/result.json).
+The normal portable build has no validator/download dependency. Rebuilt VST3
+also retained its pluginval level-9 pass, 1/1 in 20.18s
+(build/clap-state-vst3.log), including editor, automation and state/thread checks.
+
+Validated CLAP module SHA256:
+718E54F02AC185A57E6C605E30652343D93DEF82BEB27486598BC4BF7FC061D4
+Validated VST3 module SHA256:
+96BD757AE05AA87582AD18EADA95688299FF8A1F4BBC2D2FCE11AC97ACEAA2B3
+The binaries include the preserved local logo; that user edit is not committed.
+
+Fresh Windows portable unchanged-JS/core suite: 19/19, 252.84s
+(build/clap-state-windows.log). Connected capture/OD/SUB PCM audit: 126 cases,
+965826 samples, max error 7.394757495227111e-8 at unchanged 1e-6 tolerance
+(build/clap-state-audio.log), with its existing playback-envelope/resampling/
+latency/sync exclusions. No core DSP changed and no fresh sanitizer run is
+claimed. Actual DAWs/physical drivers/controllers, CLAP GUI validation, recorded
+project recall, other OS/format wrappers, complete feature parity and commercial
+readiness remain separate acceptance work. The vendor CLAP suite is hardware-
+free and does not replace original UI/connected-PCM tests.
+
+
+Fresh Ubuntu portable suite completed 19/19 in 471.25s
+(build/clap-state-ubuntu.log). Full production processor/editor synthetic workflows
+passed at both 64/128 samples: mouse/header arm/cancel/record/finish/play/stop,
+static/dynamic sync, long-hold deletion/cancellation, Start/Q/nudge/RTRG/STUT,
+keyboard/keypad/lost-release, waveform, native WAV export/late-picker safety,
+MERGE/confirmation/history and raw MIDI learn/PC/CC/SUS/release checks
+(build/clap-state-gui.log). No physical audio device is opened by that test host.
+The rebuilt muted Standalone also passed NativeUiSmoke and original browser-audio
+count-in/nudge/live-input/STUT oracles (build/clap-state-ui.log): 20 original loop
+cards, working native IPC, MASTER zero and no product AudioContext. No physical
+expression/footswitch test was repeated or newly inferred. All test processes
+closed normally. The user's logo whitespace hunk remains unchanged and unstaged.

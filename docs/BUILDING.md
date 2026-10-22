@@ -518,3 +518,39 @@ and explicitly reported as unexecuted. Preserve the separate instrumented native
 allocation tests; this is not full RT allocation certification, recorded-loop
 project validation, physical controller/driver testing, a REAPER/Ardour session,
 or validation of CLAP/LV2/AU/AUv3 or another operating system.
+
+
+## Optional Windows CLAP validation
+
+Use the existing build; no package, plugin installation or physical device is
+needed. From the repository root in PowerShell, after building the CLAP target:
+
+```powershell
+# One-time project-local download: official 0.4.1 Windows asset and SHA256 checks.
+./tools/TestClapValidator.ps1 -DownloadTool
+# Subsequent direct runs are offline:
+./tools/TestClapValidator.ps1
+
+$cmake = './.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+$ctest = './.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe'
+$validator = (Resolve-Path '.toolchain/clap-validator/0.4.1/clap-validator.exe').Path
+& $cmake -S . -B build/windows "-DAION_CLAP_VALIDATOR_EXECUTABLE:FILEPATH=$validator"
+& $cmake --build build/windows --config Release --target AionLooper_CLAP --parallel 2
+& $ctest --test-dir build/windows -C Release -R '^clap_validator$' --no-tests=error --output-on-failure
+```
+
+The gate is opt-in and serial. Ordinary portable/default builds do not require or
+download a validator. Run it after any processor/state/CLAP-wrapper changes. All
+44 pinned tests must appear exactly once for this module/ID; unapproved failures,
+warnings or skipped supported tests fail the gate. TOML configuration in the run
+directory or ancestors is refused to prevent silent filtering. Logs and
+result.json under build/clap-validator retain source/tool/harness/binary hashes,
+arguments, statuses, skips and warnings; the binary must stay unchanged.
+
+Current Windows result: 33 pass, 10 skips (Unix dynamic linking, float64 audio,
+CLAP-native wildcard notes, preset discovery and optional port-layout extensions),
+and one retained state-invalid-random warning. JUCE's setStateInformation returns
+void, so the wrapper cannot report rejected random bytes; direct processor tests
+verify rejection without state mutation/host notification. This gate does not
+test the GUI or prove zero allocation, actual DAW/device operation, other OSes,
+complete project persistence or full Ascii-Looper parity.

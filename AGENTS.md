@@ -477,3 +477,17 @@ changes. Portable/default builds require no validator or network download. The
 pinned official pluginval build omits ExtremeTests; a level-9 pass is not an
 allocation/malloc certificate or a Steinberg-validator/DAW/hardware/other-format
 pass. Preserve separate core/processor allocation and original UI/PCM gates.
+
+
+Successful processor state restoration must notify the host after committing all
+accepted APVTS/MIDI state and releasing the configuration mutex. Keep the JUCE
+parameter-info refresh flag (mapped to CLAP values/text/info rescan), without
+marking non-parameter state dirty. Rejected malformed/empty or full MIDI-queue
+restores must not report success. Retain exact saved-state identity and actual
+CLAP state-reproducibility basic/binary/buffered acceptance, plus VST3 pluginval.
+The opt-in AION_CLAP_VALIDATOR_EXECUTABLE / clap_validator gate pins the official
+0.4.1 Windows tool, accounts for all 44 tests, and refuses ancestor TOML filters.
+Do not disable failures to pass it. Preserve explicit unsupported/platform skips
+and the JUCE void state-load random-data warning; it is not evidence that random
+bytes changed the processor state. CLAP GUI, allocation, real DAW/device workflows
+and other OS/format acceptance remain separate from this vendor suite.

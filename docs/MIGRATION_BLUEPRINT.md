@@ -4,7 +4,7 @@ Audit baseline: source commit `e66a86c`, 21 October 2026. This document describe
 what exists and separates it from the remaining target. It does not replace the
 working implementation or claim complete Ascii-Looper parity.
 Host-observation increment updated 22 October 2026; fresh evidence is in VALIDATION.md.
-Windows VST3 pluginval gate added 22 October 2026; its exact scope is recorded there.
+Windows VST3 pluginval and CLAP validator gates added 22 October 2026; their exact scope is recorded there.
 
 ## Repository and original reference
 
@@ -202,3 +202,14 @@ known limitations are recorded in `VALIDATION.md`, `REFERENCE_AUDIT.md`, `PARITY
 
 The audit preserves the existing user-local logo override and makes no new
 hardware, DAW, Apple-platform or arbitrary-malloc certification claim.
+
+
+### CLAP state restore validation (22 October 2026)
+
+Actual CLAP format loading exposed missing host parameter-cache invalidation
+after APVTS restore. AionProcessor now requests JUCE parameter-info refresh only
+after accepting MIDI configuration and replacing APVTS state, outside its mutex.
+The pinned wrapper maps this to CLAP values/text/info rescan. No UI, DSP algorithm,
+parameter ID/range/default or state encoding changed. All three vendor state
+reproducibility tests now pass. AION_CLAP_VALIDATOR_EXECUTABLE enables the optional
+clap_validator CTest; see BUILDING.md and VALIDATION.md for commands and limits.

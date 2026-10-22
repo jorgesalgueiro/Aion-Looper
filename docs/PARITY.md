@@ -5,6 +5,7 @@
 | Original runtime assets | 16 files preserved with SHA256 | Automated byte identity checks |
 | Native build formats | CMake targets/platform guards configured | Compile/load/validate each OS+format |
 | Windows VST3 host interface | Actual compiled VST3 passes pinned pluginval 1.0.4 level 9: scan/load, GUI, parameter/state/thread/fuzz and rate/block matrix; opt-in reproducible CTest gate | Vendor build omits allocation tests; external Steinberg validator, active recorded-loop/MIDI workflows, actual DAWs/hardware and other formats/OS remain separate |
+| Windows CLAP host interface | Actual module passes all supported official validator 0.4.1 tests after state-restore host-rescan repair: 33 passes, 10 explicit skips, one retained JUCE void-load warning; opt-in CTest gate | GUI/allocation, actual DAW/MIDI/recorded-loop sessions, other OSes and unsupported extensions remain separate |
 | Original UI runtime | Original loop cards, module placement, tabs and keyboard gestures; legacy audio JS blocked | Full view adapter and original interaction tests |
 | IPC/APVTS | Coherent snapshots, generation/expiry validation, per-document reply correlation, loop commands, master/monitor/auto-play APVTS and persisted MIDI bindings | Reused-ID/obsolete-reply, native echo and real WebView2 reload gates; broader automation/state stress remains |
 | Audio owner | 20-slot native looper, bounded pool, smoothed gain/mute, finite protection | Hardware/DAW audio, 64/128 stress and allocation instrumentation |

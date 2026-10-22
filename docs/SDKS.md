@@ -70,3 +70,21 @@ and [official CI guide](https://github.com/Tracktion/pluginval/blob/v1.0.4/docs/
 The pinned [CMake source](https://github.com/Tracktion/pluginval/blob/v1.0.4/CMakeLists.txt)
 omits ExtremeTests.cpp; do not infer allocation-test coverage from a strictness
 number. BUILDING.md documents the exact commands and retained coverage limits.
+
+
+## Optional Windows CLAP validator
+
+Official [free-audio/clap-validator release 0.4.1](https://github.com/free-audio/clap-validator/releases/tag/0.4.1),
+Windows asset clap-validator-0.4.1-127-g152b982-windows.zip:
+
+- Archive SHA256 (also published in GitHub release API):
+  D935C3AF0A45C3911EA2E900F4AA5D6709DAC82BB485F0C4CE28648AB2CD0C10
+- Extracted executable SHA256:
+  825439AD3FF98770A24656013EEB11591407687B97058E1DB9549C4F7D53E38A
+- Ignored project-local directory: .toolchain/clap-validator/0.4.1.
+
+TestClapValidator.ps1 -DownloadTool performs explicit setup, not a build-time
+network dependency. Full usage: [official README](https://github.com/free-audio/clap-validator).
+State cache refresh follows the [CLAP parameter specification](https://github.com/free-audio/clap/blob/main/include/clap/ext/params.h)
+and pinned clap-juce-extensions audioProcessorChanged implementation. No wrapper
+fork or dependency upgrade was required. See BUILDING.md for the opt-in gate.

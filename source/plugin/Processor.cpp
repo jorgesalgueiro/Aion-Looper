@@ -192,8 +192,14 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             const unsigned count=version=="2"?aion::MidiSettings::bindingCount:33;
             for(unsigned i=0;i<count;++i){const auto value=stored.getProperty("binding"+juce::String(i)).toString();if(value.isEmpty()||!value.containsOnly("0123456789")||value.getLargeIntValue()>65535)return;next.bindings[i]=static_cast<std::uint16_t>(value.getIntValue());}
         }
-        std::lock_guard guard(midiSettingsMutex);next.learnToken=midiSettings.learnToken+1;
-        if(updateMidi(next))parameters.replaceState(state);
+        {
+            std::lock_guard guard(midiSettingsMutex);next.learnToken=midiSettings.learnToken+1;
+            if(!updateMidi(next))return;
+            parameters.replaceState(state);
+        }
+        // Preset restoration changes values without automation events. Ask wrappers
+        // to refresh their cached parameter values after committing, outside our lock.
+        updateHostDisplay(juce::AudioProcessorListener::ChangeDetails{}.withParameterInfoChanged(true));
     }
 }
 juce::var AionProcessor::request(const juce::Array<juce::var>& args) {

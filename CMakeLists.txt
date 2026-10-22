@@ -174,6 +174,18 @@ if(BUILD_TESTING AND WIN32)
     target_include_directories(aion_midi_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
     target_compile_definitions(aion_midi_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
     target_link_libraries(aion_midi_processor_tests PRIVATE AionLooper)
+    set(AION_CLAP_VALIDATOR_EXECUTABLE "" CACHE FILEPATH "Pinned CLAP validator 0.4.1 Windows executable (optional)")
+    if(AION_CLAP_VALIDATOR_EXECUTABLE)
+        if(NOT AION_BUILD_CLAP OR NOT EXISTS "${AION_CLAP_VALIDATOR_EXECUTABLE}")
+            message(FATAL_ERROR "CLAP validation requires AION_BUILD_CLAP and an existing validator executable")
+        endif()
+        find_program(AION_CLAP_VALIDATION_POWERSHELL NAMES pwsh powershell REQUIRED)
+        add_test(NAME clap_validator
+            COMMAND "${AION_CLAP_VALIDATION_POWERSHELL}" -NoLogo -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/tools/TestClapValidator.ps1"
+                -ValidatorPath "${AION_CLAP_VALIDATOR_EXECUTABLE}" -PluginPath "$<TARGET_FILE:AionLooper_CLAP>")
+        set_tests_properties(clap_validator PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE LABELS "host;clap")
+    endif()
     # Opt-in Windows wrapper validation; portable/core builds need no validator.
     set(AION_PLUGINVAL_EXECUTABLE "" CACHE FILEPATH "Pinned pluginval 1.0.4 Windows executable (optional VST3 gate)")
     if(AION_PLUGINVAL_EXECUTABLE)

@@ -15,8 +15,39 @@ public:
  mutable unsigned calls=0,outsideAudio=0;
  juce::Optional<PositionInfo> getPosition() const override {++calls;if(!audioWatch)++outsideAudio;return position;}
 };
+class StateHostListener final : public juce::AudioProcessorListener {
+public:
+ unsigned changes=0; bool rescan=false,dirty=false;
+ void audioProcessorParameterChanged(juce::AudioProcessor*,int,float) override {}
+ void audioProcessorChanged(juce::AudioProcessor*,const ChangeDetails& details) override {
+  ++changes;rescan=details.parameterInfoChanged;dirty=details.nonParameterStateChanged;
+ }
+};
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
+ {
+  auto p=std::make_unique<AionProcessor>();
+  juce::MemoryBlock saved;p->getStateInformation(saved);
+  auto* gain=p->parameters.getParameter("masterGain");check(gain!=nullptr,"Master parameter exists");
+  gain->setValueNotifyingHost(0.75f);
+  StateHostListener listener;p->addListener(&listener);
+  p->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));
+  check(listener.changes==1&&listener.rescan&&!listener.dirty,"Accepted state restore must request one host parameter rescan without marking a new edit");
+  check(gain->getValue()==0.0f,"State restore recovers original master value");
+  juce::MemoryBlock restored;p->getStateInformation(restored);check(saved==restored,"Host notification does not mutate saved state");
+  listener.changes=0;
+  const char invalid[]="invalid state";p->setStateInformation(invalid,sizeof(invalid));p->setStateInformation(nullptr,0);
+  check(listener.changes==0,"Rejected state must not notify host");
+  p->getStateInformation(restored);check(saved==restored,"Random/empty state rejection preserves all saved bytes");
+  // Paused audio: accepted state updates fill the bounded MIDI settings queue.
+  for(unsigned n=0;n<100;++n)p->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));
+  check(listener.changes>0&&listener.changes<100,"Only queued state restores notify the host");
+  listener.changes=0;gain->setValueNotifyingHost(0.5f);
+  p->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));
+  check(listener.changes==0&&gain->getValue()==0.5f,"Queue rejection must preserve current parameters without reporting a successful restore");
+  p->removeListener(&listener);
+  std::cout<<"PASS: accepted state host rescan, invalid/queue rejection, exact saved-state preservation\n";
+ }
  for(const int block:{64,128}){
   for(const int zeroChannels:{0,2}){
    auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);
