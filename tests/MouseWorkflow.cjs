@@ -12,8 +12,8 @@ let socket;
     assert(target,'Start the synthetic mouse host on CDP port 9235');
     const ws=socket=new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((r,j)=>{ws.addEventListener('open',r,{once:true});ws.addEventListener('error',j,{once:true});});
-    let seq=0;const pending=new Map(),runtimeErrors=[];
-    ws.addEventListener('message',e=>{const reply=JSON.parse(e.data);if(reply.method==='Runtime.exceptionThrown')runtimeErrors.push(reply.params.exceptionDetails);pending.get(reply.id)?.(reply);});
+    let seq=0,acceptClear=false;const pending=new Map(),runtimeErrors=[],clearDialogs=[];
+    ws.addEventListener('message',e=>{const reply=JSON.parse(e.data);if(reply.method==='Runtime.exceptionThrown')runtimeErrors.push(reply.params.exceptionDetails);if(reply.method==='Page.javascriptDialogOpening'){clearDialogs.push(reply.params.message);call('Page.handleJavaScriptDialog',{accept:acceptClear}).catch(error=>runtimeErrors.push(error.message));}pending.get(reply.id)?.(reply);});
     const call=(method,params={})=>new Promise((resolve,reject)=>{
         const id=++seq,timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout: '+method));},10000);
         pending.set(id,reply=>{clearTimeout(timer);pending.delete(id);reply.error?reject(Error(JSON.stringify(reply.error))):resolve(reply.result);});
@@ -46,7 +46,7 @@ let socket;
     };
     const mode=async value=>{await click(`label:has(input[name=syncMode][value=${value}])`);await wait(s=>s.syncMode===['off','static','dynamic'].indexOf(value),'sync mode '+value);};
     const exactlyOne=async (gesture,label,paired=false)=>{const before=await snapshot();await gesture();const after=await wait(s=>s.lastRequestId>before.lastRequestId,label);assert.equal(after.lastRequestId,before.lastRequestId+1,label);assert(!after.rejected,label+' rejected');if(!paired){await delay(160);assert.equal((await snapshot()).lastRequestId,after.lastRequestId,label+' duplicated');}return after;};
-    await call('Runtime.enable');
+    await call('Runtime.enable');await call('Page.enable');
     await call('Emulation.setFocusEmulationEnabled',{enabled:true});
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
     await wait(s=>s.audioReady&&s.inputAvailable&&s.inputPeak>0.1,'Synthetic native input active');
@@ -346,6 +346,27 @@ let socket;
     assert.equal(rapidAfter.lastRequestId,rapidBefore.lastRequestId+3,'Rapid record/finish/play resolves against acknowledged native state');
     assert(rapidAfter.tracks[0].length>0&&!rapidAfter.rejected,'Rapid mouse sequence commits real audio');
     await delay(750);assert.equal((await snapshot()).lastRequestId,rapidAfter.lastRequestId,'Released mouse gestures leave no delayed hold');
+    // Original X and DEL ALL share the real native command and confirmation.
+    await click('#loop-action-19');await state('recording',19);await delay(150);await click('#loop-action-19');await state('stopped',19);
+    const bankBefore=await snapshot();assert(bankBefore.tracks[0].length>0&&bankBefore.tracks[19].length>0,'Two real recorded loops before DEL ALL');
+    const x=async()=>{await call('Input.dispatchKeyEvent',{type:'keyDown',code:'KeyX',key:'x',windowsVirtualKeyCode:88});await call('Input.dispatchKeyEvent',{type:'keyUp',code:'KeyX',key:'x',windowsVirtualKeyCode:88});};
+    await click('#loop-0 .track-name');await x();await delay(150);assert.equal(clearDialogs.length,0,'X in a loop name cannot prompt or delete');await evaluate('document.activeElement.blur()');
+    await x();assert.deepEqual(clearDialogs,['Clear ALL loops and master recordings?'],'Original confirmation text');
+    await delay(150);let cancelled=await snapshot();assert.equal(cancelled.lastRequestId,bankBefore.lastRequestId,'Cancelled X emits no audio command');
+    for(const id of [0,19]){assert.equal(cancelled.tracks[id].waveformId,bankBefore.tracks[id].waveformId);assert.equal(cancelled.tracks[id].length,bankBefore.tracks[id].length);assert.equal(cancelled.tracks[id].state,bankBefore.tracks[id].state);}
+    await wait(s=>s.outputPeak>0.02,'Cancelled X preserves actual loop playback');
+    await stutDown();await wait(s=>s.tracks[0].stuttering,'STUT held before DEL ALL');await pauseDispatch();
+    for(const [code,key,vk] of [['Digit1','1',49],['Digit2','2',50]])await call('Input.dispatchKeyEvent',{type:'keyDown',code,key,windowsVirtualKeyCode:vk});
+    const beforeClear=await snapshot();acceptClear=true;await x();assert.equal(clearDialogs.length,2);
+    await resumeDispatch();const cleared=await wait(s=>s.tracks.every(t=>t.state==='empty'&&t.length===0&&!t.stuttering)&&s.outputPeak===0,'Confirmed X clears all real PCM and held STUT');
+    assert.equal(cleared.lastRequestId,beforeClear.lastRequestId+1,'Only clearAll survives paused older play/record gestures');
+    await delay(4300);assert.equal((await snapshot()).lastRequestId,cleared.lastRequestId,'Cancelled held timers cannot revive or delete after X');
+    for(const [code,key,vk] of [['Digit1','1',49],['Digit2','2',50]])await call('Input.dispatchKeyEvent',{type:'keyUp',code,key,windowsVirtualKeyCode:vk});
+    await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:1190,y:790,button:'left',clickCount:1});
+    acceptClear=false;const beforeButton=await snapshot();await click('#mod-menu button[data-i18n="CLEAR_ALL"]');assert.equal(clearDialogs.length,3);assert.equal((await snapshot()).lastRequestId,beforeButton.lastRequestId,'Original DEL ALL button still cancels without a command');
+    acceptClear=true;await exactlyOne(()=>click('#mod-menu button[data-i18n="CLEAR_ALL"]'),'Original DEL ALL button still clears through shared handler');
+    assert(clearDialogs.every(message=>message==='Clear ALL loops and master recordings?'));
+    console.log('PASS: original X/DEL ALL native confirmation cancel/accept, text focus, real stored PCM, held STUT and paused key/timer cancellation');
     assert.deepEqual(await evaluate('window.mouseErrors'),[],'No browser gesture exceptions');assert.deepEqual(runtimeErrors,[],'No runtime exceptions across editor reload');
     console.log('PASS: real mouse/header arm, cancel, record, native PCM playback, Start drag/Q/nudges, STUT hold/outside-release/blur/queued-cancel, nested-control isolation, STATIC queued play/stop and DYNAMIC finish/second tap, auto-play off, rapid record/finish/play, held STOP quick-deletes; FINISH/CANCEL/RECORD preserve PCM; no device opened');
     ws.close();

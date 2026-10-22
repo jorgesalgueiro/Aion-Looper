@@ -108,6 +108,8 @@
             if (event.altKey || target?.isContentEditable || textInput
                 || ['TEXTAREA','SELECT'].includes(target?.tagName)) return;
             if(event.code==='KeyZ' && (event.ctrlKey||event.metaKey)){event.preventDefault();this.actions.history?.(!!event.shiftKey);return;}
+            // Original DEL ALL fallback runs before the generic repeat guard.
+            if(event.code==='KeyX'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();this.actions.clearAll?.();return;}
             if(event.repeat || event.ctrlKey || event.metaKey)return;
             const key=event.code || event.key;
             if(this.presses.has(key))return;

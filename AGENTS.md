@@ -404,3 +404,11 @@ Retain actual held-fragment -> blank document -> original editor tests at 64/128
 with audio-thread evidence of released state, continuing nonzero playback and
 unchanged clip identity/length. Keep runtime exceptions visible across documents;
 empty allowed documents must not execute the original mixer bootstrap.
+
+Original X/DEL ALL dispatch uses physical KeyX before the generic repeat guard,
+with text/modifier protection and the unchanged confirmation text. Button and
+keyboard must share native cleanup. The clear handler must issue no command or
+reset queued work on cancellation; acceptance cancels STUT, held timers and older queued actions
+before the bank clear. Retain unchanged original keyboard dispatch and real
+WebView2 dialog accept/cancel, stored PCM/identity, paused-queue and four-second
+no-revival tests at 64/128. Custom key mapping remains a separate feature.

@@ -461,3 +461,26 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  focused=a;helper.focus(0,a);waiting[3].resolve({revision:8});await Promise.resolve();helper.render({revision:9,learnTarget:33});assert.equal(a.blurs,2,'New slider learn releases old field without cancelling slider');assert.equal(requests.filter(r=>r.action==='cancelLearn').length,1);
  console.log('PASS: MIDI mapping focus/blur ownership, delayed replies/snapshots, completion blur, failed retry and slider handoff');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+// Compare default X routing with the unchanged original keyboard dispatcher.
+{
+ const original=fs.readFileSync(path.join(root,'resources/ui/main.js'),'utf8');
+ const start=original.indexOf('static handleKeyboardPress('),end=original.indexOf('\n    }',start)+6;assert(start>=0);
+ let expected=0,actual=0;
+ const oracle={document:{getElementById:()=>null},SAMPLER_HOTKEYS:[],state:{listeningForInput:{active:false},keyMapping:{kbd:new Array(33).fill(null)},midiLearn:{active:false}},LoopManager:{clearAll(){++expected;}}};
+ vm.createContext(oracle);vm.runInContext(`class App{${original.slice(start,end)}};globalThis.dispatch=e=>App.handleKeyboardPress(e);`,oracle);
+ const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ const keyboard=new native.window.AionPerformance({track:()=>null,clearAll(){++actual;}});
+ const targets=[{tagName:'BODY'},{tagName:'INPUT',type:'text'},{tagName:'TEXTAREA'},{tagName:'SELECT'},...['range','checkbox','radio','button','file','submit','reset','number'].map(type=>({tagName:'INPUT',type}))];
+ for(const target of targets)for(const flags of [{},{shiftKey:true},{repeat:true},{ctrlKey:true},{metaKey:true},{altKey:true}]){
+  let originalPrevented=0,nativePrevented=0;expected=actual=0;
+  const event={code:'KeyX',key:flags.shiftKey?'X':'x',target,...flags};
+  oracle.dispatch({...event,preventDefault(){++originalPrevented;}});
+  keyboard.down({...event,preventDefault(){++nativePrevented;}});
+  assert.equal(actual,expected,'Original X dispatch '+JSON.stringify(event));assert.equal(nativePrevented,originalPrevented,'Original X preventDefault');
+ }
+ for(const event of [{code:'KeyC',key:'x'},{code:'KeyX',key:'x',target:{tagName:'DIV',isContentEditable:true}}]){
+  actual=0;keyboard.down({target:{tagName:'BODY'},preventDefault(){},...event});assert.equal(actual,0,'Physical-key routing and native editable-content guard');
+ }
+ console.log('PASS: original X/Shift-X/repeat shortcut, physical key, modifiers and text/range/control guards');
+}

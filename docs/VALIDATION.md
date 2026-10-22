@@ -2490,3 +2490,54 @@ Only existing Windows Standalone/test targets rebuilt. No ZIP, version bump,
 format rollout or new feature. Original assets and user-local logo edits remain
 preserved; no DSP core source changed. Prior sanitizer evidence is retained rather
 than rerun. Apple/Linux GUI, physical drivers and host sync remain separate work.
+
+
+## 22 October 2026: restore original X / DEL ALL shortcut
+
+The unchanged `App.handleKeyboardPress` oracle reproduced a missing native
+feature: an ordinary `KeyX` invokes DEL ALL in JS but performed no action in the
+native adapter (`build/clear-shortcut-repro.log`). `AionPerformance` now routes
+that fallback to the same native handler as the original DEL ALL button. Physical
+key, Shift/case, text/control fields, Ctrl/Alt/Meta and original repeat behavior
+are compared against the unmodified method across 72 combinations. The existing
+native content-editable guard remains. Custom keyboard remapping, master recording
+and full project persistence are not implemented by this increment.
+
+The shared handler retains the exact original confirmation. Cancel sends no audio
+clear command; accepted confirmation cancels held STUT/loop gestures and older
+frontend work before using the existing C++ bank clear. No new audio algorithm,
+queue producer, callback storage, browser audio context or product UI was added.
+Research and primary sources are recorded in ARCHITECTURE.md; the original JS,
+not another application's behavior, remains the interaction oracle.
+
+Fresh checks:
+
+- Windows original-assets/core/MIDI/frontend/bridge/DSP/sync/state 8/8, 61.64s
+  (`build/clear-shortcut-windows.log`).
+- Ubuntu same focused suite 8/8, 65.81s (`build/clear-shortcut-ubuntu.log`).
+- Production processor MidiBuffer/cancellation/persistence and zero tracked
+  processBlock new/delete at 64/128 (`build/clear-shortcut-processor.log`).
+- Connected original-JS/native committed capture/overdub/substitute PCM audit:
+  126 cases / 965826 samples, maximum absolute error 7.394757495227111e-8 at
+  unchanged 1e-6 (`build/clear-shortcut-audio.log`). Browser envelopes/resampling,
+  physical latency and external sync remain outside this comparison.
+
+- Full production-editor mouse/main, export and merge checks pass at 64/128
+  (`build/clear-shortcut-gui.log`). The new case drives actual KeyX and original
+  DEL ALL pointer input through real WebView2 confirmation dialogs, with exact
+  prompt text and both accept/cancel responses. It records two native loops,
+  checks preserved identity/length/playing PCM on cancel, then holds STUT and
+  pauses dispatch behind held loop keys before confirming. Only one clear command
+  survives; every track becomes empty, actual output is zero, and no old gesture
+  fires after four seconds. Text-focus protection and the shared button path pass.
+  Existing navigation, hold, source, export and merge gates remain unchanged.
+
+- Muted Standalone original 20-card UI/keyboard/IPC and actual browser count-in,
+  nudge, analyser and STUT sound oracles pass (`build/clear-shortcut-ui.log`).
+  No product AudioContext is present.
+
+Only existing Standalone/test targets rebuilt; no package/version bump. Original
+assets and the user's unstaged logo hunk are preserved. No new C++ DSP or RT source
+changed. The preceding 19/19 Windows/Ubuntu full suites and sanitizer/MIDI GUI
+results remain retained baseline evidence rather than fresh reruns here. No new
+hardware, DAW, Apple-platform or production-ready claim follows from these checks.

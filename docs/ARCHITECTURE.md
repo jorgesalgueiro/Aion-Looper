@@ -202,6 +202,22 @@ at block boundaries. Clear-all recycles the bounded pool without freeing memory.
 Live volume/feedback inputs coalesce their latest values while another native
 command is awaiting acknowledgement; this queue is message-thread only.
 
+The original physical `KeyX` shortcut shares DEL ALL's confirmation and native
+clear path. Its fallback precedes repeat filtering, as in the reference. Text
+editing/modifier guards remain; accepted confirmation cancels held STUT/loop
+gestures and old frontend work before enqueuing the bank clear. Cancelled
+confirmation sends no native clear command. Custom keyboard mappings and master
+recording remain separate migration work.
+
+Implementation research (22 October 2026): [JUCE WebView integration](https://juce.com/blog/juce-8-feature-overview-webview-uis/)
+provides the embedded resource/native-call boundary; [KeyboardEvent.code](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/code)
+identifies physical keys independently of case/layout. Keep original KeyX routing,
+not a character-only mapping. [JUCE's FIFO contract](https://docs.juce.com/master/classjuce_1_1AbstractFifo.html)
+requires a single reader/writer: reuse the message-thread command producer and
+existing C++ clear action, without calling DSP from the browser or adding an audio
+queue producer. These sources guide the implementation; the unchanged JS remains
+the behavioral oracle. No alternate UI or new JS behavior is introduced.
+
 ## Pan and varispeed (0.4.0)
 
 The loop graph's `_addPanControl` in the reference connects both stereo GainNodes

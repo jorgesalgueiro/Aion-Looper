@@ -131,22 +131,27 @@ optional and defaults off. The original loop cards use native DSP: RECORD,
 FINISH, STOP and PLAY. Press `+` to toggle global overdub or `-` to toggle
 substitute, then press a playing loop's main button; FINISH exits that capture
 mode. Feedback defaults to 80% and double-click resets it. The original STOP ALL
-and DEL ALL buttons act on the bank. SOLO is exclusive and preserves explicit
-mutes. RTRG (or `/`) resets Start to zero with sync OFF, or snaps it to the
-current master sixteenth with STATIC/DYNAMIC sync. Playing replacements start
+and DEL ALL buttons act on the bank. `X` invokes DEL ALL with the same original
+confirmation; cancelling preserves every loop. SOLO is exclusive and preserves
+explicit mutes. RTRG (or `/`) resets Start to zero with sync OFF, or snaps it to
+the current master sixteenth with STATIC/DYNAMIC sync. Playing replacements start
 5ms after the tap; stopped loops start immediately without waiting for the grid.
 
-Keys 1-0 address loops 1-10; Shift+1-0 address 11-20. Holding a loop key for
-600 ms stops a playing loop or clears a stopped loop, matching the reference
-press/release behavior. Space stops all and `/` retriggers the selected loop.
-Shortcuts ignore text/form focus, repeats and Ctrl/Alt/Meta combinations; lost
-focus cancels hold timers. Auto-play after Rec now controls whether FINISH starts
-playback or leaves the take stopped. Native sync remains OFF until implemented.
+Keys 1-0 address loops 1-10; Shift+1-0 address 11-20. A press starting on STOP/
+STOP NOW cuts playback at 600ms and deletes audio only after four uninterrupted
+seconds. Early release, blur, cancellation and STOP ALL cancel deletion; holding
+RECORD/FINISH/CANCEL never deletes a take. Space stops all and `/` retriggers the
+selected loop. Text editing and Ctrl/Alt/Meta protect ordinary shortcuts;
+Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z provide Undo/Redo. The original `X` fallback also
+requests confirmation on key repeat. Confirmed DEL ALL cancels held gestures and
+older queued actions; cancelled confirmation sends no clear command. Auto-play
+after Rec controls whether FINISH starts playback or leaves the take stopped.
+Internal Master BPM STATIC/DYNAMIC sync is implemented; host/MIDI clock is pending.
 
 Use headphones/direct monitoring as appropriate for the physical setup. Session
 recordings are temporary: DAW/project state currently stores parameters, not PCM.
-Export and undo remain disabled. Changing sample rate clears session audio; changing
-buffer size at the same rate retains PCM but stops playback. These are preview
+Loop WAV export and loop/global Undo/Redo are implemented. Changing sample rate
+clears session audio; changing buffer size at the same rate retains PCM but stops playback. These are preview
 limits, not completed reference parity.
 
 ### Native WebView2 UI smoke test

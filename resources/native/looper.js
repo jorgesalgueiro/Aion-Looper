@@ -207,7 +207,8 @@
         globalUndo.title='Undo Last Action';globalRedo.title='Redo Last Action';
         globalUndo.addEventListener('click',()=>restoreHistory(false));
         globalRedo.addEventListener('click',()=>restoreHistory(true));
-        clearAll.addEventListener('click', () => {if(window.confirm('Clear ALL loops and master recordings?')){stutter.cancel();keyboard.cancel();scheduler.reset();command('clearAll',0);}});
+        const clearSession=()=>{if(enabled()&&window.confirm('Clear ALL loops and master recordings?')){stutter.cancel();keyboard.cancel();scheduler.reset();command('clearAll',0);}};
+        clearAll.addEventListener('click',clearSession);
         const mainAction=id=>{
             selected=id;
             const requestedMode=mode;
@@ -242,6 +243,7 @@
             history:redo=>restoreHistory(redo),
             multiply:()=>multiply(selected),
             metronome:toggleMetronome,
+            clearAll:clearSession,
             stop:stopSession,retrigger:()=>command('retrigger',selected),halfSpeed:()=>halfSpeed(selected)
         });
         document.addEventListener('keydown',e=>keyboard.down(e));
