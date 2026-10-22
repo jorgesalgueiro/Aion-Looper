@@ -706,3 +706,20 @@ vendor binary still omits allocation tests. Expected blocked-legacy-script CSP
 and WSLg libEGL warnings remain documented above; no browser policy was loosened.
 The official LV2 [Atom layouts](https://github.com/lv2/lv2/blob/main/include/lv2/atom/atom.h)
 and the pinned JUCE LV2 wrapper/SDK are the ABI references used by the probe.
+
+
+## Original double-click loop slider resets
+
+Double-click Speed to return to 1.0x or Feedback to return to 80%, including while
+the range has keyboard focus. Focus stays on the control, as in the original JS.
+The native input adapter now explicitly moves the focused thumb; the existing
+handler still sends the normal native parameter command. No extra synthetic
+input/change event, blur, style change or audio-thread work is introduced.
+
+native_frontend_commands compares the unchanged original reset/setter methods
+across 560 cases covering all 20 tracks, both reset types, initial values and
+sync on/off. tools/TestMouseWorkflow.ps1 uses trusted double clicks on the actual
+focused controls at 64/128 samples, verifies DOM/native reset values and retains
+playing state, committed clip identity/length/history and nonzero audio. The
+remaining mouse/export/merge/MIDI workflows run afterward. No package is needed.
+Event ordering was checked against the [browser dblclick documentation](https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event).

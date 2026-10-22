@@ -548,7 +548,7 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  assert(begin>=0);const end=source.indexOf('// Force uppercase',begin);
  let originalHandler,originalOptions,nativeHandler,nativeOptions;
  vm.runInNewContext(source.slice(begin,end),{window:{addEventListener(type,fn,options){assert.equal(type,'wheel');originalHandler=fn;originalOptions=options;}}});
- const native={window:{addEventListener(type,fn,options){assert.equal(type,'wheel');nativeHandler=fn;nativeOptions=options;}}};
+ const native={window:{addEventListener(type,fn,options){if(type==='dblclick')return;assert.equal(type,'wheel');nativeHandler=fn;nativeOptions=options;}}};
  vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
  assert.equal(typeof nativeHandler,'function','Native adapter must install original wheel protection');
  assert.equal(nativeOptions.capture,originalOptions.capture);assert.equal(nativeOptions.passive,originalOptions.passive);
@@ -558,4 +558,31 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
   assert.deepEqual(invoke(nativeHandler),invoke(originalHandler),'Original wheel semantics '+JSON.stringify({tagName,type,shiftKey,deltaMode,deltaY}));++cases;
  }
  console.log('PASS: original wheel protection, capture/passive options, focus/propagation and Shift bypass: '+cases+' cases');
+}
+
+
+// Execute unchanged original reset methods with focused range elements.
+{
+ const source=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');
+ const method=name=>{const start=source.indexOf('    static '+name+'('),end=source.indexOf('\n    }',start)+6;assert(start>=0);return source.slice(start,end);};
+ const elements=new Map(),state={syncEnabled:false,loops:Array.from({length:20},()=>({playbackRate:0.63,feedback:0.23}))};
+ const document={activeElement:null,getElementById:id=>elements.get(id)||null};
+ const original={state,document};vm.createContext(original);
+ vm.runInContext(`class Original{${['setLoopSpeed','resetLoopSpeed','setLoopFeedback','resetLoopFeedback'].map(method).join('\n')}};globalThis.reset=(kind,id)=>kind==='speed'?Original.resetLoopSpeed(id):Original.resetLoopFeedback(id);`,original);
+ const handlers=new Map(),native={window:{addEventListener(type,fn,options){handlers.set(type,{fn,options});}}};
+ vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ const installed=handlers.get('dblclick');assert(installed,'Native double-click reset adapter');assert.equal(installed.options.capture,true,'Reset runs before existing native command listener');
+ const element=(id,value)=>({id,tagName:'INPUT',type:'range',disabled:false,get value(){return value;},set value(next){value=String(next);},blur(){assert.fail('Original reset retains focus');}});
+ let cases=0;
+ for(let id=0;id<20;++id)for(const kind of ['speed','fbk'])for(const initial of ['0','0.25','0.63','0.8','1','1.15','2'])for(const sync of [false,true]){
+  const key=`loop-${kind}-slider-${id}`,expected=element(key,initial),actual=element(key,initial);
+  state.syncEnabled=sync;document.activeElement=expected;elements.set(key,expected);original.reset(kind,id);
+  installed.fn({target:actual,preventDefault(){assert.fail('Keep existing event dispatch');},stopPropagation(){assert.fail('Keep existing event dispatch');}});
+  assert.equal(actual.value,expected.value,'Original focused reset '+JSON.stringify({id,kind,initial,sync}));++cases;
+ }
+ for(const change of [{id:'loop-speed-slider-20'},{id:'loop-speed-slider-01'},{id:'loop-speed-slider--1'},{id:'loop-fbk-slider-999'},{id:'loop-vol-slider-0'},{id:'native-master'},{type:'number'},{type:'text'},{tagName:'DIV'},{disabled:true}]){
+  const target=Object.assign(element('loop-speed-slider-0','0.63'),change);installed.fn({target});assert.equal(target.value,'0.63','Only supported enabled loop reset sliders');
+ }
+ installed.fn({target:null});
+ console.log('PASS: unchanged original focused Speed/Feedback resets: '+cases+' cases, no blur/event suppression and bounded target guards');
 }

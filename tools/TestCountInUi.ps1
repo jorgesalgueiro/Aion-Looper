@@ -8,6 +8,7 @@ try {
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=9234 --disable-background-timer-throttling --disable-renderer-backgrounding'
     $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $repo 'build/countin-ui-profile'
     $preview = Start-Process -FilePath (Join-Path $repo 'build/windows/AionLooper_artefacts/Release/Standalone/Aion-Looper.exe') -WindowStyle Hidden -PassThru
+    Write-Output "Native UI test started: PID $($preview.Id)"
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $savedArguments
     $env:WEBVIEW2_USER_DATA_FOLDER = $savedProfile
     & node (Join-Path $repo 'tests/CountInWebAudio.cjs')
@@ -23,6 +24,10 @@ try {
 } finally {
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $savedArguments
     $env:WEBVIEW2_USER_DATA_FOLDER = $savedProfile
+    if ($preview) {
+        $preview.Refresh()
+        Write-Output ("Native UI process before owned cleanup: PID={0}, exited={1}, exitCode={2}" -f $preview.Id,$preview.HasExited,$(if ($preview.HasExited) { $preview.ExitCode } else { 'running' }))
+    }
     if ($preview -and !$preview.HasExited) {
         $preview.CloseMainWindow() | Out-Null
         if (!$preview.WaitForExit(10000)) { throw "Test app did not shut down: PID $($preview.Id)." }

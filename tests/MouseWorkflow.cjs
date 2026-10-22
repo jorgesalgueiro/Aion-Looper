@@ -124,6 +124,27 @@ let socket;
     let playing=await state('playing');assert(playing.tracks[0].length>4800,'Real captured PCM committed');
     await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await wait(s=>s.outputPeak>0.02,'Captured PCM renders through production processor');
+    // Original double-click resets must move a focused slider as well as DSP.
+    await evaluate(`window.resetSliderEvents=[];window.addEventListener('dblclick',e=>{if(e.target.id?.match(/^loop-(speed|fbk)-slider-/))window.resetSliderEvents.push({id:e.target.id,trusted:e.isTrusted,focused:document.activeElement===e.target});},true);`);
+    for(const [kind,field,initial,value] of [['speed','playbackRate',0.63,1],['fbk','feedback',0.23,0.8]]){
+        const selector=`#loop-${kind}-slider-0`;
+        await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.focus();e.value=${initial};e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+        await wait(s=>Math.abs(s.tracks[0][field]-initial)<1e-6,'Set pre-reset '+kind);
+        const before=await snapshot();
+        const rect=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+        for(const clickCount of [1,2]){
+            await call('Input.dispatchMouseEvent',{type:'mousePressed',...rect,button:'left',clickCount});
+            await call('Input.dispatchMouseEvent',{type:'mouseReleased',...rect,button:'left',clickCount});
+        }
+        const after=await wait(s=>s.lastRequestId>before.lastRequestId&&Math.abs(s.tracks[0][field]-value)<1e-6,'Actual double-click native reset '+kind);
+        assert.equal(await evaluate(`Number(document.querySelector(${JSON.stringify(selector)}).value)`),value,'Focused '+kind+' slider must visibly reset like original JS');
+        assert(await evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`),'Reset stays focused');
+        const evidence=await evaluate('window.resetSliderEvents');assert(evidence.some(e=>e.id===selector.slice(1)&&e.trusted&&e.focused),'Actual trusted focused double click');
+        assert.equal(after.tracks[0].state,'playing');assert.equal(after.tracks[0].length,before.tracks[0].length);assert.equal(after.tracks[0].waveformId,before.tracks[0].waveformId);assert.equal(after.tracks[0].undoCount,before.tracks[0].undoCount);
+        await wait(s=>s.outputPeak>0.02,'Captured PCM survives '+kind+' reset');
+        await evaluate('document.activeElement.blur()');
+    }
+    console.log('PASS: trusted double-click resets focused Speed/Feedback position and native values; captured nonzero PCM and history retained');
     const waveform=await wait(s=>s.tracks[0].waveformId>0&&s.tracks[0].wavePeaks?.length===720,'Worker waveform reaches native editor');
     assert(waveform.tracks[0].wavePeaks.some(p=>p>0.01),'Real committed PCM yields waveform peaks');
     await delay(200);
@@ -336,6 +357,10 @@ let socket;
     await mode('dynamic');
 
 
+    // Screenshot/mode setup can consume the remaining bar. Require a fresh
+    // early phase so this case exercises queued finish, not the original 50ms
+    // immediate-finish boundary. Keep stopPending mandatory below.
+    await wait(s=>s.gridPosition>0.03&&s.gridPosition<0.2,'Early observed dynamic finish phase');
     await delay(200);await click('#loop-action-0');
     await wait(s=>s.tracks[0].stopPending,'Dynamic finish deadline');
     playing=await state('playing');assert(playing.tracks[0].length>0&&playing.tracks[0].dynamicRecorded,'Dynamic PCM committed');

@@ -548,3 +548,17 @@ mute, master zero and unmute recovery with finite nonzero settled stereo PCM at
 wrong-format/no-display failures. This is not loop-session/HTML/MIDI/physical
 hardware, gain-ramp waveform, arbitrary-malloc or Release latency certification.
 Do not modify original assets, DSP, user mappings or create a package for a gate.
+
+
+Double-click Speed/Feedback reset must move the focused range to 1.0/0.8 like
+original UIManager.resetLoopSpeed/resetLoopFeedback. The bounded capture adapter
+in controls.js changes only the displayed value; the existing target handler
+still owns native command dispatch. Keep focus/event propagation, enabled range/
+canonical track-ID guards, the unchanged-JS 560-case oracle and trusted 64/128
+WebView2 checks of DOM plus native values, nonzero recorded PCM/clip/history
+preservation. Retain wheel hardening and main gesture/transport regressions.
+Do not reset unrelated controls or modify the user's separate logo edit.
+
+The GUI queued-DYNAMIC-finish fixture waits for an early phase after screenshot/
+mode setup; do not replace its mandatory stopPending assertion with a playing
+fallback. Preserve the original <=50ms immediate-finish core test separately.

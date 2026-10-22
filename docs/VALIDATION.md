@@ -3341,3 +3341,95 @@ All launched test processes completed. The user's running app/session was not
 replaced or closed. Since product code did not change, the existing modules were
 verified by hashes rather than producing new builds/packages. Remaining feature
 and physical-platform limits in PARITY.md are unchanged.
+
+
+## Focused loop slider reset parity (23 October 2026)
+
+A real WebView2 regression exposed a display mismatch: double-clicking the Speed
+range reset native playbackRate to 1, but its focused DOM value stayed at 1.15.
+Feedback had the same path: native reset 0.8 while the focused slider value was
+excluded from snapshot refresh. The unchanged original resetLoopSpeed and
+resetLoopFeedback explicitly set their range values regardless of focus.
+The reproduced failed gate is retained in build/slider-reset-before.log; the
+new oracle failed without an adapter (build/slider-reset-oracle-before.log).
+The failed synthetic host closed through its normal owned-process cleanup.
+
+controls.js now installs a bounded capture-phase double-click adapter for enabled
+Speed/Feedback ranges with canonical track IDs 0..19. It moves only the DOM value
+to 1/0.8. Existing target listeners still own the native command; no duplicate
+input/change event, blur, propagation suppression, style/UI redesign or C++ DSP/
+parameter/state change is introduced. The user's separate looper.js logo edit
+was not modified. All original reference assets remain byte-identical.
+
+The unchanged original setter/reset methods are executed across 560 combinations
+(all 20 loops, both sliders, seven starting values, sync on/off), comparing the
+focused range result. Guards exclude unrelated/disabled controls and malformed/
+out-of-range IDs. Existing 630-case wheel and all gesture regressions remain.
+After the adapter, the complete frontend test passes
+(build/slider-reset-oracle-after.log).
+
+The actual mouse workflow now sends trusted two-click browser input, waits for
+native acknowledgement and checks the focused DOM thumb and native value. It
+also requires playing state, stored clip length/identity and Undo depth to stay
+unchanged, and verifies nonzero recorded audio continues after each reset. This
+covers the accepted reset path, not exact browser-vs-native transition envelopes
+or hardware latency. No package/version bump was created. Existing native
+binaries are refreshed only to embed the corrected adapter.
+
+
+Final acceptance:
+
+- Windows portable/reference CTest: 19/19, 258.76s
+  (build/slider-reset-windows-core.log); Ubuntu: 19/19, 409.05s
+  (build/slider-reset-ubuntu-core.log), including original asset identity and the
+  560 reset/630 wheel cases. No tolerance or original method was changed.
+- Connected capture/OD/SUB PCM audit: 126 cases / 965826 samples, maximum error
+  7.394757495227111e-8 against unchanged 1e-6 (build/slider-reset-audio.log).
+- Full real WebView2 mouse/export/merge/MIDI workflow passes at both 64/128,
+  including trusted focused Speed/Feedback resets, stored nonzero PCM and history
+  preservation (build/slider-reset-windows-gui-final.log).
+- Existing Windows Standalone/VST3/CLAP and test binaries refreshed
+  (build/slider-reset-windows-build.log); Linux Debug Standalone/VST3/CLAP/LV2 and
+  processor refreshed (build/slider-reset-linux-build.log). Existing nonfatal GCC
+  shadow/float and WSLg libEGL warnings are retained. Exact current controls.js
+  bytes were found embedded in the Windows app/plugins and all four Linux formats;
+  source/module hashes are recorded in build/slider-reset-embedded.json.
+- Muted actual Standalone passes count-in/nudge/live-input/STUT original WebAudio
+  oracles and NativeUiSmoke, including 20 original cards, native IPC and no legacy
+  production AudioContext (build/slider-reset-windows-ui-final.log).
+- Windows native processor + VST3 pluginval + CLAP CTests: 3/3, 27.87s
+  (build/slider-reset-windows-formats.log). Existing vendor skip/allocation limits
+  remain unchanged; actual DAW/controller sessions are not certified by this.
+- Linux production processor/LV2 nonzero audio/CLAP: 3/3, 20.68s
+  (build/slider-reset-linux-native.log). Linux LV2/VST3 pluginval editor/host gates:
+  2/2, 54.39s (build/slider-reset-linux-formats.log). This retains strict assertion/
+  leak checks, native 64/128 tracked zero new/delete, actual LV2 stereo PCM and
+  all CLAP 44-test accounting. Final editor-host evidence:
+  build/linux-lv2-pluginval/20261022T232334Z-c6ba1a28/result.json and
+  build/linux-pluginval/20261022T232403Z-ef453aba/result.json.
+
+Two earlier interrupted attempts remain visible instead of being counted passed:
+
+1. The first repaired 64/128 GUI run passed both focused resets, but its 128-sample
+   DYNAMIC queued-finish fixture clicked near the end of the bar. The final trace
+   had a valid playing take with no rejection; its capture end was 1024 samples
+   (21.33ms at 48kHz) before the bar boundary. Both original stopRecording and the
+   native engine intentionally finish immediately inside 50ms. The test now waits
+   for a fresh early phase after screenshot/mode setup, then still strictly
+   requires stopPending and subsequent committed playback. No DSP timing or
+   tolerance changed. Existing SyncTests.cpp <=50ms immediate-finish coverage is
+   retained and passed. Failed attempt: build/slider-reset-windows-gui.log;
+   complete final rerun: build/slider-reset-windows-gui-final.log.
+2. The first Standalone oracle run lost its CDP page between CountIn and Nudge
+   (build/slider-reset-windows-ui.log). That attempt had no process-exit evidence,
+   so its cause is unconfirmed; no product crash fix is claimed. The runner now
+   records its owned PID and process status before cleanup. The full instrumented
+   run passed every oracle/UI assertion and explicitly recorded the app still
+   running before normal owned cleanup (build/slider-reset-windows-ui-final.log).
+   No assertion was removed or timeout/tolerance relaxed.
+
+All owned test sessions completed/closed. User mappings and the separate logo
+edit were not modified. No package/version bump was made. These checks establish
+this reset interaction and existing synthetic/format regression scope, not
+physical ASIO/JACK/CoreAudio, full browser envelopes, Apple/Linux physical pointer
+interaction or complete synth/effect/project parity/commercial readiness.

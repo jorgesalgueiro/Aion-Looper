@@ -8,6 +8,14 @@
             e.preventDefault();e.stopPropagation();e.target.blur();
         }
     },{passive:false,capture:true});
+    // Original reset methods explicitly move the range even while it has focus.
+    // Keep the existing target listener responsible for the native audio command.
+    if(typeof window.addEventListener==='function')window.addEventListener('dblclick',event=>{
+        const target=event.target;
+        if(!target||target.tagName!=='INPUT'||target.type!=='range'||target.disabled)return;
+        const match=/^loop-(speed|fbk)-slider-(0|[1-9]\d?)$/.exec(target.id||'');
+        if(match&&Number(match[2])<20)target.value=match[1]==='speed'?'1':'0.8';
+    },{capture:true});
     // Message-thread only. Resolve gestures against the latest acknowledged state.
     window.AionCommandQueue = class {
         static wait = Symbol('waitForState');
