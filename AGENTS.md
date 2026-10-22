@@ -500,3 +500,26 @@ must not invent custom wheel increments; text/other targets keep normal behavior
 Retain the unchanged original listener oracle (630 cases) and trusted WebView2
 wheel tests at 64/128 with focus/default prevention and unchanged native MASTER,
 loop volume, BPM and loop-command counters. No original asset or DSP change.
+
+
+Linux production-processor coverage uses the same aion_midi_processor_tests
+source/production JUCE processor as Windows; target remains EXCLUDE_FROM_ALL.
+AION_TEST_NATIVE_PROCESSOR explicitly registers its serial CTest. Linux CLAP
+validation is independently opt-in through AION_LINUX_CLAP_VALIDATOR_EXECUTABLE
+and TestLinuxClap.py. Pin the official Ubuntu tool/archive and account for all 44
+tests, requiring Unix RTLD_NOW rather than accepting Windows's skip. Preserve
+all known unsupported-extension skips and the explicit JUCE void-load warning;
+never filter a failing test. No GUI, hardware, malloc certification, LV2/VST3 host
+workflow or Release latency acceptance follows from a Debug build/CLAP pass.
+Do not overwrite a live user's session or create a package for these gates.
+
+
+OS MIDI device-change subscriptions belong only to an actual Standalone holder,
+not every processor instance. A host-routed/synthetic processor must run without
+ALSA sequencer hardware (/dev/snd/seq) and without JUCE assertions. Keep the strict
+assertion/leak CTest regex; do not disable it to accommodate hardware probes.
+Preserve Standalone registration/cancel callback and polling/selection paths.
+Retain native midiDevices diagnostics requiring no watch/no OS devices with no
+holder, actual Standalone UI smoke requiring deviceWatchRequested, raw MIDI
+performance/panic/learn and all 64/128 processor/audio/GUI gates. This diagnostic
+means subscription was requested, not that physical hotplug was tested.

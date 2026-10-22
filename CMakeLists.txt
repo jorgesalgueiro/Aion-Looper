@@ -163,6 +163,33 @@ endif()
 target_link_libraries(AionLooper PRIVATE aion_core AionUi
     juce::juce_audio_utils juce::juce_dsp juce::juce_gui_extra
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+# Production-processor acceptance needs no audio device or browser window.
+# Excluded by default; explicitly build before enabling/running this CTest gate.
+if(BUILD_TESTING AND (WIN32 OR linux_desktop))
+    add_executable(aion_midi_processor_tests EXCLUDE_FROM_ALL tests/MidiProcessorTests.cpp)
+    target_include_directories(aion_midi_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
+    target_compile_definitions(aion_midi_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
+    target_link_libraries(aion_midi_processor_tests PRIVATE AionLooper)
+    option(AION_TEST_NATIVE_PROCESSOR "Register the optional production processor CTest" OFF)
+    if(AION_TEST_NATIVE_PROCESSOR)
+        add_test(NAME native_midi_processor COMMAND aion_midi_processor_tests)
+        set_tests_properties(native_midi_processor PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE
+            FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected"
+            LABELS "native;processor;midi")
+    endif()
+endif()
+if(BUILD_TESTING AND linux_desktop)
+    set(AION_LINUX_CLAP_VALIDATOR_EXECUTABLE "" CACHE FILEPATH "Pinned official Ubuntu CLAP validator 0.4.1 (optional)")
+    if(AION_LINUX_CLAP_VALIDATOR_EXECUTABLE)
+        if(NOT AION_BUILD_CLAP OR NOT EXISTS "${AION_LINUX_CLAP_VALIDATOR_EXECUTABLE}")
+            message(FATAL_ERROR "Linux CLAP validation requires AION_BUILD_CLAP and an existing validator")
+        endif()
+        add_test(NAME linux_clap_validator COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/TestLinuxClap.py"
+            --validator "${AION_LINUX_CLAP_VALIDATOR_EXECUTABLE}" --plugin "$<TARGET_FILE:AionLooper_CLAP>")
+        set_tests_properties(linux_clap_validator PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE LABELS "host;clap;linux")
+    endif()
+endif()
 # Optional hardware-free integration host: uses the production processor/editor,
 # feeds synthetic PCM, and never opens an audio device. Not installed or packaged.
 if(BUILD_TESTING AND WIN32)
@@ -170,10 +197,6 @@ if(BUILD_TESTING AND WIN32)
     target_include_directories(aion_mouse_host PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
     target_compile_definitions(aion_mouse_host PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
     target_link_libraries(aion_mouse_host PRIVATE AionLooper)
-    add_executable(aion_midi_processor_tests EXCLUDE_FROM_ALL tests/MidiProcessorTests.cpp)
-    target_include_directories(aion_midi_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
-    target_compile_definitions(aion_midi_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
-    target_link_libraries(aion_midi_processor_tests PRIVATE AionLooper)
     set(AION_CLAP_VALIDATOR_EXECUTABLE "" CACHE FILEPATH "Pinned CLAP validator 0.4.1 Windows executable (optional)")
     if(AION_CLAP_VALIDATOR_EXECUTABLE)
         if(NOT AION_BUILD_CLAP OR NOT EXISTS "${AION_CLAP_VALIDATOR_EXECUTABLE}")

@@ -88,3 +88,32 @@ network dependency. Full usage: [official README](https://github.com/free-audio/
 State cache refresh follows the [CLAP parameter specification](https://github.com/free-audio/clap/blob/main/include/clap/ext/params.h)
 and pinned clap-juce-extensions audioProcessorChanged implementation. No wrapper
 fork or dependency upgrade was required. See BUILDING.md for the opt-in gate.
+
+
+## Optional Ubuntu x86_64 CLAP validator
+
+The same [official 0.4.1 release](https://github.com/free-audio/clap-validator/releases/tag/0.4.1)
+provides clap-validator-0.4.1-127-g152b982-ubuntu-22.04.zip.
+
+- Published archive SHA256:
+  49edadcfb407ea0dd946ce418300e853fbd2660fa4b0d00e4f19ff8eef24ad90
+- Executable SHA256, extracted from that verified archive:
+  d9a78bfe781719de450bc5013141496eb13e1d9a538c67de1b8d325628670dbf
+- Ignored location: .toolchain/clap-validator/0.4.1-linux.
+
+The official zip contains a tarball with a historical 0.3.2 filename; the actual
+executable reports 0.4.1. TestLinuxClap.py checks archive and executable hashes and
+reads only the regular clap-validator member without general path extraction.
+--download-tool explicitly sets up this local tool, then validates the built
+Debug CLAP by default. The gate is optional and never downloads during CMake.
+Linux dependencies follow [JUCE's official Linux dependency documentation](https://github.com/juce-framework/JUCE/blob/master/docs/Linux%20Dependencies.md).
+The current machine already supplies ALSA/JACK/GTK/WebKit development libraries;
+no system package installation was needed for this increment.
+
+
+Routing/lifetime checks also consulted the official
+[StandalonePluginHolder API](https://docs.juce.com/master/classjuce_1_1StandalonePluginHolder.html)
+and [MidiDeviceListConnection API](https://docs.juce.com/master/classjuce_1_1MidiDeviceListConnection.html),
+plus the actual pinned holder constructor: currentInstance is assigned before
+processor creation. The existing connection remains owned/reset by AionProcessor
+in Standalone; plugin hosts supply their MIDI through processBlock.

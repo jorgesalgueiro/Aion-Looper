@@ -34,6 +34,8 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert(!visible.overlay&&visible.mainVisible,JSON.stringify(visible));
  assert(await evaluate(`!document.getElementById('loopContainer').textContent.includes('undefined')`),'Missing renderer field');assert(!visible.text.includes('\u00c3'),'Garbled native status text');
  const snapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);assert(snapshot.ok&&snapshot.tracks.length===20);
+ const routing=await evaluate(`AionNative.request({operation:'midiDevices'})`);
+ assert(routing.ok&&routing.standalone&&routing.deviceWatchRequested,'Actual Standalone retains OS MIDI hotplug watching');
  assert.equal(snapshot.hostTransport.available,true,'JUCE Standalone supplies a partial device playhead');
  for(const key of ['bpm','ppq','numerator','denominator','loopStartPpq','loopEndPpq','barStartPpq'])assert.equal(snapshot.hostTransport[key],null,'Unavailable musical host field crosses real native IPC as null: '+key);
  assert(Number.isSafeInteger(snapshot.hostTransport.samplePosition)&&snapshot.hostTransport.samplePosition>=0&&Number.isFinite(snapshot.hostTransport.seconds)&&Math.abs(snapshot.hostTransport.seconds-snapshot.hostTransport.samplePosition/snapshot.sampleRate)<1e-9,'Standalone publishes actual device sample/seconds position');

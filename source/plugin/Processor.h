@@ -44,6 +44,7 @@ private:
     juce::StringArray previousMidiDevices;
     double nextMidiDeviceCheck=0,midiLearnDeadline=0;
     juce::MidiDeviceListConnection midiDeviceChanges;
+    bool midiDeviceWatchRequested=false; // Message-thread routing diagnostics, not hardware availability.
     bool updateMidi(aion::MidiSettings);
     void serviceMidi();
     void timerCallback() override;

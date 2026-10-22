@@ -213,3 +213,21 @@ The pinned wrapper maps this to CLAP values/text/info rescan. No UI, DSP algorit
 parameter ID/range/default or state encoding changed. All three vendor state
 reproducibility tests now pass. AION_CLAP_VALIDATOR_EXECUTABLE enables the optional
 clap_validator CTest; see BUILDING.md and VALIDATION.md for commands and limits.
+
+
+### Linux native test entry points (22 October 2026)
+
+The shared Engine/LoopBank/MidiController/processor/editor ownership graph is
+unchanged. The existing production-processor test target now also builds on
+Linux, with explicit AION_TEST_NATIVE_PROCESSOR registration. The separate
+AION_LINUX_CLAP_VALIDATOR_EXECUTABLE path enables a pinned official ELF CLAP gate.
+Default portable builds remain validator-free. Native Debug build and host/GUI/
+hardware acceptance must stay distinct; see VALIDATION.md for measured outcomes
+and BUILDING.md for exact commands. No separate Linux DSP fork was introduced.
+
+
+Host-routed processors now also avoid OS MIDI watcher creation. Only the actual
+Standalone holder subscribes to physical device-list changes; plugin MIDI arrives
+through the DAW. This keeps device discovery off audio and avoids requiring ALSA
+sequencer hardware just to instantiate a plugin or synthetic processor. The
+Standalone input/configuration interface remains unchanged.

@@ -571,3 +571,50 @@ loop Volume, BPM and a loop name, at 64 and 128 samples, then runs the existing
 mouse/audio/export/merge/MIDI workflows. The host uses synthetic PCM and opens no
 physical audio device. Browser cancellation uses explicit passive:false as in
 [the wheel-event documentation](https://developer.mozilla.org/en-US/docs/Web/API/Element/wheel_event).
+
+
+## Optional Linux production-processor and CLAP gates
+
+These supplement the portable core suite with the actual JUCE processor and ELF
+CLAP wrapper. No plugin installation/package or physical audio device is needed.
+The processor executable uses JUCE GUI initialization; the recorded run uses the
+existing WSLg DISPLAY. It does not open an editor/browser window.
+The recorded native Linux checks use the existing Debug tree, not a Release
+latency benchmark. From the repository root in Ubuntu:
+
+```sh
+cmake -S . -B build/linux -DCMAKE_BUILD_TYPE=Debug \
+  -DFETCHCONTENT_SOURCE_DIR_JUCE="$PWD/.deps/JUCE" \
+  -DFETCHCONTENT_SOURCE_DIR_CLAP_JUCE_EXTENSIONS="$PWD/.deps/clap-juce-extensions" \
+  -DAION_TEST_NATIVE_PROCESSOR=ON
+cmake --build build/linux --parallel 2 --target \
+  AionLooper_Standalone AionLooper_VST3 AionLooper_CLAP AionLooper_LV2 \
+  aion_midi_processor_tests
+# Explicit one-time local validator setup + complete validation:
+python3 tools/TestLinuxClap.py --download-tool
+# Register the optional format gate now that the executable exists:
+cmake -S . -B build/linux \
+  -DAION_LINUX_CLAP_VALIDATOR_EXECUTABLE="$PWD/.toolchain/clap-validator/0.4.1-linux/clap-validator"
+ctest --test-dir build/linux -R '^(native_midi_processor|linux_clap_validator)$' \
+  --no-tests=error --output-on-failure
+# Subsequent direct validator runs need no network:
+python3 tools/TestLinuxClap.py
+```
+
+AION_TEST_NATIVE_PROCESSOR also exposes the same optional CTest on Windows;
+explicitly build aion_midi_processor_tests first. Both native tests are serial,
+opt-in and excluded from default builds. Portable/core tests still need no JUCE
+validator. The Linux CLAP gate pins the official Ubuntu x86_64 tool/archive,
+requires all 44 tests exactly once, requires Unix RTLD_NOW to execute, rejects
+ancestor TOML filters and records hashes/statuses/limits under build/linux-clap-validator.
+Its timeout terminates only its own validator process group. Unsupported optional
+extensions and the existing JUCE void state-load warning remain explicit; GUI,
+arbitrary malloc/allocation, real DAW/device operation and full project recall
+are outside this vendor test's coverage.
+
+
+Host-routed/synthetic processors do not subscribe to OS MIDI device changes.
+Only an actual Standalone holder requests that watcher. This allows native
+processor/host tests without an ALSA sequencer device while retaining Standalone
+hotplug cancellation. midiDevices.deviceWatchRequested is routing diagnostics,
+not proof that a physical controller or OS notification was tested.

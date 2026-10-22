@@ -3032,3 +3032,136 @@ Standalone NativeUiSmoke and actual browser audio-reference comparisons
 zero, no legacy product AudioContext, and no runtime gesture exceptions. The
 original 16 asset SHA gate remains passed; all test hosts closed normally.
 No new package, platform/driver certification or overall bug-free claim is made.
+
+
+## Linux native build/processor/CLAP acceptance (22 October 2026)
+
+Source baseline 9e75ec7, retaining the user's separate local logo hunk. No DSP,
+frontend, parameter defaults/encoding, JUCE/CLAP pin, version or package changed.
+The final increment also scopes OS MIDI watching to an actual Standalone holder;
+that processor routing fix and its separate regression evidence are below. The existing native Linux build directory contained
+0.1.0-era artifacts (LV2 TTL exposed only masterGain); it must not be treated as
+matching the current Windows source acceptance.
+
+The actual old Linux CLAP was tested before rebuilding. The pinned official
+Ubuntu validator reported 31 successes, nine unsupported skips, one known
+JUCE void state-load warning and three failures: state-reproducibility-basic,
+-binary, -buffered. Each failed because restored masterGain changed without a
+rescan, reproducing the already-fixed Windows defect in the stale ELF artifact.
+All 44 tests were accounted for and Unix RTLD_NOW passed. Evidence:
+build/linux-clap-initial.log and
+build/linux clap initial/20261022T202015Z-01b7da24/{stdout.json,stderr.log,result.json}.
+No failure was filtered, reclassified or removed to proceed.
+
+CMake now exposes the existing production aion_midi_processor_tests on Linux as
+well as Windows, without adding it to the default build. AION_TEST_NATIVE_PROCESSOR
+registers its explicit serial CTest, with JUCE debug assertion/leak text treated
+as failure even if a process returns zero. Windows target build passed; the final
+opt-in CTest passed 1/1 in 1.53s (build/linux-gate-windows-processor-final.log),
+covering the same 64/128 real MidiBuffer, held capture, CC/PC learn/continuous,
+zero-block/overflow/panic, malformed data, fake-host/PCM isolation and state
+restore/rollback checks. Only tracked C++ callback new/delete is instrumented;
+this is not arbitrary malloc or wrapper allocation certification.
+
+TestLinuxClap.py pins the official Ubuntu archive/executable hashes, refuses
+ancestor TOML filters, accounts for every expected test/module path/ID and
+requires Unix symbol loading to execute. The explicit setup reads only the
+regular binary from the official zip's nested tarball. A TOML fixture disabling
+state-reproducibility-basic was rejected (build/linux-clap-filter.log). Logs and
+result.json retain source/dirty paths, platform, UTC timing, tool/harness/module
+hashes, statuses, skips and warnings. Timeout kills only the harness-owned process
+group. Neither CMake nor default builds download a validator. BUILDING.md gives
+exact optional commands; SDKS.md records official asset hashes/layout.
+
+Fresh portable suites passed Windows 19/19 in 260.78s and Ubuntu 19/19 in 435.07s
+(build/linux-gate-windows.log, build/linux-gate-ubuntu.log). The connected original
+capture/OD/SUB PCM audit passed 126 cases / 965826 samples, max absolute error
+7.394757495227111e-8 at unchanged 1e-6 tolerance (build/linux-gate-audio.log), with
+its retained envelope/resampling/latency/sync exclusions. The initial CMake/test-harness stage retained Windows GUI evidence at 9e75ec7.
+After the routing defect below was found, affected native binaries were rebuilt
+and GUI/format gates rerun separately. No new sanitizer run is claimed.
+
+
+All four requested Linux targets linked successfully: Standalone, VST3, CLAP and
+LV2 (build/linux-refresh-configure.log, build/linux-refresh-build.log). Existing
+Debug build was retained to avoid a second configuration's redundant binaries.
+Environment: Ubuntu 24.04.3 LTS x86_64 under WSLg, GCC 13.3.0, CMake 3.28.3;
+installed pkg-config ALSA 1.2.11, JACK 1.9.21, WebKitGTK 2.52.6 and GTK 3.24.41.
+The unused optional libcurl lookup remains absent with JUCE_USE_CURL=0; no system
+package installation was needed. Generated LV2 dsp.ttl and VST3 moduleinfo.json
+now identify 0.4.3; LV2 metadata includes current inputMonitor and syncBpm.
+The LV2/VST3 metadata helpers loaded their modules during build, but that is not
+full host/MIDI/audio/UI validation for those formats.
+
+The refreshed ELF CLAP passed the complete gate: 34 success, nine unsupported
+skips, one retained warning, exit 0, all 44 tests accounted for, in 6.13s.
+All three stale-binary state failures now succeed, and Unix RTLD_NOW passes.
+Evidence: build/linux-clap-refreshed.log and
+build/linux clap refreshed/20261022T203807Z-dd7c0ea9/result.json. Module SHA256
+b3bca4e1add2b71ed674c794c2262471f73e2a08f8371cee24163d243c1b46d4
+was unchanged before/after validation. The same unsupported optional extensions
+as Windows remain explicit, excluding Windows's Unix-only skip. The known
+state-invalid-random warning still reflects JUCE's void restore API, not an
+accepted processor-state mutation. GUI/allocation/hardware flags remain false.
+
+
+The first stricter Linux native CTest exposed a genuine routing problem despite
+all functional checks printing PASS: JUCE asserted in juce_Midi_linux.cpp:539
+because /dev/snd/seq is absent. Initial gates were 1/2 (native processor failed,
+CLAP passed), retained in build/linux-native-gates.log. The processor constructor
+unconditionally subscribed to OS MIDI device changes, even in host-routed/synthetic
+instances. This was previously hidden by Release assertions and by not building
+the JUCE processor test on Linux. The new FAIL_REGULAR_EXPRESSION caught it;
+no assertion rule was removed and no ALSA/driver installation was used to hide it.
+
+The processor now subscribes only when JucePlugin_Build_Standalone is enabled and
+an actual StandalonePluginHolder exists. The pinned JUCE holder sets currentInstance
+before creating its processor. Real Standalone retains the identical connection
+and engine.cancelMidi callback; host/synthetic instances no longer probe/watch
+hardware, so unrelated OS device changes cannot cancel their host-routed gestures.
+Existing Standalone polling/selection cancellation and explicit MIDI Stop/panic/
+overflow paths are unchanged. MIDI input remains host-provided in plugins.
+midiDevices adds the diagnostic deviceWatchRequested (registration request,
+not proof of OS hardware availability). Native tests require false with no holder;
+actual Windows Standalone UI smoke requires true. No new user-facing control was
+added and no MIDI assignment was changed by this fix. Affected Windows and Linux
+native targets were rebuilt before final acceptance; logs are recorded below.
+
+
+Final acceptance after the routing repair:
+
+- All affected Linux targets rebuilt (build/linux-routing-fix-build.log), including
+  the production processor executable and all four formats. Existing nonfatal
+  compiler diagnostics and the metadata helper's libEGL/DRI3 warning are retained;
+  accelerated GTK rendering is not claimed tested.
+- Linux native_midi_processor passes 1/1 in 4.62s with the unchanged assertion/leak
+  failure rules (build/linux-routing-fixed-processor.log). No JUCE assertion,
+  leak diagnostic or ALSA sequencer-open message remains. All 64/128 functional,
+  zero-block/offset, state/learn/panic/continuous, host-field/PCM-isolation and
+  tracked zero callback new/delete checks pass. /dev/snd/seq remains absent
+  (build/linux-routing-environment.log); no driver/device was installed to pass.
+- Final registered Linux CLAP CTest passes 1/1 in 11.50s: 34 successes, nine
+  unsupported skips, one retained void-load warning, all 44 tests accounted for
+  and Unix RTLD_NOW successful (build/linux-routing-fixed-clap.log). Evidence:
+  build/linux-clap-validator/20261022T205856Z-88373fc3/result.json.
+- Windows affected app/plugin/test targets rebuilt
+  (build/linux-routing-fix-windows-build.log). Native processor CTest passes 1/1
+  in 1.66s (build/linux-routing-fix-windows-processor.log). Actual Windows VST3
+  level-9 pluginval and CLAP gates pass 2/2 in 25.50s
+  (build/linux-routing-fix-windows-formats.log), retaining known coverage limits.
+- Actual muted Standalone UI smoke confirms deviceWatchRequested=true and
+  Standalone routing, all 20 original cards, native IPC, MASTER zero and no
+  product AudioContext. Browser count-in/nudge/live-input/STUT oracles pass
+  (build/linux-routing-fix-windows-ui.log). The synthetic host requires no OS
+  watcher; complete mouse/export/merge/MIDI workflows pass at both 64 and 128
+  samples (build/linux-routing-fix-windows-gui.log). No physical footswitch,
+  expression or hotplug result was inferred. All launched test hosts closed.
+
+Final repaired ELF CLAP module SHA256: 3553e6bb97f9504fc50f73f30cb0e48201c754feb5f65942ada8a73c20cd62ed.
+It was identical before/after the final run. The baseline failed logs and the
+intermediate pre-repair CLAP result above remain distinct. Core/DSP code did not
+change after the portable 19/19 and 126-case PCM gates recorded above, so those
+results remain applicable. Linux GTK/WebKit interaction, real JACK/ALSA audio/
+MIDI/controllers/DAWs, Linux LV2/VST3 host workflows, Release latency/CPU, Apple
+platforms and remaining original features stay unverified/unported as tracked
+in PARITY.md. No package/version bump or full commercial-readiness claim.

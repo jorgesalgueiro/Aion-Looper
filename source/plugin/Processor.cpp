@@ -34,7 +34,14 @@ AionProcessor::AionProcessor(ExportDestination destination)
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"metronomeEnabled",1},"Metronome",false),
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"metronomeVolume",1},"Metronome volume",juce::NormalisableRange<float>{0,2},0.5f)}) {
     exportDestination=std::move(destination);
-    midiDeviceChanges=juce::MidiDeviceListConnection::make([this]{engine.cancelMidi();});
+    // Plugin hosts own hardware MIDI routing. Only our Standalone device manager
+    // needs OS hotplug notifications; probing here otherwise requires ALSA on WSL.
+   #if JucePlugin_Build_Standalone
+    if(juce::StandalonePluginHolder::getInstance()!=nullptr){
+        midiDeviceChanges=juce::MidiDeviceListConnection::make([this]{engine.cancelMidi();});
+        midiDeviceWatchRequested=true;
+    }
+   #endif
     metroEnabled=parameters.getRawParameterValue("metronomeEnabled");metroVolume=parameters.getRawParameterValue("metronomeVolume");
     master = parameters.getRawParameterValue("masterGain");
     monitor = parameters.getRawParameterValue("inputMonitor");
@@ -454,7 +461,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             }
         }
        #endif
-        result->setProperty("ok",true);result->setProperty("standalone",standalone);result->setProperty("devices",devices);
+        result->setProperty("ok",true);result->setProperty("standalone",standalone);result->setProperty("deviceWatchRequested",midiDeviceWatchRequested);result->setProperty("devices",devices);
     }else if(operation=="setMidiDevice"){
        #if JucePlugin_Build_Standalone
         if(auto* holder=juce::StandalonePluginHolder::getInstance()){

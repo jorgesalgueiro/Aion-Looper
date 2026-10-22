@@ -27,6 +27,8 @@ int main(){
  juce::ScopedJuceInitialiser_GUI gui;
  {
   auto p=std::make_unique<AionProcessor>();
+  const auto routing=p->request({juce::JSON::parse(R"({"operation":"midiDevices"})")});
+  check(routing.getProperty("ok",false)&&!static_cast<bool>(routing["standalone"])&&!static_cast<bool>(routing["deviceWatchRequested"])&&routing["devices"].size()==0,"Host-routed processor must not probe/watch OS MIDI devices");
   juce::MemoryBlock saved;p->getStateInformation(saved);
   auto* gain=p->parameters.getParameter("masterGain");check(gain!=nullptr,"Master parameter exists");
   gain->setValueNotifyingHost(0.75f);
