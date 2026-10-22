@@ -887,3 +887,26 @@ DAW synchronization: internal BPM/grid/source scheduling remains user-controlled
 Host start/stop/seek does not yet schedule loop actions, MIDI clock is unported,
 and fake-head tests do not certify REAPER/Ardour or all plugin wrappers/platforms.
 The original UI and its controls are unchanged.
+
+
+## Original keyboard missed-release recovery (22 October 2026)
+
+The unchanged App.handleInputPress allows a fresh press to replace an entry only
+strictly after ten seconds. The native performance adapter previously had two
+unconditional duplicate guards and could strand a take after a missed key-up.
+It now resolves duplicate loop presses at the performance owner: <=10000ms is
+still held, >10000ms invalidates that key's old callbacks/queued cut-delete
+ownership and performs the current main action with a new press. It neither
+releases audio as a side effect nor expires a long intentional hold by timer.
+Ignored repeats/modifiers/text focus never refresh the stored age. Normal physical
+code identity, Shift+Digit release and the user-approved four-second STOP deletion
+remain unchanged; unrelated held keys retain ownership.
+
+Research: [KeyboardEvent.code](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/code)
+identifies the physical key independent of modifier-derived text; reuse that
+existing identity. [Performance.now](https://developer.mozilla.org/en-US/docs/Web/API/Performance/now)
+provides monotonic elapsed time; reuse the existing native hold clock rather
+than adding a wall-clock timeout or a second time source. The behavioral oracle
+is the unchanged original keyboard dispatcher/press method, including exact
+10000/10001ms boundaries. This is recovery on a fresh event, not a ten-second
+recording limit. Keyboard SUS/custom key mapping remain separate migration work.

@@ -484,3 +484,29 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: original X/Shift-X/repeat shortcut, physical key, modifiers and text/range/control guards');
 }
+
+// A fresh keyboard press recovers the original lost-release entry only after >10s.
+{
+ const source=fs.readFileSync(path.join(root,'resources/ui/main.js'),'utf8');
+ const method=name=>{const start=source.indexOf('static '+name+'('),end=source.indexOf('\n    }',start)+6;assert(start>=0);return source.slice(start,end);};
+ // Globals are unmapped only to isolate every original Shift+Digit loop path; SUS/keymap migration is separate.
+ for(const shift of [false,true])for(const digit of '1234567890'){
+  let clock=1000,expected=0,actual=0,timer=0;const originalTimers=new Map();
+  const oracle={window:{},SAMPLER_HOTKEYS:[],Date:{now:()=>clock},setTimeout:fn=>(originalTimers.set(++timer,fn),timer),clearTimeout:id=>originalTimers.delete(id),document:{getElementById:()=>null},LoopManager:{handleAction(){++expected;}},state:{listeningForInput:{active:false},midiLearn:{active:false},keyMapping:{kbd:Array.from('1234567890').concat(new Array(23).fill(null))},inputPressTimers:{},globalSusMode:false,loops:Array.from({length:20},()=>({state:'recording'}))}};
+  vm.createContext(oracle);vm.runInContext(`class App{${method('handleKeyboardPress')}${method('handleInputPress')}${method('keyboardPressId')}};globalThis.dispatch=e=>App.handleKeyboardPress(e);`,oracle);
+  const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+  const keyboard=new native.window.AionPerformance({track:()=>({state:'recording'}),action(){++actual;},hold(){}},{now:()=>clock,set:()=>++timer,clear(){}});
+  const event={code:'Digit'+digit,key:shift?')!@#$%^&*('[Number(digit)]:digit,shiftKey:shift,target:{tagName:'BODY'},preventDefault(){}};
+  for(const elapsed of [0,9999,10000,10001,10002,20001,20002]){clock=1000+elapsed;oracle.dispatch(event);keyboard.down(event);assert.equal(actual,expected,'Original keyboard lost-release boundary '+JSON.stringify({shift,digit,elapsed}));}
+  const before=actual;clock+=10001;keyboard.down({...event,repeat:true});keyboard.down({...event,ctrlKey:true});keyboard.down({...event,target:{tagName:'INPUT',type:'text'}});assert.equal(actual,before,'Repeat/modifier/text events cannot recover or refresh a held key');
+  oracle.dispatch(event);keyboard.down(event);assert.equal(actual,expected,'Ignored packets cannot postpone fresh-press recovery');keyboard.cancel();
+ }
+ {
+  let clock=0,timer=0,actions=0,erased=0;const timers=new Map(),holds=[];const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+  const keyboard=new native.window.AionPerformance({track:()=>({state:'playing'}),action(){++actions;},hold:(id,state,valid)=>holds.push(valid),erase(){++erased;}},{now:()=>clock,set:fn=>(timers.set(++timer,fn),timer),clear:id=>timers.delete(id)});
+  keyboard.press(0,'Digit1');const old=[...timers.values()];old[0]();keyboard.press(1,'Digit2');
+  clock=10001;assert.equal(actions,2,'Age alone never expires a held press');keyboard.press(0,'Digit1');assert.equal(actions,3,'Fresh press recovers even with monotonic origin zero');assert(!holds[0](),'Queued old cut is invalid after recovery');
+  for(const callback of old)callback();assert.equal(erased,0,'Old deferred hold/delete callbacks cannot act on replacement press');assert(keyboard.presses.get('Digit2').valid(),'Recovery is scoped to its key');assert.equal(timers.size,4,'Only recovered key timers are replaced');keyboard.cancel();assert.equal(timers.size,0);
+ }
+ console.log('PASS: unchanged original fresh-key >10s recovery for all 20 loops, exact boundary/no age refresh, ignored repeats/focus, scoped timer/queued-action cancellation');
+}

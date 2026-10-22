@@ -2604,3 +2604,59 @@ bump. The user-local logo changes remain unstaged and original runtime assets ar
 unchanged. These gates establish the observation boundary and retained looper
 behavior, not actual REAPER/Ardour sync, wrapper/platform certification, physical
 ASIO latency or a completed migration. No next scheduling feature was enabled.
+
+
+## 22 October 2026: original keyboard missed-release recovery
+
+An unchanged App.handleKeyboardPress/handleInputPress oracle first reproduced the
+native duplicate guard ignoring a fresh key at 10001ms (`build/keyboard-recovery-repro.log`).
+A missed key-up could therefore strand a take indefinitely. The native adapter
+now keeps <=10000ms debounced, then cancels that key's old timer/queued cut-delete
+ownership before executing a fresh current-state main action. Ignored repeats,
+modifiers and text focus do not recover or refresh age; elapsed time alone never
+finishes an intentional held recording. Existing physical key identity, global
+shortcut routing, per-track cancellation and four-second STOP deletion remain.
+
+The oracle exercises every digit/Shift+Digit loop path and 9999/10000/10001ms,
+new-press age, repeat/modifier/text guards. Global mappings are unmapped in that
+fixture to isolate all 20 original loop paths; this is not default keyboard SUS
+or custom-map acceptance. Native-only ownership checks retain monotonic origin
+zero, stale deferred callbacks and queued-cut predicates, and an unrelated held
+key remaining valid. The original source is unchanged. Research/clock choices are
+recorded in ARCHITECTURE.md; the existing monotonic hold clock is reused.
+
+Fresh checks:
+
+- Windows focused original-assets/core/MIDI/frontend/bridge/DSP/sync/state 8/8,
+  60.86s (`build/keyboard-recovery-windows.log`).
+- Ubuntu same focused suite 8/8, 66.17s (`build/keyboard-recovery-ubuntu.log`).
+- Extended final frontend ownership oracle rerun directly
+  (`build/keyboard-recovery-frontend.log`).
+- Production processor host/PCM and existing MIDI/persistence/cancellation/IPC,
+  with zero tracked processBlock new/delete at 64/128
+  (`build/keyboard-recovery-processor.log`).
+- Connected original-JS/native committed capture/overdub/substitute PCM audit:
+  126 cases / 965826 samples, maximum absolute error 7.394757495227111e-8 at
+  unchanged 1e-6 (`build/keyboard-recovery-audio.log`). Browser playback envelopes,
+  resampling and physical latency remain outside this scope.
+
+- The stronger final per-key ownership assertion also passes directly on Ubuntu
+  (`build/keyboard-recovery-ubuntu-frontend.log`).
+- Full real WebView2 mouse/main, WAV export and merge at 64/128
+  (`build/keyboard-recovery-gui.log`). The new real-key case omits key-up, holds
+  an actual RECORD beyond ten seconds without finish/cut/delete, injects an OS
+  repeat (ignored), then a fresh key (one FINISH). The committed clip retains
+  >=10 seconds of input and plays nonzero native PCM with unchanged identity;
+  released/old timers issue no later commands. Existing holds, X/DEL ALL, STUT
+  navigation, sync, source, export and merge cases remain.
+
+- Muted Standalone original 20-card UI/keyboard/IPC, partial-playhead transport
+  fields and actual browser count-in/nudge/analyser/STUT audio oracles pass
+  (`build/keyboard-recovery-ui.log`). No product AudioContext exists.
+
+Only existing Standalone/test targets rebuilt; no package or version bump.
+Original assets and user-local logo edits are preserved. No C++ DSP/RT source
+changed; preceding full 19/19 Windows/Ubuntu, sanitizer 5/5 and MIDI GUI evidence
+from the host-observation increment is retained rather than rerun for this
+frontend-only recovery fix. No hardware, host-sync or production-ready claim is
+made, and no next feature was enabled while this gate was under verification.

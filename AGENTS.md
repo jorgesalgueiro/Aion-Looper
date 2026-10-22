@@ -427,3 +427,12 @@ JUCE Standalone supplies partial device PositionInfo. Do not treat hostTransport
 available as proof of DAW tempo/sync: preserve real sample/seconds counters while
 missing musical timing stays null and unspecified play/record/loop flags stay
 false. Keep the actual Standalone IPC regression as well as no-playhead tests.
+
+Keyboard lost-release recovery is fresh-press driven, strictly after 10000ms from
+the original press. Repeats/modifiers/text events cannot recover or refresh its
+age. Never end an intentional held recording by timeout. Invalidate only the
+recovered key's old timers/queued cut-delete predicates before a new current-state
+action; other held keys remain valid. Retain unchanged original keyboard/press
+boundary comparisons for all 20 loops, monotonic-zero origin, deferred callback
+and ownership tests, plus actual >10s recording/no-repeat/fresh-finish/nonzero-PCM
+playback at 64/128. Preserve four-second STOP deletion and unported SUS/keymaps.

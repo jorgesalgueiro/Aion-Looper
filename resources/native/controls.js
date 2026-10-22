@@ -77,9 +77,15 @@
             return ['playing','stopping'].includes(initialState)&&['playing','stopping','stopped'].includes(currentState)?'clear':null;
         }
         press(id,key) {
-            if(this.presses.has(key))return;
+            const now=this.now(),existing=this.presses.get(key);
+            if(existing){
+                // Original recovery is fresh-press driven, strictly after 10s.
+                // Cancel stale queued/timer work without inventing a release action.
+                if(now-existing.start<=10000)return;
+                this.release(key,true);
+            }
             const track=this.actions.track(id);if(!track)return;
-            const press={id,initialState:track.state,canDelete:this.actions.canDelete?.(id)??['playing','stopping'].includes(track.state),start:this.now(),fired:false,erased:false,timer:null,eraseTimer:null};this.presses.set(key,press);
+            const press={id,initialState:track.state,canDelete:this.actions.canDelete?.(id)??['playing','stopping'].includes(track.state),start:now,fired:false,erased:false,timer:null,eraseTimer:null};this.presses.set(key,press);
             const epoch=this.epoch,revision=this.trackEpoch.get(id)||0;
             press.valid=()=>!press.cancelled&&epoch===this.epoch&&revision===(this.trackEpoch.get(id)||0);
             this.actions.action(id);
@@ -112,7 +118,6 @@
             if(event.code==='KeyX'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();this.actions.clearAll?.();return;}
             if(event.repeat || event.ctrlKey || event.metaKey)return;
             const key=event.code || event.key;
-            if(this.presses.has(key))return;
             if(event.key==='+' || event.code==='NumpadAdd') {event.preventDefault();this.actions.mode('overdub');return;}
             if(event.key==='-' || event.code==='NumpadSubtract') {event.preventDefault();this.actions.mode('substitute');return;}
             if(event.code==='KeyN'){event.preventDefault();this.actions.metronome?.();return;}

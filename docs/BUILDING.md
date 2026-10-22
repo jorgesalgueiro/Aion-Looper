@@ -146,6 +146,10 @@ Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z provide Undo/Redo. The original `X` fallback als
 requests confirmation on key repeat. Confirmed DEL ALL cancels held gestures and
 older queued actions; cancelled confirmation sends no clear command. Auto-play
 after Rec controls whether FINISH starts playback or leaves the take stopped.
+If a loop key-up is missed, release the physical key and press it again after
+more than ten seconds from its original press. The fresh press performs the
+current loop action; OS repeat does not recover it or reset the recovery age.
+Holding RECORD longer than ten seconds never automatically finishes/deletes it.
 Internal Master BPM STATIC/DYNAMIC sync is implemented; host/MIDI clock is pending.
 
 Use headphones/direct monitoring as appropriate for the physical setup. Session
