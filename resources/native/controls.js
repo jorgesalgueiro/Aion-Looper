@@ -125,9 +125,13 @@
             if(event.key==='/' || event.code==='NumpadDivide') {event.preventDefault();this.actions.retrigger();return;}
             if(event.key==='\\') {event.preventDefault();this.actions.multiply?.();return;}
             if(event.code==='KeyH') {event.preventDefault();this.actions.halfSpeed();return;}
-            const match=/^(?:Digit|Numpad)([0-9])$/.exec(event.code);
+            const match=/^(Digit|Numpad)([0-9])$/.exec(event.code);
             if(!match)return;
-            const digit=Number(match[1]),id=(digit===0?9:digit-1)+(event.shiftKey?10:0);
+            // The original maps keypad characters. NumLock navigation is not a
+            // digit, and only the main Digit row has the Shift bank fallback.
+            const numpad=match[1]==='Numpad';
+            if(numpad&&!/^[0-9]$/.test(event.key))return;
+            const digit=Number(numpad?event.key:match[2]),id=(digit===0?9:digit-1)+(!numpad&&event.shiftKey?10:0);
             if(!this.actions.track(id))return;
             event.preventDefault();this.press(id,key);
         }

@@ -458,3 +458,15 @@ against the production native processor at 64/128. After that focused run, use
 `tools/TestMouseWorkflow.ps1 -SkipMidi` for main/WAV/merge acceptance without
 repeating MIDI; the default runner still runs every workflow. These are existing
 local test targets and do not require a new package.
+
+
+### Numeric keypad regression
+
+`tools/TestMouseWorkflow.ps1` includes actual CDP keypad record/finish/play/stop
+checks at both 64 and 128 samples. Numeric keypad 1..0 selects loops 1..10 even
+with Shift. Main-row Shift+digits retains the existing upper-bank behavior.
+NumLock-off navigation (Insert, End, arrows, Home, PageUp/PageDown and Clear)
+issues no loop commands. Releasing a numeric press after NumLock/Shift changes
+must cancel its old cut/delete timers and preserve playback after four seconds.
+These synthetic browser events exercise the production processor/editor with
+real captured PCM; physical keyboard/OS/layout checks remain separate acceptance.

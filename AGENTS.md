@@ -444,3 +444,12 @@ WAV against no-packet capture, real raw juce::MidiBuffer and actual GUI/learn/au
 checks at 64/128, zero callback new/delete, and valid panic/release recovery. Keep
 existing accepted seven-bit panic values/omni cancellation; stricter channel-mode
 semantics and wire-stream parsing are separate work, not part of this fix.
+
+
+Keypad loop dispatch follows the original character mapping: only numeric key
+values select loops 1-10, even with Shift. NumLock navigation/Unidentified/empty
+values must not issue a transport command or swallow navigation. Only main-row
+Digit codes use the Shift bank fallback. Keep physical code ownership on release
+when NumLock/Shift changes, unchanged-JS all-digit/navigation comparisons, and
+actual 64/128 record/finish/play/stop plus >4s PCM/timer preservation. This does not
+enable custom keyboard mappings or keyboard SUS; keep those scopes separate.

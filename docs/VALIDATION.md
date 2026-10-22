@@ -2714,3 +2714,60 @@ export/merge workflows retain their previous baseline. These results do not
 establish physical-controller, DAW-host or all-platform acceptance, or complete
 application parity. No new import, synth, clock or transport-follow feature was
 enabled in this increment.
+
+
+## Numeric keypad routing repair (22 October 2026)
+
+The new unchanged-original handleKeyboardPress oracle first reproduced keypad
+Numpad0/Insert incorrectly issuing Loop 10's main action
+(`build/keypad-routing-repro.log`). The native combined code-based Digit/Numpad
+branch also added the upper-bank Shift offset for keypad digits, unlike the
+original character mapping. The fix requires a keypad digit key value and uses
+it for loops 1-10; main-row Digit Shift behavior is preserved. Release identity
+still follows physical code. No C++ DSP, storage, queue, MIDI or UI markup changes.
+
+The frontend matrix retains the original default numeric and global mappings
+while checking all keypad digits, navigation names, empty/Unidentified values,
+Shift variants and reported-character/physical-code combinations. It also checks
+repeat/modifier/text guards, physical release after NumLock/Shift changes and
+that navigation is not swallowed. Original assets, dispatcher methods and prior
+cases/tolerances are unchanged. Keyboard SUS/custom maps remain outside scope.
+
+The connected original-JS/native captured/overdub/substitute PCM audit passed:
+126 cases / 965826 samples, maximum absolute error 7.394757495227111e-8 at the
+unchanged 1e-6 tolerance (`build/keypad-routing-audio.log`). This does not cover
+browser playback resampling/envelopes or physical latency.
+
+
+Fresh Windows full unchanged-JS/native suite: 19/19, 268.80s
+(`build/keypad-routing-windows.log`). The new frontend matrix is included in
+native_frontend_commands; all original byte-identity, DSP, state, waveform,
+MIDI, sync, editing/export and bridge checks remain in the full suite.
+
+
+Fresh production processor/editor WebView2 workflows passed at both 64 and 128
+samples (`build/keypad-routing-gui.log`). Actual keypad events record, finish,
+play nonzero native PCM and stop on loops 1/10 despite Shift. All ten navigation
+keys with/without Shift issue no transport commands; NumLock-changing releases
+leave no cut/delete after four seconds and preserve clip identity/length and
+nonzero playback. The browser event log confirms keypad digit/Shift/navigation
+values. Existing mouse/header, static/dynamic sync, four-second deletion, Start/
+Q/nudge/RTRG/STUT, >10s lost-release, real export/merge/WAV bytes, MIDI learn/
+expression/PC/CC, reload and IPC tests also pass. No physical device is used.
+The picker fixture substitutes destination selection only; no new OS-picker
+interaction or physical keyboard/driver evidence is claimed.
+
+
+Fresh Ubuntu full unchanged-JS/native suite: 19/19, 453.97s
+(`build/keypad-routing-ubuntu.log`). Final muted Standalone UI/keyboard/IPC and
+actual browser count-in/nudge/analyser/STUT oracles passed
+(`build/keypad-routing-ui.log`), retaining 20 original cards, parameter and
+command validation, host-observation checks and no product AudioContext.
+The portable callback allocation checks remain in both full suites. No C++ DSP
+was changed, and no fresh sanitizer claim is made for this frontend-only fix.
+
+Only the existing Standalone and synthetic host were rebuilt; no ZIP, installer
+or version bump was created. The separate user logo hunk remains unstaged and
+original reference assets remain byte-identical. This increment closes the
+reproduced keypad routing fault only; full application parity, custom keyboard
+mapping/SUS, physical OS/layout/device and DAW/platform acceptance remain pending.

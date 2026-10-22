@@ -510,3 +510,32 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: unchanged original fresh-key >10s recovery for all 20 loops, exact boundary/no age refresh, ignored repeats/focus, scoped timer/queued-action cancellation');
 }
+
+// The original maps keypad characters; NumLock navigation is not a loop press.
+{
+ const source=fs.readFileSync(path.join(root,'resources/ui/main.js'),'utf8');
+ const method=name=>{const start=source.indexOf('static '+name+'('),end=source.indexOf('\n    }',start)+6;assert(start>=0);return source.slice(start,end);};
+ let expected=[],actual=[],timer=0;const timers=new Map();
+ const oracle={window:{},SAMPLER_HOTKEYS:[],document:{getElementById:()=>null},state:{listeningForInput:{active:false},midiLearn:{active:false},keyMapping:{kbd:Array.from('1234567890').concat(new Array(20).fill(null),['+','-','*'])},loops:Array.from({length:20},()=>({}))}};
+ vm.createContext(oracle);oracle.record=id=>expected.push(id);
+ vm.runInContext(`class App{${method('handleKeyboardPress')}${method('keyboardPressId')}static handleInputPress(id){record(id);}};globalThis.dispatch=e=>App.handleKeyboardPress(e);`,oracle);
+ const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ const keyboard=new native.window.AionPerformance({track:()=>({state:'recording'}),action:id=>actual.push(id),hold(){}},{now:()=>1000,set:fn=>(timers.set(++timer,fn),timer),clear:id=>timers.delete(id)});
+ const navigation=['Insert','End','ArrowDown','PageDown','ArrowLeft','Clear','ArrowRight','Home','ArrowUp','PageUp'];
+ for(const digit of '0123456789')for(const shiftKey of [false,true])for(const key of [digit,navigation[Number(digit)],'Unidentified','']){
+  const event={code:'Numpad'+digit,key,shiftKey,target:{tagName:'BODY'},preventDefault(){}};expected=[];actual=[];
+  oracle.dispatch(event);keyboard.down(event);assert.deepEqual(actual,expected,'Original keypad digit/navigation routing '+JSON.stringify({digit,key,shiftKey}));
+  keyboard.up({...event,key:navigation[Number(digit)],shiftKey:!shiftKey});assert.equal(keyboard.presses.size,0,'Release follows physical keypad key even if NumLock/Shift changed');assert.equal(timers.size,0);
+ }
+ // Dispatch uses the reported digit, not the number in its physical code.
+ for(const digit of '0123456789')for(const key of '0123456789'){
+  const event={code:'Numpad'+digit,key,shiftKey:true,target:{tagName:'BODY'},preventDefault(){}};expected=[];actual=[];oracle.dispatch(event);keyboard.down(event);assert.deepEqual(actual,expected,'Keypad character routing');keyboard.up(event);
+ }
+ for(const flags of [{repeat:true},{ctrlKey:true},{metaKey:true},{altKey:true},{target:{tagName:'INPUT',type:'text'}},{target:{tagName:'TEXTAREA'}},{target:{tagName:'SELECT'}}]){
+  const event={code:'Numpad1',key:'1',shiftKey:true,target:{tagName:'BODY'},preventDefault(){},...flags};expected=[];actual=[];oracle.dispatch(event);keyboard.down(event);assert.deepEqual(actual,expected,'Original keypad repeat/modifier/text guard');assert.equal(timers.size,0);
+ }
+ keyboard.down({code:'Numpad1',key:'End',target:{tagName:'BODY'},preventDefault(){assert.fail('Navigation must not be swallowed');}});
+ keyboard.down({code:'Numpad1',key:'1',target:{tagName:'DIV',isContentEditable:true},preventDefault(){assert.fail('Editable content is protected');}});
+ assert.equal(timers.size,0);assert.equal(keyboard.presses.size,0);
+ console.log('PASS: unchanged original keypad characters, Shift stays on loops 1-10, NumLock navigation ignored, physical release and repeat/modifier/text guards');
+}

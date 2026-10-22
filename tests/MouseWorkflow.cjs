@@ -367,6 +367,24 @@ let socket;
     acceptClear=true;await exactlyOne(()=>click('#mod-menu button[data-i18n="CLEAR_ALL"]'),'Original DEL ALL button still clears through shared handler');
     assert(clearDialogs.every(message=>message==='Clear ALL loops and master recordings?'));
     console.log('PASS: original X/DEL ALL native confirmation cancel/accept, text focus, real stored PCM, held STUT and paused key/timer cancellation');
+    // Real keypad input: Shift does not choose the Digit-row bank; navigation
+    // cannot start/stop audio, and key-up remains physical across NumLock changes.
+    await evaluate(`document.activeElement.blur();window.padEvents=[];document.addEventListener('keydown',e=>{if(e.code.startsWith('Numpad'))window.padEvents.push({code:e.code,key:e.key,shift:e.shiftKey});},true);`);
+    const keypad=(type,digit,key,shift=false,virtualKey=96+Number(digit))=>call('Input.dispatchKeyEvent',{type,code:'Numpad'+digit,key,modifiers:shift?8:0,windowsVirtualKeyCode:virtualKey,isKeypad:true});
+    for(const [digit,id,nav,virtualKey] of [['1',0,'End',35],['0',9,'Insert',45]]){
+        await keypad('keyDown',digit,digit,true);const padRecord=await state('recording',id);assert.equal(padRecord.tracks[id+10].state,'empty','Shift+keypad keeps the original lower bank');
+        await keypad('keyUp',digit,nav,false,virtualKey);await delay(180);
+        await keypad('keyDown',digit,digit,true);await keypad('keyUp',digit,nav,false,virtualKey);const padTake=await state('stopped',id);assert(padTake.tracks[id].length>0,'Keypad commits actual captured audio');
+        await keypad('keyDown',digit,digit,true);await keypad('keyUp',digit,nav,false,virtualKey);
+        const padPlay=await wait(s=>s.tracks[id].state==='playing'&&s.outputPeak>0.02,'Keypad take produces native PCM');
+        const navKeys=['Insert','End','ArrowDown','PageDown','ArrowLeft','Clear','ArrowRight','Home','ArrowUp','PageUp'],navVk=[45,35,40,34,37,12,39,36,38,33];
+        for(let n=0;n<10;++n)for(const shift of [false,true]){await keypad('keyDown',String(n),navKeys[n],shift,navVk[n]);await keypad('keyUp',String(n),navKeys[n],shift,navVk[n]);}
+        await delay(4300);const afterPad=await snapshot();assert.equal(afterPad.lastRequestId,padPlay.lastRequestId,'Keypad navigation and released timers issue no audio command');assert.equal(afterPad.tracks[id].waveformId,padTake.tracks[id].waveformId);assert.equal(afterPad.tracks[id].length,padTake.tracks[id].length);assert.equal(afterPad.tracks[id].state,'playing');assert(afterPad.outputPeak>0.02,'Navigation preserves real playback');
+        await keypad('keyDown',digit,digit,true);await keypad('keyUp',digit,nav,false,virtualKey);await state('stopped',id);
+        await exactlyOne(()=>click(`#loop-${id} .loop-track-delete`),'Clean up keypad take');
+    }
+    const padEvents=await evaluate('window.padEvents');assert(padEvents.some(e=>e.code==='Numpad1'&&e.key==='1'&&e.shift),'Browser receives shifted keypad character');assert(padEvents.some(e=>e.code==='Numpad0'&&e.key==='Insert'),'Browser receives NumLock navigation');
+    console.log('PASS: actual Shift+keypad record/finish/play/stop on original bank, all navigation keys ignored, NumLock-changing release and >4s PCM preservation');
     // Missed key-up: a long RECORD is intentional until a fresh >10s press.
     await evaluate('document.activeElement.blur()');
     const keyOne=async(type,autoRepeat=false)=>call('Input.dispatchKeyEvent',{type,code:'Digit1',key:'1',windowsVirtualKeyCode:49,autoRepeat});

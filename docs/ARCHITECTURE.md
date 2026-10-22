@@ -930,3 +930,22 @@ bytes belong upstream. Existing native acceptance of any seven-bit value for
 CC120/123 and global cancellation are preserved. This is not a claim of complete
 channel-mode conformance or new MIDI clock functionality. The original UI,
 controller assignments and valid MIDI behavior remain unchanged.
+
+
+## Original numeric keypad dispatch (22 October 2026)
+
+The original handleKeyboardPress looks up event.key in the default mappings;
+its Shift bank fallback is explicitly restricted to main-row Digit codes. The
+native adapter previously combined Digit and Numpad code matching, so NumLock-off
+Insert/End/etc. could record a loop and Shift+keypad selected the upper bank.
+Numpad dispatch now requires a numeric key value and uses that reported digit,
+while main-row Shift handling remains unchanged. Release ownership still uses
+physical code, so a changed NumLock/Shift state cannot strand a press timer.
+
+This follows the [W3C keypad code table](https://www.w3.org/TR/uievents-code/),
+where a keypad code identifies a physical key shared by numeric and navigation
+functions, and the [UI Events key/location specification](https://www.w3.org/TR/uievents/).
+No DSP, native routing, MIDI binding, keyboard mapping persistence or UI markup
+changes are involved. Keyboard SUS/custom mappings remain separate migration work.
+The original dispatcher oracle and actual native WebView2 record/playback tests
+cover this fix; they do not prove physical keyboard behavior on every OS/layout.
