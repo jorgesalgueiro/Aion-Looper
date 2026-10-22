@@ -397,3 +397,10 @@ capacity immediately, without waiting for the five-second reply deadline. Retain
 transport/circular-payload/getter failures, more-than-capacity retries and actual
 WebView2 recovery after injected send failures. Do not weaken existing session,
 reply, timeout, queue or pagehide guards.
+
+Native navigation must release temporary STUT through its queue-independent path,
+even if blur/pagehide release RPCs are lost and no next-page bootstrap runs.
+Retain actual held-fragment -> blank document -> original editor tests at 64/128,
+with audio-thread evidence of released state, continuing nonzero playback and
+unchanged clip identity/length. Keep runtime exceptions visible across documents;
+empty allowed documents must not execute the original mixer bootstrap.

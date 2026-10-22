@@ -23,6 +23,7 @@ public:
         const auto exportDirectory=juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory().getChildFile("wav-export-"+juce::String(blockSize));
         (void)exportDirectory.createDirectory();pcmDirectory=exportDirectory;
         (void)pcmDirectory.getChildFile("midi-input.json").deleteFile();(void)pcmDirectory.getChildFile("midi-ack").deleteFile();
+        (void)pcmDirectory.getChildFile("navigation-probe-start").deleteFile();(void)pcmDirectory.getChildFile("navigation-probe-stop").deleteFile();(void)pcmDirectory.getChildFile("navigation-evidence.json").deleteFile();
         (void)pcmDirectory.getChildFile("pcm-reset").deleteFile();(void)pcmDirectory.getChildFile("pcm-stop").deleteFile();writePcmEvidence();
         AionProcessor::ExportDestination picker=[this,exportDirectory](const juce::String& filename,std::function<void(juce::File)> done){
             choices.push_back({exportDirectory,filename,std::move(done)});
@@ -55,6 +56,11 @@ public:
                 processor->processBlock(buffer, midi);
                 if(midiSequence)midiAcknowledged.store(midiSequence,std::memory_order_release);
                 pcmClock.store(frame,std::memory_order_release);
+                if(navigationActive.load(std::memory_order_acquire)){
+                    const auto inspected=processor->inspectAudioThread();float peak=0;
+                    for(int c=0;c<2;++c)for(int i=0;i<blockSize;++i)peak=std::max(peak,std::abs(buffer.getSample(c,i)));
+                    (void)navigationEvidence.push({inspected.frame,inspected.track.length,inspected.track.waveformId,inspected.track.state,inspected.track.stuttering,peak});
+                }
                 if(pcmActive.load(std::memory_order_acquire)){
                 const auto revision=pcmRevision.load(std::memory_order_acquire);
                 if(revision!=seenRevision){seenRevision=revision;heard=false;pcmLastAudible.store(0,std::memory_order_release);(void)pcmEvidence.push({revision});}
@@ -86,6 +92,10 @@ private:
     aion::SpscQueue<MidiPacket,512> midiPackets;
     std::atomic<std::uint32_t> midiAcknowledged{0};
     std::uint32_t reportedMidi=0;
+    // Test-only, fixed-size audio evidence; JSON/file work stays on the message thread.
+    struct NavigationEvidence {std::uint64_t frame=0,length=0,waveformId=0;aion::LoopState state{};bool stuttering=false;float peak=0;};
+    aion::SpscQueue<NavigationEvidence,8> navigationEvidence;
+    std::atomic<bool> navigationActive{false};
     struct PcmEvidence {std::uint32_t epoch=0;bool heard=false;float peak=0,masterPeak=0;unsigned flash=0;std::uint64_t frame=0,deadline=0;};
     aion::SpscQueue<PcmEvidence,8> pcmEvidence; // Audio -> message; reset and first real cue only.
     PcmEvidence latestPcm{};
@@ -105,6 +115,15 @@ private:
     struct Choice {juce::File directory;juce::String filename;std::function<void(juce::File)> done;};
     std::vector<Choice> choices;
     void timerCallback() override {
+        const auto startNavigation=pcmDirectory.getChildFile("navigation-probe-start");if(startNavigation.existsAsFile()){(void)startNavigation.deleteFile();navigationActive.store(true,std::memory_order_release);}
+        const auto stopNavigation=pcmDirectory.getChildFile("navigation-probe-stop");if(stopNavigation.existsAsFile()){(void)stopNavigation.deleteFile();navigationActive.store(false,std::memory_order_release);}
+        NavigationEvidence navigation{},nextNavigation{};bool navigationChanged=false;
+        while(navigationEvidence.pop(nextNavigation)){navigation=nextNavigation;navigationChanged=true;}
+        if(navigationChanged){auto* data=new juce::DynamicObject();juce::var report(data);
+            data->setProperty("frame",static_cast<juce::int64>(navigation.frame));data->setProperty("length",static_cast<juce::int64>(navigation.length));data->setProperty("waveformId",static_cast<juce::int64>(navigation.waveformId));
+            data->setProperty("playing",navigation.state==aion::LoopState::playing);data->setProperty("stuttering",navigation.stuttering);data->setProperty("outputPeak",navigation.peak);
+            (void)pcmDirectory.getChildFile("navigation-evidence.json").replaceWithText(juce::JSON::toString(report));
+        }
         const auto injection=pcmDirectory.getChildFile("midi-input.json");
         if(injection.existsAsFile()){
             const auto data=juce::JSON::parse(injection);(void)injection.deleteFile();

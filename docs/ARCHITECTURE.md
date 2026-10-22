@@ -577,8 +577,10 @@ Per-track lock-free revision counters provide a queue-independent release path.
 Release/blur/editor close invalidate already queued starts and release active
 regions at the next audio block, including zero-size processing. Frontend gesture
 ownership also invalidates unsent starts after release, cancellation or deletion.
-Opening/reloading an editor releases temporary regions; native editor destruction
-performs the same cancellation even if JavaScript unload cannot deliver a request.
+Opening/reloading an editor releases temporary regions. Native `pageAboutToLoad`
+and editor destruction perform the same cancellation even if JavaScript unload
+cannot deliver a request or the destination has no looper bootstrap. The frontend
+skips empty documents instead of assuming the original mixer DOM exists.
 STOP ALL/DEL/reset/source replacement release the temporary region. Source-change
 cleanup intentionally prevents a held old source from affecting a replacement;
 it does not claim identical overlapping/future WebAudio graphs.

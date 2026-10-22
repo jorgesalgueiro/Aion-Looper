@@ -2442,3 +2442,51 @@ rerun for this failed-send cleanup. No threshold/case was relaxed. Only existing
 Windows Standalone/test targets rebuilt; no new package or version bump. Original
 assets and local logo edits are preserved. No next feature was enabled and no
 broader device/host/platform or production-ready claim is made.
+
+
+## 22 October 2026: native navigation releases held STUT
+
+The new production-editor regression first failed at 64 samples: after a real
+pointer STUT hold, lost blur/pagehide release RPCs and navigation to `about:blank`,
+the actual audio callback still reported `stuttering:true`, `playing:true` and
+nonzero output. See `build/native-navigation-repro.log`. The test does not consult
+browser snapshots after leaving the editor or rely on the next page releasing it.
+
+`Browser::pageAboutToLoad` now invokes the existing queue-independent native STUT
+release alongside export/MIDI cleanup. The looper adapter skips a document without
+the original input mixer, so native user-script injection into an allowed empty
+page cannot dereference missing markup. The original interface, stored PCM,
+transport and JS feature semantics are unchanged.
+
+The hardware-free host records bounded audio-owned state/clip identity and actual
+output-buffer peaks through an SPSC queue only while this regression requests it.
+JSON/file work remains on the message thread; the fixture is excluded from normal
+builds and is never packaged. Acceptance requires a newer audio block with STUT
+released, continuing playing/nonzero output, unchanged clip identity/length, and
+restoration of all 20 original cards. Runtime exception collection spans the empty
+document and restored editor without clearing errors. Existing ordinary
+release/outside/blur/reload/deferred-start cases remain.
+
+
+Fresh verification for this change:
+
+- Windows portable suite: 19/19, 265.57s (`build/native-navigation-windows.log`).
+- Ubuntu portable suite: 19/19, 447.45s (`build/native-navigation-ubuntu.log`).
+- Production processor/MidiBuffer, persistence/cancellation and zero tracked
+  processBlock new/delete at 64/128 (`build/native-navigation-processor.log`).
+- Full actual WebView2 mouse/main, new lost-release navigation, export, merge and
+  MIDI workflows at 64/128 (`build/native-navigation-gui.log`). No device is
+  opened by the synthetic host; no physical MIDI observation is inferred.
+- Muted Standalone native UI/keyboard/IPC checks and actual browser count-in,
+  nudge, analyser and STUT sound oracles (`build/native-navigation-ui.log`). STUT
+  compares 12 cases / 86016 samples, maximum error 1.4901161193847656e-8 at the
+  unchanged 1e-6 tolerance; playback envelopes/resampling remain outside its scope.
+- Connected original-JS/native capture/overdub/substitute PCM: 126 cases / 965826
+  samples, maximum error 7.394757495227111e-8 at unchanged 1e-6
+  (`build/native-navigation-audio.log`). This is committed-PCM acceptance, not
+  physical latency or complete browser audio parity.
+
+Only existing Windows Standalone/test targets rebuilt. No ZIP, version bump,
+format rollout or new feature. Original assets and user-local logo edits remain
+preserved; no DSP core source changed. Prior sanitizer evidence is retained rather
+than rerun. Apple/Linux GUI, physical drivers and host sync remain separate work.

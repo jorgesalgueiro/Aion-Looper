@@ -23,6 +23,8 @@ let socket;
     const snapshot=()=>evaluate(`AionNative.request({operation:'snapshot'})`);
     const pcmDirectory=require('node:path').resolve(__dirname,`../build/windows/Release/wav-export-${process.argv[2]||64}`);
     const readPcm=()=>{try{return JSON.parse(require('node:fs').readFileSync(require('node:path').join(pcmDirectory,'pcm-evidence.json'),'utf8'));}catch{return null;}};
+    const readNavigation=()=>{try{return JSON.parse(require('node:fs').readFileSync(require('node:path').join(pcmDirectory,'navigation-evidence.json'),'utf8'));}catch{return null;}};
+    const waitNavigation=async(predicate,label)=>{const end=Date.now()+7000;let evidence;while(Date.now()<end){evidence=readNavigation();if(evidence&&predicate(evidence))return evidence;await delay(10);}assert.fail(label+': '+JSON.stringify(evidence));};
     const waitPcm=async(predicate,label)=>{const end=Date.now()+7000;let evidence;while(Date.now()<end){evidence=readPcm();if(evidence&&predicate(evidence))return evidence;await delay(5);}assert.fail(label+': '+JSON.stringify(evidence));};
     const wait=async (predicate,label,timeout=7000)=>{const end=Date.now()+timeout;let value;while(Date.now()<end){value=await snapshot();if(predicate(value)){await delay(100);return value;}await delay(35);}assert.fail(label+': '+JSON.stringify(value));};
     const state=(wanted,id=0)=>wait(s=>s.tracks[id].state===wanted,`Loop ${id+1} -> ${wanted}`);
@@ -149,6 +151,21 @@ let socket;
     await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:1190,y:790,button:'left',buttons:1});await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:1190,y:790,button:'left',clickCount:1});
     await wait(s=>!s.tracks[0].stuttering&&s.tracks[0].stutterClock&&s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Release outside STUT resumes full PCM');
     await stutDown();await wait(s=>s.tracks[0].stuttering,'STUT before blur');await evaluate(`window.dispatchEvent(new Event('blur'))`);await wait(s=>!s.tracks[0].stuttering,'Blur releases STUT');
+    await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:1190,y:790,button:'left',clickCount:1});
+    // Suppress unload/blur release RPCs, and navigate to a page with no bootstrap.
+    // The native editor must release the held fragment without any JS cleanup.
+    await evaluate(`(()=>{const backend=window.__JUCE__.backend,emit=backend.emitEvent;backend.emitEvent=function(type,data){if(data.params?.[0]?.operation==='releaseStutter')return;return emit.call(this,type,data);};})()`);
+    require('node:fs').writeFileSync(require('node:path').join(pcmDirectory,'navigation-probe-start'),'1');
+    await stutDown();await wait(s=>s.tracks[0].stuttering,'STUT before navigation with lost unload RPC');
+    const heldNavigation=await waitNavigation(e=>e.stuttering&&e.playing&&e.outputPeak>0.02,'Audio-owned held fragment before blank navigation');
+    assert.deepEqual(await evaluate('window.mouseErrors'),[]);await call('Page.navigate',{url:'about:blank'});
+    let blank=false;for(let n=0;n<100&&!blank;++n){try{blank=await evaluate(`location.href==='about:blank'`);}catch(error){if(!/context|navigat/i.test(error.message))throw error;}if(!blank)await delay(40);}assert(blank,'Navigation reaches blank document with no Aion frontend');
+    const releasedNavigation=await waitNavigation(e=>e.frame>heldNavigation.frame&&!e.stuttering&&e.playing&&e.outputPeak>0.02,'Native blank navigation releases STUT despite lost unload RPC and absent bootstrap');
+    assert.equal(releasedNavigation.length,heldNavigation.length);assert.equal(releasedNavigation.waveformId,heldNavigation.waveformId,'Native navigation preserves stored PCM');
+    require('node:fs').writeFileSync(require('node:path').join(pcmDirectory,'navigation-probe-stop'),'1');await call('Page.navigate',{url:target.url});
+    let restored=false;for(let n=0;n<100&&!restored;++n){try{restored=await evaluate(`location.href===${JSON.stringify(target.url)}&&document.readyState==='complete'&&typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`);}catch(error){if(!/context|navigat/i.test(error.message))throw error;}if(!restored)await delay(40);}assert(restored,'Original editor returns after blank-navigation regression');
+    await wait(s=>!s.tracks[0].stuttering&&s.tracks[0].state==='playing','Native release remains after editor returns');
+    await evaluate(`window.mouseErrors=[];window.addEventListener('error',e=>window.mouseErrors.push(e.message));document.documentElement.style.scrollBehavior='auto'`);
     await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:1190,y:790,button:'left',clickCount:1});
     await stutDown();await wait(s=>s.tracks[0].stuttering,'STUT before editor reload');assert.deepEqual(await evaluate('window.mouseErrors'),[]);await call('Page.reload');await delay(400);
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}

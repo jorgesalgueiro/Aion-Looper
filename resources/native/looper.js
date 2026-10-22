@@ -3,7 +3,7 @@
     'use strict';
     document.addEventListener('DOMContentLoaded', () => {
         const rpc = window.AionNative?.request;
-        if (!rpc || !window.AionLoopMarkup) return;
+        if (!rpc || !window.AionLoopMarkup || !document.getElementById('inputTracksContainer')) return;
         let alive = true, mode = 'normal', snapshot = null, pending = null, busy = false;
         let lastFrame = -1, advancedAt = 0, pollTimer, error = '';
         let markerKey='';window.addEventListener('resize',()=>markerKey='');

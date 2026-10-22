@@ -12,7 +12,8 @@ private:
     public:
         Browser(AionProcessor& processor,const Options& options) : WebBrowserComponent(options),owner(processor) {}
         bool pageAboutToLoad(const juce::String& url) override {
-            owner.cancelExport(); // Native navigation precedes unload RPC/new-page bootstrap.
+            owner.releaseStutter(); // Navigation must not depend on unload RPC/new-page bootstrap.
+            owner.cancelExport();
             owner.cancelMidiLearn();
             return url.startsWith(getResourceProviderRoot()) || url == "about:blank";
         }
