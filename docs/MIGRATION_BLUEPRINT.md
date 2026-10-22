@@ -4,6 +4,7 @@ Audit baseline: source commit `e66a86c`, 21 October 2026. This document describe
 what exists and separates it from the remaining target. It does not replace the
 working implementation or claim complete Ascii-Looper parity.
 Host-observation increment updated 22 October 2026; fresh evidence is in VALIDATION.md.
+Windows VST3 pluginval gate added 22 October 2026; its exact scope is recorded there.
 
 ## Repository and original reference
 
@@ -104,6 +105,13 @@ juce_add_plugin(AionLooper
 | `linux` | Standalone, VST3, CLAP, LV2 | JUCE ALSA/JACK, WebKitGTK; current portable tests do not establish current Linux GUI/host acceptance |
 | `macos` | Standalone, VST3, CLAP, AU, AUv3 | Xcode universal arm64/x86_64; CoreAudio/WebKit; requires a Mac |
 | `ios` | Standalone, AUv3 | Xcode/iPhoneOS, CoreAudio/WebKit; device/signing/extension lifecycle unverified |
+
+Windows BUILD_TESTING optionally accepts AION_PLUGINVAL_EXECUTABLE. This adds the
+serial vst3_pluginval test against the built wrapper through the pinned local
+validator; it does not change product formats, dependencies or portable tests.
+The level-9 Windows host-interface matrix now passes, with actual DAW/hardware,
+allocation instrumentation and other-format/platform acceptance still separate.
+See BUILDING.md for opt-in commands; no tool is downloaded by CMake.
 
 Options `AION_BUILD_STANDALONE`, `AION_BUILD_VST3`, `AION_BUILD_CLAP`,
 `AION_BUILD_AU`, `AION_BUILD_AUV3`, `AION_BUILD_LV2` select formats.

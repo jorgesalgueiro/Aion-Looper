@@ -2831,3 +2831,71 @@ retain the previous keypad-fix baseline; the MIDI workflows and Standalone smoke
 were freshly rerun. Original full browser playback, physical hardware, DAW/wrapper
 and other-platform acceptance remain separate. No MIDI clock, host-follow,
 keyboard SUS, synth or new import feature was enabled in this repair.
+
+
+## Actual Windows VST3 host-interface gate (22 October 2026)
+
+Source baseline: 46e9c78, with the user's existing local logo hunk retained. No
+product C++/DSP/UI/state or SDK pin changed for this increment. The built VST3
+module tested has SHA256
+5B16EF91E131305678E0CC76FBBCC41975E426A7CB179DCEAFA2A253F3DC3778.
+This is actual dynamic VST3 scan/load/process/editor/state validation through
+Tracktion pluginval, rather than a direct AionProcessor fixture or a compile-only
+claim. Tool provenance and pinned hashes are in SDKS.md.
+
+The official tool passed level 5, then level 9 with seed 1337:
+build/pluginval/initial and build/pluginval/strict9-initial retain vendor logs and
+stdout/stderr. One plugin was found, VST3-Aion-Looper-e8f091b8-93ca4d0c, v0.4.3.
+The matrix covers 44.1/48/96 kHz and blocks 64/128/256/512/1024. Audio processing,
+32-sample automation subdivisions, cold/warm load, editor/open-whilst-processing,
+editor automation, bus/layout operations, state restoration, non-releasing
+prepare/process, background state, parameter thread safety and fuzz tests pass.
+This exercises the default plugin state; no recorded loops or learned-controller
+session was loaded, and actual HTML rendering/content is covered separately by
+the existing native UI tests, not by a successful editor-open check alone.
+
+The repeatable tools/TestVst3Pluginval.ps1 harness verifies pinned tool bytes,
+requires exact completed-test and matrix markers, retains GUI tests, and rejects
+a binary modified during the run. Its per-run result.json records binary/tool/
+harness hashes, source revision/dirty tracked paths, command, seed, matrix,
+coverage gaps, exit code and timing. Direct execution with a space-containing
+output path passed in 20.33s. The opt-in CMake/CTest entry passed 1/1 in 20.38s
+(build/vst3-validator-ctest.log). CMake configuration/generation passed with the
+existing local dependencies (build/vst3-validator-configure.log).
+
+The setup/inherited-options check also passed in 20.08s. It explicitly requested
+pinned tool extraction, inherited SKIP_GUI_TESTS=1, SAMPLE_RATES=8000,
+BLOCK_SIZES=1 and RANDOMISE=1, then confirmed all GUI/default matrix markers,
+zero missing tests and restoration of the caller environment. Evidence is in
+build/vst3-validator-inherited.log and build/pluginval inherited options/*/result.json.
+The harness provides no test-disable or GUI-skip option; CTest is serial and
+opt-in, while default portable builds remain independent of pluginval.
+
+Important tool limits: the pinned official CMake source does not include
+Source/tests/ExtremeTests.cpp. Therefore allocationTestExecuted=false, even
+though level 9 succeeds. The external Steinberg validator was not configured
+and its skip is retained: externalSteinbergValidatorExecuted=false. These passes
+are not arbitrary malloc/new certification, Steinberg certification, MIDI/clock
+or recorded-project parity, actual REAPER/Ardour/device/ASIO testing, Apple/Linux
+GUI or CLAP/LV2/AU/AUv3 validation, or commercial readiness. Separate native core/
+processor allocation and original-JS/audio gates remain required.
+
+
+The portable Windows build regenerated without requiring pluginval and passed
+19/19 unchanged-JS/native tests in 249.89s (build/vst3-gate-windows.log).
+The connected capture/overdub/substitute audit passed 126 cases / 965826 samples,
+maximum absolute error 7.394757495227111e-8 at the unchanged 1e-6 tolerance
+(build/vst3-gate-audio.log). It retains the documented exclusions for browser
+playback envelopes/resampling, latency compensation and sync. Existing native
+64/128 GUI/MIDI/zero-block and sanitizer evidence remains at the unchanged
+46e9c78 product baseline; it is not claimed freshly rerun for a CMake/test-harness
+addition. No app/plugin binary, version or package was rebuilt for this increment.
+
+
+Ubuntu's portable build also regenerated without a validator dependency and
+passed 19/19 in 470.12s (build/vst3-gate-ubuntu.log). Final execution of the exact-
+marker harness through the documented CTest command passed 1/1 in 20.21s
+(build/vst3-validator-ctest-final.log), with no missing required tests and matching
+before/after module hashes. The core regression counts remain 19 on both systems;
+only the explicitly enabled Windows native build gains the separate wrapper test.
+All application/migration scope limits above remain in effect.

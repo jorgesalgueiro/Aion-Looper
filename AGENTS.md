@@ -465,3 +465,15 @@ production zero-/two-channel MidiBuffer tests between 64/128 blocks, and zero
 callback new/delete. JUCE permits zero-sample buffers; this native flush policy
 is separate from original browser-rendered audio, actual DAW/wrapper validation
 and MIDI clock synchronization. No UI redesign or package is required.
+
+
+Windows VST3 wrapper acceptance is opt-in through AION_PLUGINVAL_EXECUTABLE and
+vst3_pluginval (tools/TestVst3Pluginval.ps1). Rebuild the VST3 before testing a
+processor/editor/state change; do not confuse direct processor tests with format
+loading. Keep pinned tool hashes, seed/matrix, exact required completed-test
+markers, enabled GUI checks and before/after binary hashes in result.json.
+Inherited pluginval environment options must not weaken coverage or leak caller
+changes. Portable/default builds require no validator or network download. The
+pinned official pluginval build omits ExtremeTests; a level-9 pass is not an
+allocation/malloc certificate or a Steinberg-validator/DAW/hardware/other-format
+pass. Preserve separate core/processor allocation and original UI/PCM gates.

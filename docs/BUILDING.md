@@ -470,3 +470,51 @@ issues no loop commands. Releasing a numeric press after NumLock/Shift changes
 must cancel its old cut/delete timers and preserve playback after four seconds.
 These synthetic browser events exercise the production processor/editor with
 real captured PCM; physical keyboard/OS/layout checks remain separate acceptance.
+
+
+### Windows VST3 host-interface validation (opt-in)
+
+The built VST3 can be loaded and tested by pinned Tracktion pluginval 1.0.4.
+This uses the public VST3 interface, including editor opening/automation,
+parameter/state/thread tests and audio processing. It supplements direct native
+processor tests; it does not replace the original-JS/PCM or physical/DAW gates.
+Run from the repository root after the Windows setup above:
+
+```powershell
+cmake --build --preset windows --target AionLooper_VST3 --parallel 2
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/TestVst3Pluginval.ps1 -DownloadTool
+```
+
+DownloadTool is explicit and optional. It downloads the official fixed release
+only when its local archive is missing, verifies pinned archive/executable
+SHA256 values and unpacks into ignored .toolchain/pluginval/1.0.4. It does not
+install plugins or tools globally, package the app, or change audio/MIDI settings.
+Omit DownloadTool for subsequent offline runs. Alternate copies of the same
+pinned executable can be passed with ValidatorPath. Default strictness is 9,
+seed 1337, rates 44100/48000/96000 and blocks 64/128/256/512/1024, with GUI tests
+retained. Every run saves vendor logs plus result.json under build/pluginval;
+the report fingerprints the executable, VST3 binary, harness and source checkout,
+checks exact test completion and matrix coverage, and rejects a changed binary.
+Inherited validator options are sanitized for the child and restored afterwards.
+The wrapper waits for pluginval's exit; a bare GUI executable invocation in
+PowerShell must not be mistaken for completed validation.
+
+To register the same check in this native CMake build:
+
+```powershell
+$pluginvalPath = (Resolve-Path '.toolchain/pluginval/1.0.4/pluginval.exe').Path
+cmake -S . -B build/windows "-DAION_PLUGINVAL_EXECUTABLE:FILEPATH=$pluginvalPath"
+ctest --test-dir build/windows -C Release -R '^vst3_pluginval$' --no-tests=error --output-on-failure
+```
+
+The serial test has a 300-second CTest timeout and keeps pluginval's 30-second
+no-progress watchdog. Default/portable builds never require the tool or download
+it. Clear AION_PLUGINVAL_EXECUTABLE to disable this optional CTest entry.
+
+Scope limits: the official release's CMake source omits ExtremeTests.cpp, so its
+allocation test is not executed even at level 9. result.json reports this as
+allocationTestExecuted=false. The external Steinberg validator is also absent
+and explicitly reported as unexecuted. Preserve the separate instrumented native
+allocation tests; this is not full RT allocation certification, recorded-loop
+project validation, physical controller/driver testing, a REAPER/Ardour session,
+or validation of CLAP/LV2/AU/AUv3 or another operating system.

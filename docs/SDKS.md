@@ -49,3 +49,24 @@ Official setup references:
 
 See VALIDATION.md for installation/build results; an SDK's presence does not imply
 that hardware or plugin-host behavior has been validated.
+
+
+## Optional Windows VST3 validation tool
+
+[Tracktion pluginval 1.0.4](https://github.com/Tracktion/pluginval/releases/tag/v1.0.4)
+is a local test dependency, not a bundled SDK or product runtime. The official
+pluginval_Windows.zip asset was retrieved from that exact release on 22 October
+2026. Its pinned SHA256 is
+C08E61CE3B96DB41636F8EC7E76F4C7E2C13EBDAC7FA1B5A1F52B4F32EC715AB;
+the extracted executable is
+F4AC5C31C5544A434F73E686B816861D92C22AE849D69AD693681CBC9522FCD8.
+These are fingerprints of the retrieved official asset; GitHub supplied no
+upstream asset digest. They identify the tested bytes, not an independent
+publisher signature. tools/TestVst3Pluginval.ps1 -DownloadTool performs the
+explicit project-local setup; ordinary builds do not fetch the tool.
+
+Primary usage/CI guidance: [pluginval README](https://github.com/Tracktion/pluginval)
+and [official CI guide](https://github.com/Tracktion/pluginval/blob/v1.0.4/docs/Adding%20pluginval%20to%20CI.md).
+The pinned [CMake source](https://github.com/Tracktion/pluginval/blob/v1.0.4/CMakeLists.txt)
+omits ExtremeTests.cpp; do not infer allocation-test coverage from a strictness
+number. BUILDING.md documents the exact commands and retained coverage limits.

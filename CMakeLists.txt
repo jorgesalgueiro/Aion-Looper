@@ -174,6 +174,20 @@ if(BUILD_TESTING AND WIN32)
     target_include_directories(aion_midi_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
     target_compile_definitions(aion_midi_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
     target_link_libraries(aion_midi_processor_tests PRIVATE AionLooper)
+    # Opt-in Windows wrapper validation; portable/core builds need no validator.
+    set(AION_PLUGINVAL_EXECUTABLE "" CACHE FILEPATH "Pinned pluginval 1.0.4 Windows executable (optional VST3 gate)")
+    if(AION_PLUGINVAL_EXECUTABLE)
+        if(NOT TARGET AionLooper_VST3 OR NOT EXISTS "${AION_PLUGINVAL_EXECUTABLE}")
+            message(FATAL_ERROR "pluginval requires AION_BUILD_VST3 and an existing validator executable")
+        endif()
+        find_program(AION_VALIDATION_POWERSHELL NAMES pwsh powershell REQUIRED)
+        get_target_property(aion_validation_vst3 AionLooper_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
+        add_test(NAME vst3_pluginval
+            COMMAND "${AION_VALIDATION_POWERSHELL}" -NoLogo -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/tools/TestVst3Pluginval.ps1"
+                -ValidatorPath "${AION_PLUGINVAL_EXECUTABLE}" -PluginPath "${aion_validation_vst3}")
+        set_tests_properties(vst3_pluginval PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE LABELS "host;vst3;pluginval")
+    endif()
 endif()
 if(AION_BUILD_CLAP)
     clap_juce_extensions_plugin(TARGET AionLooper
