@@ -717,3 +717,15 @@ production same-block offsets/repeat/SUS/PCM tests, actual mouse STOP ALL and
 MIDI Stop/CC120/123 GUI tests, plus sanitizers and callback allocation gates.
 Do not change input mappings, UI/schema or the separate user logo. A preliminary
 same-key-only repair is insufficient if cancelled notes still occupy the pool.
+
+Default Space STOP ALL must precede the generic keyboard repeat guard, as in
+unchanged App.handleKeyboardPress. Retain the 130 original dispatcher cases for
+Space/Shift/repeat/modifiers and text/control focus, plus trusted native WebView2
+repeats interleaved with real synthetic MIDI playback at 64/128. Every repeated
+Space must stop the new audio, preserving clip identity/length/history and range/
+button focus behavior. Keep normal loop-key repeat debounce, custom mappings and
+keyboard SUS boundaries, existing panic cancellation and the separate user logo.
+Activate the owned test WebView with CDP Page.bringToFront before the mouse
+fixture's compositor-routed wheel input. Keep exact event-count/trust/target/
+focus/preventDefault/value/PCM assertions and selector/coordinate failure evidence;
+never substitute synthetic DOM wheel events to make this gate pass.

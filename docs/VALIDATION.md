@@ -4332,3 +4332,64 @@ whitespace. Tested binaries include that local logo override, excluded from the
 source commit. No new package or version bump is introduced; older archives remain
 their explicitly named source snapshots. This closes the tested cancellation
 repair, not the wider migration or physical/Apple acceptance gates.
+
+## Space STOP ALL repeat repair — 23 October 2026
+
+Continued from 69bf493. The unchanged App.handleKeyboardPress comparison failed
+because native Space handling followed the generic repeat guard
+(`build/space-repeat-before.log`). The actual 64-sample WebView2 test also failed:
+a new MIDI-triggered clip kept producing audio after repeated Space keydown
+(`build/space-repeat-gui-before.log`). Move that existing STOP ALL fallback before
+the guard, retaining Ctrl/Meta/Alt, text/editable-content protection and normal
+loop-key repeat debounce. No C++ DSP, UI markup/CSS, bindings or state schema change.
+
+The repaired source passes 130 unchanged-dispatcher focus/modifier/Shift/repeat
+cases (`build/space-repeat-frontend.log`). Windows portable CTest passes 19/19 in
+288.32s and Ubuntu portable CTest passes 19/19 in 453.14s
+(`build/space-repeat-windows-core.log`, `build/space-repeat-ubuntu-core.log`).
+These retain original asset hashes, MIDI/hold/cancellation, worker, sync and audio
+oracles and callback new/delete checks. The independent committed-audio audit
+passes 126 cases / 965,826 samples, maximum absolute error 7.394757495227111e-8
+against the unchanged 1e-6 tolerance (`build/space-repeat-audio.log`); browser
+resampling/envelopes, physical latency and other pending engines remain excluded.
+
+The complete native synthetic MIDI/editor workflow passes at 64/128
+(`build/space-repeat-midi-gui.log`). The new trusted repeat case focuses the
+original volume range and STOP ALL button, starts real nonzero MIDI playback
+between three repeated keydowns per focus target, and requires each to settle to
+stopped/silent. Clip identity, length and Undo history remain unchanged. Existing
+MIDI Learn, panic, PC burst/CC edges, SUS release and reload tests remain enabled.
+
+The broader mouse regression initially failed its first trusted wheel probe at
+MASTER: no browser wheel event arrived. Logs are retained in
+`build/space-repeat-mouse-gui.log`, `build/space-repeat-mouse-gui-retest.log` and
+`build/space-repeat-mouse-diagnostic.log`. Diagnostics record the correct DOM hit,
+visible/focused document and successful real wheel delivery on the owned test
+page (`build/space-repeat-wheel-probe.log`). Explicitly activate that page with
+standard CDP Page.bringToFront before compositor-routed wheel input; retain the
+exact one-event, trust, target, focus, preventDefault and audio/value assertions.
+The test now includes selector/coordinate evidence on failure. This is fixture
+preparation, not a change to product wheel behavior or a relaxed acceptance gate.
+The full mouse/keyboard/export/merge workflow then passes at both 64 and 128
+samples (`build/space-repeat-mouse-active-page.log`), including original queued
+STOP presentation, held STOP deletion/cancellation, static/dynamic sync, focused
+controls, LIVE cards/mixer, exact exported PCM and merge/history isolation. All
+owned acceptance hosts close normally; the separate diagnostic host was also
+closed normally after its page activation probe.
+
+Actual muted Standalone NativeUiSmoke plus original browser count-in/nudge/live
+input/STUT comparisons pass (`build/space-repeat-standalone-ui.log`). Windows
+frontend/native MIDI processor/CLAP validator/VST3 pluginval passes 4/4 in 32.60s
+(`build/space-repeat-windows-formats.log`), retaining existing vendor skips and
+the known JUCE state-load warning. No new real DAW or hardware evidence is implied.
+
+Windows Standalone/VST3/CLAP and the synthetic host rebuilt successfully
+(`build/space-repeat-windows-build.log`). Current native adapters byte-match all
+four binaries (`build/space-repeat-embedded.json`), including the user's separate
+logo whitespace override, which remains excluded from this commit. No package or
+version bump is introduced. This increment adds no new physical controller,
+ASIO/JACK/CoreAudio, real DAW session, Linux GTK keyboard or Apple acceptance;
+the earlier REAPER/Ardour results above retain their stated scope. Keyboard SUS,
+custom mappings, MIDI clock/host-follow, projects, synths and effects remain pending.
+Space delivery to a plugin editor versus the DAW's own transport remains a
+separate host shortcut/focus acceptance check.

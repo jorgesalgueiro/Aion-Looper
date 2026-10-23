@@ -61,6 +61,19 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
  for(const channel of [0,15])for(const panic of [252,120,123]){
   const messages=[[252,0,0,1,0],[144+channel,36,100,3,17],panic===252?[252,0,0,1,18]:[176+channel,panic,0,3,18],[144+channel,36,100,3,19],[144+channel,36,127,3,20],[128+channel,36,0,3,21]];await inject(messages);const expected=panic===252?'playing':'stopped';await wait(s=>s.tracks[0].state===expected&&(expected==='playing'?s.outputPeak>0.02:s.outputPeak===0),'Same-block GUI panic/fresh note '+panic+' channel '+channel);
  }
+ // Trusted repeated Space must stop new MIDI playback while the key stays down.
+ const space=type=>call('Input.dispatchKeyEvent',{type,code:'Space',key:' ',windowsVirtualKeyCode:32});
+ for(const focus of ['loop-vol-slider-0','native-stop-all']){
+  await evaluate(`document.getElementById('${focus}').focus()`);await space('keyDown');await wait(s=>s.tracks[0].state==='stopped'&&s.outputPeak===0,'Initial Space STOP ALL');
+  try{
+   for(let repeat=0;repeat<3;++repeat){
+    await inject([[144,36,100,3,17],[128,36,0,3,18]]);await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>0.02,'MIDI starts new PCM while Space remains held');
+    await call('Input.dispatchKeyEvent',{type:'keyDown',code:'Space',key:' ',windowsVirtualKeyCode:32,autoRepeat:true});
+    await wait(s=>s.tracks[0].state==='stopped'&&s.outputPeak===0,'Repeated Space stops newly triggered MIDI PCM');
+   }
+  }finally{await space('keyUp');}
+ }
+ console.log('PASS: trusted Space repeat stops intervening MIDI playback with range/button focus, real silence/nonzero PCM and no loop deletion at '+process.argv[2]);
  s=await snapshot();assert.equal(s.tracks[0].waveformId,panicClip.waveformId);assert.equal(s.tracks[0].length,panicClip.length);assert.equal(s.tracks[0].undoCount,panicClip.undoCount);
  assert((await rpc({operation:'setParameter',id:'masterGain',value:0})).ok);assert((await rpc({operation:'loop',action:'clear',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks[0].state==='empty','Panic recovery GUI cleanup');
  console.log('PASS: actual STOP ALL/fresh held-note recovery, same-block MIDI Stop/CC120/123 on channels 1/16, active-repeat/SUS release, real PCM and unchanged clip/history at '+process.argv[2]);

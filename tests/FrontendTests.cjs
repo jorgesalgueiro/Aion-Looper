@@ -490,6 +490,30 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  console.log('PASS: original X/Shift-X/repeat shortcut, physical key, modifiers and text/range/control guards');
 }
 
+// STOP ALL, like DEL ALL, precedes the original generic repeat guard.
+{
+ const original=fs.readFileSync(path.join(root,'resources/ui/main.js'),'utf8');
+ const start=original.indexOf('static handleKeyboardPress('),end=original.indexOf('\n    }',start)+6;assert(start>=0);
+ let expected=0,actual=0,cases=0;
+ const oracle={document:{getElementById:()=>null},SAMPLER_HOTKEYS:[],state:{listeningForInput:{active:false},keyMapping:{kbd:new Array(33).fill(null)},midiLearn:{active:false}},LoopManager:{stopAll(){++expected;}}};
+ vm.createContext(oracle);vm.runInContext(`class App{${original.slice(start,end)}};globalThis.dispatch=e=>App.handleKeyboardPress(e);`,oracle);
+ const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ const keyboard=new native.window.AionPerformance({track:()=>null,stop(){++actual;}});
+ const targets=[{tagName:'BODY'},{tagName:'BUTTON'},{tagName:'INPUT',type:'text'},{tagName:'TEXTAREA'},{tagName:'SELECT'},...['range','checkbox','radio','button','file','submit','reset','number'].map(type=>({tagName:'INPUT',type}))];
+ for(const target of targets)for(const repeat of [false,true])for(const flags of [{},{shiftKey:true},{ctrlKey:true},{metaKey:true},{altKey:true}]){
+  let originalPrevented=0,nativePrevented=0;expected=actual=0;
+  const event={code:'Space',key:' ',target,repeat,...flags};
+  oracle.dispatch({...event,preventDefault(){++originalPrevented;}});
+  keyboard.down({...event,preventDefault(){++nativePrevented;}});
+  assert.equal(actual,expected,'Original Space dispatch '+JSON.stringify(event));assert.equal(nativePrevented,originalPrevented,'Original Space preventDefault');++cases;
+ }
+ for(const event of [{code:'KeyC',key:' '},{code:'Space',key:' ',target:{tagName:'DIV',isContentEditable:true}}]){
+  actual=0;keyboard.down({target:{tagName:'BODY'},preventDefault(){},...event});assert.equal(actual,0,'Physical Space and native editable-content guard');
+ }
+ assert.equal(keyboard.presses.size,0,'STOP ALL never creates loop hold timers');
+ console.log(`PASS: ${cases} unchanged original Space/repeat/Shift/modifier/text/control routing cases`);
+}
+
 // A fresh keyboard press recovers the original lost-release entry only after >10s.
 {
  const source=fs.readFileSync(path.join(root,'resources/ui/main.js'),'utf8');

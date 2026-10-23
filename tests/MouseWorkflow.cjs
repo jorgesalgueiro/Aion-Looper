@@ -49,6 +49,7 @@ let socket;
     const exactlyOne=async (gesture,label,paired=false)=>{const before=await snapshot();await gesture();const after=await wait(s=>s.lastRequestId>before.lastRequestId,label);assert.equal(after.lastRequestId,before.lastRequestId+1,label);assert(!after.rejected,label+' rejected');if(!paired){await delay(160);assert.equal((await snapshot()).lastRequestId,after.lastRequestId,label+' duplicated');}return after;};
     await call('Runtime.enable');await call('Page.enable');
     await call('Emulation.setFocusEmulationEnabled',{enabled:true});
+    await call('Page.bringToFront'); // Activate the owned WebView before compositor-routed wheel input.
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
     await wait(s=>s.audioReady&&s.inputAvailable&&s.inputPeak>0.1,'Synthetic native input active');
     await evaluate(`window.mouseErrors=[];window.addEventListener('error',e=>window.mouseErrors.push(e.message));document.documentElement.style.scrollBehavior='auto'`);
@@ -63,7 +64,7 @@ let socket;
             await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:rect.x,y:rect.y});
             await call('Input.dispatchMouseEvent',{type:'mouseWheel',x:rect.x,y:rect.y,deltaX:0,deltaY:120,modifiers:shifted?8:0});
             let evidence;for(let n=0;n<100;++n){evidence=await evaluate('window.wheelEvidence');if(evidence.length)break;await delay(10);}
-            assert.equal(evidence.length,1,'One real wheel event reaches window capture');
+            assert.equal(evidence.length,1,'One real wheel event reaches window capture: '+JSON.stringify({selector:actual,shifted,rect,evidence}));
             const event=evidence[0],blocked=rect.protected&&!shifted;
             assert.equal(event.id,rect.id,'Wheel targets original control');assert(event.trusted,'Use real browser input');assert.equal(event.shift,shifted);
             assert.equal(event.prevented,blocked,'Original Shift bypass / protected target');assert.equal(event.focused,!blocked,'Only protected non-Shift wheel blurs');

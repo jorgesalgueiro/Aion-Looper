@@ -167,12 +167,13 @@
             if(event.code==='KeyZ' && (event.ctrlKey||event.metaKey)){event.preventDefault();this.actions.history?.(!!event.shiftKey);return;}
             // Original DEL ALL fallback runs before the generic repeat guard.
             if(event.code==='KeyX'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();this.actions.clearAll?.();return;}
+            // Original STOP ALL also runs on repeat, before loop-key debounce.
+            if(event.code==='Space'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();this.actions.stop();return;}
             if(event.repeat || event.ctrlKey || event.metaKey)return;
             const key=event.code || event.key;
             if(event.key==='+' || event.code==='NumpadAdd') {event.preventDefault();this.actions.mode('overdub');return;}
             if(event.key==='-' || event.code==='NumpadSubtract') {event.preventDefault();this.actions.mode('substitute');return;}
             if(event.code==='KeyN'){event.preventDefault();this.actions.metronome?.();return;}
-            if(event.code==='Space') {event.preventDefault();this.actions.stop();return;}
             if(event.key==='/' || event.code==='NumpadDivide') {event.preventDefault();this.actions.retrigger();return;}
             if(event.key==='\\') {event.preventDefault();this.actions.multiply?.();return;}
             if(event.code==='KeyH') {event.preventDefault();this.actions.halfSpeed();return;}

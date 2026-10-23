@@ -668,3 +668,21 @@ separately. Tests retain ordinary ten-second missed-release rules for active
 notes, PC burst filtering, CC rearm, exact nonzero stored stereo WAV and original
 source/gesture/audio comparisons. Earlier validation entries describing retained
 cancelled Note entries document the historical implementation superseded here.
+
+### Space STOP ALL repeat parity (23 October 2026)
+
+Unchanged App.handleKeyboardPress handles the default physical Space fallback
+before its generic repeat guard. The native adapter checked repeat first, so a
+held Space could stop once and then leave later MIDI-triggered playback running.
+Both the unchanged-dispatcher comparison and actual WebView2/synthetic-audio
+test reproduced the failure before repair (`build/space-repeat-before.log` and
+`build/space-repeat-gui-before.log`). Move only Space routing before that guard,
+retaining Ctrl/Meta/Alt and text/editable-content protection. This uses the
+existing STOP ALL path, without changing UI, DSP, queues or MIDI assignments.
+
+The browser contract is documented in MDN's
+[KeyboardEvent key sequence](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key):
+holding a key emits further keydown events with repeat set, followed by keyup.
+The unchanged original dispatcher is the behavior oracle; the documentation
+explains event delivery, not a new alternative product policy. Custom keyboard
+mappings and keyboard SUS remain separate, unported features.
