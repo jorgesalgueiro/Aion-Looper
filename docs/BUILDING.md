@@ -815,3 +815,13 @@ The retained SyncParity.cjs native/reference matrix now includes 0.25x as well a
 0.5x/1x/2x: 144 effective-rate comparisons across manual, STATIC and DYNAMIC
 settings, alongside its unchanged capture/extraction PCM cases. Run it directly
 with the existing aion_reference_probe or through js_native_sync.
+
+
+The loop status display regression is part of `native_frontend_commands` and
+`tools/TestMouseWorkflow.ps1`. The source oracle executes unchanged
+`UIManager.updateLoopDisplays` with canvas drawing absent, comparing state
+symbols/text and mute/duration formatting across 20 loops. The production-editor
+mouse workflow checks pending STOP `[.]` while recorded audio continues, then
+stopped `[S]` after a second STOP, preserving PCM length and undo history at
+64/128. Rebuild the existing app/mouse host after changing embedded adapters;
+no installer, ZIP or version bump is needed for this display repair.

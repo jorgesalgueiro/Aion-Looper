@@ -591,3 +591,14 @@ Retain 1,560 original-setter cases across all tracks, modes, focus and boundarie
 trusted 64/128 range-key input must check both native rate and focused DOM, plus
 nonzero recorded PCM and unchanged clip/history. Do not rewrite original assets,
 relax comparisons, synthesize extra input/change events or stage the user's logo.
+
+
+Loop status text must match unchanged UIManager.updateLoopDisplays, including
+pending STOP [.] versus stopped [S] and the original leading spaces in muted/
+duration text. AionLoopStatus is a browser presentation adapter only: retain
+native finalizing [..]/SAVING, leave PCM/state/command dispatch untouched, and
+keep all 6,400 complete-reference-updater comparisons (status-only DOM fixtures).
+The real 64/128 mouse gate must observe stopping [.] while recorded PCM still
+plays, then stopped [S] after second STOP, with clip length/history unchanged.
+Do not weaken the mandatory stopping assertion, alter original assets or stage
+the separate user logo whitespace edit. This display repair requires no package.

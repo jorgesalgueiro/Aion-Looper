@@ -342,6 +342,23 @@ let socket;
     await state('recording');playing=await state('playing');
     assert.equal(playing.tracks[0].length,96000,'Static capture has exact two-second grid PCM');
     await wait(s=>s.outputPeak>0.02,'Static PCM playback');
+    // A queued stop is still playing audio; show the original pending symbol,
+    // then the stopped symbol only after an immediate second STOP.
+    await wait(s=>s.gridPosition>0.03&&s.gridPosition<0.2,'Early pending-stop display phase');
+    const statusBefore=await snapshot();
+    await exactlyOne(()=>click('#loop-action-0'),'Queue static stop');
+    const pendingStop=await state('stopping');
+    assert.equal(await evaluate(`document.getElementById('loop-state-symbol-0').textContent`),'[.]','Original pending STOP symbol differs from stopped');
+    assert.equal(await evaluate(`document.getElementById('loop-state-text-0').textContent`),'STOPPING');
+    assert.equal(pendingStop.tracks[0].waveformId,statusBefore.tracks[0].waveformId);
+    await wait(s=>s.outputPeak>0.02,'Queued stop still produces captured PCM');
+    await exactlyOne(()=>click('#loop-action-0'),'Immediate second STOP');
+    const statusStopped=await state('stopped');
+    assert.equal(await evaluate(`document.getElementById('loop-state-symbol-0').textContent`),'[S]','Only completed STOP shows stopped');
+    assert.equal(await evaluate(`document.getElementById('loop-extra-info-0').textContent`),' (2.0s)','Original duration spacing');
+    assert.equal(statusStopped.tracks[0].length,statusBefore.tracks[0].length);
+    assert.equal(statusStopped.tracks[0].undoCount,statusBefore.tracks[0].undoCount);
+    console.log('PASS: real queued STOP [.] / completed STOP [S], original duration text, nonzero PCM and clip/history retained');
     await exactlyOne(()=>click('#native-stop-all'),'Stop static playback');await state('stopped');
     await wait(s=>s.gridPosition>0.03&&s.gridPosition<0.2,'Early queued-play grid phase');
     await exactlyOne(()=>click('#loop-action-0'),'Queue static play');await state('queued');

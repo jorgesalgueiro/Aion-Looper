@@ -3606,3 +3606,79 @@ the rebuilt bundle (build/sync-speed-ardour.log;
 build/ardour-daw/20261023T084112-37cea025/result.json). Bundle/RDF hashes remain
 stable; the synthetic Dummy-backend stereo peak checks retain their documented
 limits. All owned test hosts completed and closed normally.
+
+
+## Original loop status text repair — 23 October 2026
+
+The native refresh displayed STOPPING with `[S]`, the original stopped symbol.
+The unchanged original updater uses `[.]` until stopping completes. Mute/duration
+spacing also differed. `AionLoopStatus` now supplies original state symbols,
+uppercase labels and exact mute/duration formatting; native worker finalization
+retains `[..]` / SAVING. No DSP, transport command, APVTS, CMake dependency or
+preserved reference asset changed.
+
+Reproduction and reference gate:
+
+- `build/loop-status-before.log` retains the failing original text comparison;
+  `build/loop-status-baseline-symbol.json` records the old production symbol
+  against the unchanged original updater and baseline commit.
+- `tests/FrontendTests.cjs` executes the complete unchanged
+  `UIManager.updateLoopDisplays` method and `getLoopAction` with status-only DOM
+  fixtures (action/canvas nodes absent, precomputed peak placeholder). All 6,400
+  cases pass: 20 loops, ten reference states, mute on/off, zero/one/short/long
+  stored length and .25/.5/1/2 speed. Native finalizing is checked separately.
+  This compares display outputs, not canvas pixels, playback envelopes or DSP.
+  `build/loop-status-after.log` retains the final reference run.
+- Windows portable/core regressions passed 19/19 in 269.39s
+  (`build/loop-status-windows-core.log`). The independent connected audio audit
+  passed 126 cases / 965,826 samples, maximum error
+  7.394757495227111e-8 / unchanged tolerance 1e-6
+  (`build/loop-status-audio.log`).
+
+Architecture remains the existing message-thread browser adapter and native
+processor/audio ownership graph in MIGRATION_BLUEPRINT.md. JUCE's official
+[WebBrowserComponent API](https://docs.juce.com/master/classjuce_1_1WebBrowserComponent.html)
+was consulted; this repair adds no browser/native callback or audio-thread work.
+No package or version bump is needed. Physical devices, Apple targets, complete
+JS parity, MIDI clock/host-follow and recorded-loop persistence remain separate.
+The user's existing logo whitespace edit is retained outside this commit.
+
+
+Completed rebuilt-artifact acceptance for this repair:
+
+- Ubuntu portable/core tests passed 19/19 in 386.03s
+  (`build/loop-status-ubuntu-core.log`).
+- Complete actual WebView2 mouse/export/merge/raw-MIDI workflows passed at both
+  64 and 128 samples (`build/loop-status-gui.log`). The new test requires
+  stopping `[.]` while captured PCM is nonzero, then stopped `[S]` after second
+  STOP, exact original duration text and unchanged clip identity/length/history.
+  Existing arm/record/play, hold-delete, sync, speed, waveform, keyboard and
+  cancellation coverage remains in place. This is synthetic audio, not a device.
+- Actual muted Standalone UI plus original browser count-in/nudge/live-input/STUT
+  comparisons passed (`build/loop-status-standalone-ui.log`): twenty original
+  loop cards, IPC/audio acknowledgements and no legacy AudioContext. Owned
+  hosts closed normally; no user hardware session or mappings were changed.
+- Windows Release app/VST3/CLAP and mouse/processor hosts rebuilt
+  (`build/loop-status-windows-build.log`); processor plus pinned VST3 pluginval
+  and CLAP validation passed 3/3 in 30.46s
+  (`build/loop-status-windows-formats.log`).
+- Linux Debug app/VST3/CLAP/LV2 and processor host rebuilt
+  (`build/loop-status-linux-build.log`); processor/LV2 stereo ABI and pinned
+  VST3/LV2 pluginval/CLAP gates passed 5/5 in 72.56s
+  (`build/loop-status-linux-formats.log`). Existing compiler/DRI3 warnings and
+  documented vendor skips/limitations are retained.
+- Full current controls.js and looper.js bytes match all seven rebuilt modules;
+  paths, module hashes and match results: `build/loop-status-embedded.json`.
+  Local binaries include the user's retained logo whitespace; that separate edit
+  is intentionally outside the commit.
+- Real REAPER 7.82 VST3 and CLAP each passed seven target stereo renders, deliberate
+  parameter mutation/restore and RPP reopen. Evidence:
+  `build/loop-status-reaper.log` and
+  `build/reaper-daw/20261023T103831-301ec44e/result.json`.
+- Real Ardour 8.4/libardour LV2 passed stereo gain/mute and saved-session reload
+  at 48kHz/64/128 using its Dummy backend. Evidence:
+  `build/loop-status-ardour.log` and
+  `build/ardour-daw/20261023T104302-6a8315b3/result.json`.
+  These host gates preserve their earlier settled-PCM/peak and synthetic-device
+  scope; neither establishes physical latency, editor interaction, recorded-loop
+  storage, MIDI clock or host-follow scheduling.

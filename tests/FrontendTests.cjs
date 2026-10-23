@@ -617,3 +617,33 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: original synchronized speed thresholds and focused range semantics: '+cases+' cases');
 }
+
+
+// Execute the unchanged full reference updater with status-only DOM fixtures.
+{
+ const source=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');
+ const method=name=>{const a=source.indexOf('    static '+name+'('),b=source.indexOf('\n    }',a)+6;assert(a>=0&&b>a);return source.slice(a,b);};
+ const elements=new Map(),document={getElementById:id=>elements.get(id)||null};
+ const state={loops:[]},original={state,document};vm.createContext(original);
+ vm.runInContext(`class UIManager{${method('getLoopAction')}\n${method('updateLoopDisplays')}};globalThis.update=()=>UIManager.updateLoopDisplays(0);`,original);
+ const native={window:{}};vm.createContext(native);vm.runInContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ if(!native.window.AionLoopStatus){
+  // Reproduce the previous production refresh, rather than failing for a missing helper.
+  const code=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+  const symbols=code.split('\n').find(s=>s.includes('const symbols='));assert(symbols);
+  const extra=code.split('\n').find(s=>s.includes('loop-extra-info-')&&s.includes('textContent='));assert(extra);
+  vm.runInContext(`window.AionLoopStatus=(t,sampleRate)=>{${symbols};const snapshot={sampleRate};let value;const r={row:{querySelector:()=>({set textContent(v){value=v;}})}};const i=0;${extra};return {symbol:symbols[t.state],text:t.state==='finalizing'?'SAVING':t.state.toUpperCase(),extra:value};};`,native);
+ }
+ let cases=0;
+ for(let id=0;id<20;++id)for(const status of ['empty','armed','recording','playing','stopped','stopping','overdubbing','substituting','multiplying','queued'])
+ for(const muted of [false,true])for(const length of [0,1,4800,123456])for(const speed of [.25,.5,1,2]){
+  elements.clear();for(const key of [`loop-${id}`,`loop-state-symbol-${id}`,`loop-state-text-${id}`,`loop-extra-info-${id}`])elements.set(key,{isConnected:true,textContent:''});
+  const loop={state:status,muted,duration:length/48000,playbackRate:speed,audioBuffer:length?{}:null,wavePeaks:[]};state.loops=Array(id+1).fill(null);state.loops[id]=loop;
+  original.update();
+  const t={state:status,muted,length,playbackRate:speed};const before=JSON.stringify(t),actual=native.window.AionLoopStatus(t,48000);
+  for(const [field,key] of [['symbol','state-symbol'],['text','state-text'],['extra','extra-info']])assert.equal(actual[field],elements.get(`loop-${key}-${id}`).textContent,'Original loop display '+JSON.stringify({id,status,muted,length,speed,field}));
+  assert.equal(JSON.stringify(t),before,'Display cannot mutate audio state');++cases;
+ }
+ assert.deepEqual(JSON.parse(JSON.stringify(native.window.AionLoopStatus({state:'finalizing',muted:false,length:0,playbackRate:1},48000))),{symbol:'[..]',text:'SAVING',extra:''},'Retain native asynchronous finalization status');
+ console.log('PASS: unchanged complete loop display updater: '+cases+' state/mute/duration/speed cases; native finalization retained');
+}

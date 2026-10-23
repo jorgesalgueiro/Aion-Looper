@@ -22,6 +22,12 @@
         if(Number.isNaN(speed))return null;
         return sync?(speed<0.38?0.25:speed<0.75?0.5:speed<1.5?1:2):speed;
     };
+    // Original updateLoopDisplays status text, including its spacing and pending STOP.
+    window.AionLoopStatus=(track,sampleRate)=>({
+        symbol:({empty:'( )',armed:'(A)',recording:'(R)',playing:'[>]',stopped:'[S]',stopping:'[.]',overdubbing:'(O)',substituting:'(-)',multiplying:'(M)',queued:'[Q]',finalizing:'[..]'})[track.state]||'( )',
+        text:track.state==='finalizing'?'SAVING':track.state.toUpperCase(),
+        extra:`${track.muted?' [MUTED]':''}${track.length?` (${(track.length/sampleRate/track.playbackRate).toFixed(1)}s)`:''}`
+    });
     // Message-thread only. Resolve gestures against the latest acknowledged state.
     window.AionCommandQueue = class {
         static wait = Symbol('waitForState');

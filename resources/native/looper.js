@@ -345,7 +345,6 @@
             if(document.activeElement!==autoPlay)autoPlay.checked=snapshot.autoPlayAfterRecord;
             document.getElementById('activeCount').textContent=`${snapshot.tracks.filter(t=>t.state!=='empty').length}/20`;
             document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state))?'RECORDING':'READY';
-            const symbols={empty:'( )',recording:'(R)',playing:'[>]',stopped:'[S]',overdubbing:'(O)',substituting:'(-)',multiplying:'(M)',finalizing:'[..]',armed:'(A)',queued:'[Q]',stopping:'[S]'};
             rows.forEach((r,i)=>{
                 const t=snapshot.tracks[i];
                 const sources=snapshot.tracks.map((s,id)=>id!==i&&s.length?id:-1).filter(id=>id>=0);
@@ -358,9 +357,10 @@
                 r.row.querySelectorAll('[data-native-control]').forEach(e=>e.disabled=!active);r.name.disabled=false;
                 r.main.disabled=!active||t.state==='finalizing'||(t.state==='empty'&&snapshot.freeFrames===0);
                 r.main.textContent=t.state==='finalizing'?'SAVING':['armed','queued'].includes(t.state)?'CANCEL':t.state==='stopping'?'STOP NOW':actionFor(t)==='substitute'?'REPLACE':actionFor(t).toUpperCase();r.main.setAttribute('aria-label',`Loop ${i+1}: ${r.main.textContent}`);r.main.title=r.main.getAttribute('aria-label');
-                r.row.querySelector(`#loop-state-symbol-${i}`).textContent=symbols[t.state];
-                r.row.querySelector(`#loop-state-text-${i}`).textContent=t.state==='finalizing'?'SAVING':t.state.toUpperCase();
-                r.row.querySelector(`#loop-extra-info-${i}`).textContent=`${t.muted?'[MUTED] ':''}${t.length?`(${(t.length/snapshot.sampleRate/t.playbackRate).toFixed(1)}s)`:''}`;
+                const status=window.AionLoopStatus(t,snapshot.sampleRate);
+                r.row.querySelector(`#loop-state-symbol-${i}`).textContent=status.symbol;
+                r.row.querySelector(`#loop-state-text-${i}`).textContent=status.text;
+                r.row.querySelector(`#loop-extra-info-${i}`).textContent=status.extra;
                 r.volumeMidi.update(t.volume,!!snapshot.midi?.bindings[33+i]);
                 if(document.activeElement!==r.feedback)r.feedback.value=t.feedback;
                 r.row.querySelector(`#loop-vol-display-${i}`).textContent=t.volume>0?`${(20*Math.log10(t.volume)).toFixed(1)}dB`:'-inf';
