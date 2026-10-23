@@ -52,3 +52,15 @@
 This phase makes no production-readiness or completed feature-parity claim.
 
 See `REFERENCE_AUDIT.md`: the latest worker integration passes the committed-PCM diagnostic; historical direct-write failures are retained for context. These are separate acceptance gates.
+
+Real DAW baseline (23 October 2026): REAPER 7.82 loads the actual Windows VST3
+and CLAP builds in isolated profiles; seven target stereo renders per format
+match the settled reference PCM, including deliberate parameter mutation/restore
+and RPP reopen. Ardour 8.4's libardour/Lua session engine loads LV2 with all twelve
+APVTS numeric property-automation controls, stereo gain/mute/recovery and saved
+session recall at 48kHz/64/128. Ardour checks peaks/ratios, not per-sample PCM or
+GTK editor interaction. Both retain synthetic devices/audio and module identity/
+hash evidence. This adds no synth/FX feature and does not establish host-follow
+scheduling, MIDI clock, recorded-loop persistence, physical drivers or Apple
+acceptance. Linux CLAP DAW validation remains separate because Ardour 8.4 does
+not host CLAP. See VALIDATION.md for exact evidence.

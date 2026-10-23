@@ -723,3 +723,72 @@ focused controls at 64/128 samples, verifies DOM/native reset values and retains
 playing state, committed clip identity/length/history and nonzero audio. The
 remaining mouse/export/merge/MIDI workflows run afterward. No package is needed.
 Event ordering was checked against the [browser dblclick documentation](https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event).
+
+## Real Windows REAPER and Ubuntu Ardour sessions
+
+Run these checks against existing binaries; no install, ZIP or version bump is
+needed. REAPER uses a new resource directory and process for each format, removes
+the test master hardware outputs, and closes only that process. It never copies
+your configuration/license or modifies your existing project. From the repo:
+
+```powershell
+python tools/TestReaper.py
+# Optional installed host location / one-format diagnostic:
+python tools/TestReaper.py --reaper 'C:/Program Files/REAPER (x64)/reaper.exe' --format CLAP
+```
+
+The Windows probe requires the existing Release VST3 and CLAP in build/windows.
+It observes the exact module path in the owned REAPER process and hashes it before
+and after. At 48kHz it renders default mute, unity, half gain, monitor off, master
+zero, recovery and project reopen. Every target render is compared sample by
+sample after the first 100ms, with finite/nonzero checks and a tolerance derived
+from the WAV format. Track-state restore is checked after deliberately mutating
+both parameters. With the audio device closed while stopped, the script processes
+queued changes through renders before state reads, mutation checks and restore
+checks. RPP files and all intermediate renders are retained for diagnosis. This
+is offline processing, not 64/128 hardware callback or real-time latency evidence.
+See the official [REAPER API](https://www.reaper.fm/sdk/reascript/reascripthelp.html).
+
+From Ubuntu, with the existing Debug LV2 bundle and a working WSLg/display:
+
+```sh
+# One-time test-host dependency, if not already installed:
+sudo apt-get install --no-install-recommends ardour
+python3 tools/TestArdour.py
+```
+
+This runs Ardour's own ardour8-lua session engine, documented in its
+[Lua scripting manual](https://manual.ardour.org/lua-scripting/). Each 64/128 run
+uses an isolated HOME/XDG profile, a stereo bus and the Dummy sine backend at
+48kHz. It loads the actual local LV2, discovers all twelve APVTS controls through
+Ardour's property-automation API, tests native mute/unity/half gain/off/recovery
+and saves/reopens the session. MIDI meter channels precede audio channels; the
+probe derives the offset from the actual meter configuration. Stereo peak gain
+ratios are checked independently of host control state. This is not a PCM or GTK
+editor-interaction oracle. Lua errors can return exit code zero, so explicit PASS
+and error/assertion/leak rejection remain mandatory. Metadata/module hashes must
+stay unchanged. Ardour 8.4 does not load CLAP; its Linux acceptance path is LV2,
+with CLAP validator coverage kept separately.
+
+Evidence is retained under build/reaper-daw and build/ardour-daw in unique run
+folders (JSON, logs, synthetic audio and disposable sessions). Neither test proves
+recorded-loop project storage, MIDI clock, host-follow scheduling, arbitrary
+callback malloc freedom, physical ASIO/JACK/CoreAudio or Apple acceptance.
+
+## Requested deployment format selection
+
+The existing CMake options already support the requested matrix. Explicitly select
+these options when configuring deployment trees; optional extra wrappers in older
+cache/default configurations do not establish additional release support:
+
+```sh
+cmake --preset windows -DAION_BUILD_STANDALONE=ON -DAION_BUILD_VST3=ON -DAION_BUILD_CLAP=ON
+cmake --preset linux -DAION_BUILD_STANDALONE=ON -DAION_BUILD_VST3=OFF -DAION_BUILD_CLAP=ON -DAION_BUILD_LV2=ON
+cmake --preset macos -DAION_BUILD_STANDALONE=ON -DAION_BUILD_AU=ON -DAION_BUILD_VST3=OFF -DAION_BUILD_CLAP=OFF -DAION_BUILD_AUV3=OFF
+cmake --preset ios -DAION_BUILD_STANDALONE=ON -DAION_BUILD_AUV3=ON
+```
+
+Use each platform's own toolchain and the build commands above. The Apple commands
+are instructions for a Mac, not validation performed on this Windows/Ubuntu PC.
+Only package after the selected feature's acceptance passes and a test package is
+needed; the current increment adds validation tools and creates no package.

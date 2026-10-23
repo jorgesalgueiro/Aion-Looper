@@ -562,3 +562,23 @@ Do not reset unrelated controls or modify the user's separate logo edit.
 The GUI queued-DYNAMIC-finish fixture waits for an early phase after screenshot/
 mode setup; do not replace its mandatory stopPending assertion with a playing
 fallback. Preserve the original <=50ms immediate-finish core test separately.
+
+Real DAW gates (23 October 2026): tools/TestReaper.py launches its own Windows
+REAPER profile/process and tests the actual local VST3/CLAP module (process-module
+identity plus before/after hashes). Preserve zero master hardware sends, synthetic
+stereo, queued-parameter delivery through actual renders, set/mutate/restore value
+checks, seven settled PCM cases including project reopen, and clean owned exit.
+Never reuse or terminate an existing user REAPER instance. Keep profile guard and
+240-second owned-child timeout. Do not copy user ini/license/MIDI settings.
+
+tools/TestArdour.py uses actual ardour8-lua/libardour with isolated HOME/XDG paths
+and a Dummy sine backend at 48kHz/64/128. Numeric LV2 patch properties are found
+through Automatable property controls, not Plugin.parameter_count (port indices).
+MIDI meters precede audio; derive offset from meter input_streams, require stereo,
+retained unity/half/recovery ratios, exact mute and session reopen. Require PASS
+and reject Lua Error/JUCE assertion/leak output even if luasession exits zero.
+Keep bundle/RDF hashes and logs. These are stereo peak checks, not PCM equality,
+GTK interaction or physical JACK acceptance. Ardour 8.4 does not host CLAP.
+Do not change DSP/UI or weaken reference tests to accommodate host test mistakes.
+Keep MIDI clock, host-follow scheduling and recorded-loop persistence explicitly
+pending. No packaging or version bump is needed for validation harnesses.

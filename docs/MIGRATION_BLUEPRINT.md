@@ -255,3 +255,26 @@ The audio probe verifies nonzero settled stereo master/monitor behavior at 64/12
 independently of GUI lifecycle tests. Existing Engine/LoopBank/MidiController,
 APVTS, native bridge and original ASCII UI ownership remain unchanged. DAW loop/
 controller/project workflows and hardware latency still require separate gates.
+
+## Real DAW baseline added 23 October 2026
+
+The ownership graph and CMake configuration above remain the implementation.
+JUCE latest stable was rechecked as 9.0.4 against the official release page. No
+wrapper fork, audio algorithm or original UI change was needed for this increment.
+The requested deployment matrix is Windows Standalone/VST3/CLAP, Linux
+Standalone/CLAP/LV2, macOS Standalone/AU and iOS Standalone/AUv3. BUILDING.md now
+provides explicit format selections without mistaking optional extra targets for
+release acceptance.
+
+Real REAPER 7.82 Windows VST3/CLAP sessions now pass settled stereo PCM and
+parameter track-state/project recall. Ubuntu Ardour 8.4's actual libardour session
+engine passes LV2 stereo gain/mute and session recall at 64/128 with synthetic
+Dummy inputs. Ardour LV2 controls are numeric patch-property automation controls,
+not ordinary control-port indices; use its Automatable API. No compatibility
+patch or product dependency change is required for these tests. Ardour 8.4 has no CLAP
+host path. Preserve the separate CLAP validator and document that a compatible
+Linux CLAP DAW still needs acceptance.
+
+These gates extend host validation, not the implemented feature set. Full host
+transport-follow scheduling, MIDI clock, recorded-loop project storage, physical
+drivers, GTK/WebView pointer workflows and Apple validation remain pending.

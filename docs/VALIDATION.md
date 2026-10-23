@@ -3433,3 +3433,99 @@ edit were not modified. No package/version bump was made. These checks establish
 this reset interaction and existing synthetic/format regression scope, not
 physical ASIO/JACK/CoreAudio, full browser envelopes, Apple/Linux physical pointer
 interaction or complete synth/effect/project parity/commercial readiness.
+
+## Real REAPER and Ardour acceptance, 23 October 2026
+
+This increment adds repeatable DAW checks against the existing c95ab50 product
+binaries. UI assets/adapters, C++ DSP, mappings, pinned JUCE and CMake targets
+are unchanged. JUCE latest stable was checked as 9.0.4 against the official
+[release](https://github.com/juce-framework/JUCE/releases/tag/9.0.4). No package
+or version bump was made. Ubuntu's Ardour 8.4 package and required dependencies
+were installed without upgrading/removing existing packages; no user session or
+profile was imported. Exact reproduction commands are in BUILDING.md.
+
+Windows REAPER 7.82/x64, tools/TestReaper.py + tests/ReaperDawProbe.lua:
+
+- Final evidence: build/reaper-daw/20261023T080417-4c8861a4/result.json.
+- Both actual Release VST3 and CLAP were observed at their expected local module
+  paths inside the owned REAPER processes. Before/after module hashes match;
+  host executable, runner and script hashes are recorded. Both children exited
+  successfully. The preexisting user REAPER PID 8316 remained running.
+- Seven target renders per format: default mute, unity, half gain, monitor off,
+  master zero, recovery and actual RPP reopen. Both stereo channels are checked
+  at 48kHz after 100ms, excluding the separately tested gain-ramp envelope.
+  All 1,209,600 compared samples have measured maximum absolute error 0.
+- Each of the six parameter states was saved as a track chunk, deliberately
+  mutated, restored and processed, with strict host-value checks at each stage.
+  Parameter changes are actually delivered through offline processing before
+  serialization and comparison; no device callback runs while stopped/closed.
+  Final recovery is saved and reopened as an RPP before another verified render.
+- Profiles are unique and guarded against reuse of a nonempty/user project.
+  Test master hardware outputs are removed; input is a generated stereo WAV.
+  No global plugin installation, user settings, MIDI assignments or license copy.
+  A missing-host negative check failed before launch as intended.
+
+Ubuntu Ardour 8.4.0~ds1, tools/TestArdour.py + tests/ArdourDawProbe.lua:
+
+- Final evidence: build/ardour-daw/20261023T080619-655d0b97/result.json; summary
+  build/daw-ardour-final.log. Both runner/script hashes match the final files.
+- Actual ardour8-lua/libardour loads the existing Debug LV2 through its normal
+  plugin/session APIs, using isolated HOME/XDG paths and a Dummy sine backend.
+  This is the real session engine without GTK, not the prior ctypes LV2 host.
+- Both 64 and 128 samples at 48kHz passed seven stereo stages: default mute,
+  unity, half gain, monitor off, master zero, recovery and saved-session reopen.
+  The backend rate/buffer are checked before and after reopen. Unity/half peaks
+  match the synthetic source level; half is -6.0206dB relative to unity within
+  0.001dB, recovery within 0.001dB, and mute is exactly negative-infinite peak.
+- All twelve APVTS numeric property controls are discoverable through Ardour's
+  Automatable API; the exercised controls are Master gain and Input monitor.
+  Plugin.parameter_count counts LV2 ports and is not the numeric-property API.
+  MIDI meters precede audio meters, so the probe derives their offset and
+  independently requires two audio channels. No JUCE wrapper fork was needed.
+- Module and all three RDF files remain unchanged. Strict PASS plus Lua-error/
+  JUCE assertion/leak checks are required even if luasession exits zero. The
+  missing-display preflight fails before session creation. Host debug messages
+  about MIDI-clock buffers, direct dispatch and the absent audition synth remain
+  in the log; they are not evidence of implemented plugin MIDI clock.
+
+Retained native regressions passed against the same product binaries:
+
+- Windows native processor, VST3 pluginval and CLAP validator: 3/3, 32.22s,
+  build/daw-windows-regressions.log.
+- Ubuntu native processor, exact LV2 ABI stereo PCM and CLAP validator: 3/3,
+  18.25s, build/daw-linux-regressions.log. Existing allocation/assertion checks,
+  reference tolerances and all CLAP test accounting remain intact.
+
+Earlier harness failures are retained, not counted as product acceptance:
+
+- Windows path separators initially tripped the profile guard; both sides are
+  now normalized. Immediate state reads while the device was closed saw queued
+  host changes; actual renders now precede set/mutation/restore checks, whose
+  numeric assertions were retained. An invalid cleanup API and a missing RPP
+  save-as-current flag were corrected using the official REAPER API. Those
+  failed/owned-terminated runs retain passed:false reports under build/reaper-daw.
+- Ardour discovery initially inspected only port parameters, not property
+  automation. The first meter probe also read MIDI meter 0 as left audio; the
+  final probe derives the offset rather than ignoring a silent audio channel.
+  A parser assumed tab-delimited print output; whitespace tokenization now
+  retains exact backend/rate/buffer requirements. Diagnostic attempts remain
+  under build/ardour-discovery and build/ardour-daw.
+
+Scope limits: REAPER renders are offline, not 64/128 physical-driver latency
+certification. Ardour compares stereo peaks/ratios, not sample-by-sample PCM or
+GTK/embedded-HTML interaction. Ardour 8.4 does not support CLAP; a real compatible
+Linux CLAP DAW is still needed. Both checks cover parameter/session recall, not
+unported recorded-loop project storage, host-follow scheduling, MIDI clock,
+physical ASIO/JACK/CoreAudio, arbitrary callback malloc, Apple builds or complete
+synth/effect/functionality parity. No new feature was enabled by these tests.
+
+Fresh Windows portable/original-JS regressions passed 19/19 in 254.68s
+(build/daw-windows-core.log). The independent connected PCM audit passed all
+126 cases / 965,826 samples, maximum error 7.394757495227111e-8 against the
+unchanged 1e-6 tolerance (build/daw-reference-audio.log). No source asset,
+audio tolerance or retained core/GUI test was changed by this increment.
+
+Fresh Ubuntu portable/original-JS regressions also passed 19/19 in 442.20s
+(build/daw-ubuntu-core.log). All owned test hosts completed; no new GUI workflow,
+physical controller, sanitizer or Apple acceptance is claimed for this increment.
+The user's preexisting resources/native/looper.js logo edit remains unstaged.
