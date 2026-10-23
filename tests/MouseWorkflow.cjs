@@ -30,7 +30,7 @@ let socket;
     const wait=async (predicate,label,timeout=7000)=>{const end=Date.now()+timeout;let value;while(Date.now()<end){value=await snapshot();if(predicate(value)){await delay(100);return value;}await delay(35);}assert.fail(label+': '+JSON.stringify(value));};
     const state=(wanted,id=0)=>wait(s=>s.tracks[id].state===wanted,`Loop ${id+1} -> ${wanted}`);
     const click=async (selector,{outside=false,hold=20}={})=>{
-        const rect=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing target');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,disabled:!!e.disabled,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};})()`);
+        const rect=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing target');e.scrollIntoView({block:'center',inline:${JSON.stringify(selector.startsWith('#live_mm_')?'center':'nearest')},behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,disabled:!!e.disabled,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};})()`);
         assert(!rect.disabled&&rect.hit,'Mouse target blocked: '+selector+' '+JSON.stringify(rect));
         // Queue ordered input before waiting for CDP acknowledgements: response
         // latency must not turn a requested short click into a >=600ms hold.
@@ -507,6 +507,26 @@ let socket;
     await exactlyOne(()=>click('#live-loop-0-reverse'),'LIVE reverse control');let liveAfter=await wait(s=>s.tracks[0].reverse,'LIVE reverse acknowledged');
     assert(await evaluate(`document.getElementById('loop-0-reverse').checked`),'Main reverse mirrors LIVE');
     assert.equal(liveAfter.tracks[0].state,'playing');assert.equal(liveAfter.tracks[0].waveformId,liveTake.tracks[0].waveformId);assert.equal(liveAfter.tracks[0].length,liveTake.tracks[0].length);
+    // LIVE loop strips control the same native gain/mute/solo, with real PCM.
+    assert.equal(await evaluate(`document.querySelectorAll('#live-mastermix-container input[type=range]').length`),20);
+    assert(await evaluate(`!document.getElementById('live_mm_slider_master_vol')&&!document.querySelector('#live-mastermix-container [oninput],#live-mastermix-container [onclick],#live-mastermix-container [onwheel]')`),'Only ported loop strips and native event handlers');
+    await click('#live_mm_slider_l_0');
+    const liveKey=async(key,code,keyCode)=>{await call('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:keyCode});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:keyCode});};
+    await liveKey('Home','Home',36);await wait(s=>s.tracks[0].volume===0&&s.outputPeak===0,'LIVE focused fader zero silences native PCM');
+    await liveKey('End','End',35);await wait(s=>s.tracks[0].volume===2&&s.outputPeak>0.02,'LIVE focused fader maximum restores native PCM');
+    assert.equal(await evaluate(`document.getElementById('live_mm_l_v_0').textContent`),'2.00');
+    assert.equal(Number(await evaluate(`document.getElementById('loop-vol-slider-0').value`)),2,'Main fader mirrors LIVE');
+    await exactlyOne(()=>click('#live_mm_mute_l_0'),'LIVE mute');await wait(s=>s.tracks[0].muted&&s.outputPeak===0,'LIVE M silences native PCM');
+    assert.equal(await evaluate(`document.getElementById('live_mm_mute_l_0').getAttribute('aria-pressed')`),'true');
+    await exactlyOne(()=>click('#live_mm_mute_l_0'),'LIVE unmute');await wait(s=>!s.tracks[0].muted&&s.outputPeak>0.02,'LIVE unmute recovers native PCM');
+    await exactlyOne(()=>click('#live_mm_solo_l_1'),'LIVE solo empty second loop');await wait(s=>s.tracks[1].solo&&s.outputPeak===0,'Solo excludes the playing first loop');
+    await exactlyOne(()=>click('#live_mm_solo_l_0'),'LIVE transfer solo');await wait(s=>s.tracks[0].solo&&!s.tracks[1].solo&&s.outputPeak>0.02,'Solo transfer restores native PCM');
+    await exactlyOne(()=>click('#live_mm_solo_l_0'),'LIVE release solo');const liveMixed=await wait(s=>!s.tracks.some(t=>t.solo)&&s.outputPeak>0.02,'Solo release retains playback');
+    assert.equal(liveMixed.tracks[0].waveformId,liveTake.tracks[0].waveformId);assert.equal(liveMixed.tracks[0].length,liveTake.tracks[0].length);assert.equal(liveMixed.tracks[0].undoCount,liveTake.tracks[0].undoCount,'Mixing never edits the recorded clip/history');
+    await evaluate(`window.liveFaderIdentity=document.getElementById('live_mm_slider_l_0')`);await click('.main-tab-btn:nth-child(1)');await click('.main-tab-btn:nth-child(4)');
+    assert(await evaluate(`window.liveFaderIdentity===document.getElementById('live_mm_slider_l_0')`),'Tab entry retains live slider edit ownership and listeners');
+    const mixerScreenshot=await call('Page.captureScreenshot',{format:'png'});require('node:fs').writeFileSync(require('node:path').resolve(__dirname,`../build/native-live-mixer-${process.argv[2]}.png`),Buffer.from(mixerScreenshot.data,'base64'));
+    console.log('PASS: LIVE original loop strips, focused gain zero/max, mute/unmute, solo transfer/release, shared main state, real silence/recovery PCM and unchanged clip/history at '+process.argv[2]);
     assert(await evaluate(`Array.from(document.querySelectorAll('#live-loop-0 input')).filter(e=>e.id!=='live-loop-0-reverse').every(e=>e.disabled)`),'Unported effects remain disabled');
     const beforeLiveLabel=await snapshot();await click('#live-loop-0 .loop-controls span span');await delay(180);assert.equal((await snapshot()).lastRequestId,beforeLiveLabel.lastRequestId,'Nested effect label never toggles transport');
     await exactlyOne(()=>click('#live-loop-0 .loop-header'),'LIVE header stops');const liveStop=await state('stopped');assert.equal(liveStop.tracks[0].waveformId,liveTake.tracks[0].waveformId);assert.equal(liveStop.tracks[0].undoCount,liveTake.tracks[0].undoCount);

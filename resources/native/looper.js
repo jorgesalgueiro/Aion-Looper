@@ -7,7 +7,7 @@
         let alive = true, mode = 'normal', snapshot = null, pending = null, busy = false;
         let lastFrame = -1, advancedAt = 0, pollTimer, error = '';
         let markerKey='';window.addEventListener('resize',()=>markerKey='');
-        const rows = [], liveRows = [], input = document.getElementById('inputTracksContainer');
+        const rows = [], liveRows = [], liveMixerRows = [], input = document.getElementById('inputTracksContainer');
         // The only new area is native input configuration, inside the original INPUT MIXER.
         input.innerHTML = `<div class="mixer-row input-track-row" style="display:block">
             <div class="mixer-label">NATIVE AUDIO INPUT</div>
@@ -328,7 +328,32 @@
                 rows.push({row,main,name,volume,feedback,pan,volumeMidi,panMidi,start,quantize,speed,half,reset,mute,solo,retrigger,stut,normalize,mergeSource,mergeGo,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
+        function createLiveMixer(s) {
+            const container=document.getElementById('live-mastermix-container');
+            // The original loop strips only. Master/input/drone/sampler routing
+            // and RMS/held-peak metering have independent migration gates.
+            if(liveMixerRows.length)return;
+            container.innerHTML=window.AionLiveMixerMarkup(s);stripHandlers(container);
+            container.querySelector('.live-mixer-console').firstElementChild.remove();
+            for(let i=0;i<s.tracks.length;++i){
+                const volume=document.getElementById(`live_mm_slider_l_${i}`);
+                const strip=volume.closest('.live-mixer-fader').parentElement;
+                const bind=(element,type,handler)=>{element.addEventListener(type,handler);return element;};
+                bind(volume,'input',e=>queueControl('volume',i,Number(e.target.value)));
+                const edit=new window.AionMidiSliderEdit(volume);
+                const mute=bind(document.getElementById(`live_mm_mute_l_${i}`),'click',()=>scheduler.enqueue(()=>({action:'mute',track:i,value:snapshot.tracks[i].muted?0:1}),{track:i}));
+                const solo=bind(document.getElementById(`live_mm_solo_l_${i}`),'click',()=>command('solo',i));
+                // Retain the original strip wheel step, after the global input
+                // wheel guard has had its opportunity to block non-Shift input.
+                bind(strip,'wheel',e=>{e.preventDefault();if(!enabled())return;volume.value=Math.max(0,Math.min(2,Number(volume.value)+(e.deltaY<0?0.05:-0.05)));queueControl('volume',i,Number(volume.value));});
+                strip.addEventListener('pointerdown',()=>{selected=i;});
+                const meter=document.getElementById(`live_mm_vu_l_${i}`);
+                meter.setAttribute('aria-disabled','true');meter.title='RMS / held-peak meter is not available in this preview';
+                liveMixerRows.push({strip,volume,edit,mute,solo,label:strip.querySelector('label'),value:document.getElementById(`live_mm_l_v_${i}`)});
+            }
+        }
         function createLiveRows(s) {
+            createLiveMixer(s);
             const container=document.getElementById('live-loops-container');liveRows.length=0;
             // Blank-name original markup avoids interpreting session names as HTML;
             // the original updater's text value is applied before the next paint.
@@ -416,6 +441,14 @@
                 r.row.className=view.className;r.text.textContent=view.text;
                 r.text.style.color=r.number.style.color=r.name.style.color=view.color;
                 r.name.textContent=view.name;r.reverse.checked=!!t.reverse;r.reverse.disabled=!active;
+            });
+            liveMixerRows.forEach((r,i)=>{
+                const t=snapshot.tracks[i],color=t.length?'#0f0':'#444';
+                r.edit.update(t.volume,!!snapshot.midi?.bindings[33+i]);
+                r.value.textContent=t.volume.toFixed(2);r.label.style.color=color;r.strip.style.borderTopColor=color;
+                r.volume.disabled=r.mute.disabled=r.solo.disabled=!active;
+                r.mute.style.background=t.muted?'#f00':'#222';r.mute.style.color=t.muted?'#000':'#fff';r.mute.setAttribute('aria-pressed',String(t.muted));
+                r.solo.style.background=t.solo?'#ff0':'#222';r.solo.style.color=t.solo?'#000':'#fff';r.solo.setAttribute('aria-pressed',String(t.solo));
             });
             window.AionLivePanelState(snapshot);
             document.getElementById('odModeIndicator').style.display=mode==='overdub'?'':'none';

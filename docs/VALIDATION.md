@@ -3893,3 +3893,72 @@ known state-load warning and compiler/DRI3 diagnostics are retained. These are
 host-interface/monitor regression gates, not physical JACK, GTK interaction or
 per-sample Ardour PCM equality. All final owned test hosts closed normally.
 No package or version bump was created.
+
+
+## LIVE loop mixer controls — 23 October 2026
+
+Only the original twenty loop volume/M/S strips are enabled in the existing LIVE
+mixer. No DSP/APVTS/schema/original-asset change or package is part of this gate.
+Master/input/drone/sampler strips, RMS/held-peak meters and live-slider MIDI learn
+remain pending. Main-loop MIDI mappings and the user's logo edit are retained.
+
+`build/live-mixer-frontend.log` passes 1,200 complete unchanged renderLive markup
+cases across tracks, volumes, mute/solo ownership and empty/recorded loops; copied
+method identity is required. The production wheel handler passes 48 boundary/
+disabled cases against the unchanged original inline handler. Original whitespace
+is retained (`build/live-mixer-reference-whitespace.json`). The first upgraded
+wheel-oracle fixture incorrectly ran repeated inline handlers in a shared lexical
+scope; its const redeclaration failure is retained in
+`build/live-mixer-oracle-fixture-failure.log`. Giving each invocation the original
+handler's function scope fixed the fixture without changing product or reference.
+
+Windows portable regressions passed 19/19 in 267.96s and Ubuntu 19/19 in 398.02s
+(`build/live-mixer-windows-core.log`, `build/live-mixer-ubuntu-core.log`). The
+independent committed-audio audit passes 126 cases / 965,826 samples, maximum
+absolute error 7.394757495227111e-8 versus 1e-6 tolerance
+(`build/live-mixer-audio.log`). Its existing exclusions, including resampling,
+playback envelopes and physical latency, remain unchanged.
+
+The complete Windows WebView2 Mouse/Export/Merge/MIDI workflow passed at 64/128
+with synthetic audio, including trusted focused LIVE gain Home/End, gain-zero/mute/solo silence, nonzero recovery,
+solo transfer/release, main fader mirroring, stable fader identity across tab entry
+and unchanged recorded clip/history (`build/live-mixer-gui.log`). All owned mouse
+hosts closed normally. The 64 screenshot was visually inspected: original
+vertical strip layout/colours, no pointer overlay. This is not pixel equality.
+Screenshots are `build/native-live-mixer-64.png` and `-128.png`.
+
+Initial real pointer tests failed because scrollIntoView's default inline axis
+left vertical-writing-mode faders behind the original sticky header. Block-end
+alignment alone also failed. Both logs are retained as
+`build/live-mixer-gui-scroll-failure.log` and
+`build/live-mixer-gui-end-scroll-failure.log`. Separate read-only real DOM geometry
+checks (`build/live-mixer-geometry.log`, `build/live-mixer-geometry-both.log`)
+confirmed that centring both logical axes reveals the actual input. The final
+fixture keeps strict elementFromPoint hit-testing and trusted pointer/key input;
+no original CSS/layout or audio assertion was changed to obtain the pass.
+
+All three working-tree adapters match the embedded bytes in all seven Windows/
+Linux app/plugin modules (`build/live-mixer-embedded.json`). Those binaries include
+the user's separate uncommitted logo whitespace; it is excluded from the commit.
+
+Windows frontend/native processor/VST3 pluginval/CLAP acceptance passed 4/4 in
+31.74s (`build/live-mixer-windows-formats.log`). The actual muted Standalone plus
+original browser count-in/nudge/live-input/STUT comparisons and NativeUiSmoke
+passed (`build/live-mixer-standalone-ui.log`). REAPER 7.82 real VST3 and CLAP
+seven-case settled stereo rendering, track-state and saved-project recall passed
+(`build/live-mixer-reaper.log`,
+`build/reaper-daw/20261023T154030-4c9dfd63/result.json`). Existing user REAPER PID
+8316 was preserved. The runner's dirtyTracked field lists unstaged paths only;
+companion source/module hashes identify the full tested working tree. These host
+checks do not cover recorded-loop persistence, new LIVE editor interaction inside
+REAPER, MIDI clock, host-follow scheduling or physical driver latency.
+
+Final Linux frontend/native processor/LV2 stereo ABI/LV2 and VST3 pluginval/CLAP
+acceptance passed 6/6 in 79.54s (`build/live-mixer-linux-formats.log`). Ardour 8.4
+actual LV2 gain/mute and saved-session recall passed with isolated Dummy stereo
+inputs at 48kHz/64/128 (`build/live-mixer-ardour.log`,
+`build/ardour-daw/20261023T154417-8e1536e5/result.json`). Existing vendor skips,
+known state-load warning and DRI3/compiler diagnostics remain visible. This is
+libardour session-engine validation, not GTK pointer testing, physical JACK or
+per-sample Ardour PCM comparison. No new physical hardware evidence is claimed.
+All final owned hosts closed normally; no version bump or package was created.

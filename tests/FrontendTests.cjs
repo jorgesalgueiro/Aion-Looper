@@ -706,3 +706,29 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  for(const a of states)for(const b of states){const tracks=[{state:a},{state:b}];let classes=panelFixture();original.panel(tracks);const expected=[...classes].sort();classes=panelFixture();native.window.AionLivePanelState({tracks});assert.deepEqual([...classes].sort(),expected,'Original LIVE recording > armed > playing > stopped '+a+'/'+b);++panelCases;}
  console.log('PASS: original LIVE cards '+markupCases+' markup / '+statusCases+' updater / '+panelCases+' panel-priority cases; names/quotes/Unicode and native finalization retained');
 }
+
+// LIVE mixer loop controls keep original markup and mute/solo presentation.
+{
+ const source=fs.readFileSync(path.join(root,'resources/ui/main.js'),'utf8').replace(/\r\n/g,'\n');
+ const method=name=>{const a=source.indexOf('    static '+name+'(',source.indexOf('class MasterMixManager')),b=source.indexOf('\n    }',a)+6;assert(a>=0&&b>a);return source.slice(a,b);};
+ const adapter=fs.readFileSync(path.join(root,'resources/native/loop-view.js'),'utf8').replace(/\r\n/g,'\n');assert(adapter.includes(method('renderLive')),'Keep unchanged original LIVE mixer renderer');
+ const native={window:{}};vm.createContext(native);vm.runInContext(adapter,native);
+ const original={};vm.createContext(original);vm.runInContext(`const state={inputs:[],samplers:[],masterMixVolume:0};class MasterMixManager{${method('renderLive')}}globalThis.render=tracks=>{state.loops=tracks.map((t,id)=>({...t,id,audioBuffer:t.length>0}));state.soloState={active:tracks.some(t=>t.solo),loopId:tracks.findIndex(t=>t.solo)};const c={};MasterMixManager.renderLive(c);return c.innerHTML;};`,original);
+ let cases=0;
+ for(let id=0;id<20;++id)for(const volume of [0,0.01,0.5,1,2])for(const muted of [false,true])for(const owner of [-1,id,(id+1)%20])for(const length of [0,48000]){
+  const tracks=Array.from({length:20},(_,i)=>({volume:i===id?volume:1,muted:i===id&&muted,solo:i===owner,length:i===id?length:0}));
+  assert.equal(native.window.AionLiveMixerMarkup({tracks}),original.render(tracks),'Original loop strip volume/mute/solo/clip markup');++cases;
+ }
+ const controller=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const wheel=/bind\(strip,'wheel',(e=>\{[^\n]+\})\);/.exec(controller);assert(wheel,'Actual production LIVE wheel handler');
+ const oracleMarkup=original.render([{volume:1,muted:false,solo:false,length:1}]);
+ const oracleWheel=Array.from(oracleMarkup.matchAll(/onwheel="([^"]+)"/g),m=>m[1]).find(s=>s.includes('UIManager.setLoopVolume'));assert(oracleWheel);
+ let oracleCommands=[],oracleVolume={value:1};const oracleContext={document:{getElementById:()=>oracleVolume},UIManager:{setLoopVolume:(...v)=>oracleCommands.push(v)},Math,parseFloat};vm.createContext(oracleContext);
+ let enabled=true,commands=[],volume={value:1};const ctx={volume,enabled:()=>enabled,i:7,queueControl:(...v)=>commands.push(v),Math,Number};vm.createContext(ctx);vm.runInContext('globalThis.wheel='+wheel[1],ctx);
+ let wheelCases=0;
+ for(const start of [0,0.01,0.03,0.5,1,1.97,1.99,2])for(const deltaY of [-120,0,120])for(const active of [false,true]){
+  enabled=active;commands=[];volume.value=start;let prevented=false;ctx.wheel({deltaY,preventDefault:()=>prevented=true});assert(prevented);
+  if(active){oracleVolume.value=start;oracleCommands=[];oracleContext.event={deltaY,preventDefault:()=>{}};vm.runInContext('(()=>{'+oracleWheel+'})()',oracleContext);assert.equal(Number(volume.value),Number(oracleVolume.value),'Unchanged original strip wheel value');assert.deepEqual(commands,[['volume',7,Number(oracleCommands[0][1])]]);}else{assert.equal(volume.value,start);assert.deepEqual(commands,[]);}++wheelCases;
+ }
+ console.log('PASS: original LIVE mixer '+cases+' complete markup cases / '+wheelCases+' production wheel clamp/disabled cases; original source retained');
+}

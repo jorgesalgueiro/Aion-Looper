@@ -323,6 +323,97 @@ const effectColors = {
         }
     }
     }
+    class MasterMixManager {
+    static renderLive(container) {
+        if(!container) return;
+        let html = `<div class="live-mixer-console">`;
+        const sliderStyle = "writing-mode: vertical-lr; direction: rtl; -webkit-appearance: none; appearance: none; background: #222; border: 1px solid #444; width: 32px; height: 120px; margin: 0; cursor: ns-resize; touch-action: none; position: relative; z-index: 1;";
+        const stripStyle = "display:flex; flex:0 0 auto; flex-direction:column; align-items:center; gap:4px; min-width:60px; background:#050505; border:1px solid #333; padding:8px 4px;";
+        const valStyle = "font-size:9px; color:#888; text-align:center; height:12px; font-family:monospace;";
+        const btnMuteStyle = "font-size:8px; padding:2px 4px; height: 20px; margin-bottom: 2px; min-height: unset;";
+
+        html += `<div style="${stripStyle} border-top:2px solid #f00; margin-right: 5px;" onwheel="event.preventDefault(); const s=document.getElementById('live_mm_slider_master_vol'); if(s){ s.value=Math.max(0, Math.min(2, parseFloat(s.value) + (event.deltaY < 0 ? 0.05 : -0.05))); MasterMixManager.setMasterMixVolume(s.value); }">
+            <label for="live_mm_slider_master_vol" style="font-size:9px; color:#f00; font-weight:bold;">MASTER</label>
+            <div class="live-mixer-fader">
+                <input type="range" id="live_mm_slider_master_vol" min="0" max="2" step="0.01" value="${state.masterMixVolume ?? 1.0}" style="${sliderStyle} border-color: #f00;" oninput="MasterMixManager.setMasterMixVolume(this.value);" aria-label="Master Volume">
+                <div id="live_mm_vu_master" class="ascii-vu-meter vu-vertical" aria-label="Master output level"></div>
+            </div>
+            <div id="live_mm_master_v" style="${valStyle} color:#f00;">${(state.masterMixVolume ?? 1.0).toFixed(2)}</div>
+        </div>`;
+
+        state.inputs.forEach(i => {
+            html += `<div style="${stripStyle} border-top:2px solid #0ff;" onwheel="event.preventDefault(); const s=document.getElementById('live_mm_slider_in_${i.id}'); if(s){ s.value=Math.max(0, Math.min(2, parseFloat(s.value) + (event.deltaY < 0 ? 0.05 : -0.05))); InputManager.setVolume(${i.id}, s.value); }">
+                <label for="live_mm_slider_in_${i.id}" style="font-size:9px; color:#0ff; font-weight:bold;">${i.name || `IN ${i.id+1}`}</label>
+                <div class="live-mixer-fader">
+                    <input type="range" id="live_mm_slider_in_${i.id}" min="0" max="2" step="0.01" value="${i.volume}" style="${sliderStyle}" oninput="InputManager.setVolume(${i.id}, this.value);" aria-label="Input ${i.id+1} Volume">
+                    <div id="live_mm_vu_in_${i.id}" class="ascii-vu-meter vu-vertical" aria-label="Input ${i.id+1} capture level"></div>
+                </div>
+                <div id="live_mm_in_v_${i.id}" style="${valStyle}">${i.volume.toFixed(2)}</div>
+                <div style="display:flex; gap:2px; margin:2px 0;">
+                    <button id="live_mm_mute_in_${i.id}" class="small" style="${btnMuteStyle} background:${!i.monitor ? '#f00' : '#222'}; color:${!i.monitor ? '#000' : '#fff'};" onclick="InputManager.toggleMonitor(${i.id})">M</button>
+                </div>
+            </div>`;
+        });
+
+        state.loops.forEach((l, idx) => {
+            const color = l.audioBuffer ? '#0f0' : '#444';
+            html += `<div style="${stripStyle} border-top:2px solid ${color};" onwheel="event.preventDefault(); const s=document.getElementById('live_mm_slider_l_${idx}'); if(s){ s.value=Math.max(0, Math.min(2, parseFloat(s.value) + (event.deltaY < 0 ? 0.05 : -0.05))); UIManager.setLoopVolume(${idx}, s.value); }">
+                <label for="live_mm_slider_l_${idx}" style="font-size:9px; color:${color}; font-weight:bold;">L ${idx+1}</label>
+                <div class="live-mixer-fader">
+                    <input type="range" id="live_mm_slider_l_${idx}" min="0" max="2" step="0.01" value="${l.volume}" style="${sliderStyle}" oninput="UIManager.setLoopVolume(${idx}, this.value);" aria-label="Loop ${idx+1} Volume">
+                    <div id="live_mm_vu_l_${idx}" class="ascii-vu-meter vu-vertical" aria-label="Loop ${idx+1} output level"></div>
+                </div>
+                <div id="live_mm_l_v_${idx}" style="${valStyle}">${l.volume.toFixed(2)}</div>
+                <div style="display:flex; gap:2px; margin:2px 0;">
+                    <button id="live_mm_mute_l_${idx}" class="small" style="${btnMuteStyle} background:${l.muted ? '#f00' : '#222'}; color:${l.muted ? '#000' : '#fff'};" onclick="LoopManager.toggleMute(${idx})">M</button>
+                    <button id="live_mm_solo_l_${idx}" class="small" style="${btnMuteStyle} background:${(state.soloState.active && state.soloState.loopId === idx) ? '#ff0' : '#222'}; color:${(state.soloState.active && state.soloState.loopId === idx) ? '#000' : '#fff'};" onclick="SoloManager.toggleSolo(${idx})">S</button>
+                </div>
+            </div>`;
+        });
+        
+        if (typeof DroneSynth !== 'undefined') {
+            DroneSynth.instances.forEach(d => {
+                const label = (d.id < 10 && state.keyMapping.kbd[20 + d.id]) ? state.keyMapping.kbd[20 + d.id].toUpperCase() : `D${d.id+1}`;
+                html += `<div style="${stripStyle} border-top:2px solid #f0f;" onwheel="event.preventDefault(); const s=document.getElementById('live_mm_slider_d_${d.id}'); if(s){ s.value=Math.max(0, Math.min(1.0, parseFloat(s.value) + (event.deltaY < 0 ? 0.05 : -0.05))); DroneSynth.setParam(${d.id}, 'volume', s.value); }">
+                    <label for="live_mm_slider_d_${d.id}" style="font-size:9px; color:#f0f; font-weight:bold;">DRONE ${label}</label>
+                    <div class="live-mixer-fader">
+                        <input type="range" id="live_mm_slider_d_${d.id}" min="0" max="1.0" step="0.01" value="${d.params.volume}" style="${sliderStyle}" oninput="DroneSynth.setParam(${d.id}, 'volume', this.value);" aria-label="Drone ${d.id+1} Volume">
+                        <div id="live_mm_vu_d_${d.id}" class="ascii-vu-meter vu-vertical" aria-label="Drone ${d.id+1} output level"></div>
+                    </div>
+                    <div id="live_mm_d_v_${d.id}" style="${valStyle}">${d.params.volume.toFixed(2)}</div>
+                    <div style="display:flex; gap:2px; margin:2px 0;">
+                        <button id="live_mm_mute_d_${d.id}" class="small" style="${btnMuteStyle} background:${d.muted ? '#f00' : '#222'}; color:${d.muted ? '#000' : '#fff'};" onclick="DroneSynth.toggleMute(${d.id})">M</button>
+                        <button id="live_mm_solo_d_${d.id}" class="small" style="${btnMuteStyle} background:${(typeof DroneSynth !== 'undefined' && DroneSynth.soloInstanceId === d.id) ? '#ff0' : '#222'}; color:${(typeof DroneSynth !== 'undefined' && DroneSynth.soloInstanceId === d.id) ? '#000' : '#fff'};" onclick="DroneSynth.toggleSolo(${d.id})">S</button>
+                    </div>
+                </div>`;
+            });
+        }
+        state.samplers.forEach((s, idx) => {
+            const color = s.buffer ? '#08f' : '#444';
+            html += `<div style="${stripStyle} border-top:2px solid ${color};" onwheel="event.preventDefault(); const sl=document.getElementById('live_mm_slider_s_${idx}'); if(sl){ sl.value=Math.max(0, Math.min(2, parseFloat(sl.value) + (event.deltaY < 0 ? 0.05 : -0.05))); SamplerManager.setVolume(${idx}, sl.value); }">
+                <label for="live_mm_slider_s_${idx}" style="font-size:9px; color:${color}; font-weight:bold;">S ${idx+1}</label>
+                <div class="live-mixer-fader">
+                    <input type="range" id="live_mm_slider_s_${idx}" min="0" max="2" step="0.01" value="${s.volume}" style="${sliderStyle}" oninput="SamplerManager.setVolume(${idx}, this.value);" aria-label="Sampler ${idx+1} Volume">
+                    <div id="live_mm_vu_s_${idx}" class="ascii-vu-meter vu-vertical" aria-label="Sampler ${idx+1} output level"></div>
+                </div>
+                <div id="live_mm_s_v_${idx}" style="${valStyle}">${s.volume.toFixed(2)}</div>
+                <div style="display:flex; gap:2px; margin:2px 0;">
+                    <button id="live_mm_mute_s_${idx}" class="small" style="${btnMuteStyle} background:${s.muted ? '#f00' : '#222'}; color:${s.muted ? '#000' : '#fff'};" onclick="SamplerManager.toggleMute(${idx})">M</button>
+                    <button id="live_mm_solo_s_${idx}" class="small" style="${btnMuteStyle} background:${(SamplerManager.soloId === idx) ? '#ff0' : '#222'}; color:${(SamplerManager.soloId === idx) ? '#000' : '#fff'};" onclick="SamplerManager.toggleSolo(${idx})">S</button>
+                </div>
+            </div>`;
+        });
+        
+        html += `</div>`;
+        container.innerHTML = html;
+    }
+    }
+    window.AionLiveMixerMarkup=snapshot=>{
+        state.inputs=[];state.samplers=[];state.masterMixVolume=0;
+        state.loops=snapshot.tracks.map((t,id)=>({...t,id,audioBuffer:t.length>0}));
+        state.soloState={active:snapshot.tracks.some(t=>t.solo),loopId:snapshot.tracks.findIndex(t=>t.solo)};
+        const container={};MasterMixManager.renderLive(container);return container.innerHTML;
+    };
     window.AionLiveLoopMarkup=snapshot=>snapshot.tracks.map((t,i)=>UIManager.generateLiveLoopHTML({...t,name:'',effects:{reverse:!!t.reverse},signalChain:'QCATFODBVKZG'},i));
     window.AionLivePanelState=snapshot=>{state.loops=snapshot.tracks;UIManager.updateLivePerformanceState();};
     window.AionSyncMarkup = snapshot => {

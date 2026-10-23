@@ -631,3 +631,21 @@ Keep 400 original markup, 1,600 updater and 121 panel-priority comparisons, copi
 method identity and real 64/128 LIVE record/finish/play/stop, keyboard, reverse,
 name/tab/disabled-control isolation plus nonzero PCM/clip/history gates. Preserve
 existing main-loop/hold/sync/navigation/MIDI tests and the user's logo edit.
+
+
+LIVE loop mixer controls project unchanged MasterMixManager.renderLive into the
+existing LIVE mixer container: enable only the twenty loop volume/M/S strips.
+Use existing native FIFO volume/mute/solo commands; do not introduce WebAudio or
+change DSP/APVTS/schema. Construct mixer controls once per editor and refresh in
+place, retaining MIDI slider edit ownership across tab entry. The original
+master/input/drone/sampler strips and RMS/held-peak meter behavior remain unported;
+exclude those strips and explicitly mark empty meter placeholders unavailable.
+Do not substitute native block peaks for original RMS or claim full mixer parity.
+Retain 1,200 complete original-renderer comparisons, copied source identity and
+48 production-wheel comparisons against the unchanged original handler, including
+clamps/disabled guard. Native 64/128 tests must hit actual visible controls and
+observe gain-zero/mute/solo silence and nonzero recovery, main-view mirroring,
+unchanged clip/history and stable fader identity. LIVE mixer test targets centre both logical scroll axes for the original
+vertical-writing-mode faders below the sticky header; preserve strict hit-testing and
+all existing main-workflow assertions. Preserve failures as evidence, user logo
+whitespace and original renderer whitespace. This increment needs no package.

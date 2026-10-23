@@ -538,3 +538,28 @@ recording through repeated mode presses and eventual old NoteOff, with exact
 stereo WAV equality against direct capture at 64/128. Existing loop debounce,
 10s recovery, CC edge and PC burst contracts remain. No alternative interaction,
 new interface or next feature was introduced.
+
+
+### LIVE loop mixer control projection (23 October 2026)
+
+The unchanged original MasterMixManager.renderLive is the markup oracle. Native
+volume/M/S use existing C++ commands and settled audio paths, rather than any
+legacy inline audio code. Inline handlers are stripped before listeners attach.
+All twenty loop strips retain original range (0..2, step .01), wheel step (.05),
+labels, styles and mute/solo colours; only ported loop strips are enabled.
+Original renderer inputs/drone/sampler arrays are empty in this projection and
+the unported master strip is removed before paint.
+
+Current original UIManager.renderMeter consumes RMS and held-peak objects, while
+native track telemetry exposes a block sample peak. This increment deliberately
+leaves the original meter placeholders empty with aria-disabled and an explicit
+unavailable title. It does not mislabel block peak as RMS or claim full mixer
+parity. Master-mix routing, metering, additional engines and live-slider learning
+remain independent acceptance work. Original assets and all DSP are unchanged.
+
+Official JUCE guidance was rechecked: SmoothedValue describes avoiding audio
+glitches, and AudioProcessorValueTreeState explicitly distinguishes realtime raw
+parameter reads from locking state copies. Existing native gain smoothing and
+command ownership are reused; no state copy is added to the callback. Sources:
+[SmoothedValue](https://docs.juce.com/master/classjuce_1_1SmoothedValue.html),
+[AudioProcessorValueTreeState](https://docs.juce.com/master/classjuce_1_1AudioProcessorValueTreeState.html).

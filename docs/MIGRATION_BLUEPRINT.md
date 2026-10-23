@@ -283,3 +283,22 @@ Linux CLAP DAW still needs acceptance.
 These gates extend host validation, not the implemented feature set. Full host
 transport-follow scheduling, MIDI clock, recorded-loop project storage, physical
 drivers, GTK/WebView pointer workflows and Apple validation remain pending.
+
+
+## LIVE loop mixer controls — 23 October 2026
+
+The existing ownership graph and CMake targets remain unchanged. The original
+MasterMixManager.renderLive is copied into the presentation-only adapter; native
+projection enables its twenty loop strips. Volume, M and S use the same bounded
+frontend FIFO and C++ volume/mute/solo commands as the main loop view. Polling
+updates values and button colours in place. Mixer controls are constructed once
+per editor so repeated LIVE entry cannot accumulate slider ownership listeners.
+Focused learned volume controls use the existing MIDI edit arbitration. Learning
+a binding remains available on the main loop slider; this increment adds no new
+MIDI target or assignment and does not claim physical expression validation.
+
+The original master/input/drone/sampler strips are excluded until their routing
+is migrated. RMS/held-peak meters remain empty and explicitly marked unavailable;
+native block peaks cannot honestly stand in for the original RMS pipeline. The
+full LIVE mixer is therefore still pending. No alternative user interaction,
+DSP, APVTS parameter/schema, dependency or CMake change is introduced.

@@ -846,3 +846,15 @@ oracles compare original card markup and updater/panel states independently.
 Screenshots are retained as `build/native-live-loops-64.png` and `-128.png`.
 The live master mixer, drone/sampler engines and other effects are still pending.
 Use the existing app/test targets; this restoration needs no installer or ZIP.
+
+
+LIVE loop mixer control checks use the same incremental build and
+`tools/TestMouseWorkflow.ps1` at 64/128. They cover the original twenty volume/M/S
+strips, focused gain zero/max, exact silent mute/solo exclusion and nonzero
+recovery, shared main-view values, clip/history preservation and stable fader
+identity across tab entry. `native_frontend_commands` retains 1,200 complete
+original-renderer comparisons and 48 production strip-wheel cases checked against
+the original inline handler. Existing non-Shift input wheel protection remains.
+Screenshots: `build/native-live-mixer-64.png` and `-128.png`. This controls increment
+does not complete RMS/held-peak meters or master/input/drone/sampler mixing.
+Rebuild existing targets; no package or version bump is needed.
