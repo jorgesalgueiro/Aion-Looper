@@ -9,18 +9,76 @@ namespace {
 using namespace aion;using A=LoopAction;using S=LoopState;
 void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
 struct Fixture {
- std::unique_ptr<Engine> engine=std::make_unique<Engine>();unsigned block;std::uint32_t revision=0,request=0;EngineView latest{};
+ std::unique_ptr<Engine> engine=std::make_unique<Engine>();unsigned block;std::uint32_t revision=0,request=0;EngineView latest{};bool varyingInput=false;
  explicit Fixture(unsigned n):block(n){engine->prepare(8000,131072);engine->setMonitoring(false);engine->setTarget(1);MidiSettings settings;settings.enabled=true;settings.revision=++revision;check(engine->configureMidi(settings),"configure MIDI");process(0);}
- void process(unsigned frames,std::span<const MidiEvent> events={}){float l[128],r[128];std::fill_n(l,128,0.2f);std::fill_n(r,128,-0.1f);float* channels[]={l,r};watch=true;engine->process(channels,2,static_cast<int>(frames),events);watch=false;EngineView view;while(engine->popView(view))latest=view;}
+ void process(unsigned frames,std::span<const MidiEvent> events={}){float l[128],r[128];std::fill_n(l,128,0.2f);std::fill_n(r,128,-0.1f);if(varyingInput)for(unsigned i=0;i<frames;++i){const double t=static_cast<double>(engine->clock()+i);l[i]=static_cast<float>(0.4*std::sin(t*0.071));r[i]=static_cast<float>(0.3*std::cos(t*0.053));}float* channels[]={l,r};watch=true;engine->process(channels,2,static_cast<int>(frames),events);watch=false;EngineView view;while(engine->popView(view))latest=view;}
  void advance(unsigned frames){while(frames){const auto n=std::min(frames,block);process(n);frames-=n;}}
  void send(unsigned status,unsigned a,unsigned b,unsigned size=3){const MidiEvent e{0,static_cast<std::uint8_t>(status),static_cast<std::uint8_t>(a),static_cast<std::uint8_t>(b),static_cast<std::uint8_t>(size)};process(1,{&e,1});}
  void command(A action,unsigned id=0,float value=0){check(engine->enqueueLoop({action,id,++request,engine->generation(),0,value}),"MIDI fixture command");process(1);}
  void wait(){for(unsigned n=0;n<10000;++n){process(0);if(!engine->finalizationPending())return;std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(false,"MIDI fixture worker timeout");}
  void tap(unsigned note){send(144,note,100);send(128,note,0);}
+ std::vector<std::uint8_t> wav(unsigned id){check(engine->enqueueExport({id,engine->generation(),latest.tracks[id].waveformId}),"Panic fixture WAV request");process(0);WavExport output;for(unsigned n=0;n<10000;++n){if(engine->popExport(output))return output.bytes;std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(false,"Panic fixture WAV worker timeout");return {};}
+
 };
 }
 void midiTests(){
  using namespace aion;using A=LoopAction;using S=LoopState;
+ // A fresh NoteOn after explicit panic is a new gesture, not an old repeat.
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);f.command(A::record);f.advance(512);f.command(A::finish);f.wait();f.command(A::stopAll);
+  const auto identity=f.latest.tracks[0].waveformId;const auto length=f.latest.tracks[0].length;
+  f.send(144,36,100);check(f.latest.tracks[0].state==S::playing,"Panic recovery fixture starts held playback");
+  f.command(A::stopAll);check(f.latest.tracks[0].state==S::stopped,"Panic recovery fixture stops playback");
+  f.send(144,36,100);check(f.latest.tracks[0].state==S::playing,"Fresh NoteOn after STOP ALL must act immediately without prior NoteOff");
+  f.send(128,36,0);f.advance(32001);check(f.latest.tracks[0].waveformId==identity&&f.latest.tracks[0].length==length,"Cancelled old hold cannot delete resumed PCM");
+ }
+ // Panic must reclaim a full pool of cancelled Note gestures for a different key.
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);f.varyingInput=true;for(unsigned id=0;id<4;++id){f.command(A::record,id);f.advance(256);f.command(A::finish,id);f.wait();}f.command(A::stopAll);
+  std::array<std::uint64_t,4> identities{};for(unsigned id=0;id<4;++id)identities[id]=f.latest.tracks[id].waveformId;
+  for(unsigned channel=0;channel<16;++channel)for(unsigned note=36;note<40;++note)f.send(144+channel,note,100);
+  check(f.latest.midi.overflows==0,"All 64 legitimate held notes fit before panic");f.command(A::stopAll);
+  f.send(144,40,100);check(f.latest.midi.overflows==0&&f.latest.tracks[4].state==S::recording,"Different fresh key must recover after panic releases a full cancelled-note pool");
+  for(unsigned channel=0;channel<16;++channel)for(unsigned note=36;note<40;++note)f.send(128+channel,note,0);
+  check(f.latest.tracks[4].state==S::recording,"Late releases for cancelled notes cannot release a different new key");for(unsigned id=0;id<4;++id)check(f.latest.tracks[id].waveformId==identities[id],"Pool recovery preserves old immutable clips");f.send(128,40,0);f.command(A::clear,4);
+ }
+ // A cancelled CC still needs zero; clearing Note ownership must not rearm it.
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);f.varyingInput=true;f.command(A::record);f.advance(512);f.command(A::finish);f.wait();f.command(A::stopAll);const auto stored=f.wav(0);
+  MidiSettings settings;settings.enabled=true;settings.bindings[0]=midiBinding(2,11);settings.bindings[1]=midiBinding(1,60);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Cancelled CC rearm fixture");f.process(0);
+  f.send(176,11,127);check(f.latest.tracks[0].state==S::playing,"CC positive owns initial playback");f.command(A::stopAll);f.send(144,60,100);f.send(128,60,0);const auto before=f.latest.midi.actions;f.send(176,11,127);check(f.latest.midi.actions==before&&f.latest.tracks[0].state==S::stopped,"Cancelled CC positive remains blocked until zero despite new Note ownership");f.send(176,11,0);f.send(176,11,127);check(f.latest.tracks[0].state==S::playing,"CC zero still rearms its next positive edge");f.send(176,11,0);check(f.wav(0)==stored,"CC/Note cancellation retains exact clip PCM");f.command(A::clear,1);
+ }
+ // Cancelled NoteOn ownership recovers immediately; live repeats stay debounced.
+ const auto panic=[](Fixture& f,MidiSettings& settings,unsigned kind){
+  if(kind==0)f.command(A::stopAll);
+  else if(kind==1)f.send(252,0,0,1);
+  else if(kind==2||kind==3)f.send(176,kind==2?120:123,0);
+  else if(kind==4){f.engine->cancelMidi();f.process(0);}
+  else if(kind==5){f.engine->midiOverflow();f.process(0);}
+  else {settings.enabled=false;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Disable cancelled note fixture");f.process(0);settings.enabled=true;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Reenable cancelled note fixture");f.process(0);}
+ };
+ unsigned recoveryCases=0;
+ for(const unsigned block:{64u,128u})for(const unsigned target:{0u,9u,10u,19u})for(const unsigned channel:{0u,15u})for(unsigned kind=0;kind<7;++kind)for(const bool sus:{false,true}){
+  Fixture f(block);f.varyingInput=true;f.command(A::record,target);f.advance(512);f.command(A::finish,target);f.wait();f.command(A::stopAll);
+  const auto before=f.latest.tracks[target];const auto stored=f.wav(target);check(std::any_of(stored.begin()+44,stored.end(),[](auto v){return v!=0;}),"Recovery fixture contains nonzero stereo PCM");
+  MidiSettings settings;settings.enabled=true;settings.bindings.fill(0);settings.bindings[target]=midiBinding(1,60);settings.bindings[32]=midiBinding(1,61);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Recovery mapped settings");f.process(0);if(sus)f.tap(61);
+  f.send(144+channel,60,100);check(f.latest.tracks[target].state==S::playing,"Initial held note starts clip");panic(f,settings,kind);
+  const auto previous=f.latest.tracks[target].state;const auto expected=sus||previous==S::stopped?S::playing:S::stopped;
+  f.send(144+channel,60,127);check(f.latest.tracks[target].state==expected,"Cancelled note must recover immediately on exact channel/key before ten seconds");const auto accepted=f.latest.midi.actions;
+  f.send(144+channel,60,100);check(f.latest.midi.actions==accepted,"Fresh owned press still debounces ordinary repeated NoteOn");
+  if(sus){f.advance(256);check(f.latest.outputPeak>0.01f,"Recovered SUS play renders real nonzero PCM");}
+  f.send(128+channel,60,0);f.advance(256);check(sus?f.latest.tracks[target].state==S::stopped:f.latest.tracks[target].state==expected,"New NoteOff owns only the fresh gesture");
+  check((sus||expected==S::stopped)?f.latest.outputPeak==0:f.latest.outputPeak>0.01f,"Recovered stop/play has actual silence/nonzero PCM");
+  f.advance(32001);check(f.latest.tracks[target].waveformId==before.waveformId&&f.latest.tracks[target].length==before.length&&f.latest.tracks[target].undoCount==before.undoCount,"Old cancelled delete/cut tasks cannot mutate recovered clip/history");check(f.wav(target)==stored,"Panic/fresh-note recovery preserves exact stored stereo WAV");++recoveryCases;
+ }
+ check(recoveryCases==224,"Complete cancellation/source/channel/block/SUS recovery matrix");
+ for(const unsigned block:{64u,128u})for(unsigned kind=0;kind<7;++kind)for(const bool muted:{false,true}){
+  Fixture f(block);f.varyingInput=true;f.command(A::record);f.advance(512);f.command(A::finish);f.wait();const auto stored=f.wav(0);
+  MidiSettings settings;settings.enabled=true;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"SUS mute recovery setup");f.process(0);f.tap(48);f.command(A::mute,0,muted?1:0);
+  f.send(144,36,100);check(f.latest.tracks[0].muted!=muted,"SUS first press temporarily toggles mute");panic(f,settings,kind);check(f.latest.tracks[0].muted==muted,"Panic restores exact old mute before new ownership");if(f.latest.tracks[0].state==S::stopped)f.command(A::play);
+  f.send(144,36,100);check(f.latest.tracks[0].muted!=muted,"Fresh SUS press after panic takes mute ownership immediately");f.send(128,36,0);check(f.latest.tracks[0].muted==muted,"Fresh SUS release restores original mute");f.advance(32001);check(f.wav(0)==stored,"SUS cancellation/repress cannot alter stored audio");
+ }
+ std::cout<<"PASS: immediate cancelled-note recovery: 224 play/stop cases + 28 mute cases, exact nonzero stereo WAV, 64/128, active-repeat debounce and no stale cut/delete\n";
  // Zero-sample callbacks carry control events at the current audio frame.
  for(const unsigned block:{64u,128u}){
   std::vector<std::uint8_t> baseline;

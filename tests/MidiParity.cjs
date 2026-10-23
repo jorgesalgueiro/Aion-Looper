@@ -80,3 +80,18 @@ for(const target of [30,31,32]){
  const run=spawnSync(process.argv[2],['reassigned-mode',String(target)],{input:packets.map(row=>row.join(' ')).join('\n')+'\n',encoding:'utf8'});assert.equal(run.status,0,run.stderr);assert.deepEqual(run.stdout.trim().split('\n').map(row=>row.trim().split(/\s+/).map(Number)),expected);
 }
 console.log('PASS: unchanged original global mode dispatch bypasses a prior loop press after reassignment, for OD/SUB/SUS');
+
+// Original Stop clears inputPressTimers, so the next NoteOn is immediately fresh.
+{
+ const a=loops.indexOf('    static stopAll()'),b=loops.indexOf('\n    }',a)+6;assert(a>=0&&b>a);
+ sandbox.AudioEngine={currentTime:0};sandbox.UIManager.updateLoop=()=>{};sandbox.noteTime=1000;sandbox.noteActions=0;
+ sandbox.LoopManager.handleAction=id=>{sandbox.noteActions++;vm.runInContext(`state.loops[${id}].state=state.loops[${id}].state==='playing'?'stopped':'playing';`,sandbox);};
+ vm.runInContext(`class OriginalStop{${loops.slice(a,b)}};OriginalStop.transportGeneration=0;LoopManager.stopAll=()=>OriginalStop.stopAll();state.samplers=[];state.isRecording=false;state.inputPressTimers={};state.globalSusMode=false;state.loops=[{id:0,state:'stopped',stop(){this.state='stopped';}}];state.keyMapping.midi=${mapping[1]};`,sandbox);
+ const packets=[],expected=[];
+ for(let channel=0;channel<16;++channel)for(const packet of [[144+channel,36,100,3],[252,0,0,1],[144+channel,36,100,3],[144+channel,36,127,3],[128+channel,36,0,3],[144+channel,36,100,3],[128+channel,36,0,3]]){
+  packets.push(packet);sandbox.ccOracle(packet.slice(0,packet[3]));expected.push(sandbox.noteActions);
+ }
+ assert.equal(sandbox.noteActions,48,'Original accepts three separate presses per channel while debouncing the active repeat');
+ const run=spawnSync(process.argv[2],['panic-repress'],{input:packets.map(row=>row.join(' ')).join('\n')+'\n',encoding:'utf8'});assert.equal(run.status,0,run.stderr);assert.deepEqual(run.stdout.trim().split(/\s+/).map(Number),expected);
+ console.log('PASS: unchanged original MIDI Stop/stopAll clears held entries; immediate fresh NoteOn and ordinary repeat/release across 16 channels');
+}

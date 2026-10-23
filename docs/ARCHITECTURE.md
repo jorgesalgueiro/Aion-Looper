@@ -818,10 +818,13 @@ Program Changes keep their first-packet-anchored burst window. No DSP, IPC schem
 APVTS state version or interface change is needed.
 
 Global NoteOn routing resolves the current mapping before held-loop debounce.
-Transport-binding replacement can leave an old, suppressed loop press waiting for
-release. That entry must not block a key that has become OD/SUB/SUS; its eventual
-NoteOff still releases only the suppressed old owner and cannot finish the take.
-Current loop bindings retain normal debounce and strict >10s recovery.
+Cancellation restores momentary actions and immediately retires Note entries,
+matching original stopAll and freeing even a full 64-Note pool. A late old NoteOff
+without a new press is ignored; a fresh NoteOn owns a new gesture immediately.
+Suppressed CC entries retain their zero-before-positive rearm requirement. Global
+OD/SUB/SUS routing still bypasses ordinary loop debounce. Active, uncancelled loop
+notes retain normal debounce and strict >10s missed-release recovery. The original
+press array remains bounded and no callback storage/locks are added.
 
 ### Browser document / native completion correlation
 

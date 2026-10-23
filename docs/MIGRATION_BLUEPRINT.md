@@ -346,3 +346,13 @@ All four visual aliases share native learn state; no original markup/CSS, CMake,
 SDK, DSP callback, APVTS or saved-state schema changes are needed. Direct header
 learning is the requested native extension; keyboard SUS and other unported
 controls/engines remain separate migration increments.
+
+
+MIDI cancellation restores momentary capture/play/mute ownership before retiring
+Note entries immediately, matching original stopAll's inputPressTimers reset.
+This allows same/different-key presses after panic, including a full 64-Note pool.
+CC entries retain suppressed ownership until zero; no global debounce relaxation
+is introduced. Existing fixed press storage, audio ownership, MIDI/APVTS state
+schema, callback timing and original UI remain. Seven native cancellation sources
+and exact nonzero stereo PCM/64/128 are tested separately from the unchanged-JS
+MIDI Stop oracle and from physical driver/controller acceptance.

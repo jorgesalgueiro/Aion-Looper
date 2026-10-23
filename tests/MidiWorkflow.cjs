@@ -50,6 +50,21 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
  await inject([[144,48,100,3,0]]);await wait(s=>!s.midi.sustain,'malformed fixture leaves SUS');assert((await rpc({operation:'setParameter',id:'masterGain',value:0})).ok);
  s=await snapshot();assert((await rpc({operation:'loop',action:'clear',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks[0].state==='empty','malformed-panic fixture cleanup');
  console.log('PASS: real raw malformed panic preserves held recording/MIDI learn/nonzero PCM; valid panic releases without PCM loss');
+ // Actual STOP ALL must allow an immediately fresh physical-note gesture.
+ for(const [id,value] of [['inputMonitor',0],['masterGain',1]])assert((await rpc({operation:'setParameter',id,value})).ok);
+ await click('#loop-action-0');await wait(s=>s.tracks[0].state==='recording','Panic recovery GUI capture');await delay(180);await click('#loop-action-0');s=await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Panic recovery has real nonzero PCM');const panicClip={...s.tracks[0]};
+ await click('#native-stop-all');await wait(s=>s.tracks[0].state==='stopped'&&s.outputPeak===0,'Panic recovery stopped baseline');
+ await inject([[144,48,100,3,0]]);await wait(s=>s.midi.sustain,'Panic recovery uses MIDI SUS');await inject([[144,36,100,3,17]]);await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Owned SUS note before actual STOP ALL');
+ await click('#native-stop-all');await wait(s=>s.tracks[0].state==='stopped'&&s.outputPeak===0,'Actual STOP ALL cancels old held note');
+ await inject([[144,36,100,3,17]]);await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Fresh same NoteOn plays immediately without old NoteOff');await inject([[144,36,127,3,17]]);assert.equal((await snapshot()).tracks[0].state,'playing','Ordinary repeat stays debounced after recovery');await inject([[128,36,0,3,17]]);await wait(s=>s.tracks[0].state==='stopped'&&s.outputPeak===0,'Fresh SUS release owns resumed play');
+ await inject([[144,48,100,3,0]]);await wait(s=>!s.midi.sustain,'Panic recovery leaves SUS');
+ for(const channel of [0,15])for(const panic of [252,120,123]){
+  const messages=[[252,0,0,1,0],[144+channel,36,100,3,17],panic===252?[252,0,0,1,18]:[176+channel,panic,0,3,18],[144+channel,36,100,3,19],[144+channel,36,127,3,20],[128+channel,36,0,3,21]];await inject(messages);const expected=panic===252?'playing':'stopped';await wait(s=>s.tracks[0].state===expected&&(expected==='playing'?s.outputPeak>0.02:s.outputPeak===0),'Same-block GUI panic/fresh note '+panic+' channel '+channel);
+ }
+ s=await snapshot();assert.equal(s.tracks[0].waveformId,panicClip.waveformId);assert.equal(s.tracks[0].length,panicClip.length);assert.equal(s.tracks[0].undoCount,panicClip.undoCount);
+ assert((await rpc({operation:'setParameter',id:'masterGain',value:0})).ok);assert((await rpc({operation:'loop',action:'clear',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks[0].state==='empty','Panic recovery GUI cleanup');
+ console.log('PASS: actual STOP ALL/fresh held-note recovery, same-block MIDI Stop/CC120/123 on channels 1/16, active-repeat/SUS release, real PCM and unchanged clip/history at '+process.argv[2]);
+
  // The original mode keys toggle on every positive NoteOn without a release.
  for(const [note,field,on,indicator] of [[46,'mode',1,'odModeIndicator'],[47,'mode',2,'subModeIndicator'],[48,'sustain',true,'susModeIndicator']]){
   await inject([[144,note,1,3,17]]);await wait(s=>s.midi[field]===on,'mode NoteOn enables '+note);

@@ -2,7 +2,22 @@
 #include <iomanip>
 #include <memory>
 #include <iostream>
+#include <chrono>
+#include <thread>
+#include <cstdlib>
 int main(int argc,char** argv){
+ if(argc==2&&std::string(argv[1])=="panic-repress"){
+  auto engine=std::make_unique<aion::Engine>();engine->prepare(8000,8192);aion::MidiSettings settings;settings.enabled=true;if(!engine->configureMidi(settings))return 2;
+  aion::EngineView latest{},view{};const auto process=[&](unsigned n,std::span<const aion::MidiEvent> events={}){engine->process(nullptr,0,static_cast<int>(n),events);while(engine->popView(view))latest=view;};
+  unsigned request=0;const auto command=[&](aion::LoopAction action){if(!engine->enqueueLoop({action,0,++request,engine->generation(),0,0}))std::exit(2);process(1);};
+  command(aion::LoopAction::record);process(512);command(aion::LoopAction::finish);
+  for(unsigned n=0;n<10000&&engine->finalizationPending();++n){process(0);std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+  if(engine->finalizationPending())return 2;command(aion::LoopAction::stopAll);
+  unsigned status,a,b,size,panics=0;while(std::cin>>status>>a>>b>>size){if(status>255||a>127||b>127||size>3)return 2;
+   const aion::MidiEvent event{0,static_cast<std::uint8_t>(status),static_cast<std::uint8_t>(a),static_cast<std::uint8_t>(b),static_cast<std::uint8_t>(size)};process(1,{&event,1});if(status==252)++panics;
+   std::cout<<latest.midi.actions-panics<<'\n';
+  }return 0;
+ }
  if((argc==2&&std::string(argv[1])=="modes")||(argc==3&&std::string(argv[1])=="reassigned-mode")){
   auto engine=std::make_unique<aion::Engine>();engine->prepare(8000,8192);aion::MidiSettings settings;settings.enabled=true;if(!engine->configureMidi(settings))return 2;
   if(argc==3){

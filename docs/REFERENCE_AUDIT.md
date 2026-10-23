@@ -641,3 +641,30 @@ The pre-fix listener regression reproduces rejected main-header learning
 20 loops, 19 header/state/nested-control/card hit categories, both modifiers and
 enabled/disabled actions (1,520 cases), plus invalid owners. Prior 320/560 routing
 and 640 immutable status cases remain, with main-header outline coverage added.
+
+
+### Cancelled MIDI Note ownership recovery (23 October 2026)
+
+Unchanged LoopManager.stopAll clears state.inputPressTimers. Executing it together
+with original App.handleMIDIMessage/handleInputPress/handleInputRelease accepts an
+immediate new NoteOn on all sixteen channels, while debouncing active repeats.
+The native engine kept cancelled entries active/suppressed, blocking that note
+until NoteOff or ten seconds. `build/midi-panic-before.log` reproduces the native
+failure; `build/midi-panic-oracle-before.log` records the unchanged-JS mismatch.
+The new fixture's initial mixed-width auto declaration was corrected before this
+behavioral reproduction; its failed build log is retained separately.
+
+A first same-key-only repair passed its narrower tests but failed the added full
+64-Note-pool/different-key regression (`build/midi-panic-capacity-before.log`).
+The final implementation retires Note entries during cancellation after restoring
+momentary actions. Suppressed CC owners stay until zero rearms them. Event parsing
+and velocity-zero release handling retain the existing official
+[JUCE MidiMessage contract](https://docs.juce.com/master/classjuce_1_1MidiMessage.html).
+No new storage, callback allocation/lock, binding schema or UI is introduced.
+
+The original-JS oracle covers MIDI Stop; native CC120/123, device cancellation,
+overflow and disable/enable behavior are existing native extensions tested
+separately. Tests retain ordinary ten-second missed-release rules for active
+notes, PC burst filtering, CC rearm, exact nonzero stored stereo WAV and original
+source/gesture/audio comparisons. Earlier validation entries describing retained
+cancelled Note entries document the historical implementation superseded here.

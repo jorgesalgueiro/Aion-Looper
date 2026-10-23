@@ -905,3 +905,16 @@ assignments. All four aliases share the yellow learning outline. Names, waveform
 and other nested controls retain their own behavior and cannot start this header
 learn action. Disabled primary actions also disable header learning. The actual
 64/128 pointer/MIDI/audio gate remains `tools/TestMouseWorkflow.ps1 -MidiOnly`.
+
+
+### MIDI panic and fresh-note recovery
+
+STOP ALL / MIDI Stop cancels old Note gestures; the next NoteOn works immediately
+without waiting for an old NoteOff. This also reclaims a full 64-Note press pool.
+Active uncancelled repeats still debounce and CC buttons still need zero before
+their next positive edge. The fix adds no controls, mapping changes or packages.
+Run the portable `core_realtime_contract` / `js_native_midi` tests, the production
+`native_midi_processor` gate and `tools/TestMouseWorkflow.ps1 -MidiOnly` at 64/128.
+The core gate compares exact stored stereo WAV and covers seven cancellation
+sources; only Stop/stopAll have an unchanged-JS transport oracle. ASan/UBSan core
+and MIDI checks use the existing build/core-asan with leak detection enabled.

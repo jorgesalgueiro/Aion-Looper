@@ -4,6 +4,7 @@
 #include <iostream>
 #include <new>
 #include <limits>
+#include <cmath>
 namespace {thread_local bool audioWatch=false;std::atomic<int> audioAllocations{0};void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}}
 void* operator new(std::size_t n){if(audioWatch)++audioAllocations;if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
 void operator delete(void* p) noexcept {if(audioWatch)++audioAllocations;std::free(p);}
@@ -51,6 +52,28 @@ int main(){
   std::cout<<"PASS: accepted state host rescan, invalid/queue rejection, exact saved-state preservation\n";
  }
  for(const int block:{64,128}){
+  // Real MidiBuffer offsets: panic followed by fresh NoteOn in the same block.
+  for(const int channel:{1,16}){
+   auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);
+   const auto rpc=[&](const juce::String& json){auto state=p->request({juce::JSON::parse(json)});check(state.getProperty("ok",false),json.toRawUTF8());return state;};
+   rpc(R"({"operation":"midiConfig","action":"enable","enabled":true})");rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");rpc(R"({"operation":"setParameter","id":"inputMonitor","value":0})");rpc(R"({"operation":"setParameter","id":"masterGain","value":1})");
+   juce::AudioBuffer<float> buffer(2,block);juce::MidiBuffer packets;packets.ensureSize(4096);unsigned sample=0;
+   const auto run=[&]{for(int c=0;c<2;++c)for(int i=0;i<block;++i)buffer.setSample(c,i,static_cast<float>((c?0.3:0.4)*std::sin((sample+i)*(c?0.053:0.071))));sample+=block;const auto count=packets.getNumEvents();audioWatch=true;p->processBlock(buffer,packets);audioWatch=false;check(packets.getNumEvents()==count,"Panic recovery preserves raw MidiBuffer pass-through");packets.clear();return rpc(R"({"operation":"snapshot"})");};
+   packets.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),0);packets.addEvent(juce::MidiMessage::noteOn(channel,36,juce::uint8{100}),17);run();run();run();packets.addEvent(juce::MidiMessage::noteOff(channel,36),17);auto state=run();
+   for(unsigned n=0;n<10000&&state["tracks"][0]["state"].toString()=="finalizing";++n){std::this_thread::sleep_for(std::chrono::milliseconds(1));state=run();}
+   check(state["tracks"][0]["state"].toString()=="playing","Recovery processor fixture records real input");const auto waveform=state["tracks"][0]["waveformId"];const auto length=state["tracks"][0]["length"];const auto history=state["tracks"][0]["undoCount"];
+   packets.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),0);run(); // leave SUS
+   for(const int panic:{252,120,123}){
+    packets.addEvent(juce::MidiMessage::noteOff(channel,36),0);packets.addEvent(juce::MidiMessage::midiStop(),1);state=run();check(state["tracks"][0]["state"].toString()=="stopped","Recovery processor baseline stopped");
+    packets.addEvent(juce::MidiMessage::noteOn(channel,36,juce::uint8{100}),17);state=run();check(state["tracks"][0]["state"].toString()=="playing","Held processor note starts playback");
+    packets.addEvent(panic==252?juce::MidiMessage::midiStop():juce::MidiMessage::controllerEvent(16,panic,0),18);packets.addEvent(juce::MidiMessage::noteOn(channel,36,juce::uint8{100}),19);packets.addEvent(juce::MidiMessage::noteOn(channel,36,juce::uint8{127}),20);packets.addEvent(juce::MidiMessage::noteOff(channel,36),21);state=run();
+    const auto expected=panic==252?"playing":"stopped";check(state["tracks"][0]["state"].toString()==expected,"Raw panic/fresh/repeated NoteOn offsets must act exactly once in same block");for(int n=0;n<4;++n)state=run();
+    check(panic==252?buffer.getMagnitude(0,block)>0.01f:buffer.getMagnitude(0,block)==0,"Actual recovered processor playback renders nonzero/silent PCM");check(state["tracks"][0]["waveformId"]==waveform&&state["tracks"][0]["length"]==length&&state["tracks"][0]["undoCount"]==history,"Actual panic/fresh note preserves clip/history");
+   }
+   // The last case stops normally; a held SUS play is cancelled and immediately reowned.
+   packets.addEvent(juce::MidiMessage::noteOn(1,48,juce::uint8{100}),0);run();packets.addEvent(juce::MidiMessage::noteOn(channel,36,juce::uint8{100}),17);state=run();check(state["tracks"][0]["state"].toString()=="playing","SUS processor starts owned play");packets.addEvent(juce::MidiMessage::controllerEvent(16,120,0),18);packets.addEvent(juce::MidiMessage::noteOn(channel,36,juce::uint8{100}),19);state=run();check(state["tracks"][0]["state"].toString()=="playing","Cancelled SUS play reowns immediately");packets.addEvent(juce::MidiMessage::noteOff(channel,36),17);state=run();check(state["tracks"][0]["state"].toString()=="stopped","Fresh SUS release stops its own resumed play");
+   std::cout<<"PASS: actual panic/fresh NoteOn same-block offsets, active-repeat debounce, stereo PCM and SUS ownership on channel "<<channel<<" at "<<block<<" samples\n";
+  }
   for(const int zeroChannels:{0,2}){
    auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);
    const auto rpc=[&](const char* json){auto reply=p->request({juce::JSON::parse(json)});check(reply.getProperty("ok",false),json);return reply;};

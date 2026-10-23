@@ -4244,3 +4244,91 @@ Tested binaries include that local logo override, which is excluded from this
 source commit. Physical main-header learning, other controls/engines, keyboard SUS
 and Apple acceptance remain pending. Existing archives retain their explicitly
 named earlier source snapshots; no new package/version bump is introduced.
+
+
+## Immediate MIDI Note recovery after cancellation — 23 October 2026
+
+Original stopAll clears held input entries; native cancellation instead left Note
+entries active/suppressed, blocking a fresh press until NoteOff or ten seconds.
+The failing core test is retained in `build/midi-panic-before.log`; the actual
+unchanged-JS StopAll/NoteOn comparison fails in `build/midi-panic-oracle-before.log`.
+The first test build had a mixed-width auto declaration; it was corrected before
+recording those behavioral failures (`build/midi-panic-red-build.log`,
+`build/midi-panic-red-build-fixed.log`). No production behavior was changed to
+compensate for that test compilation error.
+
+A preliminary same-key-only repair passed core/processor/editor checks but the
+new full 64-Note-pool/different-key case failed
+(`build/midi-panic-capacity-before.log`). It was replaced by immediate retirement
+of cancelled Note entries after momentary restoration. CC entries retain their
+zero-before-positive ownership; active Note repeats/hold deadlines and PC burst
+rules remain. Final acceptance below uses `midi-panic-final-*` logs; preliminary
+results are not acceptance for the final implementation. Original UI/assets,
+MIDI bindings, APVTS/state schema, SDKs and CMake remain unchanged.
+
+The final focused core and unchanged-JS oracle pass
+(`build/midi-panic-final-core-focused.log`, `build/midi-panic-final-oracle.log`).
+Coverage includes 224 play/stop and 28 exact-mute recovery cases at 64/128 across
+STOP ALL, MIDI Stop, CC120/123, device cancellation, overflow and disable/enable,
+using nonzero captured stereo input and byte-identical stored WAV before/after.
+Full 64-Note-pool/different-key recovery, late old releases, explicit CC zero rearm,
+ordinary repeat debounce and no stale cut/delete/clip/history mutation also pass.
+
+The actual JUCE MidiBuffer processor gate passes both block sizes and channels
+1/16 with panic at offset 18, fresh NoteOn at 19, repeated NoteOn at 20 and NoteOff
+at 21; it verifies one action, actual stopped silence/nonzero playing PCM, retained
+clip/history and fresh SUS release (`build/midi-panic-final-processor-focused.log`).
+Tracked processBlock new/delete stays zero. This is not an arbitrary malloc or
+physical driver/latency certificate.
+
+The final owned WebView2 editor workflow passes at 64/128
+(`build/midi-panic-final-focused-gui.log`): real mouse STOP ALL during held SUS
+play, immediate same-key replay without old NoteOff, ordinary repeat and new release,
+plus raw same-block MIDI Stop/CC120/123 on channels 1/16. Actual output is silent or
+nonzero as appropriate, and clip identity/length/undo depth remains. All previous
+MIDI Learn, expression, field/button/main/LIVE alias and held-MIDI gates remain.
+
+Windows portable regressions pass 19/19 in 284.92s
+(`build/midi-panic-final-windows-core.log`). ASan/UBSan with leak detection passes
+core_realtime_contract/js_native_midi 2/2 in 73.35s
+(`build/midi-panic-final-asan.log`). The independent committed-audio audit passes
+126 cases / 965,826 samples at maximum absolute error 7.394757495227111e-8 against
+1e-6 tolerance (`build/midi-panic-final-audio.log`), retaining resampling/envelope/
+physical latency exclusions. No new physical controller evidence is claimed.
+
+Ubuntu final portable regressions pass 19/19 in 418.49s
+(`build/midi-panic-final-ubuntu-core.log`). All original asset bytes and unchanged
+JS MIDI/gesture/DSP/sync/edit/history gates remain. Sanitizer, portable and synthetic
+processor/editor results do not establish physical controller/driver or Apple
+acceptance, MIDI clock or full feature parity.
+
+The remaining mouse/export/merge workflows pass at 64/128 via -SkipMidi in
+separate owned hosts (`build/midi-panic-final-regression-gui.log`); MIDI had passed
+independently via -MidiOnly. All final owned mouse hosts close normally. Windows
+frontend/native processor/VST3 pluginval/CLAP passes 4/4 in 31.06s
+(`build/midi-panic-final-windows-formats.log`). Actual muted Standalone, original
+browser count-in/nudge/live-input/STUT and NativeUiSmoke pass
+(`build/midi-panic-final-standalone-ui.log`). Real REAPER 7.82 VST3/CLAP seven-case
+settled stereo rendering and parameter/project recall pass
+(`build/midi-panic-final-reaper.log`,
+`build/reaper-daw/20261023T203029-8724911b/result.json`). Host checks retain their
+synthetic/settled-monitor/parameter-state scope; full recorded-loop project save,
+physical latency/driver behavior and full DAW MIDI sessions remain separate.
+
+Final Linux frontend/native processor/LV2 stereo ABI/VST3 and LV2 pluginval/CLAP
+passes 6/6 in 80.54s (`build/midi-panic-final-linux-formats.log`). Actual Ardour 8.4
+LV2 gain/mute and saved-session recall passes at 48kHz/64/128 with isolated Dummy
+inputs (`build/midi-panic-final-ardour.log`,
+`build/ardour-daw/20261023T203420-5fcbb5fd/result.json`). Existing vendor skips,
+known JUCE state-load warning and compiler/DRI3 diagnostics remain. This does not
+establish GTK pointer interaction, per-sample Ardour PCM, physical JACK/ASIO,
+recorded-loop persistence or MIDI clock/host-follow scheduling.
+
+All four native adapters match embedded bytes in seven rebuilt Windows/Linux
+app/plugin modules (`build/midi-panic-final-embedded.json`); module hashes remain
+unchanged after host validation. Companion `build/midi-panic-final-source.json`
+records the complete modified tested tree, including the user's separate logo
+whitespace. Tested binaries include that local logo override, excluded from the
+source commit. No new package or version bump is introduced; older archives remain
+their explicitly named source snapshots. This closes the tested cancellation
+repair, not the wider migration or physical/Apple acceptance gates.

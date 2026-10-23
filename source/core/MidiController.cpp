@@ -33,6 +33,9 @@ void MidiController::cancel(Dispatch& d,int track) noexcept {
     if(track<0){++epoch;read=write=0;cancelLearn();programPulses={};}
     for(auto& p:presses)if(p.active&&(track<0||p.track==static_cast<unsigned>(track))){
         const auto copy=p;release(p,d);p=copy;p.suppressed=true;p.sustainAction=0;
+        // Original panic clears note ownership, including a full press pool.
+        // CC edges retain their suppressed owner until zero rearms them.
+        if((p.key>>12)==1)p.active=false;
     }
     nextDeadline=std::numeric_limits<std::uint64_t>::max();
     for(const auto& p:presses)if(p.active&&!p.suppressed)nextDeadline=std::min(nextDeadline,p.start+static_cast<std::uint64_t>(std::ceil(d.rate*(p.cut?4.0:0.6))));

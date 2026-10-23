@@ -375,8 +375,8 @@ mutual exclusion, actual MidiBuffer offsets and original visible mode indicators
 64/128. Learned global CC buttons keep zero rearm and PC keeps 20ms burst filtering.
 
 Global NoteOn routing must resolve the current binding before consulting held loop
-entries: a former loop press may survive transport-binding cancellation until its
-NoteOff. Reassigning that key to OD/SUB/SUS must bypass the old entry immediately,
+entries. Transport-binding cancellation retires former Note ownership; global
+OD/SUB/SUS still bypass ordinary loop debounce. Reassigning that key must act immediately,
 without finishing its former take. Retain unchanged original reassignment dispatch,
 exact nonzero stereo WAV versus direct capture at 64/128, real clear/learn/MidiBuffer
 and mouse reassignment/repeat/release checks. Preserve ordinary loop debounce,
@@ -704,3 +704,16 @@ consume/burst/edge stop/play PCM, STOP-origin right-hold/no-delete, Escape/save/
 reload/clear and clip/history checks. No original markup/CSS or DSP/schema change;
 this is the requested native MIDI extension, not an original JS context-menu
 feature. Preserve the separate user logo and other pending feature boundaries.
+
+
+Cancelled MIDI Note ownership must end at cancellation, matching unchanged
+LoopManager.stopAll/inputPressTimers, not wait for NoteOff or ten seconds. Retire
+only Note entries after their momentary restoration; retain suppressed CC owners
+until zero rearms them. Keep same/different-key recovery after a full 64-Note pool,
+late old release isolation, ordinary active-note >10s/hold boundaries, CC zero and
+PC burst rules. Retain the 16-channel unchanged-JS Stop oracle, 224 play/stop + 28
+mute exact nonzero stereo WAV cases at 64/128 across seven cancellation sources,
+production same-block offsets/repeat/SUS/PCM tests, actual mouse STOP ALL and
+MIDI Stop/CC120/123 GUI tests, plus sanitizers and callback allocation gates.
+Do not change input mappings, UI/schema or the separate user logo. A preliminary
+same-key-only repair is insufficient if cancelled notes still occupy the pool.
