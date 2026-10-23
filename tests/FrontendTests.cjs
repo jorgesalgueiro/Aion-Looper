@@ -586,3 +586,34 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  installed.fn({target:null});
  console.log('PASS: unchanged original focused Speed/Feedback resets: '+cases+' cases, no blur/event suppression and bounded target guards');
 }
+
+// Synchronized speed edits must use the unchanged original setter's ratios/DOM rules.
+{
+ const source=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');
+ const begin=source.indexOf('    static setLoopSpeed('),end=source.indexOf('\n    }',begin)+6;
+ const state={syncEnabled:false,loops:Array.from({length:20},()=>({playbackRate:1}))};
+ let slider;const document={activeElement:null,getElementById:id=>id===slider?.id?slider:null};
+ const original={state,document};vm.createContext(original);
+ vm.runInContext(`class Original{${source.slice(begin,end)}};globalThis.setSpeed=(id,v)=>Original.setLoopSpeed(id,v);`,original);
+ const native={window:{},document,snapshot:{syncMode:0}};vm.createContext(native);
+ vm.runInContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ const code=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const a=code.indexOf('        const speedCommand='),b=code.indexOf('        const halfSpeed=',a);
+ if(a>=0){assert(b>a);vm.runInContext(code.slice(a,b)+';globalThis.setSpeed=speedCommand;',native);}
+ else {const line=code.split('\n').find(s=>s.includes('const queueControl='));native.enabled=()=>true;native.scheduler={enqueue:fn=>native.lastCommand=fn()};vm.runInContext(line+';globalThis.setSpeed=(id,v)=>{queueControl(\"speed\",id,v);return lastCommand;};',native);}
+ const element=(id,value)=>({id,get value(){return value;},set value(v){value=String(v);}});
+ let cases=0;
+ for(let id=0;id<20;++id)for(const sync of [0,1,2])for(const focused of [false,true])
+ for(const value of [0.25,0.37,0.379999,0.38,0.5,0.74,0.749999,0.75,1,1.49,1.499999,1.5,2]){
+  state.syncEnabled=sync!==0;native.snapshot.syncMode=sync;
+  slider=element(`loop-speed-slider-${id}`,'0.63');document.activeElement=focused?slider:null;
+  original.setSpeed(id,value);const expected=slider.value;
+  slider=element(`loop-speed-slider-${id}`,'0.63');document.activeElement=focused?slider:null;
+  const command=native.setSpeed(id,value);
+  if(document.activeElement!==slider)slider.value=command.value; // normal acknowledged refresh
+  assert.equal(command.action,'speed');assert.equal(command.track,id);
+  assert.equal(command.value,state.loops[id].playbackRate,'Original quantization '+JSON.stringify({id,sync,focused,value}));
+  assert.equal(slider.value,expected,'Original focused/unfocused range behavior');++cases;
+ }
+ console.log('PASS: original synchronized speed thresholds and focused range semantics: '+cases+' cases');
+}

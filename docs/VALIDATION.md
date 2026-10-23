@@ -3529,3 +3529,80 @@ Fresh Ubuntu portable/original-JS regressions also passed 19/19 in 442.20s
 (build/daw-ubuntu-core.log). All owned test hosts completed; no new GUI workflow,
 physical controller, sanitizer or Apple acceptance is claimed for this increment.
 The user's preexisting resources/native/looper.js logo edit remains unstaged.
+
+## Original synchronized Speed restored, 23 October 2026
+
+Baseline: a75514d. Original UIManager.setLoopSpeed in preserved loopTracks.js
+quantizes synchronized edits at <0.38/.75/1.5 to .25/.5/1/2 and explicitly moves
+the focused range when sync is enabled. The native adapter previously forwarded
+raw values and its ordinary snapshot refresh skipped focused inputs. The prior
+build reproduced 0.370000004768372 instead of .25 in a real trusted range edit.
+OFF intentionally suppresses focused-thumb writes in the original; that behavior
+is preserved rather than introducing an unsolicited UI change.
+
+The message-thread-only AionLoopSpeed/speedCommand adapter now uses those exact
+thresholds for STATIC/DYNAMIC and the existing slider/reset/half command paths.
+Queue ordering/coalescing and native command ownership stay unchanged. No C++ DSP,
+APVTS schema, original HTML/CSS/JS asset or user logo change is included.
+
+Reference and live acceptance:
+
+- tests/FrontendTests.cjs executes the unchanged original setter: 1,560 cases
+  covering all 20 tracks, OFF/STATIC/DYNAMIC, focused/unfocused and both sides
+  of every threshold. It compares command values and the original DOM rule.
+  Existing 630 wheel and 560 double-click-reset cases remain. Before/after logs:
+  build/sync-speed-before.log and build/sync-speed-after.log.
+- The unchanged Windows binary failed the trusted 64-sample range-key check
+  (build/sync-speed-gui-before.log). After rebuilding, complete 64/128 mouse,
+  export, merge and MIDI workflows passed (build/sync-speed-gui-final.log).
+  The new check covers six boundary edits in both sync modes, checks native rate
+  and focused thumb, retains state/length/waveform/history, and requires nonzero
+  recorded PCM. No failing state/audio assertion or tolerance was relaxed.
+- Actual muted Standalone UI and original browser count-in/nudge/live-input/STUT
+  audio regressions passed (build/sync-speed-standalone-ui.log). PID 26992 was
+  still running before normal owned cleanup; native DOM had no legacy AudioContext.
+- Full portable/original-JS suites passed Windows 19/19 in 256.23s and Ubuntu
+  19/19 in 392.67s (build/sync-speed-windows-core.log and
+  build/sync-speed-ubuntu-core.log).
+- After those suites, the retained SyncParity.cjs matrix was extended from
+  half/unity/double to include quarter speed. Fresh runs of that final version
+  passed on BOTH OSes: 144 effective-rate checks, 144 unchanged capture cases,
+  388,772 PCM frames, maximum capture error 6.093089943703944e-8 / tolerance 1e-6.
+  Evidence: build/sync-speed-windows-rate.log and build/sync-speed-ubuntu-rate.log.
+  Effective-rate metadata comparisons are separate from capture PCM comparisons.
+- Independent connected capture/OD/SUB audit passed 126 cases / 965,826 samples,
+  maximum error 7.394757495227111e-8 / unchanged tolerance 1e-6
+  (build/sync-speed-audio.log).
+
+Rebuilt current native artifacts, retaining format/assertion/allocation gates:
+
+- Windows Release Standalone/VST3/CLAP, synthetic mouse host and processor test
+  built successfully (build/sync-speed-windows-build.log). Native processor,
+  VST3 pluginval and CLAP validator passed 3/3 in 27.12s
+  (build/sync-speed-windows-formats.log).
+- Ubuntu Debug Standalone/VST3/CLAP/LV2 and processor test rebuilt successfully
+  (build/sync-speed-linux-build.log). Native processor, actual LV2 stereo ABI,
+  VST3/LV2 pluginval and CLAP validator passed 5/5 in 74.20s
+  (build/sync-speed-linux-formats.log). Compiler/EGL/DRI3 warnings are retained.
+- Exact complete controls.js and looper.js bytes are embedded in all seven
+  Windows/Linux app/plugin modules; hashes/matches are recorded in
+  build/sync-speed-embedded.json. This verifies current embedded adapters rather
+  than relying on a source-only or stale executable test.
+- Real REAPER 7.82 VST3/CLAP passed all seven target stereo renders per format,
+  track-state mutation/restore and actual RPP reopen. All 1,209,600 settled
+  compared samples have maximum error 0, exact loaded modules were observed and
+  hashes remained stable. Final evidence:
+  build/reaper-daw/20261023T083712-2ef21ff6/result.json and build/sync-speed-reaper.log.
+
+No ZIP, installer or version bump was created. Native binaries are for the
+existing acceptance workflow. The user's separate logo whitespace edit remains
+outside the commit. These checks establish original synchronized control/rate
+semantics and retained audio/host regression scope, not browser resampling or
+transition-envelope equality, physical latency, MIDI clock/host-follow, complete
+synth/FX/project parity, Apple validation or commercial readiness.
+
+Final real Ardour 8.4 LV2 gain/mute/session recall also passed at 64/128 using
+the rebuilt bundle (build/sync-speed-ardour.log;
+build/ardour-daw/20261023T084112-37cea025/result.json). Bundle/RDF hashes remain
+stable; the synthetic Dummy-backend stereo peak checks retain their documented
+limits. All owned test hosts completed and closed normally.

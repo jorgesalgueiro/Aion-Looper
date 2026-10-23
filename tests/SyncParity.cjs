@@ -81,7 +81,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  for(const dynamic of [false,true]){
   audio.sampleRate=8000;ctx.reset('off',120,4,2);
   const commands=['prepare 81920 8000',`sync ${dynamic?2:0} ${dynamic?600:120} 1 1 0`,'autoplay 0 0','record 0 0',...Array.from({length:512},(_,i)=>`tick 0 ${Math.fround(0.2*Math.sin(i*0.11))}`),'stopImmediate 0 0','waitStill 0 0'],checks=[];
-  for(const mode of [0,1,2])for(const bpm of [60,137.5,300])for(const bars of [1,2])for(const speed of [0.5,1,2]){
+  for(const mode of [0,1,2])for(const bpm of [60,137.5,300])for(const bars of [1,2])for(const speed of [0.25,0.5,1,2]){
    commands.push(`sync ${mode} ${bpm} 3 ${bars} 0 8`,`speed 0 ${speed}`);checks.push({row:commands.length,want:Math.fround(ctx.effective(mode,bpm,3,bars,dynamic,dynamic?600:120,512,speed))});commands.push('transport 0 0');
   }
   const rows=runProbe(commands);for(const check of checks){assert(Math.abs(rows[check.row][10]-check.want)<=1e-6,'Unchanged effectivePlaybackRate differs');rateChecks++;}

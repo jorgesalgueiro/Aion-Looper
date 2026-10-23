@@ -158,8 +158,15 @@
             stutter.cancelTrack(source);keyboard.cancelTrack(source);
             scheduler.enqueue(()=>({action:'clearMergedSource',track:dest,value:serial}),{track:source});
         }});
-        const halfSpeed=id=>scheduler.enqueue(()=>snapshot.tracks[id].length?{action:'speed',track:id,value:snapshot.tracks[id].playbackRate===1?0.5:1}:null,{track:id});
-        const queueControl=(action,track,value)=>{if(enabled())scheduler.enqueue(()=>({action,track,value}),{key:`${track}:${action}`,track});};
+        const speedCommand=(track,value)=>{
+            const sync=snapshot.syncMode!==0,rate=window.AionLoopSpeed(value,sync);
+            if(rate===null)return null;
+            const slider=document.getElementById(`loop-speed-slider-${track}`);
+            if(slider&&(sync||document.activeElement!==slider))slider.value=rate;
+            return {action:'speed',track,value:rate};
+        };
+        const halfSpeed=id=>scheduler.enqueue(()=>snapshot.tracks[id].length?speedCommand(id,snapshot.tracks[id].playbackRate===1?0.5:1):null,{track:id});
+        const queueControl=(action,track,value)=>{if(enabled())scheduler.enqueue(()=>action==='speed'?speedCommand(track,value):({action,track,value}),{key:`${track}:${action}`,track});};
         const actionFor = t => t.state === 'empty' ? 'record' : t.state === 'stopped' ? 'play'
             : ['queued','stopping'].includes(t.state)?'stop'
             : t.state === 'playing' ? (mode === 'normal' ? 'stop' : mode) : 'finish';

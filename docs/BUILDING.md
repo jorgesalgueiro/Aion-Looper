@@ -792,3 +792,26 @@ Use each platform's own toolchain and the build commands above. The Apple comman
 are instructions for a Mac, not validation performed on this Windows/Ubuntu PC.
 Only package after the selected feature's acceptance passes and a test package is
 needed; the current increment adds validation tools and creates no package.
+
+## Original synchronized Speed control
+
+In STATIC/DYNAMIC sync, native Speed edits now use the original UIManager setter:
+values below 0.38 select 0.25x, below 0.75 select 0.5x, below 1.5 select 1x,
+and the rest select 2x. The focused thumb snaps as it does in the original JS.
+OFF keeps free speed and the original focused-thumb behavior. The existing half/
+reset actions share this routing; setting a range value creates no extra native
+command. No original asset, DSP algorithm or host-sync authority changes.
+
+native_frontend_commands executes the unchanged original setLoopSpeed across
+1,560 mode/focus/track/boundary cases. tools/TestMouseWorkflow.ps1 uses trusted
+ArrowRight input on focused original ranges at both 64/128, checking both native
+rate and visible position while preserving clip state, identity, history and
+nonzero recorded audio. This supplements the existing DSP/effective-rate and
+connected PCM gates; it does not certify browser resampling or driver latency.
+The browser [range value semantics](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/range)
+were checked while keeping the original snap thresholds unchanged.
+
+The retained SyncParity.cjs native/reference matrix now includes 0.25x as well as
+0.5x/1x/2x: 144 effective-rate comparisons across manual, STATIC and DYNAMIC
+settings, alongside its unchanged capture/extraction PCM cases. Run it directly
+with the existing aion_reference_probe or through js_native_sync.

@@ -582,3 +582,12 @@ GTK interaction or physical JACK acceptance. Ardour 8.4 does not host CLAP.
 Do not change DSP/UI or weaken reference tests to accommodate host test mistakes.
 Keep MIDI clock, host-follow scheduling and recorded-loop persistence explicitly
 pending. No packaging or version bump is needed for validation harnesses.
+
+Synchronized Speed UI must retain unchanged UIManager.setLoopSpeed thresholds
+(<0.38 -> .25, <.75 -> .5, <1.5 -> 1, otherwise 2) in STATIC/DYNAMIC. Keep free
+OFF speeds and its intentional focused-thumb suppression. Shared speedCommand
+routes slider/reset/half actions without changing the C++ DSP or queue coalescing.
+Retain 1,560 original-setter cases across all tracks, modes, focus and boundaries;
+trusted 64/128 range-key input must check both native rate and focused DOM, plus
+nonzero recorded PCM and unchanged clip/history. Do not rewrite original assets,
+relax comparisons, synthesize extra input/change events or stage the user's logo.

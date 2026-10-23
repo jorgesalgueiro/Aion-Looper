@@ -16,6 +16,12 @@
         const match=/^loop-(speed|fbk)-slider-(0|[1-9]\d?)$/.exec(target.id||'');
         if(match&&Number(match[2])<20)target.value=match[1]==='speed'?'1':'0.8';
     },{capture:true});
+    // Original UIManager.setLoopSpeed musical ratios; native DSP still owns playback.
+    window.AionLoopSpeed=(value,sync)=>{
+        const speed=parseFloat(value);
+        if(Number.isNaN(speed))return null;
+        return sync?(speed<0.38?0.25:speed<0.75?0.5:speed<1.5?1:2):speed;
+    };
     // Message-thread only. Resolve gestures against the latest acknowledged state.
     window.AionCommandQueue = class {
         static wait = Symbol('waitForState');

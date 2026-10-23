@@ -145,6 +145,26 @@ let socket;
         await evaluate('document.activeElement.blur()');
     }
     console.log('PASS: trusted double-click resets focused Speed/Feedback position and native values; captured nonzero PCM and history retained');
+    // Original synchronized range edits snap both DSP rate and the focused thumb.
+    for(const sync of ['static','dynamic']){
+        await mode(sync);
+        for(const [initial,expected] of [[0.36,0.25],[0.37,0.5],[0.73,0.5],[0.74,1],[1.48,1],[1.49,2]]){
+            await evaluate(`(()=>{const e=document.getElementById('loop-speed-slider-0');e.scrollIntoView({block:'center',behavior:'instant'});e.focus();e.value=${initial};})()`);
+            const before=await snapshot();
+            await call('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39,nativeVirtualKeyCode:39});
+            await call('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39,nativeVirtualKeyCode:39});
+            const after=await wait(s=>s.lastRequestId>before.lastRequestId,'Synchronized speed input acknowledged');
+            assert.equal(after.tracks[0].playbackRate,expected,'Original '+sync+' speed quantization after '+initial);
+            assert.equal(await evaluate(`Number(document.getElementById('loop-speed-slider-0').value)`),expected,'Focused synchronized thumb snaps');
+            assert(await evaluate(`document.activeElement===document.getElementById('loop-speed-slider-0')`),'Speed edit retains focus');
+            for(const field of ['state','length','waveformId','undoCount'])assert.equal(after.tracks[0][field],before.tracks[0][field],'Speed preserves '+field);
+            await wait(s=>s.outputPeak>0.02,'Speed edit preserves captured audio');
+        }
+    }
+    await mode('off');
+    await evaluate(`(()=>{const e=document.getElementById('loop-speed-slider-0');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));e.blur();})()`);
+    await wait(s=>s.tracks[0].playbackRate===1,'Restore manual speed');
+    console.log('PASS: original static/dynamic speed quantization with focused trusted range-key input and nonzero PCM');
     const waveform=await wait(s=>s.tracks[0].waveformId>0&&s.tracks[0].wavePeaks?.length===720,'Worker waveform reaches native editor');
     assert(waveform.tracks[0].wavePeaks.some(p=>p>0.01),'Real committed PCM yields waveform peaks');
     await delay(200);
