@@ -881,3 +881,16 @@ other action/effect buttons remain separate migration work. The new test covers
 actual stop/play audio, same-target field handoff, consume-on-learn, CC rearming,
 PC burst debounce, held-right-click isolation, save/reload/clear and clip/history
 preservation. Rebuild existing targets; no new package/version bump is needed.
+
+
+### LIVE loop-header MIDI Learn
+
+In LIVE, right-click a loop header (including its name/number area) and send a
+Note, CC or Program Change. It shares the primary loop button's existing MIDI
+mapping. Shift+right-click clears that same binding; Escape cancels learning.
+Save Mappings retains it across editor reloads. The yellow learning outline is
+shared by the header, main button and original mapping field. FX controls and
+card backgrounds are excluded, and disabled primary actions cannot start learning
+from LIVE. This extends the requested native MIDI configuration without changing
+the original visual layout. Run `tools/TestMouseWorkflow.ps1 -MidiOnly` for the
+64/128 synthetic pointer/MIDI/audio gate; it does not verify physical hardware.

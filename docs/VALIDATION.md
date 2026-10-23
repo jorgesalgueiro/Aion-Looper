@@ -4098,3 +4098,77 @@ including the separate user logo whitespace. Tested binaries contain that local
 logo override; the source commit excludes it. No new physical hardware evidence
 is claimed. Other action targets, keyboard SUS and broader feature parity remain
 pending; this completed direct-learning increment does not complete the migration.
+
+
+## LIVE header direct MIDI Learn — 23 October 2026
+
+This bounded increment extends the requested native direct-learning gesture to
+the original twenty LIVE loop headers and their child elements. It shares the
+main action/mapping-field binding and outline, including recreated cards; FX,
+card backgrounds and disabled main actions are excluded. No original assets,
+DSP/C++ callback, APVTS/state schema, dependency or build configuration changed.
+Manual instructions are updated in English/Spanish/Portuguese.
+
+The initial regression fails on missing LIVE element routing
+(`build/live-action-midi-before.log`); the repaired frontend suite passes 560
+production context-menu hit/modifier/disabled cases and the retained 320 main
+context-menu / 640 immutable mapping/action status cases with added LIVE outline
+checks (`build/live-action-midi-frontend.log`). These are native extension tests;
+unchanged original JS markup/gesture/audio oracles remain separate gates.
+
+The production processor/editor MIDI workflow passes at both 64 and 128 samples
+(`build/live-action-midi-focused-gui.log`). Real CDP pointer actions on LIVE
+headers and nested header content learn Note/CC/PC, consume the learn event,
+share all three outlines, and control actual stopped silence/playing nonzero
+PCM. PC triple-burst filtering, CC zero/rearm/repeated-high handling, a 4.2s
+right-hold without transport/deletion, Escape, tab rebuild, save/editor reload,
+Shift-right-click clear and former-CC isolation pass. Clip identity, length and
+undo depth remain unchanged. All preceding main-action, field, expression and
+MIDI regression checks are retained. No new physical hardware evidence is claimed.
+
+Windows portable regressions pass 19/19 in 262.82s
+(`build/live-action-midi-windows-core.log`). The first invocation omitted the
+required Release configuration, so no tests ran; its incomplete log is retained
+as `build/live-action-midi-windows-core-invocation.log` and is not a feature pass.
+The independent committed-audio audit passes 126 cases / 965,826 samples with
+maximum absolute error 7.394757495227111e-8 against 1e-6 tolerance
+(`build/live-action-midi-audio.log`); resampling, envelopes and physical latency
+retain their documented exclusions.
+
+Ubuntu portable regressions pass 19/19 in 401.53s
+(`build/live-action-midi-ubuntu-core.log`). This includes the unchanged original
+UI byte-identity, MIDI/gesture/frontend and committed DSP/sync/edit/history gates.
+The Windows and Ubuntu results establish their tested scope, not full parity,
+physical audio latency or Apple-platform readiness.
+
+The remaining mouse/export/merge workflows pass at 64/128 in separate owned
+hosts via -SkipMidi (`build/live-action-midi-regression-gui.log`); MIDI had passed
+independently via -MidiOnly. All final owned mouse hosts close normally. Windows
+frontend/native processor/VST3 pluginval/CLAP passes 4/4 in 31.56s
+(`build/live-action-midi-windows-formats.log`). Actual muted Standalone, original
+browser count-in/nudge/live-input/STUT and NativeUiSmoke pass
+(`build/live-action-midi-standalone-ui.log`). Real REAPER 7.82 VST3/CLAP seven-case
+settled stereo rendering and parameter/project recall pass
+(`build/live-action-midi-reaper.log`,
+`build/reaper-daw/20261023T190557-ceacc8da/result.json`). These host checks retain
+their synthetic-audio/settled-monitor/parameter-state scope; they do not establish
+recorded-loop project persistence or physical drivers.
+
+Linux frontend/native processor/LV2 stereo ABI/VST3 and LV2 pluginval/CLAP passes
+6/6 in 80.16s (`build/live-action-midi-linux-formats.log`). Actual Ardour 8.4 LV2
+gain/mute and saved-session recall passes with isolated Dummy inputs at
+48kHz/64/128 (`build/live-action-midi-ardour.log`,
+`build/ardour-daw/20261023T190931-83011cad/result.json`). Existing vendor skips,
+known JUCE state-load warning and compiler/DRI3 diagnostics remain. The Ardour
+scope excludes GTK pointer interaction, per-sample PCM, physical JACK/ASIO,
+recorded-loop persistence and MIDI clock/host-follow scheduling.
+
+All four native adapters match embedded bytes in seven Windows/Linux app/plugin
+modules (`build/live-action-midi-embedded.json`); recorded module hashes remain
+unchanged after validation. Companion `build/live-action-midi-source.json`
+identifies the complete modified tested tree, including the separate user logo
+whitespace. Tested binaries include that local logo override, which is excluded
+from the source commit. Physical LIVE direct-learning, broader device/driver
+behavior, keyboard SUS, other controls/engines and Apple acceptance remain
+pending. No new package or version bump is required; existing archives remain
+explicitly named snapshots of their earlier source commit.

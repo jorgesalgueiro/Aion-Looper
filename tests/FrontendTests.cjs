@@ -772,10 +772,34 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  for(const id of ['loop-action-20','native-stop-all','loop-action--1','loop-action-0-extra','loop-0-reverse']){requests=[];listener({target:{id},preventDefault:()=>assert.fail('Unported control intercepted')});assert.deepEqual(requests,[]);}
  const x=source.indexOf('        for(let i=0;i<33;++i)'),y=source.indexOf('\n    }};',x);assert(x>=0&&y>x);let nodes={};context.document.getElementById=id=>nodes[id];let viewCases=0;
  for(let id=0;id<20;++id)for(const kind of [0,1,2,3])for(const number of [0,127])for(const channel of [0,16])for(const learning of [false,true]){
-  nodes={};for(let i=0;i<33;++i)nodes['map-midi-'+i]={style:{}};for(let i=0;i<20;++i)nodes['loop-action-'+i]={style:{}};
+  nodes={};for(let i=0;i<33;++i)nodes['map-midi-'+i]={style:{}};for(let i=0;i<20;++i){nodes['loop-action-'+i]={style:{}};const header={style:{}};nodes['live-loop-'+i]={querySelector:selector=>selector==='.loop-header'?header:null};}
   context.midi={learnTarget:learning?id:-1,bindings:new Array(73).fill(0)};context.midi.bindings[id]=kind?kind|(number<<2)|(channel<<9):0;const before=JSON.stringify(context.midi);vm.runInContext(source.slice(x,y),context);
-  for(let i=0;i<20;++i){assert.equal(nodes['loop-action-'+i].style.outline,nodes['map-midi-'+i].style.outline);assert.equal(!!nodes['loop-action-'+i].style.outline,learning&&i===id);}
+  for(let i=0;i<20;++i){assert.equal(nodes['loop-action-'+i].style.outline,nodes['map-midi-'+i].style.outline);assert.equal(!!nodes['loop-action-'+i].style.outline,learning&&i===id);assert.equal(nodes['live-loop-'+i].querySelector('.loop-header').style.outline,nodes['map-midi-'+i].style.outline,'LIVE header mirrors the shared action binding');}
   assert.equal(JSON.stringify(context.midi),before);++viewCases;
  }
  console.log('PASS: production context-menu '+cases+' control/modifier/disabled cases; action/mapping learn highlight '+viewCases+' shared immutable-state cases');
+}
+
+// LIVE header learning must follow the actual header ancestry, never the FX/card.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8');
+ let listener,requests=[];const context={window:{},document:{addEventListener:(kind,fn)=>{assert.equal(kind,'contextmenu');listener=fn;}},send:request=>{requests.push({...request});return Promise.resolve({ok:true});},listDevices(){},notify:message=>assert.fail(message)};
+ vm.createContext(context);vm.runInContext(source,context);
+ assert.equal(typeof context.window.AionMidiElementTarget,'function','LIVE headers need direct MIDI Learn routing');
+ const a=source.indexOf("    document.addEventListener('contextmenu'"),b=source.indexOf('    const kbd=',a);assert(a>=0&&b>a);vm.runInContext(source.slice(a,b),context);
+ let cases=0;
+ for(let i=0;i<20;++i)for(const hit of ['header','inner','number','name','state','fx','card'])for(const shiftKey of [false,true])for(const disabled of [false,true]){
+  const main={disabled},row={id:'live-loop-'+i,querySelector:selector=>selector==='.loop-header'?header:null};
+  const header={closest:selector=>selector==='[id^="live-loop-"]'?row:null};
+  const element={id:'',ownerDocument:{getElementById:id=>id==='loop-action-'+i?main:null},closest:selector=>selector==='.loop-header'&&!['fx','card'].includes(hit)?header:null};
+  const expected=!disabled&&!['fx','card'].includes(hit);requests=[];let prevented=false;
+  listener({target:element,shiftKey,preventDefault(){prevented=true;}});
+  assert.equal(prevented,expected,hit);assert.deepEqual(requests,expected?[{action:shiftKey?'clear':'learn',target:i}]:[]);++cases;
+ }
+ for(const id of ['live-loop-20','live-loop--1','live-loop-0-extra','live-drone-0']){
+  const row={id,querySelector:()=>header},header={closest:()=>row};
+  assert.equal(context.window.AionMidiElementTarget({ownerDocument:{getElementById:()=>({disabled:false})},closest:()=>header}),-1,'Unsupported LIVE owners rejected');
+ }
+ assert.equal(context.window.AionMidiElementTarget({id:'live-loop-0'}),-1,'Card itself is not a header');
+ console.log('PASS: production LIVE header/descendant learn and clear, disabled/FX/card exclusion: '+cases+' cases');
 }

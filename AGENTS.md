@@ -680,3 +680,15 @@ clip/history tests. Direct learning must never synthesize a primary mouse action
 Before the retained final disabled-expression check, restore an assigned CC at a
 nonmaximum volume so an erroneous later maximum CC would be observable. Preserve
 old regressions and the user's logo. Keyboard SUS remains independently pending.
+
+
+LIVE header direct MIDI Learn aliases the original loop-header and its descendants
+to the existing 0..19 primary bindings. Require a genuine owning live-loop-0..19
+card/header and an enabled main action; FX and card backgrounds stay excluded.
+Keep main buttons, mapping fields and rebuilt LIVE headers aligned without
+changing original markup/CSS or MIDI/DSP schemas. Retain the 560 production
+context-menu hit/modifier/disabled cases, existing 320/640 gates (including LIVE
+status), and native 64/128 Note/CC/PC consume/burst/edge audio, long right-hold,
+Escape/tab rebuild/save/reload/clear and unchanged clip/history checks. This is
+the requested native direct-learning extension, not original-JS context-menu
+parity. Preserve the user's separate logo edit; no new package is needed.

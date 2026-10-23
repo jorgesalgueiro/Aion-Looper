@@ -327,3 +327,13 @@ learn outline; no original HTML/CSS assets or layout change.
 Keyboard SUS remains pending: its original held record/play/mute and release/
 cancellation behavior requires a full keyboard performance increment, beyond
 merely exposing the existing MIDI sustain flag. It is not enabled by this work.
+
+
+LIVE header MIDI learning reuses the existing 0..19 bindings and production MIDI
+configuration RPC. Delegated context-menu routing validates the original header's
+owning card and the corresponding primary action's enabled state, then invokes
+the same learn/clear command. Status rendering updates main/mapping/LIVE aliases,
+including recreated cards. No original markup/CSS, CMake/SDK, DSP callback,
+APVTS parameter or serialized binding schema changes are required. FX and card
+backgrounds remain excluded. This is a requested native direct-learning extension;
+keyboard SUS and other unported controls remain independently pending.

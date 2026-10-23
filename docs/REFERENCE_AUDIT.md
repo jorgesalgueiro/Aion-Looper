@@ -607,3 +607,21 @@ The MIDI test restores an assigned nonmaximum volume before its retained disable
 expression check. New LIVE fixtures had cleared the former assignment and ended
 at maximum volume, which made that final legacy assertion ineffective. This is a
 fixture repair, with no change to product disable behavior or tolerance.
+
+
+### LIVE header direct MIDI Learn (23 October 2026)
+
+The unchanged generateLiveLoopHTML owns each LIVE header and its short-action
+behavior; original markup/updater tests remain unchanged. The reference does not
+provide the requested direct-button/header context-menu learning gesture, so its
+acceptance is tested separately from original audio/trigger parity. Native LIVE
+headers alias existing 0..19 mappings; no new event parser, callback or state
+schema is introduced. Existing Note/CC/PC interpretation follows the official
+[JUCE MidiMessage contract](https://docs.juce.com/master/classjuce_1_1MidiMessage.html).
+
+The pre-fix frontend regression reproduces the missing element routing
+(`build/live-action-midi-before.log`). Tests invoke the production context-menu
+listener for all twenty loops, seven header/child/FX/card hit categories, both
+modifiers and enabled/disabled actions (560 cases), plus invalid owners. The
+existing 640 immutable mapping/action-status cases also verify LIVE outlines.
+Original main-button, slider, markup, gesture and audio comparisons remain.
