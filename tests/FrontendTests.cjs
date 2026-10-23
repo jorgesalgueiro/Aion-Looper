@@ -674,3 +674,35 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: unchanged global status updater: '+cases+' capture/mode/SUS/queue/label cases; unrelated classes and snapshots retained');
 }
+
+
+// The original LIVE loop cards and updater are the visual oracle.
+{
+ const source=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8').replace(/\r\n/g,'\n');
+ const method=name=>{const a=source.indexOf('    static '+name+'('),b=source.indexOf('\n    }',a)+6;assert(a>=0&&b>a);return source.slice(a,b);};
+ const native={window:{}};vm.createContext(native);vm.runInContext(fs.readFileSync(path.join(root,'resources/native/loop-view.js'),'utf8'),native);vm.runInContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ assert.equal(typeof native.window.AionLiveLoopMarkup,'function','Original LIVE PERFORMANCE must contain native loop cards');
+ const colours=fs.readFileSync(path.join(root,'resources/ui/Modules/effects.js'),'utf8').match(/const effectColors = \{[\s\S]*?\};/)[0];
+ let node;const original={document:{getElementById:()=>node},window:{}};vm.createContext(original);
+ vm.runInContext(`const state={loops:[],customEffects:{},samplers:[]};${colours};class UIManager{${['createEffectToggleHTML','generateEffectsControlsHTML','generateLiveLoopHTML','updateLiveLoop','updateLivePerformanceState'].map(method).join('\n')}};globalThis.render=(t,id)=>UIManager.generateLiveLoopHTML(t,id);globalThis.update=(t,id)=>{state.loops[id]=t;UIManager.updateLiveLoop(id);};`,original);
+ let markupCases=0,statusCases=0;
+ for(let id=0;id<20;++id)for(const status of ['empty','armed','recording','playing','stopped','stopping','overdubbing','substituting','multiplying','queued'])for(const reverse of [false,true]){
+  const t={state:status,reverse,name:'',effects:{reverse},signalChain:'QCATFODBVKZG'};
+  const tracks=Array.from({length:20},()=>({...t}));
+  assert.equal(native.window.AionLiveLoopMarkup({tracks})[id],original.render(t,id),'Unchanged original live-card layout');++markupCases;
+  for(const name of ['', 'Guitarra Á 😀', '<tag> " &', 'a'.repeat(4096)]){
+   const text={style:{}},strong={style:{}},label={style:{}};node={className:'old',querySelector:selector=>selector==='.live-state-text'?text:selector==='strong'?strong:selector==='.loop-header span:not(.live-state-text)'?label:null};
+   original.update({...t,name},id);const actual=native.window.AionLiveLoopStatus({...t,name},id);
+   assert.equal(actual.className,node.className);assert.equal(actual.text,text.textContent);assert.equal(actual.color,text.style.color);assert.equal(actual.name,label.textContent);++statusCases;
+  }
+ }
+ assert.equal(native.window.AionLiveLoopStatus({state:'finalizing',name:''},0).text,'SAVING','Retain native asynchronous finalization status');
+ for(const name of ['generateLiveLoopHTML','updateLivePerformanceState'])assert(fs.readFileSync(path.join(root,'resources/native/loop-view.js'),'utf8').replace(/\r\n/g,'\n').includes(method(name)),'Keep copied original live presentation '+name);
+ let panelCases=0;
+ native.document=original.document;
+ vm.runInContext(`globalThis.panel=tracks=>{state.loops=tracks;UIManager.updateLivePerformanceState();};`,original);
+ const states=['empty','armed','recording','playing','stopped','stopping','overdubbing','substituting','multiplying','queued','finalizing'];
+ const panelFixture=()=>{const classes=new Set(['unrelated','live-recording','live-armed','live-playing','live-stopped']);node={classList:{add:(...v)=>v.forEach(x=>classes.add(x)),remove:(...v)=>v.forEach(x=>classes.delete(x))}};return classes;};
+ for(const a of states)for(const b of states){const tracks=[{state:a},{state:b}];let classes=panelFixture();original.panel(tracks);const expected=[...classes].sort();classes=panelFixture();native.window.AionLivePanelState({tracks});assert.deepEqual([...classes].sort(),expected,'Original LIVE recording > armed > playing > stopped '+a+'/'+b);++panelCases;}
+ console.log('PASS: original LIVE cards '+markupCases+' markup / '+statusCases+' updater / '+panelCases+' panel-priority cases; names/quotes/Unicode and native finalization retained');
+}

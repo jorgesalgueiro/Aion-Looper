@@ -28,6 +28,11 @@ Keeping source assets unchanged does not mean all their features currently work:
 see `PARITY.md`. The frontend adapters are needed to replace JS audio execution.
 User-local logo changes in `resources/native/looper.js` are preserved separately.
 
+The LIVE PERFORMANCE loop section now reuses the original twenty-card markup
+and panel-state rules, driving the same native commands as the main loop view.
+Rvers/state/names are shared; other LIVE effects, master mixing and drone/sampler
+engines remain pending. Exact acceptance evidence is in VALIDATION.md.
+
 ## Implemented ownership graph
 
 ```mermaid

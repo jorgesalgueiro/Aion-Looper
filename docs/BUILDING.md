@@ -835,3 +835,14 @@ original computed background, recording label and preserved audio/history.
 Native WebView2 tests need Windows desktop access. A CDP/browser startup timeout
 is a test failure; preserve its log and close only the owned test host before a
 retry. Do not interpret it as hardware or feature acceptance.
+
+
+The LIVE PERFORMANCE loop section is covered by `native_frontend_commands` and
+`tools/TestMouseWorkflow.ps1` at 64/128. The gate uses trusted pointer/keyboard
+input against the production processor/editor: LIVE header record/finish/play/
+stop, shared reverse/name state, unported-effect isolation, tab changes without
+audio commands, and nonzero committed audio/clip/history preservation. Reference
+oracles compare original card markup and updater/panel states independently.
+Screenshots are retained as `build/native-live-loops-64.png` and `-128.png`.
+The live master mixer, drone/sampler engines and other effects are still pending.
+Use the existing app/test targets; this restoration needs no installer or ZIP.

@@ -3797,3 +3797,99 @@ Real Ardour 8.4/libardour LV2 passed stereo gain/mute and saved-session recall a
 ratio checks, not per-sample equality, GTK interaction or physical JACK tests.
 All final owned test hosts closed normally. No installer/ZIP or version bump was
 created; the separate user logo edit remains uncommitted.
+
+
+## Original LIVE performance loop section — 23 October 2026
+
+The LIVE PERFORMANCE tab previously contained no native loop cards. It now shows
+the twenty original cards from unchanged `generateLiveLoopHTML`, with the original
+`updateLivePerformanceState` priority. Header short actions use the existing
+native mainAction/FIFO; Rvers shares the native reverse command. State/name/reverse
+are coherent with the main loop view, including while the other view is hidden.
+Cards are rebuilt on LIVE entry like the reference, then updated in place during
+polling so user interaction is not lost to DOM replacement. The original updater's
+quote/name values and colours are retained; native asynchronous finalization shows
+SAVING. Unported effects stay disabled. Live master mixing, drones and samplers
+remain unported: this increment restores only the loop section.
+
+No C++ engine/DSP/audio-thread, MIDI dispatcher, APVTS or persisted-state format
+changed. The reference assets and CMake/dependency pins are unchanged. The existing
+WebBrowser/message-thread bridge remains the presentation/control route, as in
+[JUCE's native-integration API](https://docs.juce.com/master/classjuce_1_1WebBrowserComponent_1_1Options.html).
+Loop names are applied as the original updater's text value before painting,
+without parsing session data as markup; static card structure retains the exact
+original renderer. This follows the original updater and the documented
+[textContent behavior](https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent).
+
+Reference gates:
+
+- `build/live-loops-before.log`: missing native LIVE renderer reproduces the
+  absent feature. Source-copy identity uses canonical LF, matching the existing
+  adapter checks; an initial CRLF/LF-only comparison was corrected without
+  changing original source or relaxing semantic/markup comparisons.
+- `build/live-loops-after.log`: 400 exact original card-markup comparisons
+  (20 tracks x ten states x reverse on/off), 1,600 unchanged `updateLiveLoop`
+  comparisons (including empty, Unicode, quotes/markup and 4096-character names),
+  and 121 original two-loop panel-priority combinations. Native finalization is
+  checked separately. These compare presentation, not sound.
+- Windows complete core/reference suite passed 19/19 in 267.97s
+  (`build/live-loops-windows-core.log`). Independent connected audio audit passed
+  126 cases / 965,826 samples, max error 7.394757495227111e-8 / unchanged tolerance
+  1e-6 (`build/live-loops-audio.log`).
+
+The separate user logo whitespace edit is retained outside the commit. No package,
+installer or version bump is needed for this restoration. Physical controllers/
+drivers, complete effects/synth/clock/project parity and Apple validation retain
+their earlier limits; recorded-loop persistence remains unported.
+
+
+Completed native acceptance for this increment:
+
+- Ubuntu complete core/reference suite passed 19/19 in 392.05s
+  (`build/live-loops-ubuntu-core.log`).
+- Full production processor/editor mouse/export/merge/raw-MIDI workflows passed
+  at BOTH 64/128 (`build/live-loops-gui.log`). New trusted LIVE tests record and
+  finish through the original header, require audible nonzero synthetic PCM,
+  stop and keyboard-play from LIVE, check shared reverse/name state in the main
+  view, literal name/updater semantics, disabled effects, nested-label isolation,
+  tab changes without audio commands, and unchanged clip length/identity/history.
+  Original main-loop hold/delete/sync/navigation/keyboard/MIDI gates remain intact.
+- `build/native-live-loops-64.png` was visually inspected: original three-column
+  layout, loop cards/state colours and controls remain coherent. Both buffer-size
+  screenshots are retained. This is not a browser pixel-difference certification.
+- Windows Release app/VST3/CLAP, mouse host and processor test rebuilt
+  (`build/live-loops-windows-build.log`). Native processor, official VST3 pluginval
+  and CLAP validator passed 3/3 in 27.70s
+  (`build/live-loops-windows-formats.log`).
+- Actual muted Standalone and unchanged-browser count-in/nudge/live-input/STUT
+  gates passed (`build/live-loops-standalone-ui.log`), including IPC acknowledgements,
+  twenty main loop cards and no legacy AudioContext. The owned host closed normally.
+- Ubuntu Debug app/VST3/CLAP/LV2 and processor test rebuilt
+  (`build/live-loops-linux-build.log`). Exact complete controls.js, loop-view.js
+  and looper.js bytes match all seven app/plugin modules;
+  `build/live-loops-embedded.json` records module hashes/matches.
+- `build/live-loops-source.json` records pre-commit hashes of all modified tracked
+  files, including staged changes. Local binaries include the retained user logo,
+  which remains outside the source commit. Two staged whitespace diagnostics are
+  exact original renderer spaces, verified separately in
+  `build/live-loops-reference-whitespace.json`; other staged lines are clean.
+- Real REAPER 7.82 VST3 and CLAP each passed seven target stereo renders,
+  parameter mutation/restore and RPP reopen. Evidence:
+  `build/live-loops-reaper.log` and
+  `build/reaper-daw/20261023T145533-3f9bade3/result.json`.
+
+The real DAW regression remains settled monitor PCM/state recall, not LIVE-card
+interaction inside a DAW or recorded-loop project storage. The new LIVE interaction
+gate uses the production processor/editor in the synthetic no-device host. No
+physical-driver latency or full browser resampling/envelope claim follows.
+
+
+Final Linux native processor/LV2 stereo ABI/VST3 and LV2 pluginval/CLAP gates
+passed 5/5 in 72.46s (`build/live-loops-linux-formats.log`). Real Ardour 8.4 LV2
+stereo gain/mute and saved-session recall passed at 48kHz/64/128 with its isolated
+Dummy backend (`build/live-loops-ardour.log` and
+`build/ardour-daw/20261023T150042-72d17ee7/result.json`). Existing vendor skips,
+known state-load warning and compiler/DRI3 diagnostics are retained. These are
+host-interface/monitor regression gates, not physical JACK, GTK interaction or
+per-sample Ardour PCM equality. All final owned test hosts closed normally.
+No package or version bump was created.

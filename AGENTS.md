@@ -617,3 +617,17 @@ nonzero committed PCM and retained history. Do not alter DSP or original assets.
 Run native GUI processes with desktop access: a sandboxed WebView2 startup timeout
 must remain a failed/inconclusive test, not be counted as a feature pass. Retain
 the failure log and clean up only the verified owned test host before retrying.
+
+
+LIVE loop cards reuse unchanged generateLiveLoopHTML and updateLivePerformanceState.
+Only the loop section is enabled: original header short actions share native
+mainAction/FIFO, Rvers shares the existing native reverse command, other FX stay
+disabled. Do not add hold-delete to headers or enable the unported live master
+mix, drones, samplers or effects. Rebuild cards on LIVE tab entry like the original,
+then update in place while active; polling must not replace focused controls.
+Use the original updater's name/state/colour values (including quote behavior),
+placing names via textContent instead of interpreting session data as HTML.
+Keep 400 original markup, 1,600 updater and 121 panel-priority comparisons, copied
+method identity and real 64/128 LIVE record/finish/play/stop, keyboard, reverse,
+name/tab/disabled-control isolation plus nonzero PCM/clip/history gates. Preserve
+existing main-loop/hold/sync/navigation/MIDI tests and the user's logo edit.

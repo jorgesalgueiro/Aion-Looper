@@ -45,6 +45,13 @@
         recording.textContent=owner>=0?`YES (Loop ${owner+1})`:'NO';
         recording.style.color=owner>=0?'#f00':'#464';
     };
+    // Original updateLiveLoop display values; apply names through textContent.
+    window.AionLiveLoopStatus=(track,id)=>({
+        className:`loop ${track.state}`,
+        text:track.state==='finalizing'?'SAVING':track.state.toUpperCase(),
+        color:({recording:'#f00',armed:'#ff0',playing:'#0f0',stopped:'#0ff',overdubbing:'#f0f',substituting:'#00cccc',multiplying:'#ffaa00',queued:'#0088aa'})[track.state]||'#555',
+        name:(track.name||`Loop ${id+1}`).replace(/"/g,'&quot;')
+    });
     // Message-thread only. Resolve gestures against the latest acknowledged state.
     window.AionCommandQueue = class {
         static wait = Symbol('waitForState');

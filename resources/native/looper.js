@@ -7,7 +7,7 @@
         let alive = true, mode = 'normal', snapshot = null, pending = null, busy = false;
         let lastFrame = -1, advancedAt = 0, pollTimer, error = '';
         let markerKey='';window.addEventListener('resize',()=>markerKey='');
-        const rows = [], input = document.getElementById('inputTracksContainer');
+        const rows = [], liveRows = [], input = document.getElementById('inputTracksContainer');
         // The only new area is native input configuration, inside the original INPUT MIXER.
         input.innerHTML = `<div class="mixer-row input-track-row" style="display:block">
             <div class="mixer-label">NATIVE AUDIO INPUT</div>
@@ -88,6 +88,7 @@
                 document.querySelectorAll(panelClass).forEach(p=>p.classList.remove('active'));
                 buttons.forEach(b=>b.classList.remove('active'));
                 document.getElementById(ids[i]).classList.add('active');button.classList.add('active');
+                if(ids[i]==='ws-live'&&snapshot){createLiveRows(snapshot);refresh();}
             });});
         };
         bindTabs('.main-tab-btn','.workspace-panel',['ws-loops','ws-drone','ws-tracker','ws-live']);
@@ -327,6 +328,21 @@
                 rows.push({row,main,name,volume,feedback,pan,volumeMidi,panMidi,start,quantize,speed,half,reset,mute,solo,retrigger,stut,normalize,mergeSource,mergeGo,mult,reverse,undo,redo,canvas});wrapper.append(row);container.append(wrapper);
             }
         }
+        function createLiveRows(s) {
+            const container=document.getElementById('live-loops-container');liveRows.length=0;
+            // Blank-name original markup avoids interpreting session names as HTML;
+            // the original updater's text value is applied before the next paint.
+            container.innerHTML=window.AionLiveLoopMarkup(s).join('');stripHandlers(container);
+            for(let i=0;i<s.tracks.length;++i){
+                const row=document.getElementById(`live-loop-${i}`),header=row.querySelector('.loop-header');
+                row.querySelectorAll('input').forEach(e=>{e.disabled=true;e.title='Unavailable in this preview';});
+                header.addEventListener('click',()=>{if(enabled())mainAction(i);});
+                row.addEventListener('pointerdown',()=>{selected=i;});
+                const reverse=row.querySelector(`#live-loop-${i}-reverse`);
+                reverse.addEventListener('change',()=>scheduler.enqueue(()=>({action:'reverse',track:i,value:snapshot.tracks[i].reverse?0:1}),{track:i}));
+                liveRows.push({row,header,reverse,text:row.querySelector('.live-state-text'),number:row.querySelector('strong'),name:row.querySelector('.loop-header span:not(.live-state-text)')});
+            }
+        }
         function refresh() {
             if(!snapshot)return;
             const active=enabled();
@@ -395,6 +411,13 @@
                 window.AionDrawWaveform(r.canvas,{state:t.state,graph:recording?{startTime:t.captureStartFrame/snapshot.sampleRate}:null,wavePeaks:r.waveformId===t.waveformId?r.wavePeaks:null},progress,live);
                 r.row.querySelector(`#loop-ascii-vu-${i}`).textContent='|'.repeat(Math.min(20,Math.round(t.peak*20)));
             });
+            liveRows.forEach((r,i)=>{
+                const t=snapshot.tracks[i],view=window.AionLiveLoopStatus(t,i);
+                r.row.className=view.className;r.text.textContent=view.text;
+                r.text.style.color=r.number.style.color=r.name.style.color=view.color;
+                r.name.textContent=view.name;r.reverse.checked=!!t.reverse;r.reverse.disabled=!active;
+            });
+            window.AionLivePanelState(snapshot);
             document.getElementById('odModeIndicator').style.display=mode==='overdub'?'':'none';
             document.getElementById('subModeIndicator').style.display=mode==='substitute'?'':'none';
             syncModes.forEach((radio,index)=>radio.checked=snapshot.syncMode===index);
@@ -429,7 +452,7 @@
                 snapshot=reply;
                 midi.render(reply.midi);
                 mergeNotice.observe(reply);
-                if(!rows.length){releaseStutter(20);rpc({operation:'cancelExport'}).catch(e=>notify(e.message));createRows(reply);}
+                if(!rows.length){releaseStutter(20);rpc({operation:'cancelExport'}).catch(e=>notify(e.message));createRows(reply);createLiveRows(reply);}
                 if(pending) {
                     if(reply.generation!==pending.generation){pending.reject(Error('Audio configuration changed'));pending=null;}
                     else if(reply.lastRequestId>=pending.id){reply.rejected?pending.reject(Error('Action is unavailable in the current loop state')):pending.resolve();pending=null;}

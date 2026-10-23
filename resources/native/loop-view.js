@@ -1,7 +1,7 @@
 // Markup methods and effect colours copied from the preserved GPL-2.0 reference.
 // See resources/ui/LICENSE. Only presentation code executes in this adapter.
 (() => {
-    const state = {loops: [], customEffects: {}, fxPresets: {}, globalPresets: {}, soloState: {active: false}, globalOverdubMode: false, globalSubstituteMode: false};
+    const state = {loops: [], samplers: [], customEffects: {}, fxPresets: {}, globalPresets: {}, soloState: {active: false}, globalOverdubMode: false, globalSubstituteMode: false};
     const SamplerManager = {escapeHTML: value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[ch]))};
     const I18n = {t: key => key.replace(/^TIP_/, '').replaceAll('_', ' ')};
 const effectColors = {
@@ -69,6 +69,52 @@ const effectColors = {
         }
         html += `</div>`;
         return html;
+    }
+    static generateLiveLoopHTML(loop, index) {
+        let stateColor = '#555'; 
+        if (loop.state === 'recording') stateColor = '#f00';
+        else if (loop.state === 'armed') stateColor = '#ff0';
+        else if (loop.state === 'playing') stateColor = '#0f0';
+        else if (loop.state === 'stopped') stateColor = '#0ff';
+        else if (loop.state === 'overdubbing') stateColor = '#f0f';
+        else if (loop.state === 'substituting') stateColor = '#00cccc';
+        else if (loop.state === 'multiplying') stateColor = '#ffaa00';
+        else if (loop.state === 'queued') stateColor = '#0088aa';
+
+        return `
+        <div class="loop ${loop.state}" id="live-loop-${index}" style="border: 1px solid ${stateColor}; margin-bottom: 5px; height: 120px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden;">
+            <div class="loop-main-content" style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0;">
+                <div class="loop-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px; min-height: 44px; background: rgba(0,20,20,0.6); border-bottom: 1px dashed ${stateColor};" onclick="LoopManager.handleAction(${index}, 'short')">
+                    <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; flex: 1;">
+                        <strong style="color: ${stateColor}; pointer-events:none;">[${index + 1}]</strong> 
+                        <span style="color: ${stateColor}; font-size: 11px; font-family: 'Courier New', monospace; pointer-events:none;">${(loop.name || `Loop ${index + 1}`).replace(/"/g, '&quot;')}</span>
+                    </div>
+                    <span class="live-state-text" style="color: ${stateColor}; font-size: 10px; font-weight:bold; pointer-events:none;">${loop.state.toUpperCase()}</span>
+                </div>
+                <div class="loop-controls" style="padding: 4px; display: flex; justify-content: flex-start; flex-direction: column; min-height: 24px;">
+                    ${UIManager.generateEffectsControlsHTML(loop, index, 'live-loop')}
+                </div>
+            </div>
+        </div>
+        `;
+    }
+    static updateLivePerformanceState() {
+        const panel = document.getElementById('ws-live');
+        if (!panel) return;
+        let mode = 'stopped';
+        const recStates = ['recording', 'overdubbing', 'substituting', 'multiplying'];
+        const anyRec = state.masterRecording || state.loops.some(l => l && recStates.includes(l.state))
+            || (window.DroneSynth && DroneSynth.instances && DroneSynth.instances.some(d => d.isRecording));
+        const anyArmed = state.loops.some(l => l && (l.state === 'armed' || l.state === 'queued'))
+            || state.samplers.some(s => s.state === 'armed');
+        const anyPlaying = state.loops.some(l => l && l.state === 'playing')
+            || (window.DroneSynth && DroneSynth.instances && DroneSynth.instances.some(d => d.state === 'playing'))
+            || state.samplers.some(s => s.state === 'playing' || s.state === 'stopping');
+        if (anyRec) mode = 'recording';
+        else if (anyArmed) mode = 'armed';
+        else if (anyPlaying) mode = 'playing';
+        panel.classList.remove('live-recording', 'live-armed', 'live-playing', 'live-stopped');
+        panel.classList.add('live-' + mode);
     }
     static getLoopAction(loop) {
         if (state.isFinishingRecording && state.recordingLoopId === loop.id) return 'SAVING';
@@ -277,6 +323,8 @@ const effectColors = {
         }
     }
     }
+    window.AionLiveLoopMarkup=snapshot=>snapshot.tracks.map((t,i)=>UIManager.generateLiveLoopHTML({...t,name:'',effects:{reverse:!!t.reverse},signalChain:'QCATFODBVKZG'},i));
+    window.AionLivePanelState=snapshot=>{state.loops=snapshot.tracks;UIManager.updateLivePerformanceState();};
     window.AionSyncMarkup = snapshot => {
         state.syncEnabled=snapshot.syncMode!==0;state.bars=snapshot.syncBars;state.timeSig={num:snapshot.syncNum};
         SyncMarkup.renderTimelineMarkers();
