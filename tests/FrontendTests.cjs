@@ -751,3 +751,31 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: production shared main/LIVE CC status renderer: '+cases+' target/CC/channel/learn/bound cases; mappings immutable');
 }
+
+// Requested direct MIDI Learn aliases for original main action buttons.
+{
+ const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),native);
+ assert.equal(typeof native.window.AionMidiLearnTarget,'function','Loop action buttons need direct MIDI Learn routing');
+ for(let i=0;i<20;++i){assert.equal(native.window.AionMidiLearnTarget(`loop-action-${i}`),i);assert.equal(native.window.AionMidiLearnTarget(`loop-vol-slider-${i}`),33+i);assert.equal(native.window.AionMidiLearnTarget(`live_mm_slider_l_${i}`),33+i);assert.equal(native.window.AionMidiLearnTarget(`loop-pan-slider-${i}`),53+i);}
+ for(const id of ['loop-action-20','loop-action--1','loop-action-0-extra','loop-action-1.5','live-loop-0','loop-0-reverse','native-stop-all','map-midi-0'])assert.equal(native.window.AionMidiLearnTarget(id),-1,'Only migrated primary actions and expression controls may learn');
+ console.log('PASS: direct MIDI Learn routing for 20 original main action buttons and retained 60 slider aliases; unsupported targets excluded');
+}
+
+// Exercise actual context-menu dispatch, including disabled and unsupported IDs.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),a=source.indexOf("    document.addEventListener('contextmenu'"),b=source.indexOf('    const kbd=',a);assert(a>=0&&b>a);
+ let listener,requests=[];const context={window:{},document:{addEventListener:(kind,fn)=>{assert.equal(kind,'contextmenu');listener=fn;}},send:request=>{requests.push({...request});return Promise.resolve({ok:true});},listDevices(){},notify:message=>assert.fail(message)};vm.createContext(context);vm.runInContext(source,context);vm.runInContext(source.slice(a,b),context);let cases=0;
+ for(let i=0;i<20;++i)for(const id of [`loop-action-${i}`,`loop-vol-slider-${i}`,`loop-pan-slider-${i}`,`live_mm_slider_l_${i}`])for(const shiftKey of [false,true])for(const disabled of [false,true]){
+  requests=[];let prevented=false;listener({target:{id,disabled},shiftKey,preventDefault(){prevented=true;}});const target=context.window.AionMidiLearnTarget(id);
+  assert.equal(prevented,!disabled);assert.deepEqual(requests,disabled?[]:[{action:shiftKey?'clear':'learn',target}]);++cases;
+ }
+ for(const id of ['loop-action-20','native-stop-all','loop-action--1','loop-action-0-extra','loop-0-reverse']){requests=[];listener({target:{id},preventDefault:()=>assert.fail('Unported control intercepted')});assert.deepEqual(requests,[]);}
+ const x=source.indexOf('        for(let i=0;i<33;++i)'),y=source.indexOf('\n    }};',x);assert(x>=0&&y>x);let nodes={};context.document.getElementById=id=>nodes[id];let viewCases=0;
+ for(let id=0;id<20;++id)for(const kind of [0,1,2,3])for(const number of [0,127])for(const channel of [0,16])for(const learning of [false,true]){
+  nodes={};for(let i=0;i<33;++i)nodes['map-midi-'+i]={style:{}};for(let i=0;i<20;++i)nodes['loop-action-'+i]={style:{}};
+  context.midi={learnTarget:learning?id:-1,bindings:new Array(73).fill(0)};context.midi.bindings[id]=kind?kind|(number<<2)|(channel<<9):0;const before=JSON.stringify(context.midi);vm.runInContext(source.slice(x,y),context);
+  for(let i=0;i<20;++i){assert.equal(nodes['loop-action-'+i].style.outline,nodes['map-midi-'+i].style.outline);assert.equal(!!nodes['loop-action-'+i].style.outline,learning&&i===id);}
+  assert.equal(JSON.stringify(context.midi),before);++viewCases;
+ }
+ console.log('PASS: production context-menu '+cases+' control/modifier/disabled cases; action/mapping learn highlight '+viewCases+' shared immutable-state cases');
+}

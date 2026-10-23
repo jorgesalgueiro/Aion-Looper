@@ -584,3 +584,26 @@ existing native MIDI engine already preserves this behavior; no callback change
 is needed. [JUCE MidiMessage](https://docs.juce.com/develop/classjuce_1_1MidiMessage.html).
 Physical controller/driver behavior for these newly enabled aliases has not been
 newly observed; synthetic MidiBuffer tests do not constitute hardware evidence.
+
+
+### Requested direct transport MIDI learning (23 October 2026)
+
+Right-click learning on primary action buttons is an explicitly requested native
+MIDI UI extension. The unchanged JS reference supplies the mapping-table/trigger
+behavior; it does not provide a direct-action context-menu oracle. Existing core
+original-note/press/learn/audio comparisons therefore remain acceptance gates,
+while the new frontend tests check the direct gesture adapter independently.
+
+AionMidiLearnTarget maps loop-action-0..19 to existing 0..19 targets and retains
+the 60 main/LIVE expression aliases through AionMidiSliderTarget. Unsupported
+controls stay excluded. Tests execute the actual production context-menu listener
+across 320 target/modifier/disabled cases, and the actual mapping/button status
+renderer across 640 target/kind/number/channel/learning cases, preserving binding
+state. Note, CC and PC classification/values follow the existing JUCE MidiMessage
+contract ([official source](https://github.com/juce-framework/JUCE/blob/master/modules/juce_audio_basics/midi/juce_MidiMessage.h));
+no audio callback or event parsing change is necessary.
+
+The MIDI test restores an assigned nonmaximum volume before its retained disabled
+expression check. New LIVE fixtures had cleared the former assignment and ended
+at maximum volume, which made that final legacy assertion ineffective. This is a
+fixture repair, with no change to product disable behavior or tolerance.

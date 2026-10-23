@@ -869,3 +869,15 @@ The targeted test injects raw MidiBuffer packets through the synthetic host, nev
 the user's hardware MIDI input. Existing packages remain their named source
 snapshot; rebuild the normal app/test targets to check this increment. No package
 or version bump is required for this adapter fix.
+
+
+Direct loop-action MIDI Learn uses the existing `tools/TestMouseWorkflow.ps1
+-MidiOnly` gate at 64/128. Right-click a loop's main RECORD/PLAY/STOP/etc. button
+to learn its existing Note/CC/Program Change mapping; Shift+right-click clears it.
+The original MIDI mapping field is the same binding and still supports its usual
+focus/blur and right-click-clear gestures. Escape or editor reload cancels direct
+learning. Only the twenty primary loop action buttons are enabled in this step;
+other action/effect buttons remain separate migration work. The new test covers
+actual stop/play audio, same-target field handoff, consume-on-learn, CC rearming,
+PC burst debounce, held-right-click isolation, save/reload/clear and clip/history
+preservation. Rebuild existing targets; no new package/version bump is needed.

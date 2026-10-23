@@ -4026,3 +4026,75 @@ Windows/Linux app/plugin modules (`build/live-midi-embedded.json`). Companion
 `build/live-midi-source.json` records the complete modified tree including staged
 files and the user's logo whitespace. Tested binaries include that local logo
 override, which is excluded from the source commit.
+
+
+## Direct loop-action MIDI Learn — 23 October 2026
+
+This is the explicitly requested native right-click transport-learning extension.
+Original main action button markup/CSS and original mapping fields remain intact.
+AionMidiLearnTarget aliases the twenty primary actions to existing 0..19 bindings,
+retaining main/LIVE continuous aliases. There is no DSP, native callback, target
+table, APVTS/schema, SDK/dependency or original-asset change. Manual instructions
+are added to the existing native MIDI help in English/Spanish/Portuguese. Keyboard
+SUS was audited and remains pending its full held-action/release/cancellation
+implementation; no status-only keyboard toggle was enabled.
+
+The pre-fix regression fails because direct action routing is absent
+(`build/action-midi-before.log`). `build/action-midi-frontend.log` passes all twenty
+action aliases and sixty retained slider aliases, 320 actual production context-
+menu target/modifier/disabled cases, and 640 actual mapping/action status cases
+across target/kind/number/channel/learning. Mapping state is immutable during
+rendering. Existing unchanged-JS MIDI/gesture/audio oracles are retained; the
+new direct gesture itself has no unchanged-JS context-menu oracle.
+
+The focused production processor/editor MIDI gate passes at 64/128 with raw
+MidiBuffer injection (`build/action-midi-focused-gui.log`). Real pointer actions
+cover same-target mapping-field handoff, Note/CC/PC consume-on-learn, PC triple-
+burst debounce, CC zero/rearm/positive-repeat, actual stopped silence and playing
+nonzero PCM, a 4.2s held right-click without cut/delete, Escape, Save Mappings,
+editor reload/cancellation, Shift-right-click clearing and former-controller
+isolation. Original field/button learning status stays aligned; clip identity,
+length and undo depth are preserved. These are synthetic audio/MIDI observations,
+not new physical controller or driver evidence.
+
+The final disabled-expression fixture is repaired: it restores an assigned CC
+at a nonmaximum volume before disabling MIDI and sending a later maximum value.
+The preceding LIVE fixture had cleared that binding and left maximum volume,
+making the prior final assertion ineffective. Product disable behavior and all
+tolerances are unchanged.
+
+Windows portable regressions pass 19/19 in 261.61s and Ubuntu 19/19 in 401.77s
+(`build/action-midi-windows-core.log`, `build/action-midi-ubuntu-core.log`). The
+independent committed-audio audit passes 126 cases / 965,826 samples with maximum
+absolute error 7.394757495227111e-8 against 1e-6 tolerance
+(`build/action-midi-audio.log`), retaining its original resampling/envelope/latency
+exclusions. No package/version bump is needed for this increment; prior archives
+remain their explicitly named source snapshots.
+
+The remaining Mouse/Export/Merge workflows passed at 64/128 via -SkipMidi
+(`build/action-midi-regression-gui.log`), with MIDI independently checked via
+-MidiOnly. All owned mouse hosts closed normally. Windows frontend/native
+processor/VST3 pluginval/CLAP passed 4/4 in 32.75s
+(`build/action-midi-windows-formats.log`). Actual muted Standalone, original
+browser count-in/nudge/live-input/STUT and NativeUiSmoke passed
+(`build/action-midi-standalone-ui.log`). Real REAPER 7.82 VST3/CLAP seven-case
+settled stereo rendering and parameter/project recall passed
+(`build/action-midi-reaper.log`,
+`build/reaper-daw/20261023T182308-ce46c863/result.json`).
+
+Linux frontend/native processor/LV2 stereo ABI/VST3 and LV2 pluginval/CLAP passed
+6/6 in 81.33s (`build/action-midi-linux-formats.log`). Actual Ardour 8.4 LV2
+gain/mute and saved-session recall passed at 48kHz/64/128 using isolated Dummy
+inputs (`build/action-midi-ardour.log`,
+`build/ardour-daw/20261023T182855-2ae921cb/result.json`). Existing vendor skips,
+known state-load warning and compiler/DRI3 diagnostics remain. These host checks
+do not establish GTK pointer behavior, per-sample Ardour PCM, physical JACK/ASIO,
+MIDI clock, recorded-loop persistence or Apple acceptance.
+
+All four native adapters match embedded bytes in seven Windows/Linux app/plugin
+modules (`build/action-midi-embedded.json`). Companion
+`build/action-midi-source.json` identifies the complete modified tested tree,
+including the separate user logo whitespace. Tested binaries contain that local
+logo override; the source commit excludes it. No new physical hardware evidence
+is claimed. Other action targets, keyboard SUS and broader feature parity remain
+pending; this completed direct-learning increment does not complete the migration.

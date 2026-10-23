@@ -665,3 +665,18 @@ from other fixture loops with the existing solo control before PCM checks.
 Centre both logical scroll axes for original vertical faders and retain strict
 pointer hit testing. User hardware assignments and the separate logo edit must
 remain untouched. No package/version bump is needed for this adapter repair.
+
+
+Direct primary-action MIDI Learn is a requested native UI extension, not an
+unchanged-JS context-menu feature. Resolve loop-action-0..19 through existing
+0..19 mappings and retain all 60 continuous aliases. Right-click learns Note/CC/
+PC; Shift-right-click clears; Escape/editor reload cancels. Mirror the original
+mapping field's yellow learn outline without changing original markup/CSS, DSP,
+state schema or hardware assignments. Keep actual context-menu disabled/unsupported
+guards (320 cases), immutable mapping/button highlight tests (640 cases), and
+native 64/128 Note/CC/PC stop/play PCM, same-target field handoff, consumed learn,
+CC zero/rearm/repeat, PC burst, right-hold/no-delete, Escape/save/reload/clear and
+clip/history tests. Direct learning must never synthesize a primary mouse action.
+Before the retained final disabled-expression check, restore an assigned CC at a
+nonmaximum volume so an erroneous later maximum CC would be observable. Preserve
+old regressions and the user's logo. Keyboard SUS remains independently pending.

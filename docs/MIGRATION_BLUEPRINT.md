@@ -313,3 +313,17 @@ both views. Existing slider edit arbitration handles focus and active pointer/ke
 ownership. No new DSP, APVTS parameter/schema, native configuration panel, CMake
 target or dependency is introduced. Other unported MIDI targets and meter/mixer
 routes remain separate acceptance work.
+
+
+## Direct loop-action MIDI Learn — 23 October 2026
+
+The requested direct right-click learning gesture resolves original loop-action-N
+buttons to existing native MIDI targets 0..19. It uses the same configuration RPC,
+bounded controller and persisted binding as the original mapping fields. No
+new target, audio action, DSP, APVTS/schema, device subscription policy or CMake
+dependency is introduced. The action button mirrors its mapping field's yellow
+learn outline; no original HTML/CSS assets or layout change.
+
+Keyboard SUS remains pending: its original held record/play/mute and release/
+cancellation behavior requires a full keyboard performance increment, beyond
+merely exposing the existing MIDI sustain flag. It is not enabled by this work.
