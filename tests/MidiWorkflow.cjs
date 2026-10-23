@@ -58,6 +58,13 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
   for(let n=0;n<100;++n){if(await evaluate(`document.getElementById('${indicator}').style.display==='none'`))break;await delay(20);}assert(await evaluate(`document.getElementById('${indicator}').style.display==='none'`),'Mode indicator follows repeated NoteOn without release');
   await inject([[128,note,0,3,19],[144,note,0,3,20]]);s=await snapshot();assert.equal(s.midi.mode,0);assert.equal(s.midi.sustain,false);
  }
+ // Original master header/class precedence: SUB > SUS > OD, independent of audio ownership.
+ const globalVisual=async(title,classes)=>{for(let n=0;n<100;++n){const v=await evaluate(`({title:document.querySelector('#mod-master .module-header span:first-child').textContent,classes:[...document.body.classList]})`);if(v.title===title&&Object.entries(classes).every(([key,value])=>v.classes.includes(key)===value))return v;await delay(20);}assert.fail('Global header/classes: '+title+' '+JSON.stringify(classes));};
+ await inject([[144,46,100,3,0]]);await wait(s=>s.midi.mode===1,'OD global visual');await globalVisual('MASTER ● OVERDUB MODE',{'mode-overdub':true,'mode-sus':false,'mode-substitute':false});
+ await inject([[144,48,100,3,0]]);await wait(s=>s.midi.mode===1&&s.midi.sustain,'SUS wins OD visual');await globalVisual('MASTER ● SUSTAIN MODE',{'mode-overdub':false,'mode-sus':true,'mode-substitute':false});
+ await inject([[144,47,100,3,0]]);await wait(s=>s.midi.mode===2&&s.midi.sustain,'SUB wins SUS visual');await globalVisual('MASTER ● SUBSTITUTE MODE',{'mode-overdub':false,'mode-sus':false,'mode-substitute':true});
+ await inject([[144,47,100,3,0]]);await wait(s=>s.midi.mode===0&&s.midi.sustain,'SUB off restores SUS');await globalVisual('MASTER ● SUSTAIN MODE',{'mode-overdub':false,'mode-sus':true,'mode-substitute':false});
+ await inject([[144,48,100,3,0]]);await wait(s=>s.midi.mode===0&&!s.midi.sustain,'SUS off restores master');await globalVisual('MASTER OUTPUT',{'mode-overdub':false,'mode-sus':false,'mode-substitute':false});
  // Clear/learn can reassign a key while its old loop press is still held.
  await inject([[144,36,100,3,17]]);await wait(s=>s.tracks[0].state==='recording','held loop before mode reassignment');
  await click('#map-midi-0','right');await wait(s=>s.midi.bindings[0]===0,'clear old held-loop binding');await click('#map-midi-30');await wait(s=>s.midi.learnTarget===30,'learn global OD from held loop key');await inject([[144,36,127,3,17]]);await wait(s=>s.midi.bindings[30]===(1|(36<<2))&&s.midi.learnTarget===-1,'held loop key learned as global OD');
@@ -97,6 +104,22 @@ const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${pr
  await inject([[144,48,100,3,0],[128,48,0,3,1]]);await wait(s=>!s.midi.sustain,'CC fixture exits SUS');await click('#map-midi-18','right');await wait(s=>s.midi.bindings[18]===0,'CC fixture unmap');
  s=await snapshot();assert((await rpc({operation:'loop',action:'clear',track:18,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks[18].state==='empty','CC release fixture cleanup');
  await inject([[144,36,100,3,17],[128,36,0,3,18]]);await wait(s=>s.tracks[0].state==='recording','default note record');await delay(250);await inject([[144,36,100,3,0],[144,36,0,3,1]]);s=await wait(s=>s.tracks[0].state==='playing'&&s.tracks[0].waveformId,'default note finish');const length=s.tracks[0].length;
+ // Turning the global mode off does not end the active overdub or its colour.
+ const beforeVisualOverdub=await snapshot();
+ await inject([[144,46,100,3,0],[144,36,100,3,17],[128,36,0,3,18]]);await wait(s=>s.tracks[0].state==='overdubbing','visual actual overdub');
+ await globalVisual('MASTER ● OVERDUB MODE',{'mode-overdub':true,'is-overdubbing':true});
+ assert.equal(await evaluate(`document.getElementById('recStatus').textContent`),'YES (Loop 1)');
+ await inject([[144,46,100,3,0]]);await wait(s=>s.midi.mode===0&&s.tracks[0].state==='overdubbing','global mode off keeps recording');
+ await globalVisual('MASTER OUTPUT',{'mode-overdub':false,'is-overdubbing':true});
+ // Original index.html animates background for 300ms; require its exact settled colour.
+ for(let n=0;n<100;++n){if(await evaluate(`getComputedStyle(document.body).backgroundColor==='rgb(26, 0, 42)'`))break;await delay(20);}
+ assert.equal(await evaluate(`getComputedStyle(document.body).backgroundColor`),'rgb(26, 0, 42)','Active overdub retains original purple independently of global mode');
+ assert.equal((await snapshot()).tracks[0].waveformId,beforeVisualOverdub.tracks[0].waveformId,'Status change does not replace playing clip');
+ await inject([[144,36,100,3,17],[128,36,0,3,18]]);s=await wait(s=>s.tracks[0].state==='playing'&&s.tracks[0].undoCount===beforeVisualOverdub.tracks[0].undoCount+1,'finish actual visual overdub');
+ await globalVisual('MASTER OUTPUT',{'is-overdubbing':false,'is-recording':false});
+ assert.equal(await evaluate(`document.getElementById('recStatus').textContent`),'NO');assert.equal(s.tracks[0].length,length);
+ assert(s.tracks[0].wavePeaks.some(v=>v>0.01),'Status transition retains nonzero recorded waveform');
+ console.log('PASS: actual MIDI SUB > SUS > OD master-header precedence and active overdub colour after mode-off, recording label and nonzero clip/history retained');
  await click('#map-midi-0');await wait(s=>s.midi.learnTarget===0,'learn loop one');await inject([[192,0,0,2,0]]);s=await wait(s=>s.midi.bindings[0]===3&&s.midi.learnTarget===-1,'learn FCB PC zero');assert.equal(s.tracks[0].state,'playing','Learn consumes incoming command');
  await inject([[192,0,0,2,0],[192,0,0,2,1],[192,0,0,2,2]]);await wait(s=>s.tracks[0].state==='stopped','physical triple-PC burst stops once');await delay(4200);s=await snapshot();assert.equal(s.tracks[0].length,length,'Program Change never creates a delete hold');
  await inject([[192,0,0,2,0],[192,0,0,2,1],[192,0,0,2,2]]);await wait(s=>s.tracks[0].state==='playing','physical triple-PC burst plays once');await inject([[144,36,100,3,0],[128,36,0,3,1]]);s=await snapshot();assert.equal(s.tracks[0].state,'playing','Replaced default note is unmapped');

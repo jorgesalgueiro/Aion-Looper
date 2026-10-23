@@ -28,6 +28,23 @@
         text:track.state==='finalizing'?'SAVING':track.state.toUpperCase(),
         extra:`${track.muted?' [MUTED]':''}${track.length?` (${(track.length/sampleRate/track.playbackRate).toFixed(1)}s)`:''}`
     });
+    // Original updateStatus precedence; native capture ownership supplies isRecording.
+    window.AionGlobalStatus=(snapshot,mode,{body,header,recording,label})=>{
+        const owner=snapshot.tracks.findIndex(t=>['armed','recording','overdubbing','substituting','multiplying'].includes(t.state));
+        const state=owner<0?null:snapshot.tracks[owner].state;
+        const substitute=mode==='substitute',sustain=!!snapshot.midi?.sustain;
+        const flags={
+            'mode-overdub':mode==='overdub'&&!sustain,'mode-rec-master':false,
+            'mode-substitute':substitute,'mode-sus':sustain&&!substitute,
+            'is-recording':state==='recording'||state==='armed',
+            'is-overdubbing':state==='overdubbing','is-substituting':state==='substituting',
+            'is-multiplying':state==='multiplying','is-queued':snapshot.tracks.some(t=>t.state==='queued')
+        };
+        for(const [name,on] of Object.entries(flags))body.classList.toggle(name,on);
+        if(header)header.textContent=substitute?'MASTER ● SUBSTITUTE MODE':sustain?'MASTER ● SUSTAIN MODE':mode==='overdub'?'MASTER ● OVERDUB MODE':label;
+        recording.textContent=owner>=0?`YES (Loop ${owner+1})`:'NO';
+        recording.style.color=owner>=0?'#f00':'#464';
+    };
     // Message-thread only. Resolve gestures against the latest acknowledged state.
     window.AionCommandQueue = class {
         static wait = Symbol('waitForState');

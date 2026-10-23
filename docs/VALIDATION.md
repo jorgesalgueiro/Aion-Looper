@@ -3682,3 +3682,118 @@ Completed rebuilt-artifact acceptance for this repair:
   These host gates preserve their earlier settled-PCM/peak and synthetic-device
   scope; neither establishes physical latency, editor interaction, recorded-loop
   storage, MIDI clock or host-follow scheduling.
+
+
+## Original global performance-status repair — 23 October 2026
+
+The original `UIManager.updateStatus` independently paints the active recording/
+armed/overdub/substitute/multiply state and applies SUB > SUS > OD precedence to
+the master-header/global-mode classes. Native refresh lacked active OD/SUB
+classes, SUS precedence and header text, and substituted RECORDING/READY for the
+original YES (Loop N)/NO label/colours. `AionGlobalStatus` now restores those
+presentation rules from native capture ownership, preserving unrelated classes
+and the initial master label. Finalizing is not an active recording. The native
+master recorder, keyboard SUS, synths and other unported engines remain disabled/
+pending; this does not implement any of them. DSP, MIDI dispatch, APVTS, persisted
+state formats, original assets and CMake dependencies are unchanged.
+
+- `build/global-status-before.log` retains the failing old-production comparison
+  (READY versus original NO, missing original label colour and stale classes).
+- The complete unchanged `UIManager.updateStatus` and its called live updater
+  execute against a focused DOM fixture; the live panel/action buttons are absent.
+  The 7,920 comparisons cover all 20 capture owners, eleven native states, three
+  OD/SUB modes, SUS on/off, queued on/off and three default-label strings. Native
+  inputs and unrelated body classes must remain unchanged. This checks global
+  status only; it does not certify live-panel rendering or application language
+  selection. Final source run: `build/global-status-after.log`.
+- Windows portable/core tests passed 19/19 in 260.49s
+  (`build/global-status-windows-core.log`). Independent connected stereo audio
+  audit passed 126 cases / 965,826 samples, max error
+  7.394757495227111e-8 / unchanged 1e-6 tolerance
+  (`build/global-status-audio.log`).
+
+Initial native workflow attempts are retained, not counted as passes:
+
+1. A sandboxed host timed out at CDP Runtime.enable and failed normal shutdown
+   (`build/global-status-gui-startup-failure.log`).
+2. The first cleanup command failed; the next attempt briefly overlapped the
+   still-running owned host. It failed the existing mandatory pre-navigation
+   stutter evidence check with length zero
+   (`build/global-status-gui-overlap-failure.log`). Both owned processes were
+   subsequently closed. Exact causation is unconfirmed; shared browser/evidence
+   resources made that attempt unsuitable for acceptance.
+3. The runner now refuses any existing test host and uses a unique WebView2
+   profile/run ID. The test-only message-thread navigation report includes that
+   ID; the reader rejects evidence from another run. No callback allocation or
+   product RPC was added, and the original PCM/held-fragment/navigation assertions
+   remain mandatory. Later results are recorded separately below.
+
+This repair uses the existing browser/message-thread presentation layer; the
+[Juce WebBrowserComponent native-integration API](https://docs.juce.com/master/classjuce_1_1WebBrowserComponent_1_1Options.html)
+was consulted. It introduces no callback/audio-thread work and no new UI controls.
+No package or version bump is needed. The separate user logo whitespace edit is
+preserved outside the commit. Hardware/Apple/complete-engine parity, MIDI clock,
+host-follow scheduling and recorded-loop persistence retain their earlier limits.
+
+
+The first isolated run passed the existing mouse/navigation/audio/export/merge
+checks, then the new MIDI computed-colour assertion sampled the original
+`index.html` 0.3s background transition one channel step before its endpoint
+(rgb(26,0,41) versus rgb(26,0,42)). The fixture now waits up to two seconds for
+the exact original settled value; the final strict assertion is unchanged. No
+CSS, comparison tolerance or product behavior was altered. Evidence:
+`build/global-status-gui-transition-failure.log`.
+
+
+Final acceptance:
+
+- Ubuntu portable/core regressions passed 19/19 in 392.54s
+  (`build/global-status-ubuntu-core.log`).
+- The complete rebuilt native mouse/export/merge/raw-MIDI workflow passed at
+  BOTH 64/128 (`build/global-status-gui.log`), including the new MIDI SUB > SUS >
+  OD header precedence, exact settled original purple after mode-off during active
+  overdub, YES (Loop 1)/NO label, unchanged playing-clip identity before commit,
+  nonzero committed waveform, unchanged loop length and one retained Undo entry.
+  The owned pre/post-navigation audio evidence tags match their current runs;
+  `build/global-status-navigation.json` retains both nonzero-PCM reports.
+- Windows Release Standalone/VST3/CLAP and processor/mouse host rebuilt
+  (`build/global-status-windows-build.log` and
+  `build/global-status-mouse-host-build.log`). Processor, official CLAP validator
+  and VST3 pluginval passed 3/3 in 27.39s
+  (`build/global-status-windows-formats.log`).
+- Actual muted Standalone UI plus browser count-in/nudge/live-input/STUT gates
+  passed (`build/global-status-standalone-ui.log`): twenty loop cards, native IPC/
+  audio acknowledgements, no legacy AudioContext. Its owned window closed normally.
+- Ubuntu Debug app/VST3/CLAP/LV2 and processor host rebuilt successfully
+  (`build/global-status-linux-build.log`). Complete current controls.js/looper.js
+  bytes match all seven Windows/Linux app/plugin modules;
+  `build/global-status-embedded.json` records their module hashes/matches.
+- `build/global-status-source.json` records hashes of all modified tracked files
+  including index changes at the pre-commit test point. Existing DAW runners'
+  dirtyTracked field only lists unstaged paths; module identity/hash evidence and
+  this companion record identify the tested working tree. Local binaries include
+  the retained user logo whitespace, which remains outside the source commit.
+
+These are synthetic audio/UI tests; no physical controller/driver, browser
+resampling/envelope, master-recorder or Apple acceptance follows from them.
+
+
+Real REAPER 7.82 passed both current Windows VST3 and CLAP modules: seven target
+stereo renders per format, parameter mutation/restore and actual RPP reopen.
+Evidence: `build/global-status-reaper.log` and
+`build/reaper-daw/20261023T121620-95770252/result.json`. This preserves the earlier
+settled-PCM/isolated-profile/module-identity scope, not physical driver latency,
+plugin editor interaction, MIDI clock or loop-audio project persistence.
+
+
+Final Linux native processor/LV2 stereo ABI/official VST3 and LV2 pluginval/CLAP
+validation passed 5/5 in 72.96s (`build/global-status-linux-formats.log`). Existing
+compiler/DRI3 warnings, supported/unsupported vendor-test accounting and known
+state-load warning remain documented; no checks were filtered or weakened.
+Real Ardour 8.4/libardour LV2 passed stereo gain/mute and saved-session recall at
+48kHz/64/128 using its isolated Dummy backend. Evidence:
+`build/global-status-ardour.log` and
+`build/ardour-daw/20261023T121936-4ed18cde/result.json`. These remain stereo peak/
+ratio checks, not per-sample equality, GTK interaction or physical JACK tests.
+All final owned test hosts closed normally. No installer/ZIP or version bump was
+created; the separate user logo edit remains uncommitted.

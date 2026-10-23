@@ -20,6 +20,8 @@
             <input id="native-master" class="mixer-slider" type="range" min="0" max="2" step="0.01" value="0" aria-label="Master output volume">
             <output id="native-master-value">MUTED</output>`;
         document.querySelector('#mod-master .module-content').append(output);
+        const masterHeader=document.querySelector('#mod-master .module-header span:first-child');
+        const masterLabel=masterHeader?.textContent??'MASTER OUTPUT';
         // Capture original semantic selectors before stripping inline browser audio handlers.
         const stopAll=document.querySelector('#mod-menu [onclick="stopAll()"]'); stopAll.id='native-stop-all';
         const clearAll=document.querySelector('#mod-menu [onclick="clearAll()"]');
@@ -344,7 +346,7 @@
             globalRedo.textContent=snapshot.nextRedo>=0?`REDO L${snapshot.nextRedo+1}`:'REDO';
             if(document.activeElement!==autoPlay)autoPlay.checked=snapshot.autoPlayAfterRecord;
             document.getElementById('activeCount').textContent=`${snapshot.tracks.filter(t=>t.state!=='empty').length}/20`;
-            document.getElementById('recStatus').textContent=snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state))?'RECORDING':'READY';
+            window.AionGlobalStatus(snapshot,mode,{body:document.body,header:masterHeader,recording:document.getElementById('recStatus'),label:masterLabel});
             rows.forEach((r,i)=>{
                 const t=snapshot.tracks[i];
                 const sources=snapshot.tracks.map((s,id)=>id!==i&&s.length?id:-1).filter(id=>id>=0);
@@ -395,11 +397,6 @@
             });
             document.getElementById('odModeIndicator').style.display=mode==='overdub'?'':'none';
             document.getElementById('subModeIndicator').style.display=mode==='substitute'?'':'none';
-            document.body.classList.toggle('mode-overdub',mode==='overdub');
-            document.body.classList.toggle('mode-substitute',mode==='substitute');
-            document.body.classList.toggle('is-multiplying',snapshot.tracks.some(t=>t.state==='multiplying'));
-            document.body.classList.toggle('is-recording',snapshot.tracks.some(t=>['recording','armed'].includes(t.state)));
-            document.body.classList.toggle('is-queued',snapshot.tracks.some(t=>t.state==='queued'));
             syncModes.forEach((radio,index)=>radio.checked=snapshot.syncMode===index);
             for(const [id,element] of Object.entries(timingControls))if(document.activeElement!==element){if(element.type==='checkbox')element.checked=!!snapshot[id];else element.value=snapshot[id];}
             document.getElementById('dynamicOptionsPanel').style.display=snapshot.syncMode===2?'':'none';

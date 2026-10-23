@@ -825,3 +825,13 @@ mouse workflow checks pending STOP `[.]` while recorded audio continues, then
 stopped `[S]` after a second STOP, preserving PCM length and undo history at
 64/128. Rebuild the existing app/mouse host after changing embedded adapters;
 no installer, ZIP or version bump is needed for this display repair.
+
+
+Global performance-status parity is also included in `native_frontend_commands`
+and `tests/MidiWorkflow.cjs` through `tools/TestMouseWorkflow.ps1` at 64/128.
+The reference updater checks header precedence and independent capture colours;
+the actual native test toggles global OD off during an ongoing overdub and checks
+original computed background, recording label and preserved audio/history.
+Native WebView2 tests need Windows desktop access. A CDP/browser startup timeout
+is a test failure; preserve its log and close only the owned test host before a
+retry. Do not interpret it as hardware or feature acceptance.

@@ -602,3 +602,18 @@ The real 64/128 mouse gate must observe stopping [.] while recorded PCM still
 plays, then stopped [S] after second STOP, with clip length/history unchanged.
 Do not weaken the mandatory stopping assertion, alter original assets or stage
 the separate user logo whitespace edit. This display repair requires no package.
+
+
+Global performance status follows unchanged UIManager.updateStatus: SUB > SUS >
+OD for master-header/mode-class precedence, with independent audio-owner capture
+classes (record/armed, OD, SUB, MULT), queued flag and original YES (Loop N)/NO
+recording label/colour. Finalizing is not an active capture. Preserve unrelated
+body classes and the initial master label; do not enable unported master recorder,
+keyboard SUS or synth/FX as part of presentation work. Keep the 7,920 complete
+reference-updater cases across all track owners/states/modes/SUS/queued/default
+labels. Native 64/128 MIDI must show active OD purple after global OD is switched
+off, correct header precedence, unchanged clip identity during mode toggle,
+nonzero committed PCM and retained history. Do not alter DSP or original assets.
+Run native GUI processes with desktop access: a sandboxed WebView2 startup timeout
+must remain a failed/inconclusive test, not be counted as a feature pass. Retain
+the failure log and clean up only the verified owned test host before retrying.

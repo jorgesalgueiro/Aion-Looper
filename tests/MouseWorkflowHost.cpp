@@ -121,6 +121,7 @@ private:
         while(navigationEvidence.pop(nextNavigation)){navigation=nextNavigation;navigationChanged=true;}
         if(navigationChanged){auto* data=new juce::DynamicObject();juce::var report(data);
             data->setProperty("frame",static_cast<juce::int64>(navigation.frame));data->setProperty("length",static_cast<juce::int64>(navigation.length));data->setProperty("waveformId",static_cast<juce::int64>(navigation.waveformId));
+            data->setProperty("testRun",juce::SystemStats::getEnvironmentVariable("AION_MOUSE_TEST_RUN",{}));
             data->setProperty("playing",navigation.state==aion::LoopState::playing);data->setProperty("stuttering",navigation.stuttering);data->setProperty("outputPeak",navigation.peak);
             (void)pcmDirectory.getChildFile("navigation-evidence.json").replaceWithText(juce::JSON::toString(report));
         }

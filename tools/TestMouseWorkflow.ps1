@@ -7,12 +7,15 @@ if (!(Test-Path -LiteralPath $hostPath)) { throw 'Build target aion_mouse_host f
 if (Get-NetTCPConnection -LocalPort 9235 -State Listen -ErrorAction SilentlyContinue) { throw 'CDP port 9235 is already in use. Close the previous test host first.' }
 $savedArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 $savedProfile = $env:WEBVIEW2_USER_DATA_FOLDER
+$savedTestRun = $env:AION_MOUSE_TEST_RUN
+if (Get-Process -Name aion_mouse_host -ErrorAction SilentlyContinue) { throw 'An existing mouse test host is running. Close it before starting another workflow.' }
 foreach ($block in $Blocks) {
     if ($block -notin @(64,128)) { throw 'Supported test block sizes: 64, 128.' }
     $preview = $null
     try {
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=9235 --disable-background-timer-throttling --disable-renderer-backgrounding'
-        $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $repo "build/mouse-profile-$block"
+        $env:AION_MOUSE_TEST_RUN = [guid]::NewGuid().ToString('N')
+        $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $repo "build/mouse-profile-$block-$($env:AION_MOUSE_TEST_RUN)"
         $preview = Start-Process -FilePath $hostPath -ArgumentList "$block" -WindowStyle Hidden -PassThru
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $savedArguments
         $env:WEBVIEW2_USER_DATA_FOLDER = $savedProfile
@@ -34,6 +37,7 @@ foreach ($block in $Blocks) {
         }
         Write-Output "PASS: production processor/editor mouse workflow at $block samples."
     } finally {
+        $env:AION_MOUSE_TEST_RUN = $savedTestRun
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $savedArguments
         $env:WEBVIEW2_USER_DATA_FOLDER = $savedProfile
         if ($preview -and !$preview.HasExited) {

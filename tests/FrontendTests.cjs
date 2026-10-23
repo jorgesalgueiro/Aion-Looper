@@ -647,3 +647,30 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  assert.deepEqual(JSON.parse(JSON.stringify(native.window.AionLoopStatus({state:'finalizing',muted:false,length:0,playbackRate:1},48000))),{symbol:'[..]',text:'SAVING',extra:''},'Retain native asynchronous finalization status');
  console.log('PASS: unchanged complete loop display updater: '+cases+' state/mute/duration/speed cases; native finalization retained');
 }
+
+
+// Full unchanged global-status updater: capture colour survives mode toggles.
+{
+ const source=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');
+ const method=name=>{const a=source.indexOf('    static '+name+'('),b=source.indexOf('\n    }',a)+6;assert(a>=0&&b>a);return source.slice(a,b);};
+ const owned=['mode-overdub','mode-rec-master','mode-substitute','mode-sus','is-recording','is-overdubbing','is-substituting','is-multiplying','is-queued'];
+ const fixture=()=>{const classes=new Set(['unrelated',...owned]);return {body:{classList:{add:(...v)=>v.forEach(x=>classes.add(x)),remove:(...v)=>v.forEach(x=>classes.delete(x)),toggle:(v,on)=>on?classes.add(v):classes.delete(v)}},header:{textContent:''},recording:{textContent:'',style:{}},classes};};
+ let dom,label='MASTER OUTPUT';
+ const state={masterRecording:false,masterChunks:[],undoStack:[],redoStack:[]},document={getElementById:id=>id==='recStatus'?dom.recording:id==='activeCount'?{}:null,querySelector:()=>dom.header,get body(){return dom.body;}};
+ const original={state,document,MAX_LOOPS:20,I18n:{t:()=>label},LoopManager:{getActiveCount:()=>0}};vm.createContext(original);
+ vm.runInContext(`class UIManager{${method('updateStatus')}\n${method('updateLivePerformanceState')}};globalThis.update=()=>UIManager.updateStatus();`,original);
+ const native={window:{},document};vm.createContext(native);vm.runInContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ if(!native.window.AionGlobalStatus){const code=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8'),lines=code.split('\n').filter(s=>s.includes('document.body.classList.toggle(')||s.includes("document.getElementById('recStatus').textContent="));assert(lines.length>=6);vm.runInContext(`window.AionGlobalStatus=(snapshot,mode)=>{${lines.join('\n')}};`,native);}
+ let cases=0;
+ for(let id=0;id<20;++id)for(const status of ['empty','armed','recording','playing','stopped','stopping','overdubbing','substituting','multiplying','queued','finalizing'])
+ for(const mode of ['normal','overdub','substitute'])for(const sustain of [false,true])for(const queued of [false,true])for(label of ['MASTER OUTPUT','SALIDA MAESTRA','SAÍDA MESTRA']){
+  const tracks=Array.from({length:20},()=>({state:'empty'}));tracks[id]={state:status};if(queued)tracks[(id+1)%20]={state:'queued'};
+  const owner=tracks.findIndex(t=>['armed','recording','overdubbing','substituting','multiplying'].includes(t.state));
+  Object.assign(state,{loops:tracks,isRecording:owner>=0,recordingLoopId:owner,globalOverdubMode:mode==='overdub',globalSubstituteMode:mode==='substitute',globalSusMode:sustain});
+  dom=fixture();dom.header.textContent=label;original.update();const expected={classes:[...dom.classes].sort(),title:dom.header.textContent,rec:dom.recording.textContent,color:dom.recording.style.color};
+  dom=fixture();dom.header.textContent=label;const snapshot={tracks,midi:{sustain}},before=JSON.stringify(snapshot);native.window.AionGlobalStatus(snapshot,mode,{body:dom.body,header:dom.header,recording:dom.recording,label});
+  assert.deepEqual({classes:[...dom.classes].sort(),title:dom.header.textContent,rec:dom.recording.textContent,color:dom.recording.style.color},expected,'Original global status '+JSON.stringify({id,status,mode,sustain,queued,label}));
+  assert.equal(JSON.stringify(snapshot),before,'Visual status never mutates native state');++cases;
+ }
+ console.log('PASS: unchanged global status updater: '+cases+' capture/mode/SUS/queue/label cases; unrelated classes and snapshots retained');
+}
