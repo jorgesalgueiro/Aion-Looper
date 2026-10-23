@@ -625,3 +625,19 @@ listener for all twenty loops, seven header/child/FX/card hit categories, both
 modifiers and enabled/disabled actions (560 cases), plus invalid owners. The
 existing 640 immutable mapping/action-status cases also verify LIVE outlines.
 Original main-button, slider, markup, gesture and audio comparisons remain.
+
+
+### Main loop-header/state direct MIDI Learn (23 October 2026)
+
+The original main-header short action and native nested-control exclusion define
+the eligible surface. The requested direct MIDI learning gesture itself has no
+unchanged-JS context-menu oracle. It aliases existing 0..19 primary bindings,
+retaining the original markup, main action/held-note DSP and original MIDI gates.
+Note/CC/PC parsing remains the existing C++ implementation following the official
+[JUCE MidiMessage contract](https://docs.juce.com/master/classjuce_1_1MidiMessage.html).
+
+The pre-fix listener regression reproduces rejected main-header learning
+(`build/main-header-midi-before.log`). Actual production listener tests cover
+20 loops, 19 header/state/nested-control/card hit categories, both modifiers and
+enabled/disabled actions (1,520 cases), plus invalid owners. Prior 320/560 routing
+and 640 immutable status cases remain, with main-header outline coverage added.

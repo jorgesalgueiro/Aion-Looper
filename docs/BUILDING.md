@@ -894,3 +894,14 @@ card backgrounds are excluded, and disabled primary actions cannot start learnin
 from LIVE. This extends the requested native MIDI configuration without changing
 the original visual layout. Run `tools/TestMouseWorkflow.ps1 -MidiOnly` for the
 64/128 synthetic pointer/MIDI/audio gate; it does not verify physical hardware.
+
+
+### Main header/state MIDI Learn
+
+Right-click the main loop header, its number or state text to learn Note/CC/
+Program Change. It uses the same binding as the primary button and LIVE header;
+Shift+right-click clears, Escape cancels and Save Mappings retains accepted
+assignments. All four aliases share the yellow learning outline. Names, waveforms
+and other nested controls retain their own behavior and cannot start this header
+learn action. Disabled primary actions also disable header learning. The actual
+64/128 pointer/MIDI/audio gate remains `tools/TestMouseWorkflow.ps1 -MidiOnly`.

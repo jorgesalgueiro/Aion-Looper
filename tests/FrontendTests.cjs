@@ -772,9 +772,9 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  for(const id of ['loop-action-20','native-stop-all','loop-action--1','loop-action-0-extra','loop-0-reverse']){requests=[];listener({target:{id},preventDefault:()=>assert.fail('Unported control intercepted')});assert.deepEqual(requests,[]);}
  const x=source.indexOf('        for(let i=0;i<33;++i)'),y=source.indexOf('\n    }};',x);assert(x>=0&&y>x);let nodes={};context.document.getElementById=id=>nodes[id];let viewCases=0;
  for(let id=0;id<20;++id)for(const kind of [0,1,2,3])for(const number of [0,127])for(const channel of [0,16])for(const learning of [false,true]){
-  nodes={};for(let i=0;i<33;++i)nodes['map-midi-'+i]={style:{}};for(let i=0;i<20;++i){nodes['loop-action-'+i]={style:{}};const header={style:{}};nodes['live-loop-'+i]={querySelector:selector=>selector==='.loop-header'?header:null};}
+  nodes={};for(let i=0;i<33;++i)nodes['map-midi-'+i]={style:{}};for(let i=0;i<20;++i){nodes['loop-action-'+i]={style:{}};const header={style:{}};nodes['live-loop-'+i]={querySelector:selector=>selector==='.loop-header'?header:null};const mainHeader={style:{}};nodes['loop-'+i]={querySelector:selector=>selector==='.loop-header'?mainHeader:null};}
   context.midi={learnTarget:learning?id:-1,bindings:new Array(73).fill(0)};context.midi.bindings[id]=kind?kind|(number<<2)|(channel<<9):0;const before=JSON.stringify(context.midi);vm.runInContext(source.slice(x,y),context);
-  for(let i=0;i<20;++i){assert.equal(nodes['loop-action-'+i].style.outline,nodes['map-midi-'+i].style.outline);assert.equal(!!nodes['loop-action-'+i].style.outline,learning&&i===id);assert.equal(nodes['live-loop-'+i].querySelector('.loop-header').style.outline,nodes['map-midi-'+i].style.outline,'LIVE header mirrors the shared action binding');}
+  for(let i=0;i<20;++i){assert.equal(nodes['loop-action-'+i].style.outline,nodes['map-midi-'+i].style.outline);assert.equal(!!nodes['loop-action-'+i].style.outline,learning&&i===id);assert.equal(nodes['live-loop-'+i].querySelector('.loop-header').style.outline,nodes['map-midi-'+i].style.outline,'LIVE header mirrors the shared action binding');assert.equal(nodes['loop-'+i].querySelector('.loop-header').style.outline,nodes['map-midi-'+i].style.outline,'Main header mirrors the shared action binding');}
   assert.equal(JSON.stringify(context.midi),before);++viewCases;
  }
  console.log('PASS: production context-menu '+cases+' control/modifier/disabled cases; action/mapping learn highlight '+viewCases+' shared immutable-state cases');
@@ -802,4 +802,27 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  assert.equal(context.window.AionMidiElementTarget({id:'live-loop-0'}),-1,'Card itself is not a header');
  console.log('PASS: production LIVE header/descendant learn and clear, disabled/FX/card exclusion: '+cases+' cases');
+}
+
+// Main headers mirror their existing short-action surface, excluding nested controls.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8');
+ let listener,requests=[];const context={window:{},document:{addEventListener:(kind,fn)=>{assert.equal(kind,'contextmenu');listener=fn;}},send:request=>{requests.push({...request});return Promise.resolve({ok:true});},listDevices(){},notify:message=>assert.fail(message)};
+ vm.createContext(context);vm.runInContext(source,context);const a=source.indexOf("    document.addEventListener('contextmenu'"),b=source.indexOf('    const kbd=',a);assert(a>=0&&b>a);vm.runInContext(source.slice(a,b),context);
+ let cases=0;
+ const excluded=['input','canvas','button','label','select','textarea','a'];
+ for(let i=0;i<20;++i)for(const hit of ['header','number','identity','signal','vu','state','symbol','text','extra','summary',...excluded,'controls','card'])for(const shiftKey of [false,true])for(const disabled of [false,true]){
+  const main={disabled},row={id:'loop-'+i,querySelector:selector=>selector==='.loop-header'?header:null};
+  const header={closest:selector=>selector==='[id^="loop-"]'?row:null};
+  const element={id:'',ownerDocument:{getElementById:id=>id==='loop-action-'+i?main:null},closest:selector=>selector==='button,input,select,label,textarea,a,canvas'&&excluded.includes(hit)?{}:selector==='.loop-header'&&!['controls','card'].includes(hit)?header:null};
+  const expected=!disabled&&!excluded.includes(hit)&&!['controls','card'].includes(hit);requests=[];let prevented=false;
+  listener({target:element,shiftKey,preventDefault(){prevented=true;}});
+  assert.equal(prevented,expected,hit);assert.deepEqual(requests,expected?[{action:shiftKey?'clear':'learn',target:i}]:[]);++cases;
+ }
+ for(const id of ['loop-20','loop--1','loop-0-extra','loop-wrapper-0']){
+  const row={id,querySelector:()=>header},header={closest:selector=>selector==='[id^="loop-"]'?row:null};
+  const element={id:'',ownerDocument:{getElementById:()=>({disabled:false})},closest:selector=>selector==='.loop-header'?header:null};
+  assert.equal(context.window.AionMidiElementTarget(element),-1,'Invalid main owner rejected');
+ }
+ console.log('PASS: production main header/state learn and clear, nested-control/card/disabled exclusion: '+cases+' cases');
 }

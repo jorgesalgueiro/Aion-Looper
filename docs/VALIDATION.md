@@ -4172,3 +4172,75 @@ from the source commit. Physical LIVE direct-learning, broader device/driver
 behavior, keyboard SUS, other controls/engines and Apple acceptance remain
 pending. No new package or version bump is required; existing archives remain
 explicitly named snapshots of their earlier source commit.
+
+
+## Main loop-header/state MIDI Learn — 23 October 2026
+
+This increment extends requested direct learning to the existing main header,
+number and state surface, sharing primary-button/LIVE/mapping-field bindings.
+Nested controls, waveform, name editing, FX/control areas and card backgrounds
+stay excluded; disabled primary actions cannot start header learning. Original
+markup/CSS, DSP/C++ callback, APVTS/state schema and build/dependencies are unchanged.
+Existing native MIDI help is updated in English/Spanish/Portuguese.
+
+The initial regression reproduces rejected main-header learning
+(`build/main-header-midi-before.log`). The fixed frontend suite passes 1,520
+actual production context-menu main-header/state/modifier/disabled cases and
+invalid-owner checks (`build/main-header-midi-frontend.log`); existing 320/560
+main-button/LIVE routing and 640 immutable shared-status cases remain, with
+main-header outlines added. The native extension gesture is tested separately
+from preserved original markup, performance and audio comparisons.
+
+The focused production processor/editor workflow passes at 64/128 samples
+(`build/main-header-midi-focused-gui.log`). Trusted pointer right-clicks on the
+main number/state/symbol/summary learn Note/CC/PC and share primary/main-header/
+LIVE/mapping-field outlines. Learning consumes the first packet and sends no
+performance command. Subsequent Note, PC triple-burst and CC zero/rearm/repeat
+checks observe actual stopped silence/playing nonzero PCM. Holding right-click
+on STOP for 4.2s does not delete or cut. Escape, Save Mappings, reload cancellation,
+Shift-right-click clearing and former-CC isolation pass with unchanged clip
+identity, length and undo depth. All prior main/LIVE/continuous/held-MIDI gates
+remain. These synthetic-audio/MIDI observations add no physical hardware evidence.
+
+Windows portable regressions pass 19/19 in 258.75s
+(`build/main-header-midi-windows-core.log`). The independent committed-audio
+audit passes 126 cases / 965,826 samples with maximum absolute error
+7.394757495227111e-8 against 1e-6 tolerance (`build/main-header-midi-audio.log`);
+resampling, transition envelopes and physical latency retain their exclusions.
+
+Ubuntu portable regressions pass 19/19 in 407.31s
+(`build/main-header-midi-ubuntu-core.log`), retaining unchanged original asset,
+MIDI/frontend/gesture and DSP/sync/edit/history comparisons. Both portable suites
+establish their recorded scope, not full functionality, browser/driver timing or
+Apple-platform acceptance. No package/version bump is needed for this adapter.
+
+The remaining mouse/export/merge workflows pass at 64/128 via -SkipMidi in
+separate owned hosts (`build/main-header-midi-regression-gui.log`), with MIDI
+independently checked via -MidiOnly. All final owned hosts close normally.
+Windows frontend/native processor/VST3 pluginval/CLAP passes 4/4 in 32.66s
+(`build/main-header-midi-windows-formats.log`). Actual muted Standalone, original
+browser count-in/nudge/live-input/STUT and NativeUiSmoke pass
+(`build/main-header-midi-standalone-ui.log`). Real REAPER 7.82 VST3/CLAP seven-case
+settled stereo rendering and parameter/project recall pass
+(`build/main-header-midi-reaper.log`,
+`build/reaper-daw/20261023T193215-7424ab3a/result.json`). These retain their
+synthetic-audio/settled-monitor/parameter-state scope, excluding recorded-loop
+project persistence and physical driver/latency acceptance.
+
+Linux frontend/native processor/LV2 stereo ABI/VST3 and LV2 pluginval/CLAP passes
+6/6 in 80.29s (`build/main-header-midi-linux-formats.log`). Actual Ardour 8.4 LV2
+gain/mute and saved-session recall passes with isolated Dummy inputs at
+48kHz/64/128 (`build/main-header-midi-ardour.log`,
+`build/ardour-daw/20261023T193538-7454e500/result.json`). Existing vendor skips,
+known JUCE state-load warning and compiler/DRI3 diagnostics remain. This excludes
+GTK pointer interaction, per-sample Ardour PCM, physical JACK/ASIO, recorded-loop
+persistence and MIDI clock/host-follow scheduling.
+
+All four native adapters match embedded bytes in seven Windows/Linux app/plugin
+modules (`build/main-header-midi-embedded.json`); their hashes remain unchanged
+after validation. Companion `build/main-header-midi-source.json` identifies the
+complete modified tested tree, including the separate user logo whitespace.
+Tested binaries include that local logo override, which is excluded from this
+source commit. Physical main-header learning, other controls/engines, keyboard SUS
+and Apple acceptance remain pending. Existing archives retain their explicitly
+named earlier source snapshots; no new package/version bump is introduced.

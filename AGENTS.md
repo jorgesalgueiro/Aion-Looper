@@ -692,3 +692,15 @@ status), and native 64/128 Note/CC/PC consume/burst/edge audio, long right-hold,
 Escape/tab rebuild/save/reload/clear and unchanged clip/history checks. This is
 the requested native direct-learning extension, not original-JS context-menu
 parity. Preserve the user's separate logo edit; no new package is needed.
+
+
+Main loop-header MIDI learning must share 0..19 primary bindings with main buttons,
+LIVE headers and mapping fields. Match the existing short-action surface: exclude
+nested buttons/inputs/selects/labels/textareas/links/canvases, FX/control areas and
+card backgrounds; retain disabled-primary guards and genuine card/header ownership.
+Keep the 1,520 main hit/modifier/disabled cases, prior 320/560 context-menu and 640
+immutable status cases, and actual 64/128 header-number/state Note/CC/PC learning,
+consume/burst/edge stop/play PCM, STOP-origin right-hold/no-delete, Escape/save/
+reload/clear and clip/history checks. No original markup/CSS or DSP/schema change;
+this is the requested native MIDI extension, not an original JS context-menu
+feature. Preserve the separate user logo and other pending feature boundaries.

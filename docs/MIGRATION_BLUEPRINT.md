@@ -337,3 +337,12 @@ including recreated cards. No original markup/CSS, CMake/SDK, DSP callback,
 APVTS parameter or serialized binding schema changes are required. FX and card
 backgrounds remain excluded. This is a requested native direct-learning extension;
 keyboard SUS and other unported controls remain independently pending.
+
+
+The main header/state MIDI adapter reuses 0..19 primary bindings and the existing
+MIDI configuration RPC, extending the same ownership guard as LIVE headers. Its
+nested-control exclusion matches the existing main header short-action surface.
+All four visual aliases share native learn state; no original markup/CSS, CMake,
+SDK, DSP callback, APVTS or saved-state schema changes are needed. Direct header
+learning is the requested native extension; keyboard SUS and other unported
+controls/engines remain separate migration increments.
