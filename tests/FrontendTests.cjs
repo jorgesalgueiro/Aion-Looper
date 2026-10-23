@@ -413,7 +413,12 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  const target=sandbox.window.AionMidiSliderTarget;
  for(let i=0;i<20;++i){assert.equal(target(`loop-vol-slider-${i}`),33+i);assert.equal(target(`loop-pan-slider-${i}`),53+i);}
  for(const id of ['loop-vol-slider-20','loop-vol-slider--1','loop-fbk-slider-0','loop-speed-slider-0','master','map-midi-0','loop-pan-slider-0-extra'])assert.equal(target(id),-1,'Unported/non-slider targets never start continuous learn');
- console.log('PASS: original volume/pan slider MIDI target routing, all 20 loops and unsupported controls');
+ const reference=fs.readFileSync(path.join(root,'resources/ui/main.js'),'utf8'),a=reference.indexOf('    static setupTouchSafety()'),b=reference.indexOf('\n    }',a)+6;assert(a>=0&&b>a);
+ let handler;const state={};const oracle={state,document:{addEventListener:(type,fn)=>{if(type==='contextmenu')handler=fn;}},KeyMapManager:{setStatus(){}},setTimeout:()=>1,clearTimeout(){}};
+ vm.runInNewContext(`class App{${reference.slice(a,b)}}App.setupTouchSafety();`,oracle);
+ for(let i=0;i<20;++i){const slider={tagName:'INPUT',type:'range',min:'0',max:'2',style:{},matches:()=>false,getAttribute:()=>`UIManager.setLoopVolume(${i}, this.value);`};handler({target:slider,preventDefault(){}});assert.equal(state.midiLearn.type,'loop_vol');assert.equal(target(`live_mm_slider_l_${i}`),33+state.midiLearn.id,'Original LIVE oninput maps to the same native volume target');}
+ for(const id of ['live_mm_slider_l_20','live_mm_slider_l_-1','live_mm_slider_l_0_extra','live_mm_slider_master_vol','live_mm_slider_in_0','live_mm_slider_d_0','live_mm_slider_s_0'])assert.equal(target(id),-1,'Only ported LIVE loop volume aliases may learn');
+ console.log('PASS: original volume/pan and 20 original LIVE slider learn gestures share existing targets; unsupported controls excluded');
 }
 
 {
@@ -731,4 +736,18 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
   if(active){oracleVolume.value=start;oracleCommands=[];oracleContext.event={deltaY,preventDefault:()=>{}};vm.runInContext('(()=>{'+oracleWheel+'})()',oracleContext);assert.equal(Number(volume.value),Number(oracleVolume.value),'Unchanged original strip wheel value');assert.deepEqual(commands,[['volume',7,Number(oracleCommands[0][1])]]);}else{assert.equal(volume.value,start);assert.deepEqual(commands,[]);}++wheelCases;
  }
  console.log('PASS: original LIVE mixer '+cases+' complete markup cases / '+wheelCases+' production wheel clamp/disabled cases; original source retained');
+}
+
+// Actual MIDI status renderer keeps main and LIVE aliases on one binding.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),a=source.indexOf('        for(let i=0;i<20;++i)for(const [kind,base]'),b=source.indexOf('        for(let i=0;i<33;++i)',a);assert(a>=0&&b>a);
+ let nodes={};const context={document:{getElementById:id=>nodes[id]}};vm.createContext(context);let cases=0;
+ for(let id=0;id<20;++id)for(const cc of [0,27,127])for(const channel of [0,1,16])for(const learning of [false,true])for(const bound of [false,true]){
+  nodes={};for(let i=0;i<20;++i)for(const name of [`loop-vol-slider-${i}`,`loop-pan-slider-${i}`,`live_mm_slider_l_${i}`])nodes[name]={style:{}};
+  context.midi={learnTarget:learning?33+id:-1,bindings:new Array(73).fill(0)};context.midi.bindings[33+id]=bound?2|(cc<<2)|(channel<<9):0;const before=JSON.stringify(context.midi);
+  vm.runInContext(source.slice(a,b),context);
+  for(let i=0;i<20;++i){const main=nodes[`loop-vol-slider-${i}`],live=nodes[`live_mm_slider_l_${i}`];assert.equal(live.title,main.title,'Both views describe one CC binding');assert.equal(live.style.outline,main.style.outline,'Both views share learn status');assert.equal(!!live.style.outline,learning&&i===id,'Only the owning target highlights');}
+  assert.equal(JSON.stringify(context.midi),before,'Rendering never changes mapping state');++cases;
+ }
+ console.log('PASS: production shared main/LIVE CC status renderer: '+cases+' target/CC/channel/learn/bound cases; mappings immutable');
 }

@@ -858,3 +858,14 @@ the original inline handler. Existing non-Shift input wheel protection remains.
 Screenshots: `build/native-live-mixer-64.png` and `-128.png`. This controls increment
 does not complete RMS/held-peak meters or master/input/drone/sampler mixing.
 Rebuild existing targets; no package or version bump is needed.
+
+
+LIVE loop volume MIDI Learn is included in `tools/TestMouseWorkflow.ps1 -MidiOnly`
+at 64/128. The normal full run includes the same MIDI gate. Right-click either
+the main loop volume or its original LIVE fader to learn; Shift+right-click clears
+the shared binding, Escape or ten seconds cancels. Save Mappings and editor reload
+retain the same binding, without adding a native target or changing state schema.
+The targeted test injects raw MidiBuffer packets through the synthetic host, never
+the user's hardware MIDI input. Existing packages remain their named source
+snapshot; rebuild the normal app/test targets to check this increment. No package
+or version bump is required for this adapter fix.

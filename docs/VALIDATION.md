@@ -3962,3 +3962,67 @@ known state-load warning and DRI3/compiler diagnostics remain visible. This is
 libardour session-engine validation, not GTK pointer testing, physical JACK or
 per-sample Ardour PCM comparison. No new physical hardware evidence is claimed.
 All final owned hosts closed normally; no version bump or package was created.
+
+
+## LIVE loop-volume MIDI Learn — 23 October 2026
+
+The native explicit ID resolver omitted the original LIVE volume faders. The
+pre-fix unchanged-original setupTouchSafety regression failed with -1 instead of
+33 (`build/live-midi-before.log`). The repair aliases all twenty LIVE volume IDs
+to existing 33..52 targets, with shared learn outline/CC description. No DSP,
+APVTS/schema, target table, original asset, CMake dependency or automatic user
+assignment change is introduced. Native manual additions describe the shared
+binding in English, Spanish and Portuguese.
+
+`build/live-midi-frontend.log` passes 20 unchanged original context-menu gestures,
+existing main volume/pan target guards and 720 actual production status-renderer
+cases across target/CC/channel/learning/bound states. Rendering leaves mapping
+state unchanged. Existing original markup/status/wheel/gesture oracles remain.
+
+The focused MIDI workflow passed at 64 and 128 in separate owned Windows WebView2
+synthetic hosts (`build/live-midi-focused-gui.log`). Real pointer right-click
+learns a zero-valued CC; raw MidiBuffer packets on channels 16/1 change the shared
+native gain and both DOM aliases while LIVE retains focus. Actual output becomes
+silent at zero and returns nonzero at positive values. A held real pointer edit
+retains display ownership; MIDI display resumes on release. Shared learn outline,
+Escape/ten-second timeout, Shift-right-click clear, Save Mappings/editor reload
+and cleared-CC isolation pass. Learning/CC movement never sends transport
+commands; recorded waveform ID/length/undo history are retained. Other fixture
+loops are excluded using the existing solo control before output checks.
+
+Windows portable regressions passed 19/19 in 260.98s and Ubuntu 19/19 in 399.41s
+(`build/live-midi-windows-core.log`, `build/live-midi-ubuntu-core.log`). The
+independent committed-stereo-audio audit passes 126 cases / 965,826 samples with
+maximum absolute error 7.394757495227111e-8 against 1e-6 tolerance
+(`build/live-midi-audio.log`), retaining its original envelope/resampling/physical
+latency exclusions. This increment introduces no new physical hardware evidence.
+Master/input/drone/sampler mixer routes, RMS/held-peak meters, other MIDI targets,
+clock/host-follow scheduling, recorded-loop persistence and Apple acceptance
+remain pending. Existing archives remain explicitly named f5789c1289cd snapshots;
+no new package or version bump is required for this adapter repair.
+
+The remaining Mouse/Export/Merge regressions passed at 64/128 in separate fresh
+hosts via -SkipMidi (`build/live-midi-regression-gui.log`); MIDI had independently
+passed via -MidiOnly. All final owned mouse hosts closed normally. Windows
+frontend/native processor/VST3 pluginval/CLAP passed 4/4 in 32.37s
+(`build/live-midi-windows-formats.log`). Actual muted Standalone, original browser
+count-in/nudge/live-input/STUT and NativeUiSmoke passed
+(`build/live-midi-standalone-ui.log`). Real REAPER 7.82 VST3/CLAP seven-case
+settled stereo rendering and parameter/project recall passed
+(`build/live-midi-reaper.log`,
+`build/reaper-daw/20261023T171301-b3986847/result.json`).
+
+Linux frontend/native processor/LV2 stereo ABI/VST3 and LV2 pluginval/CLAP passed
+6/6 in 79.81s (`build/live-midi-linux-formats.log`). Actual Ardour 8.4 LV2
+gain/mute and saved-session recall passed with isolated Dummy inputs at
+48kHz/64/128 (`build/live-midi-ardour.log`,
+`build/ardour-daw/20261023T171733-52c83b91/result.json`). Existing vendor skips,
+known state-load warning and compiler/DRI3 diagnostics remain. These are scoped
+host-interface/monitor checks, not GTK pointer interaction, per-sample Ardour PCM,
+physical JACK/ASIO, MIDI clock or recorded-loop project persistence acceptance.
+
+All four native adapters, including midi.js, match embedded bytes in all seven
+Windows/Linux app/plugin modules (`build/live-midi-embedded.json`). Companion
+`build/live-midi-source.json` records the complete modified tree including staged
+files and the user's logo whitespace. Tested binaries include that local logo
+override, which is excluded from the source commit.

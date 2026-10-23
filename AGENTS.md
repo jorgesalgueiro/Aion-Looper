@@ -649,3 +649,19 @@ unchanged clip/history and stable fader identity. LIVE mixer test targets centre
 vertical-writing-mode faders below the sticky header; preserve strict hit-testing and
 all existing main-workflow assertions. Preserve failures as evidence, user logo
 whitespace and original renderer whitespace. This increment needs no package.
+
+
+LIVE loop-volume MIDI Learn aliases live_mm_slider_l_0..19 to the existing
+33..52 targets shared with main loop-volume controls. Keep original right-click
+learn, Shift-right-click clear, Escape/10s cancellation and Save Mappings/reload
+semantics; do not allocate targets or change native MIDI/APVTS state schema.
+The original setupTouchSafety oninput parser is the 20-case alias oracle. Keep
+720 actual status-renderer cases across track/CC/channel/learning/bound states,
+shared tooltip/outline and immutable mapping state. Native 64/128 raw MidiBuffer
+tests must learn CC zero, preserve focused/drag slider ownership, observe real
+silence/nonzero recovery, retain shared binding on editor reload and clear it in
+both views, without transport commands or clip/history edits. Isolate playback
+from other fixture loops with the existing solo control before PCM checks.
+Centre both logical scroll axes for original vertical faders and retain strict
+pointer hit testing. User hardware assignments and the separate logo edit must
+remain untouched. No package/version bump is needed for this adapter repair.

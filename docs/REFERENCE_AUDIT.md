@@ -563,3 +563,24 @@ parameter reads from locking state copies. Existing native gain smoothing and
 command ownership are reused; no state copy is added to the callback. Sources:
 [SmoothedValue](https://docs.juce.com/master/classjuce_1_1SmoothedValue.html),
 [AudioProcessorValueTreeState](https://docs.juce.com/master/classjuce_1_1AudioProcessorValueTreeState.html).
+
+
+### LIVE volume MIDI Learn aliases (23 October 2026)
+
+The original App.setupTouchSafety parses UIManager.setLoopVolume from the LIVE
+fader's inline oninput and learns loop_vol with the same loop ID and 0..2 range.
+The native DOM deliberately strips inline handlers; its explicit slider-ID
+resolver omitted live_mm_slider_l_N, making that original gesture unavailable.
+The new regression reproduces rejection (-1 instead of target 33) before repair
+(`build/live-midi-before.log`). Native LIVE IDs now alias the existing 33..52
+targets, without changing binding ownership or automatically editing assignments.
+Twenty unchanged original context-menu invocations verify this routing. Shared
+status is tested by executing the actual native renderer in 720 track/CC/channel/
+learn/bound combinations, checking main/LIVE parity and immutable mapping state.
+
+Official JUCE MidiMessage documentation confirms controller values span 0..127;
+zero is a valid value, not a button-release filter for expression learning. The
+existing native MIDI engine already preserves this behavior; no callback change
+is needed. [JUCE MidiMessage](https://docs.juce.com/develop/classjuce_1_1MidiMessage.html).
+Physical controller/driver behavior for these newly enabled aliases has not been
+newly observed; synthetic MidiBuffer tests do not constitute hardware evidence.

@@ -302,3 +302,14 @@ is migrated. RMS/held-peak meters remain empty and explicitly marked unavailable
 native block peaks cannot honestly stand in for the original RMS pipeline. The
 full LIVE mixer is therefore still pending. No alternative user interaction,
 DSP, APVTS parameter/schema, dependency or CMake change is introduced.
+
+
+## LIVE MIDI volume aliases — 23 October 2026
+
+The native MIDI target table remains unchanged: main and LIVE loop-volume faders
+resolve to 33 + track, with the same bounded audio-owner controller and persisted
+binding. MIDI status rendering applies one authoritative mapping/learn status to
+both views. Existing slider edit arbitration handles focus and active pointer/key
+ownership. No new DSP, APVTS parameter/schema, native configuration panel, CMake
+target or dependency is introduced. Other unported MIDI targets and meter/mixer
+routes remain separate acceptance work.
