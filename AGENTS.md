@@ -843,3 +843,14 @@ a shortcut gate. Host picker injection substitutes only destination selection.
 Keyboard SUS, custom mappings, other keys/selected-FX routing and physical/DAW
 keyboard focus remain independent. No UI markup/DSP/schema/package/version change;
 retain the separate user logo.
+
+
+Export cancellation on navigation/destruction belongs to the native editor.
+Do not restore unscoped cancelExport calls in frontend bootstrap or pagehide:
+delayed cleanup can cancel a newer picker. Keep explicit foreground cancellation
+and native sequence/lifetime checks. Retain ExportWorkflow's real-controller
+debugger interception, delayed packet release after a fresh NORM chooser, zero
+startup-cancel count, JS-disabled navigation and all WAV/cancel/replacement tests.
+Wait for the reloaded original NORM control to be enabled before clicking;
+native cancellation telemetry alone does not establish document readiness.
+No callback/DSP/state/UI redesign or package is needed for this lifecycle repair.

@@ -487,7 +487,8 @@
                 snapshot=reply;
                 midi.render(reply.midi);
                 mergeNotice.observe(reply);
-                if(!rows.length){releaseStutter(20);rpc({operation:'cancelExport'}).catch(e=>notify(e.message));createRows(reply);createLiveRows(reply);}
+                // Native navigation owns export cancellation; late frontend cleanup could cancel a new picker.
+                if(!rows.length){releaseStutter(20);createRows(reply);createLiveRows(reply);}
                 if(pending) {
                     if(reply.generation!==pending.generation){pending.reject(Error('Audio configuration changed'));pending=null;}
                     else if(reply.lastRequestId>=pending.id){reply.rejected?pending.reject(Error('Action is unavailable in the current loop state')):pending.resolve();pending=null;}
@@ -497,7 +498,7 @@
             } catch(e) {if(alive)notify(e.message);}
             finally {if(alive)pollTimer=setTimeout(poll,snapshot?.tracks.some(t=>t.state==='recording'&&t.dynamicRecorded)?16:66);}
         }
-        window.addEventListener('pagehide',()=>{stutter.cancel();releaseStutter(20);rpc({operation:'cancelExport'}).catch(()=>{});alive=false;scheduler.close();keyboard.cancel();stickyObserver.disconnect();clearTimeout(pollTimer);if(pending)pending.reject(Error('Editor closed'));pending=null;});
+        window.addEventListener('pagehide',()=>{stutter.cancel();releaseStutter(20);alive=false;scheduler.close();keyboard.cancel();stickyObserver.disconnect();clearTimeout(pollTimer);if(pending)pending.reject(Error('Editor closed'));pending=null;});
         document.title='Aion-Looper';
         poll();
     });

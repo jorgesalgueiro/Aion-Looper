@@ -1120,3 +1120,12 @@ new C++ command, state schema, worker path, UI layout or DSP algorithm is added.
 Existing command/FIFO/finalization, varispeed and ownership behavior stays intact.
 The shortcut creates no held cut/delete timer. Custom mappings and keyboard SUS
 remain separate from this default-key repeat repair.
+
+
+WAV picker lifecycle: native WebEditor navigation and destruction own cancellation.
+The existing navigation hook uses JUCE's
+[pageAboutToLoad callback](https://docs.juce.com/master/classjuce_1_1WebBrowserComponent.html).
+The frontend issues no bootstrap/pagehide cancelExport RPC, since an unscoped
+late cleanup request could cancel a newer chooser. The public explicit Cancel
+operation and existing native sequence/lifetime guards remain available. A
+selected background write keeps its existing completion policy.

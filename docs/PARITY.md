@@ -100,3 +100,12 @@ repeat checks require real appended stereo audio, unchanged prefix, exact stoppe
 doubling and Undo/Redo WAV bytes. This retains existing native Multiply DSP and
 input fallback; it does not establish custom mapping, keyboard SUS, broader
 selected-FX, physical keyboard or DAW shortcut-focus parity.
+
+
+WAV lifecycle repair (24 October 2026): native navigation/destruction cancellation
+replaces redundant frontend bootstrap/pagehide RPCs. A real-controller delayed-
+cleanup regression reproduces cancellation of a newer NORM picker before the
+repair and passes at 64/128 afterwards, retaining original WAV/transport gates.
+This repairs native IPC ownership without changing original export semantics,
+audio, UI or explicit Cancel. OS picker interaction and Apple/Linux native UI
+acceptance remain separate from the synthetic Windows picker test.

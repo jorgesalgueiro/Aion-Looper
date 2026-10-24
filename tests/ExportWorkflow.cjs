@@ -6,8 +6,8 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
 (async()=>{
  let target;for(let n=0;n<100;++n){try{target=(await(await fetch('http://127.0.0.1:9235/json')).json()).find(t=>t.type==='page'&&t.url.includes('juce.backend'));}catch{}if(target)break;await delay(150);}assert(target,'Synthetic host CDP page');
  const ws=socket=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.addEventListener('open',r,{once:true});ws.addEventListener('error',j,{once:true});});
- let seq=0;const pending=new Map(),errors=[];
- ws.addEventListener('message',e=>{const r=JSON.parse(e.data);if(r.method==='Runtime.exceptionThrown')errors.push(r.params.exceptionDetails);pending.get(r.id)?.(r);});
+ let onPaused=null;let seq=0;const pending=new Map(),errors=[];
+ ws.addEventListener('message',e=>{const r=JSON.parse(e.data);if(r.method==='Debugger.paused')onPaused?.(r.params).catch(error=>{errors.push(String(error));call('Debugger.resume').catch(()=>{});});if(r.method==='Runtime.exceptionThrown')errors.push(r.params.exceptionDetails);pending.get(r.id)?.(r);});
  const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq,timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout '+method));},10000);pending.set(id,r=>{pending.delete(id);clearTimeout(timer);r.error?reject(Error(JSON.stringify(r.error))):resolve(r.result);});ws.send(JSON.stringify({id,method,params}));});
  const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
  const rpc=async request=>evaluate(`AionNative.request(${JSON.stringify(request)})`),snapshot=()=>rpc({operation:'snapshot'});
@@ -66,7 +66,35 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
  // may be responsible for this cancellation. Release the old picker callback
  // before reenabling JS and verify the native navigation boundary kept it inert.
  await call('Emulation.setScriptExecutionDisabled',{value:true});await call('Page.reload');choose(abandoned);await delay(600);assert(!fs.existsSync(path.join(directory,abandoned)),'Native navigation alone cancels the late picker');
- await call('Emulation.setScriptExecutionDisabled',{value:false});await call('Page.reload');await delay(600);await wait(s=>!s.exportBusy&&s.exportStatus==='WAV export cancelled','reload cancels chooser');
+ // Pause the actual production controller before its DOMContentLoaded body.
+ // Hold its real startup cleanup packet, then deliver it after a new picker.
+ // This delays IPC only: the native audio callback and WAV worker keep running.
+ await call('Emulation.setScriptExecutionDisabled',{value:false});await call('Debugger.enable');
+ let phase='scan',hookInstalled=false,controllerBreakpoint;
+ const instrumentation=await call('Debugger.setInstrumentationBreakpoint',{instrumentation:'beforeScriptExecution'});
+ onPaused=async paused=>{
+  const frame=paused.callFrames[0];
+  if(phase==='scan'){
+   const {scriptSource}=await call('Debugger.getScriptSource',{scriptId:frame.location.scriptId});
+   const at=scriptSource.indexOf('const rpc = window.AionNative?.request;');
+   if(at>=0){
+    controllerBreakpoint=await call('Debugger.setBreakpoint',{location:{scriptId:frame.location.scriptId,lineNumber:scriptSource.slice(0,at).split('\n').length-1}});
+    phase='hook';await call('Debugger.removeBreakpoint',{breakpointId:instrumentation.breakpointId});
+   }
+  }else if(phase==='hook'){
+   const result=await call('Debugger.evaluateOnCallFrame',{callFrameId:frame.callFrameId,expression:`(()=>{
+    const backend=window.__JUCE__.backend,emit=backend.emitEvent;window.delayedExportCleanup=[];
+    backend.emitEvent=function(type,message){if(type==='__juce__invoke'&&message?.params?.[0]?.operation==='cancelExport'){window.delayedExportCleanup.push([type,message]);return;}return Reflect.apply(emit,this,[type,message]);};
+    window.releaseExportCleanup=()=>{const packets=window.delayedExportCleanup.splice(0);for(const args of packets)Reflect.apply(emit,backend,args);return packets.length;};
+   })()`,returnByValue:true});
+   assert(!result.exceptionDetails,JSON.stringify(result.exceptionDetails));hookInstalled=true;phase='done';
+   await call('Debugger.removeBreakpoint',{breakpointId:controllerBreakpoint.breakpointId});
+  }
+  await call('Debugger.resume');
+ };
+ await call('Page.reload');await delay(600);await wait(s=>!s.exportBusy&&s.exportStatus==='WAV export cancelled','reload cancels chooser');
+ await evaluate(`(async()=>{const end=Date.now()+7000;while(Date.now()<end){const row=document.getElementById('loop-0'),norm=[...(row?.querySelectorAll('button')||[])].find(e=>e.textContent.trim()==='NORM');if(row?.classList.contains('playing')&&norm&&!norm.disabled)return;await new Promise(r=>setTimeout(r,20));}throw Error('Reloaded original NORM control must be enabled before the edit/export gesture');})()`);
+ assert(hookInstalled,'Delayed cleanup hook installed in the actual production controller');await call('Debugger.disable');onPaused=null;
  // Only the dedicated native picker supplies paths; IPC rejects traversal and
  // invalid identities instead of granting the WebView arbitrary filesystem IO.
  for(const patch of [{filename:'../escape.wav'},{filename:'C:\\escape.wav'},{waveformId:NaN},{waveformId:0},{track:20},{generation:s.generation+1}]){
@@ -75,7 +103,14 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
  // A rapid NORM then waveform click exports the newly committed samples rather
  // than bypassing the edit through the independent audio-to-worker mailbox.
  await evaluate(`(()=>{[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()==='NORM').click();document.getElementById('loop-wave-0').click();})()`);
- const normalized=await wait(s=>s.exportBusy&&s.tracks[0].waveformId!==identity,'ordered NORM export');choose(normalized.exportFilename);await wait(s=>!s.exportBusy,'normalized save');
+ const normalized=await wait(s=>s.exportBusy&&s.tracks[0].waveformId!==identity,'ordered NORM export');
+ await wait(s=>s.exportBusy&&s.exportStatus==='Choose a WAV destination','new NORM picker before delayed cleanup');
+ const delayedCleanup=await evaluate('window.releaseExportCleanup()');console.log('DIAGNOSTIC: delayed new-document export cleanup packets: '+delayedCleanup);
+ await delay(200);const afterCleanup=await snapshot();
+ assert(afterCleanup.exportBusy&&afterCleanup.exportStatus==='Choose a WAV destination','Obsolete frontend startup cleanup must not cancel a new export: '+JSON.stringify({delayedCleanup,status:afterCleanup.exportStatus,busy:afterCleanup.exportBusy}));
+ assert.equal(afterCleanup.exportFilename,normalized.exportFilename);assert.equal(afterCleanup.tracks[0].waveformId,normalized.tracks[0].waveformId);
+ assert.equal(delayedCleanup,0,'Navigation owns cleanup; the new document must issue no unscoped export cancellation');
+ choose(normalized.exportFilename);await wait(s=>!s.exportBusy,'normalized save');
  const normalizedWav=fs.readFileSync(path.join(directory,normalized.exportFilename));let normalizedPeak=0;for(let i=44;i<normalizedWav.length;i+=2)normalizedPeak=Math.max(normalizedPeak,Math.abs(normalizedWav.readInt16LE(i))/32768);assert(normalizedPeak>0.8,'WAV contains the normalized take, not the earlier <0.3 peak');
  const currentIdentity=normalized.tracks[0].waveformId;
  // Explicit overwrite uses the same production temporary-file writer.

@@ -4848,3 +4848,46 @@ This is presentation parity, not new sound/latency or full migration acceptance.
 No package or version bump; the user's separate logo whitespace remains unstaged.
 The logarithmic display retains the reference formula; [Math.log10 documentation](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/log10)
 was consulted without changing the original zero-volume convention.
+
+
+## Delayed frontend export cleanup — 24 October 2026
+
+Investigating the previous post-reload NORM/export timeout identified a separate,
+reproducible lifecycle race: frontend bootstrap and pagehide sent unscoped
+cancelExport even though native navigation/destruction already owns cancellation.
+A delayed bootstrap packet could cancel a newer picker. Those two redundant
+frontend requests are removed. Explicit Cancel, native lifetime/sequence guards,
+selected background writes, original UI and DSP/state schemas are unchanged.
+
+The old historical timeout did not capture its request ordering; this test proves
+the cancellation mechanism, rather than claiming its sole cause was observed in
+that earlier run. The fixture also awaits the actual reloaded enabled NORM button
+before the edit/export gesture: cancellation telemetry is not UI readiness, and
+[disabled click() controls do not fire](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/click).
+
+- build/export-cleanup-debugger-before.log: actual old production controller
+  paused at its DOMContentLoaded body via CDP, with only its startup cleanup IPC
+  held. After real NORM finalization and a new chooser, releasing one packet
+  reproduces WAV export cancelled / exportBusy false. Native audio/worker runs
+  normally; no snapshot/PCM fixture or audio sleep is used.
+- build/export-cleanup-after.log: targeted 64/128 workflows pass. The same hook
+  sees zero startup packets; chooser filename/clip identity survives, normalized
+  stereo WAV is saved, and existing empty-loop/rename/duplicate/cancel/replacement/
+  late-callback/JS-disabled-navigation/failure/recovery/overwrite/DEL assertions
+  remain intact. Destination selection alone uses the existing host picker.
+- build/export-cleanup-full-gui.log: complete 64/128 production editor/processor
+  mouse, keyboard, hold/delete, sync, Multiply/history, MIDI and merge workflows
+  pass, including the delayed-cleanup export gate in each run.
+- build/export-cleanup-windows.log and build/export-cleanup-ubuntu.log: seven
+  original assets/frontend/bridge/state/DSP/MIDI/Multiply gates pass per system.
+- build/export-cleanup-audio.log: 126 cases / 965,826 committed PCM samples,
+  maximum error 7.394757495227111e-8 at the unchanged 1e-6 tolerance.
+
+Early document-created diagnostic hooks did not execute in this WebView and were
+inconclusive (export-cleanup-hook-inconclusive.log / export-cleanup-before.log).
+They are not acceptance evidence; the actual-controller debugger hook above is.
+Windows Standalone/VST3/CLAP and the synthetic host were rebuilt. All C++ hashes
+retain the accepted baseline; no new real-time allocation/latency claim is made.
+Ubuntu portable gates pass; Linux native UI, Apple platforms, physical drivers,
+OS file-dialog interaction and DAW HTML export were not retested this increment.
+No package/version bump. The user's separate logo edit remains unstaged.

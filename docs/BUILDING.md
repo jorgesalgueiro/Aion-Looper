@@ -1057,3 +1057,13 @@ doubling and Undo/Redo bytes. Its `.choose` marker belongs only to the isolated
 test-host destination picker; physical OS-dialog/keyboard/DAW-focus acceptance is
 separate. Rebuild the existing Windows host/app/plugin targets; no package is
 needed for this JS-only routing repair.
+
+
+Export lifecycle regression (existing synthetic Windows host, no hardware):
+`tools/TestMouseWorkflow.ps1 -Blocks 64,128 -ExportOnly`.
+The fixture pauses the actual production controller with CDP before its startup
+callback, holds cleanup IPC and releases it after a new NORM picker is ready.
+It requires zero startup cleanup packets, preserved picker identity and a saved
+normalized WAV, plus all existing cancel/reload/overwrite/DEL cases. Native
+audio/worker processing continues; the picker substitute selects destinations
+only. Use the full command without -ExportOnly for retained transport/MIDI gates.
