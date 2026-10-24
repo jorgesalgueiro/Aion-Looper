@@ -1045,3 +1045,15 @@ playing/stopped PCM and immutable clip/history. Keep old wheel, gesture, MIDI,
 export and merge gates. The test injects trusted CDP input, not a physical OS
 keyboard; other browser engines/layouts and DAW shortcut focus remain separate.
 No package is needed for this frontend-only parity repair.
+
+
+Keyboard Multiply repeat acceptance uses `node tests/FrontendTests.cjs`, the
+retained `js_native_multiply` CTest oracle, and the complete production editor
+workflow through `tools/TestMouseWorkflow.ps1 -Blocks 64` then `-Blocks 128`.
+Do not run two input workflows concurrently. The added test uses trusted CDP
+Backslash repeat flags, real interactive capture/worker completion and public WAV
+export. It verifies unchanged prefix PCM, nonzero appended input, exact stopped
+doubling and Undo/Redo bytes. Its `.choose` marker belongs only to the isolated
+test-host destination picker; physical OS-dialog/keyboard/DAW-focus acceptance is
+separate. Rebuild the existing Windows host/app/plugin targets; no package is
+needed for this JS-only routing repair.

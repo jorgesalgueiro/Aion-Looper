@@ -1108,3 +1108,15 @@ selected-loop route as before; no DSP, worker, APVTS, MIDI or bridge protocol
 change. Repeated shortcuts never create held cut/delete timers. Original markup
 and assets remain unchanged. Keyboard SUS, custom mappings and broader selection
 parity remain independent migration work.
+
+
+## Keyboard Multiply repeat routing
+
+The native performance adapter now handles the original unmapped backslash
+shortcut before generic loop-key repeat suppression. It invokes the existing
+Multiply command: the production processor chooses interactive capture with live
+input or the existing instant fallback; repeated input can finish capture. No
+new C++ command, state schema, worker path, UI layout or DSP algorithm is added.
+Existing command/FIFO/finalization, varispeed and ownership behavior stays intact.
+The shortcut creates no held cut/delete timer. Custom mappings and keyboard SUS
+remain separate from this default-key repeat repair.

@@ -4746,3 +4746,65 @@ MDN documents the browser's [repeat flag](https://developer.mozilla.org/en-US/do
 The unchanged application dispatcher defines the required repeat policy; browser
 reference material does not justify changing other shortcut semantics. No package
 or version bump is produced, and the original interface is preserved.
+
+
+## Keyboard Multiply repeat parity — 24 October 2026
+
+The unchanged original App.handleKeyboardPress dispatches an unmapped backslash
+before generic key-repeat suppression. Native AionPerformance discarded repeated
+keydown, so holding the shortcut could begin Multiply but could not finish its
+interactive take. Move only the Multiply shortcut ahead of generic loop-key
+repeat debounce, keeping modifier/text/editable guards. The existing processor
+still chooses interactive input capture or instant fallback. No C++ DSP, worker,
+MIDI/APVTS schema, bridge protocol, original assets or UI layout change.
+
+Evidence:
+
+- build/multiply-repeat-before.log: complete unchanged original dispatcher
+  expected one MULT call for repeated Backslash; native delivered zero. The
+  failing case is retained.
+- build/multiply-repeat-frontend.log: 1,040 new complete-original-dispatcher
+  comparisons pass across valid track endpoints, Backslash/IntlBackslash/key
+  characters, repeat, Shift/modifier and thirteen target/input types. Unsupported
+  shifted pipe and editing/modifier guards remain. No held cut/delete timers or
+  loop-press ownership is created. All old frontend and RTRG comparisons remain.
+- build/multiply-repeat-windows.log: seven applicable asset/frontend/bridge/
+  original-JS state/DSP/MIDI/Multiply gates pass in 41.68s; matching Ubuntu gates
+  pass in 71.10s (build/multiply-repeat-ubuntu.log). js_native_multiply retains
+  the unchanged original capture/conditioning/history PCM oracle and tolerances.
+- build/multiply-repeat-audio.log: unchanged-JS committed capture/OD/SUB through
+  centre pan, 126 cases / 965826 samples, maximum absolute error
+  7.394757495227111e-8 at the retained 1e-6 threshold. Browser resampling, transition
+  envelopes, latency compensation and sync remain outside this audit.
+- build/multiply-repeat-gui-64.log and build/multiply-repeat-gui-128.log: complete
+  production processor/editor mouse/keyboard/MIDI/export/merge workflows pass.
+  New checks use trusted CDP Backslash keydown/repeat input, not DOM keyboard
+  dispatch. A normal key begins actual interactive Multiply; a repeat finishes
+  it, committing nonzero appended input while preserving the complete original
+  stereo WAV prefix byte-for-byte. Local Undo restores the original WAV; Redo
+  restores the exact appended WAV. After Undo and STOP ALL, another held-key
+  repeat doubles stopped PCM into two exact copies of the original; Undo again
+  restores exact original bytes, then actual playback resumes. Three trusted
+  events include two repeats per buffer size. The destination picker is the
+  existing host-owned test substitute, not a physical OS save-dialog check.
+  Existing wheel/hold/panic, RTRG, sync/phase/STUT, MIDI Learn and immutable
+  export/merge gates are retained without assertion or tolerance changes.
+- build/multiply-repeat-reaper.log: rebuilt Windows VST3 and CLAP each pass all
+  seven real REAPER settled stereo/state/project-recall cases. Module identity
+  and before/after hashes match the rebuilt local binaries. This is not DAW
+  keyboard-focus or HTML keyboard interaction acceptance.
+
+The existing Windows Standalone/VST3/CLAP and synthetic host are rebuilt, with
+all six native adapters verified inside each binary. The separate user logo
+whitespace is present in local binaries and remains outside this source commit.
+C++ audio/MIDI/processor hashes still match the accepted offline-finalization
+baseline; this JS-only repair adds no new callback allocation/sanitizer claim.
+Ubuntu portable original-reference tests pass; Linux native binaries/WebKit UI
+were not rebuilt/retested for this increment. Apple platforms, physical OS/layout
+or DAW shortcut focus, custom keymaps, keyboard SUS and broader selected-FX routing
+remain separate work. Existing finalization/varispeed behavior is retained; this
+is repeat-dispatch parity rather than a redesign of Multiply scheduling.
+
+Browser [repeat flags](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/repeat)
+identify held-key events; the unchanged application defines which shortcuts may
+repeat. No package or version bump is generated. Original interface preserved.

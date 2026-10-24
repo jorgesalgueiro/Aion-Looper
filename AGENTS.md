@@ -827,3 +827,19 @@ failed evidence; do not synthesize DOM wheel/key events to bypass a failing gate
 This is default shortcut repeat parity, not custom mappings, keyboard SUS, broader
 selected-FX routing or physical keyboard/OS layout certification. No DSP/UI markup
 change, package or version bump is required; retain the separate user logo edit.
+
+
+Default keyboard MULT repeat parity: unmapped backslash dispatches before generic
+loop-repeat suppression, like unchanged App.handleKeyboardPress. Preserve text/
+modifier/editable guards, loop/mode repeat debounce and the accepted RTRG gate.
+Retain 1,040 complete-original-dispatcher comparisons, no held cut/delete timers,
+and actual trusted nonrepeat/repeat keydowns at 64/128. Repeats must finish a real
+interactive append and double stopped PCM through existing native dispatch. Save
+stereo WAV via the public export API: original prefix must be byte-identical,
+appended input nonzero, stopped halves exact copies, Undo/Redo exact, playback
+restored. Keep all prior main/hold/MIDI/export/merge tests and original Multiply
+DSP oracle/tolerances; do not redesign finalization/varispeed behavior to pass
+a shortcut gate. Host picker injection substitutes only destination selection.
+Keyboard SUS, custom mappings, other keys/selected-FX routing and physical/DAW
+keyboard focus remain independent. No UI markup/DSP/schema/package/version change;
+retain the separate user logo.

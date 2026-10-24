@@ -171,12 +171,13 @@
             if(event.code==='Space'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();this.actions.stop();return;}
             // Original RTRG repeats are performance actions, before loop debounce.
             if((event.key==='/' || event.code==='NumpadDivide')&&!event.ctrlKey&&!event.metaKey) {event.preventDefault();this.actions.retrigger();return;}
+            // Original Multiply can finish an active take on a repeated keydown.
+            if(event.key==='\\'&&!event.ctrlKey&&!event.metaKey) {event.preventDefault();this.actions.multiply?.();return;}
             if(event.repeat || event.ctrlKey || event.metaKey)return;
             const key=event.code || event.key;
             if(event.key==='+' || event.code==='NumpadAdd') {event.preventDefault();this.actions.mode('overdub');return;}
             if(event.key==='-' || event.code==='NumpadSubtract') {event.preventDefault();this.actions.mode('substitute');return;}
             if(event.code==='KeyN'){event.preventDefault();this.actions.metronome?.();return;}
-            if(event.key==='\\') {event.preventDefault();this.actions.multiply?.();return;}
             if(event.code==='KeyH') {event.preventDefault();this.actions.halfSpeed();return;}
             const match=/^(Digit|Numpad)([0-9])$/.exec(event.code);
             if(!match)return;

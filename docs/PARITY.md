@@ -91,3 +91,12 @@ WebView2 key repeat checks cover playing/stopped loops, Start reset, nonzero PCM
 and clip/history at 64/128. Existing native selected-loop routing is retained;
 custom keymaps, keyboard SUS, broader FX-tab selection and physical OS/layout
 acceptance are not established by this increment.
+
+
+Default keyboard Multiply repeats (24 October 2026): original backslash repeat
+dispatch now precedes ordinary loop-key debounce. Complete original-dispatcher
+comparisons retain text/modifier/character/Shift guards. Native 64/128 trusted
+repeat checks require real appended stereo audio, unchanged prefix, exact stopped
+doubling and Undo/Redo WAV bytes. This retains existing native Multiply DSP and
+input fallback; it does not establish custom mapping, keyboard SUS, broader
+selected-FX, physical keyboard or DAW shortcut-focus parity.

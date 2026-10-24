@@ -232,6 +232,39 @@ let socket;
     const retriggerKeys=await evaluate('window.retriggerKeys');assert.equal(retriggerKeys.length,8);assert(retriggerKeys.every(e=>e.trusted&&e.prevented));assert.equal(retriggerKeys.filter(e=>e.repeat).length,6,'Actual browser repeat evidence, not synthetic DOM events');
     console.log('PASS: trusted Slash/keypad Divide repeats reset nonzero Start, retrigger playing/stopped PCM exactly once, and preserve immutable clip/history at '+process.argv[2]);
 
+    // The original Multiply shortcut finishes live append on repeat, and
+    // doubles a stopped loop. Save real immutable PCM through the public API.
+    const multiplyFs=require('node:fs'),multiplyPath=require('node:path');
+    const saveMultiply=async label=>{
+        const s=await snapshot(),filename=`KeyboardMult_${process.argv[2]}_${label}_${Date.now()}.wav`;
+        const reply=await evaluate(`AionNative.request(${JSON.stringify({operation:'exportLoop',track:0,generation:s.generation,waveformId:s.tracks[0].waveformId,filename})})`);assert(reply.ok);
+        await wait(s=>s.exportStatus==='Choose a WAV destination','Multiply PCM picker ready');
+        multiplyFs.writeFileSync(multiplyPath.join(pcmDirectory,filename+'.choose'),'');
+        const done=await wait(s=>!s.exportBusy,'Multiply PCM exported');assert.equal(done.exportStatus,'WAV saved');
+        const bytes=multiplyFs.readFileSync(multiplyPath.join(pcmDirectory,filename));assert.equal(bytes.length,44+s.tracks[0].length*4);assert.equal(bytes.readUInt16LE(22),2);assert.equal(bytes.readUInt32LE(24),48000);assert.equal(bytes.readUInt16LE(34),16);return bytes;
+    };
+    const multiplyBase=await snapshot(),multiplyBasePcm=await saveMultiply('Base');
+    assert(multiplyBasePcm.subarray(44).some(v=>v),'Multiply base contains actual nonzero stereo PCM');
+    await evaluate(`window.multiplyKeys=[];window.addEventListener('keydown',e=>{if(e.key==='\\\\')window.multiplyKeys.push({repeat:e.repeat,trusted:e.isTrusted,prevented:e.defaultPrevented});});document.querySelector('#loop-0 button[title="RTRG"]').focus();`);
+    const multiplyFields={code:'Backslash',key:'\\',windowsVirtualKeyCode:220,nativeVirtualKeyCode:220};
+    await exactlyOne(()=>call('Input.dispatchKeyEvent',{type:'keyDown',...multiplyFields}),'Backslash begins interactive Multiply');await state('multiplying');
+    await delay(180);
+    await exactlyOne(()=>call('Input.dispatchKeyEvent',{type:'keyDown',...multiplyFields,autoRepeat:true}),'Repeated Backslash finishes interactive Multiply');
+    const multiplied=await wait(s=>s.tracks[0].state==='playing'&&s.tracks[0].length>multiplyBase.tracks[0].length&&s.outputPeak>0.02,'Repeated Multiply commits appended stereo PCM');
+    assert.notEqual(multiplied.tracks[0].waveformId,multiplyBase.tracks[0].waveformId);assert.equal(multiplied.tracks[0].undoCount,multiplyBase.tracks[0].undoCount+1);
+    const multipliedPcm=await saveMultiply('Append');assert.deepEqual(multipliedPcm.subarray(44,44+multiplyBase.tracks[0].length*4),multiplyBasePcm.subarray(44),'Interactive Multiply keeps the original PCM prefix byte-for-byte');assert(multipliedPcm.subarray(44+multiplyBase.tracks[0].length*4).some(v=>v),'Appended native input is nonzero PCM');
+    await exactlyOne(()=>click('#loop-0 button[title="UNDO"]'),'Undo keyboard append');await wait(s=>s.tracks[0].waveformId===multiplyBase.tracks[0].waveformId&&s.tracks[0].length===multiplyBase.tracks[0].length,'Undo restores Multiply base');assert.deepEqual(await saveMultiply('Undo'),multiplyBasePcm);
+    await exactlyOne(()=>click('#loop-0 button[title="REDO"]'),'Redo keyboard append');await wait(s=>s.tracks[0].waveformId===multiplied.tracks[0].waveformId,'Redo restores keyboard append');assert.deepEqual(await saveMultiply('Redo'),multipliedPcm);
+    await exactlyOne(()=>click('#loop-0 button[title="UNDO"]'),'Restore base before stopped Multiply');await wait(s=>s.tracks[0].waveformId===multiplyBase.tracks[0].waveformId,'Base restored');
+    await click('#native-stop-all');await state('stopped');
+    await exactlyOne(()=>call('Input.dispatchKeyEvent',{type:'keyDown',...multiplyFields,autoRepeat:true}),'Held Backslash repeat doubles stopped PCM');await call('Input.dispatchKeyEvent',{type:'keyUp',...multiplyFields});
+    await wait(s=>s.tracks[0].state==='stopped'&&s.tracks[0].length===multiplyBase.tracks[0].length*2,'Stopped repeated Multiply doubles the buffer');
+    const doubledPcm=await saveMultiply('Double');assert.deepEqual(doubledPcm.subarray(44),Buffer.concat([multiplyBasePcm.subarray(44),multiplyBasePcm.subarray(44)]),'Stopped Multiply stores two exact original PCM copies');
+    await exactlyOne(()=>click('#loop-0 button[title="UNDO"]'),'Undo repeated stopped Multiply');await wait(s=>s.tracks[0].waveformId===multiplyBase.tracks[0].waveformId&&s.tracks[0].length===multiplyBase.tracks[0].length,'Stopped Multiply undo restores base');assert.deepEqual(await saveMultiply('DoubleUndo'),multiplyBasePcm);
+    await exactlyOne(()=>click('#loop-0 button[title="RTRG"]'),'Restore playback after Multiply regression');await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Original PCM plays after keyboard Multiply undo');
+    const multiplyKeys=await evaluate('window.multiplyKeys');assert.equal(multiplyKeys.length,3);assert(multiplyKeys.every(e=>e.trusted&&e.prevented));assert.deepEqual(multiplyKeys.map(e=>e.repeat),[false,true,true]);
+    console.log('PASS: trusted Backslash repeats finish real Multiply append and double stopped PCM, exact stereo WAV prefix/copies, Undo/Redo and restored nonzero playback at '+process.argv[2]);
+
     // Original STUT is momentary: actual pointer hold, release outside and blur.
     const stutRect=()=>evaluate(`(()=>{const e=[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()==='STUT');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,disabled:e.disabled};})()`);
     const stutDown=async()=>{const r=await stutRect();assert(!r.disabled);await call('Input.dispatchMouseEvent',{type:'mousePressed',x:r.x,y:r.y,button:'left',clickCount:1});};
