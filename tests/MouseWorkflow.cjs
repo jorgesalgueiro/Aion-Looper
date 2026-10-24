@@ -126,6 +126,21 @@ let socket;
     let playing=await state('playing');assert(playing.tracks[0].length>4800,'Real captured PCM committed');
     await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await wait(s=>s.outputPeak>0.02,'Captured PCM renders through production processor');
+    // Original volume units remain visible at silence and after trusted range edits.
+    const volumeBefore=await snapshot();
+    await evaluate(`window.volumeLabelKeys=[];window.addEventListener('keydown',e=>{if(e.target.id==='loop-vol-slider-0'&&['Home','End'].includes(e.code))window.volumeLabelKeys.push({code:e.code,trusted:e.isTrusted});});document.getElementById('loop-vol-slider-0').focus();`);
+    for(const [code,vkey,volume,label] of [['Home',36,0,'-infdB'],['End',35,2,'6.0dB']]){
+        await call('Input.dispatchKeyEvent',{type:'keyDown',code,key:code,windowsVirtualKeyCode:vkey,nativeVirtualKeyCode:vkey});
+        await call('Input.dispatchKeyEvent',{type:'keyUp',code,key:code,windowsVirtualKeyCode:vkey,nativeVirtualKeyCode:vkey});
+        const changed=await wait(s=>s.tracks[0].volume===volume&&(volume===0?s.outputPeak===0:s.outputPeak>0.02),'Trusted volume label / actual PCM '+code);
+        for(const field of ['waveformId','length','undoCount','redoCount'])assert.equal(changed.tracks[0][field],volumeBefore.tracks[0][field],'Volume readout preserves '+field);
+        assert.equal(await evaluate(`document.getElementById('loop-vol-display-0').textContent`),label,'Original volume readout at '+volume);
+    }
+    assert.deepEqual(await evaluate('window.volumeLabelKeys'),[{code:'Home',trusted:true},{code:'End',trusted:true}]);
+    await evaluate(`(()=>{const e=document.getElementById('loop-vol-slider-0');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));e.blur();})()`);
+    await wait(s=>s.tracks[0].volume===1&&s.outputPeak>0.02,'Volume recovery after readout test');
+    assert.equal(await evaluate(`document.getElementById('loop-vol-display-0').textContent`),'0.0dB');
+    console.log('PASS: trusted zero/full loop-volume readouts match original units; actual silence/nonzero recovery and clip/history retained');
     // Original double-click resets must move a focused slider as well as DSP.
     await evaluate(`window.resetSliderEvents=[];window.addEventListener('dblclick',e=>{if(e.target.id?.match(/^loop-(speed|fbk)-slider-/))window.resetSliderEvents.push({id:e.target.id,trusted:e.isTrusted,focused:document.activeElement===e.target});},true);`);
     for(const [kind,field,initial,value] of [['speed','playbackRate',0.63,1],['fbk','feedback',0.23,0.8]]){

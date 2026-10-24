@@ -940,3 +940,23 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log(`PASS: MUTE Learn ${cases} actual context dispatch / ${views} immutable shared main/LIVE status cases`);
 }
+
+
+// Compare the production volume readout with the unchanged complete setter.
+{
+ const source=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');
+ const start=source.indexOf('    static setLoopVolume('),end=source.indexOf('\n    }',start)+6;assert(start>=0);
+ const state={loops:Array.from({length:20},()=>({volume:1,graph:null}))};let expected,actual;
+ const document={activeElement:null,getElementById:id=>id.startsWith('loop-vol-display-')?expected:null};
+ const oracle={state,document,window:{}};vm.createContext(oracle);
+ vm.runInContext(`class UIManager{${source.slice(start,end)}};globalThis.setVolume=(id,value)=>UIManager.setLoopVolume(id,value);`,oracle);
+ const line=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8').split('\n').find(line=>line.includes('loop-vol-display-')&&line.includes('textContent='));assert(line);
+ const native={r:{row:{querySelector:()=>actual}},t:{volume:1},i:0};vm.createContext(native);
+ let cases=0;
+ for(let i=0;i<20;++i)for(const volume of [-0,...Array.from({length:201},(_,v)=>v/100),1e-12]){
+  expected={textContent:''};actual={textContent:''};native.i=i;native.t.volume=volume;
+  oracle.setVolume(i,String(volume));vm.runInContext(line,native);
+  assert.equal(actual.textContent,expected.textContent,'Original volume readout '+JSON.stringify({i,volume}));++cases;
+ }
+ console.log(`PASS: ${cases} unchanged original volume readouts, silence units and full 0..2 range`);
+}

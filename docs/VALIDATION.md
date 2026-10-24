@@ -4808,3 +4808,43 @@ is repeat-dispatch parity rather than a redesign of Multiply scheduling.
 Browser [repeat flags](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/repeat)
 identify held-key events; the unchanged application defines which shortcuts may
 repeat. No package or version bump is generated. Original interface preserved.
+
+
+## Loop volume readout units — 24 October 2026
+
+The native label dropped the original dB suffix at zero volume. The production
+refresh now matches unchanged UIManager.setLoopVolume: -infdB at silence, 0.0dB
+at unity and 6.0dB at gain two. No gain calculation, audio callback, parameter,
+MIDI assignment, original HTML/CSS or saved-state schema changed.
+
+- build/volume-label-before.log retains the initial failing original-setter
+  comparison (-inf versus -infdB).
+- build/volume-label-frontend.log: 4,060 complete unchanged-setter comparisons
+  across all twenty tracks, 0..2, negative zero and a small positive value.
+- build/volume-label-windows.log and build/volume-label-ubuntu.log: seven of
+  seven original-asset, frontend, bridge, state, DSP, MIDI and Multiply gates
+  pass on each system, retaining existing assertions and tolerances.
+- build/volume-label-audio.log: 126 committed-PCM cases, 965,826 samples,
+  maximum error 7.394757495227111e-8 against the unchanged 1e-6 threshold.
+- build/volume-label-gui.log: complete production editor/processor workflows
+  pass at 64/128 samples. Trusted Home/End input on the actual loop volume range
+  checks visible -infdB/6.0dB labels, actual zero/nonzero output and unchanged
+  waveform identity, length and Undo/Redo. Unity is restored and displays 0.0dB.
+  All retained main/keyboard/hold/sync/MIDI/export/merge checks remain enabled.
+
+The first full 64-sample run passed the new readout and complete main workflow,
+then ExportWorkflow timed out at ordered NORM/export after reload with the
+previous cancellation status. build/volume-label-gui-failed.log retains it.
+The independent fresh-host --ExportOnly check passes in
+build/volume-label-export-recheck.log, followed by the complete successful rerun
+above. No export code, fixture assertion, timeout or tolerance was changed;
+the initial failure's cause is not established, so this is not an export repair
+or a claim of universally failure-free GUI automation.
+
+The existing Windows Standalone, VST3, CLAP and synthetic host were rebuilt.
+Linux portable comparisons pass; native Linux UI, physical drivers/controllers,
+Apple platforms and DAW HTML interaction were not retested for this label repair.
+This is presentation parity, not new sound/latency or full migration acceptance.
+No package or version bump; the user's separate logo whitespace remains unstaged.
+The logarithmic display retains the reference formula; [Math.log10 documentation](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/log10)
+was consulted without changing the original zero-volume convention.

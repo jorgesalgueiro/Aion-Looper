@@ -406,7 +406,7 @@
                 r.row.querySelector(`#loop-extra-info-${i}`).textContent=status.extra;
                 r.volumeMidi.update(t.volume,!!snapshot.midi?.bindings[33+i]);
                 if(document.activeElement!==r.feedback)r.feedback.value=t.feedback;
-                r.row.querySelector(`#loop-vol-display-${i}`).textContent=t.volume>0?`${(20*Math.log10(t.volume)).toFixed(1)}dB`:'-inf';
+                r.row.querySelector(`#loop-vol-display-${i}`).textContent=`${t.volume<=0?'-inf':(20*Math.log10(t.volume)).toFixed(1)}dB`;
                 r.row.querySelector(`#loop-fbk-display-${i}`).textContent=`${Math.round(t.feedback*100)}%`;
                 r.panMidi.update(t.pan,!!snapshot.midi?.bindings[53+i]);
                 if(document.activeElement!==r.speed)r.speed.value=t.playbackRate;
