@@ -6,6 +6,14 @@
 #include <thread>
 #include <cstdlib>
 int main(int argc,char** argv){
+ if(argc==3&&std::string(argv[1])=="mute"){
+  const auto kind=static_cast<unsigned>(std::strtoul(argv[2],nullptr,10));if(kind<1||kind>3)return 2;
+  auto engine=std::make_unique<aion::Engine>();engine->prepare(8000,8192);aion::MidiSettings settings;settings.enabled=true;settings.bindings.fill(0);settings.bindings[aion::MidiSettings::muteBase]=aion::midiBinding(kind,kind==1?60:kind==2?11:0);if(!engine->configureMidi(settings))return 2;
+  aion::EngineView latest{},view{};const auto process=[&](unsigned n,std::span<const aion::MidiEvent> events={}){engine->process(nullptr,0,static_cast<int>(n),events);while(engine->popView(view))latest=view;};
+  std::uint64_t frame;unsigned status,a,b,size;while(std::cin>>frame>>status>>a>>b>>size){if(frame<engine->clock()||status>255||a>127||b>127||size>3)return 2;while(engine->clock()<frame)process(static_cast<unsigned>(std::min<std::uint64_t>(128,frame-engine->clock())));
+   const aion::MidiEvent event{0,static_cast<std::uint8_t>(status),static_cast<std::uint8_t>(a),static_cast<std::uint8_t>(b),static_cast<std::uint8_t>(size)};process(1,{&event,1});std::cout<<latest.tracks[0].muted<<'\n';
+  }return 0;
+ }
  if(argc==2&&std::string(argv[1])=="panic-repress"){
   auto engine=std::make_unique<aion::Engine>();engine->prepare(8000,8192);aion::MidiSettings settings;settings.enabled=true;if(!engine->configureMidi(settings))return 2;
   aion::EngineView latest{},view{};const auto process=[&](unsigned n,std::span<const aion::MidiEvent> events={}){engine->process(nullptr,0,static_cast<int>(n),events);while(engine->popView(view))latest=view;};

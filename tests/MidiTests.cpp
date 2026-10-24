@@ -9,9 +9,9 @@ namespace {
 using namespace aion;using A=LoopAction;using S=LoopState;
 void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
 struct Fixture {
- std::unique_ptr<Engine> engine=std::make_unique<Engine>();unsigned block;std::uint32_t revision=0,request=0;EngineView latest{};bool varyingInput=false;
+ std::unique_ptr<Engine> engine=std::make_unique<Engine>();unsigned block;std::uint32_t revision=0,request=0;EngineView latest{};bool varyingInput=false;std::array<float,128> renderedLeft{},renderedRight{};
  explicit Fixture(unsigned n):block(n){engine->prepare(8000,131072);engine->setMonitoring(false);engine->setTarget(1);MidiSettings settings;settings.enabled=true;settings.revision=++revision;check(engine->configureMidi(settings),"configure MIDI");process(0);}
- void process(unsigned frames,std::span<const MidiEvent> events={}){float l[128],r[128];std::fill_n(l,128,0.2f);std::fill_n(r,128,-0.1f);if(varyingInput)for(unsigned i=0;i<frames;++i){const double t=static_cast<double>(engine->clock()+i);l[i]=static_cast<float>(0.4*std::sin(t*0.071));r[i]=static_cast<float>(0.3*std::cos(t*0.053));}float* channels[]={l,r};watch=true;engine->process(channels,2,static_cast<int>(frames),events);watch=false;EngineView view;while(engine->popView(view))latest=view;}
+ void process(unsigned frames,std::span<const MidiEvent> events={}){float l[128],r[128];std::fill_n(l,128,0.2f);std::fill_n(r,128,-0.1f);if(varyingInput)for(unsigned i=0;i<frames;++i){const double t=static_cast<double>(engine->clock()+i);l[i]=static_cast<float>(0.4*std::sin(t*0.071));r[i]=static_cast<float>(0.3*std::cos(t*0.053));}float* channels[]={l,r};watch=true;engine->process(channels,2,static_cast<int>(frames),events);watch=false;std::copy_n(l,frames,renderedLeft.begin());std::copy_n(r,frames,renderedRight.begin());EngineView view;while(engine->popView(view))latest=view;}
  void advance(unsigned frames){while(frames){const auto n=std::min(frames,block);process(n);frames-=n;}}
  void send(unsigned status,unsigned a,unsigned b,unsigned size=3){const MidiEvent e{0,static_cast<std::uint8_t>(status),static_cast<std::uint8_t>(a),static_cast<std::uint8_t>(b),static_cast<std::uint8_t>(size)};process(1,{&e,1});}
  void command(A action,unsigned id=0,float value=0){check(engine->enqueueLoop({action,id,++request,engine->generation(),0,value}),"MIDI fixture command");process(1);}
@@ -23,6 +23,55 @@ struct Fixture {
 }
 void midiTests(){
  using namespace aion;using A=LoopAction;using S=LoopState;
+ // Learning a mixer MUTE must preserve a different owned SUS recording.
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);f.varyingInput=true;f.tap(48);f.send(144,36,100);f.advance(512);const auto start=f.latest.tracks[0].captureStartFrame;
+  MidiSettings settings;settings.enabled=true;settings.learnTarget=73;settings.learnToken=1;settings.learnGeneration=f.engine->generation();settings.revision=++f.revision;check(f.engine->configureMidi(settings),"MUTE learn while SUS recording");f.process(0);f.send(144,60,100);MidiLearnResult learned;check(f.engine->popMidiLearn(learned)&&learned.target==73,"Capture-time MUTE learns its own control");
+  settings.bindings[73]=learned.binding;settings.learnTarget=-1;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Acknowledge MUTE while SUS recording");f.process(0);check(f.latest.tracks[0].state==S::recording,"MUTE binding acknowledgement must not finish an unrelated held SUS take");
+  f.send(144,60,127);check(f.latest.tracks[0].state==S::recording&&f.latest.tracks[0].muted,"MUTE press cannot steal the recording gesture");
+  settings.bindings[73]=midiBinding(1,61);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Reassign MUTE while its note and SUS record are held");f.process(0);check(f.latest.tracks[0].state==S::recording,"Reassign only the MUTE owner, not its track's SUS record owner");f.send(128,60,0);f.send(144,61,127);check(f.latest.tracks[0].state==S::recording&&!f.latest.tracks[0].muted,"Replacement MUTE binding works without releasing the take");
+  settings.bindings[73]=0;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Clear held MUTE binding");f.process(0);f.send(128,61,0);check(f.latest.tracks[0].state==S::recording,"Clearing MUTE cannot finish an unrelated held take");const auto end=f.engine->clock();f.send(128,36,0);f.wait();check(f.latest.tracks[0].state==S::playing&&f.latest.tracks[0].length==end-start,"Original SUS NoteOff still commits the complete input take");
+ }
+ // A reassigned held CC keeps its zero-rearm contract across MUTE targets.
+ for(const unsigned block:{64u,128u}){
+  Fixture f(block);MidiSettings settings;settings.enabled=true;settings.bindings[73]=midiBinding(2,11);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Held MUTE CC setup");f.process(0);f.send(176,11,127);check(f.latest.tracks[0].muted,"Initial MUTE CC toggle");settings.bindings[73]=0;settings.bindings[74]=midiBinding(2,11);settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Move held MUTE CC");f.process(0);f.send(176,11,64);check(!f.latest.tracks[1].muted&&f.latest.tracks[0].muted,"MUTE reassignment cannot rearm a held CC");f.send(176,11,0);f.send(176,11,127);check(f.latest.tracks[1].muted&&f.latest.tracks[0].muted,"CC zero rearms only the replacement MUTE target");
+ }
+ // MIDI offsets must drive exactly the same PCM as existing audio-owned MUTE commands.
+ for(const unsigned block:{64u,128u})for(unsigned kind=1;kind<=3;++kind){
+  Fixture reference(block),controlled(block);
+  for(auto* f:{&reference,&controlled}){f->varyingInput=true;f->command(A::record);f->advance(512);f->command(A::finish);f->wait();MidiSettings settings;settings.enabled=true;settings.bindings.fill(0);settings.bindings[73]=midiBinding(kind,kind==1?60:kind==2?11:0);settings.revision=++f->revision;check(f->engine->configureMidi(settings),"Sample-offset MUTE binding");f->process(0);}
+  const auto compare=[&]{for(unsigned i=0;i<block;++i){check(std::abs(reference.renderedLeft[i]-controlled.renderedLeft[i])<=1e-7f&&std::abs(reference.renderedRight[i]-controlled.renderedRight[i])<=1e-7f,"MIDI MUTE sample offsets must match native UI command stereo PCM");}};
+  const auto status=static_cast<std::uint8_t>(kind==1?144:kind==2?176:192),number=static_cast<std::uint8_t>(kind==1?60:kind==2?11:0),size=static_cast<std::uint8_t>(kind==3?2:3),value=static_cast<std::uint8_t>(kind==3?0:127);
+  check(reference.engine->enqueueLoop({A::mute,0,++reference.request,reference.engine->generation(),reference.engine->clock()+17,1}),"Direct MUTE at offset 17");const MidiEvent down{17,status,number,value,size};reference.process(block);controlled.process(block,{&down,1});compare();check(controlled.latest.tracks[0].muted,"MIDI MUTE applies at its exact callback offset");
+  reference.advance(256);controlled.advance(256);check(controlled.latest.outputPeak==0&&reference.latest.outputPeak==0,"Both MUTE paths settle to silence");
+  check(reference.engine->enqueueLoop({A::mute,0,++reference.request,reference.engine->generation(),reference.engine->clock()+31,0}),"Direct UNM at offset 31");const std::array<MidiEvent,2> events{{{3,static_cast<std::uint8_t>(kind==1?128:176),number,0,3},{31,status,number,value,size}}};reference.process(block);controlled.process(block,std::span<const MidiEvent>(events).subspan(kind==3?1:0));compare();reference.advance(256);controlled.advance(256);check(controlled.latest.outputPeak>0.01f&&!controlled.latest.tracks[0].muted,"Both UNM paths restore nonzero PCM");check(reference.wav(0)==controlled.wav(0),"Offset MUTE routing preserves exact stored stereo PCM");
+ }
+ std::cout<<"PASS: MIDI MUTE/UNM offsets 17/31 match existing native commands sample-for-sample at 64/128, including smoothing and exact stored WAV\n";
+ // Muting during capture must not silence or truncate the stored input take.
+ for(const unsigned block:{64u,128u})for(unsigned kind=1;kind<=3;++kind){
+  Fixture dry(block),muted(block);for(auto* f:{&dry,&muted}){f->varyingInput=true;MidiSettings settings;settings.enabled=true;settings.bindings.fill(0);settings.bindings[73]=midiBinding(kind,kind==1?60:kind==2?11:0);settings.revision=++f->revision;check(f->engine->configureMidi(settings),"Capture MUTE binding");f->process(0);f->command(A::record);f->advance(256);}
+  const unsigned status=kind==1?144:kind==2?176:192,number=kind==1?60:kind==2?11:0;dry.process(1);muted.send(status,number,kind==3?0:127,kind==3?2:3);check(muted.latest.tracks[0].state==S::recording&&muted.latest.tracks[0].muted,"MUTE cannot finish a recording");dry.advance(512);muted.advance(512);
+  for(auto* f:{&dry,&muted}){f->command(A::finish);f->wait();f->advance(256);}check(dry.latest.outputPeak>0.01f&&muted.latest.outputPeak==0,"Only playback is muted after committing the take");check(dry.wav(0)==muted.wav(0),"MUTE during recording retains exact nonzero stereo input WAV");
+ }
+ // New per-loop MUTE targets are discrete controls, never expression or holds.
+ unsigned muteCases=0;
+ for(const unsigned block:{64u,128u})for(unsigned id=0;id<20;++id)for(unsigned kind=1;kind<=3;++kind)for(unsigned channel:{0u,15u}){
+  Fixture f(block);f.varyingInput=true;f.command(A::record,id);f.advance(512);f.command(A::finish,id);f.wait();const auto before=f.latest.tracks[id];const auto stored=f.wav(id);
+  const bool sus=id%2!=0;if(sus)f.tap(48);
+  MidiSettings settings;settings.enabled=true;settings.bindings.fill(0);settings.modeOverride=static_cast<int>(id%3);settings.learnTarget=static_cast<int>(73+id);settings.learnGeneration=f.engine->generation();settings.learnToken=1;settings.revision=++f.revision;
+  check(f.engine->configureMidi(settings),"Per-loop MUTE target must accept native MIDI learn");f.process(0);
+  const unsigned status=(kind==1?144:kind==2?176:192)+channel,number=kind==1?60:kind==2?11:0,size=kind==3?2:3;
+  f.send(status,number,kind==3?0:100,size);MidiLearnResult learned;check(f.engine->popMidiLearn(learned)&&learned.target==static_cast<int>(73+id)&&learned.binding==midiBinding(kind,number),"MUTE consumes and learns Note/CC/PC without a toggle");check(!f.latest.tracks[id].muted,"MUTE learn packet is consumed");
+  settings.bindings[73+id]=learned.binding;settings.learnTarget=-1;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"Acknowledge MUTE learn");f.process(0);
+  f.send(status,number,kind==3?0:100,size);check(f.latest.tracks[id].muted&&f.latest.tracks[id].state==S::playing,"Learned MUTE toggles only mute, including OD/SUB/SUS modes");const auto accepted=f.latest.midi.actions;
+  f.send(status,number,kind==3?0:127,size);check(f.latest.midi.actions==accepted,"MUTE repeated NoteOn/CC and PC burst are debounced");
+  f.advance(32001);check(f.latest.outputPeak==0&&f.latest.tracks[id].state==S::playing,"Held MUTE renders silence without cutting playback or deleting");
+  if(kind==1)f.send(128+channel,number,0);else if(kind==2)f.send(status,number,0);check(f.latest.tracks[id].muted,"MUTE release must not restore a momentary SUS action");
+  f.send(status,number,kind==3?0:127,size);f.advance(256);check(!f.latest.tracks[id].muted&&f.latest.outputPeak>0.01f,"Rearmed MUTE restores actual nonzero stereo playback");
+  if(kind==1)f.send(128+channel,number,0);else if(kind==2)f.send(status,number,0);
+  const auto after=f.latest.tracks[id];check(after.waveformId==before.waveformId&&after.length==before.length&&after.undoCount==before.undoCount&&after.redoCount==before.redoCount&&after.volume==before.volume&&after.pan==before.pan,"MUTE preserves immutable clip, history and mixer settings");check(f.latest.midi.mode==static_cast<int>(id%3)&&f.latest.midi.sustain==sus&&f.latest.midi.overflows==0,"MUTE preserves global modes without overflow");check(f.wav(id)==stored,"MUTE roundtrip preserves exact stored stereo WAV");++muteCases;
+ }
+ check(muteCases==240,"All twenty MUTE targets, Note/CC/PC, channels 1/16 and 64/128");std::cout<<"PASS: 240 learned MUTE cases: discrete edges/bursts, OD/SUB/SUS isolation, four-second no-delete, actual PCM and exact WAV/history preservation\n";
  // A fresh NoteOn after explicit panic is a new gesture, not an old repeat.
  for(const unsigned block:{64u,128u}){
   Fixture f(block);f.command(A::record);f.advance(512);f.command(A::finish);f.wait();f.command(A::stopAll);

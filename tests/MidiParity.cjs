@@ -95,3 +95,23 @@ console.log('PASS: unchanged original global mode dispatch bypasses a prior loop
  const run=spawnSync(process.argv[2],['panic-repress'],{input:packets.map(row=>row.join(' ')).join('\n')+'\n',encoding:'utf8'});assert.equal(run.status,0,run.stderr);assert.deepEqual(run.stdout.trim().split(/\s+/).map(Number),expected);
  console.log('PASS: unchanged original MIDI Stop/stopAll clears held entries; immediate fresh NoteOn and ordinary repeat/release across 16 channels');
 }
+
+// New button routing is a native extension; its action is unchanged LoopManager.toggleMute.
+{
+ const start=loops.indexOf('    static toggleMute(',loops.indexOf('class LoopManager')),end=loops.indexOf('\n    }',start)+6;assert(start>=0&&end>start);
+ const original={window:{},UIManager:{updateLoop(){}},AudioEngine:{currentTime:1,scheduledFade(){}}};vm.createContext(original);
+ vm.runInContext(`const state={loops:[{muted:false}]};class LoopManager{${loops.slice(start,end)}};globalThis.current=()=>state.loops[0].muted;globalThis.toggle=()=>LoopManager.toggleMute(0);`,original);
+ let compared=0;
+ for(const kind of [1,2,3]){
+  const packets=[],expected=[];
+  for(let channel=0;channel<16;++channel){
+   const base=1000+channel*2000,status=(kind===1?144:kind===2?176:192)+channel,number=kind===1?60:kind===2?11:0,size=kind===3?2:3,value=kind===3?0:127;
+   const release=kind===1?[128+channel,number,0,3]:kind===2?[status,number,0,3]:[128+channel,60,0,3];
+   for(const [offset,packet,accepted] of [[0,[status,number,value,size],true],[1,[status,number,value,size],false],[2,release,false],[200,[status,number,value,size],true],[201,release,false],[202,[144+channel,60,0,3],false]]){
+    if(accepted)original.toggle();packets.push([base+offset,...packet]);expected.push(Number(original.current()));
+   }
+  }
+  const result=spawnSync(process.argv[2],['mute',String(kind)],{input:packets.map(row=>row.join(' ')).join('\n')+'\n',encoding:'utf8'});assert.equal(result.status,0,result.stderr);assert.deepEqual(result.stdout.trim().split(/\s+/).map(Number),expected);compared+=packets.length;
+ }
+ console.log(`PASS: ${compared} discrete MUTE packets match unchanged LoopManager.toggleMute across 16 channels; Note/CC/PC edge routing is the requested native extension`);
+}

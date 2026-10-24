@@ -5,7 +5,9 @@ namespace aion {
 // Packed binding: kind (1 note, 2 CC, 3 program), number, optional channel.
 constexpr std::uint16_t midiBinding(unsigned kind,unsigned number,unsigned channel=0) noexcept {return static_cast<std::uint16_t>(kind|(number<<2)|(channel<<9));}
 struct MidiSettings {
-    static constexpr unsigned bindingCount=73,volumeBase=33,panBase=53;
+    static constexpr unsigned bindingCount=93,volumeBase=33,panBase=53,muteBase=73;
+    static constexpr bool continuous(int target) noexcept {return target>=static_cast<int>(volumeBase)&&target<static_cast<int>(muteBase);}
+    static constexpr bool globalMode(int target) noexcept {return target>=30&&target<static_cast<int>(volumeBase);}
     bool enabled=false;
     std::array<std::uint16_t,MidiSettings::bindingCount> bindings=[] {std::array<std::uint16_t,MidiSettings::bindingCount> b{};for(unsigned i=0;i<10;++i)b[i]=midiBinding(1,36+i);b[30]=midiBinding(1,46);b[31]=midiBinding(1,47);b[32]=midiBinding(1,48);return b;}();
     std::uint32_t revision=0,learnToken=0,learnGeneration=0;
@@ -42,7 +44,7 @@ private:
     enum class TaskKind {main,cut,erase};
     struct Task {TaskKind kind=TaskKind::main;unsigned track=0;int mode=0;std::uint64_t clearEpoch=0,epoch=0;};
     struct Press {
-        bool active=false,suppressed=false,cut=false,erase=false,canDelete=false;
+        bool active=false,suppressed=false,cut=false,erase=false,canDelete=false,buttonOnly=false;
         unsigned key=0,track=0;
         std::uint64_t start=0,clearEpoch=0;
         LoopState initial=LoopState::empty;
@@ -56,7 +58,7 @@ private:
     std::uint32_t observed=0;
     std::array<Press,64> presses{};
     struct ProgramPulse {std::uint64_t frame=0;unsigned key=0;bool valid=false;};
-    std::array<ProgramPulse,33> programPulses{};
+    std::array<ProgramPulse,MidiSettings::bindingCount> programPulses{};
     std::array<Task,128> tasks{};
     unsigned read=0,write=0;
     std::uint64_t epoch=0,nextDeadline=std::numeric_limits<std::uint64_t>::max();

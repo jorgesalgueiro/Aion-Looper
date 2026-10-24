@@ -4393,3 +4393,48 @@ the earlier REAPER/Ardour results above retain their stated scope. Keyboard SUS,
 custom mappings, MIDI clock/host-follow, projects, synths and effects remain pending.
 Space delivery to a plugin editor versus the DAW's own transport remains a
 separate host shortcut/focus acceptance check.
+
+## Independent MUTE MIDI Learn acceptance — 24 October 2026
+
+Source base eee8bcffe954656e83ca2586d5d2ff9015adc3cf plus this increment. New
+MUTE targets 73..92 retain original audio/UI behavior and do not advance other
+migration features. Physical new MUTE controller response remains unverified.
+
+Final evidence under build/midi-mute-final-*:
+- Windows core: 19/19, 328.77s (windows-core.log).
+- Ubuntu core: 19/19, 413.37s (ubuntu-core.log).
+- ASan/UBSan core/MIDI: 2/2, 120.85s, leak/error halt enabled (asan.log).
+- Windows frontend/native processor/CLAP/VST3: 4/4, 33.55s
+  (windows-formats.log); production processor also passed its focused run.
+- Linux frontend/native processor/LV2 audio/CLAP/LV2+VST3 pluginval:
+  6/6, 82.70s (linux-formats.log). Existing vendor skips/warnings retained.
+- Actual WebView2 MIDI pointer/Learn/save/muted-editor-reload and full remaining
+  mouse/keyboard/export/merge checks passed at both 64/128
+  (midi-gui.log, mouse-gui.log). Muted Standalone NativeUiSmoke and original
+  browser count-in/nudge/live-input/STUT checks passed (standalone-ui.log).
+- Independent audio audit: 126 cases, 965826 samples, maximum absolute error
+  7.394757495227111e-8 against tolerance 1e-6 (audio.log). Scope is committed
+  capture/OD/SUB through center pan, not every envelope/resampling/hardware path.
+
+Real REAPER 7.82 VST3/CLAP checks passed seven settled stereo cases per format,
+parameter/track state and project recall: build/reaper-daw/20261024T110919-bb34cf0d/
+result.json (reaper.log). Real Ardour 8.4 libardour/Lua LV2 checks passed Dummy
+48kHz 64/128 stereo gain/mute/peak and session recall:
+build/ardour-daw/20261024T112250-8f7ecebe/result.json (ardour.log). These DAW
+checks do not certify recorded-loop persistence, MUTE MIDI sessions or GTK
+pointer interaction. Ardour CLAP hosting is not covered; the CLAP validator is
+separate. No new physical ASIO/JACK/CoreAudio or Apple acceptance is claimed.
+
+New focused coverage includes 240 real-PCM/WAV cases, exact capture preservation,
+sample-offset mute/unmute, held main SUS ownership during Learn/ack/remap/clear,
+CC zero rearming after reassignment, state versions 1/2/3 and future rejection,
+288 unchanged-reference action packets, 400 context-menu and 2880 status cases.
+Callback allocation checks remain enabled. Reproduced failures and original
+reference boundaries are recorded in REFERENCE_AUDIT.md.
+
+Windows and Linux development binaries rebuilt; embedded assets and hashes are
+recorded in build/midi-mute-final-embedded.json and source hashes in
+build/midi-mute-final-source.json. The local test binaries include the separate
+user logo whitespace override; that override is excluded from the feature
+commit. No package/version bump. Other MIDI controls, clock/host-follow,
+projects, synths/effects and physical hardware/platform gates remain pending.

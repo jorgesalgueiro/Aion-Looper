@@ -850,3 +850,51 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: production main header/state learn and clear, nested-control/card/disabled exclusion: '+cases+' cases');
 }
+
+// A muted first snapshot renders UNM in the unchanged original markup.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const binding=source.split('\n').find(line=>line.includes("const mute=bind([...row.querySelectorAll('button')]"));assert(binding);
+ for(let id=0;id<20;++id)for(const muted of [false,true]){
+  const button={textContent:muted?'UNM':'MUTE'},row={querySelectorAll:()=>[button]};let called=0;
+  vm.runInNewContext(binding,{row,i:id,bind:element=>{assert.equal(element,button,'Original MUTE/UNM must bind after reload');++called;return element;}});assert.equal(called,1);
+ }
+ console.log('PASS: original MUTE/UNM button binding on all 20 first-snapshot tracks');
+}
+
+// Audio snapshots must preserve the MIDI-owned MUTE outline while updating original colours.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8'),a=source.indexOf('rows.forEach((r,i)=>{'),b=source.indexOf('liveRows.forEach',a);assert(a>=0&&b>a);const paint=source.slice(a,b).split('\n').filter(line=>line.trim().startsWith('r.mute.style.')).join('\n');assert(paint);
+ for(const muted of [false,true])for(const learning of [false,true]){
+  const style={outline:learning?'2px solid #ff0':''};Object.defineProperty(style,'cssText',{set(value){for(const key of ['outline','background','color','borderColor'])this[key]='';for(const pair of value.split(';')){const [key,text]=pair.split(':');if(key)this[key==='border-color'?'borderColor':key]=text;}}});
+  vm.runInNewContext(paint,{r:{mute:{style}},t:{muted}});assert.equal(style.outline,learning?'2px solid #ff0':'','Snapshot refresh retains MUTE Learn outline');assert.equal(style.background,muted?'#f00':'');assert.equal(style.color,muted?'#000':'');assert.equal(style.borderColor,muted?'#f00':'');
+ }
+ console.log('PASS: MUTE snapshot colours preserve MIDI Learn outline');
+}
+
+// Independent per-loop MUTE Learn reuses original main and LIVE buttons.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8');let nodes={},requests=[],listener;
+ const context={window:{},document:{getElementById:id=>nodes[id],addEventListener:(kind,fn)=>{assert.equal(kind,'contextmenu');listener=fn;}},send:r=>{requests.push({...r});return Promise.resolve({ok:true});},listDevices(){},notify:message=>assert.fail(message)};
+ vm.createContext(context);vm.runInContext(source,context);
+ for(let id=0;id<20;++id)assert.equal(context.window.AionMidiLearnTarget(`live_mm_mute_l_${id}`),73+id,'LIVE MUTE has its own discrete binding');
+ for(const id of ['live_mm_mute_l_20','live_mm_mute_l_-1','live_mm_mute_d_0','live_mm_mute_in_0','live_mm_solo_l_0'])assert.equal(context.window.AionMidiLearnTarget(id),-1,'Unported mixer actions stay excluded');
+ const a=source.indexOf("    document.addEventListener('contextmenu'"),b=source.indexOf('    const kbd=',a);assert(a>=0&&b>a);vm.runInContext(source.slice(a,b),context);let cases=0;
+ for(let id=0;id<20;++id)for(const label of ['MUTE','UNM'])for(const child of [false,true])for(const shiftKey of [false,true])for(const disabled of [false,true]){
+  const row={id:`loop-${id}`,querySelectorAll:()=>[button]},button={id:'',textContent:label,disabled,dataset:{nativeControl:'true'},style:{},closest:selector=>selector==='button'||selector.startsWith('button,')?button:selector==='[id^="loop-"]'?row:null};
+  const target=child?{closest:selector=>button.closest(selector)}:button;requests=[];let prevented=false;
+  listener({target,shiftKey,preventDefault(){prevented=true;}});assert.equal(prevented,!disabled);assert.deepEqual(requests,disabled?[]:[{action:shiftKey?'clear':'learn',target:73+id}]);++cases;
+ }
+ for(let id=0;id<20;++id)for(const shiftKey of [false,true])for(const disabled of [false,true]){
+  requests=[];listener({target:{id:`live_mm_mute_l_${id}`,disabled},shiftKey,preventDefault(){}});assert.deepEqual(requests,disabled?[]:[{action:shiftKey?'clear':'learn',target:73+id}]);++cases;
+ }
+ for(const label of ['M','SOLO','MUTE FX']){const button={textContent:label,dataset:{nativeControl:'true'},closest:selector=>selector==='button'||selector.startsWith('button,')?button:selector==='[id^="loop-"]'?row:null},row={id:'loop-0',querySelectorAll:()=>[button]};requests=[];listener({target:button,preventDefault:()=>assert.fail('Unsupported action intercepted')});assert.deepEqual(requests,[]);}
+ let views=0;
+ for(let id=0;id<20;++id)for(const label of ['MUTE','UNM'])for(const kind of [0,1,2,3])for(const number of [0,64,127])for(const channel of [0,1,16])for(const learning of [false,true]){
+  nodes={};const buttons=[];for(let i=0;i<20;++i){const main={textContent:label,dataset:{nativeControl:'true'},style:{}},live={style:{}};buttons.push([main,live]);nodes[`loop-${i}`]={querySelectorAll:()=>[main]};nodes[`live_mm_mute_l_${i}`]=live;}
+  const midi={learnTarget:learning?73+id:-1,bindings:new Array(93).fill(0)};midi.bindings[73+id]=kind?kind|(number<<2)|(channel<<9):0;const before=JSON.stringify(midi);context.window.AionMidiMuteStatus(midi,context.document);
+  for(let i=0;i<20;++i){const [main,live]=buttons[i];assert.equal(main.title,live.title);assert.equal(main.style.outline,live.style.outline);assert.equal(!!main.style.outline,learning&&i===id);if(i===id&&kind)assert(main.title.includes(['','NOTE','CC','PC'][kind]+' '+number));}
+  assert.equal(JSON.stringify(midi),before,'MUTE presentation does not mutate bindings');++views;
+ }
+ console.log(`PASS: MUTE Learn ${cases} actual context dispatch / ${views} immutable shared main/LIVE status cases`);
+}

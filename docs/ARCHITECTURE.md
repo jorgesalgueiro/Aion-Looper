@@ -977,3 +977,27 @@ before dispatch. This fix adds no queue/storage, allocation, lock, UI or binding
 Existing event semantics are reused; the original browser has no processBlock
 zero-buffer API, so this contract is native-host compatibility, not a new JS DSP
 parity claim or MIDI clock/host transport scheduling implementation.
+
+## Independent per-loop MIDI MUTE (24 October 2026)
+
+Original main MUTE/UNM and LIVE M buttons share discrete targets 73..92. Existing
+0..32 transport/mode, 33..52 volume and 53..72 pan targets retain their indices.
+Version 3 saves 93 bindings; explicit legacy version 1/2 loads consume 33/73 and
+initialize new slots to zero. Invalid/future states retain the previous state.
+APVTS parameter identities and plugin audio/MIDI ports are unchanged.
+
+The audio-owned controller reuses LoopAction::mute, fixed Press storage and the
+bounded configuration queue. buttonOnly owners retain their actual loop index
+for panic/deletion cancellation but bypass main-button hold actions and SUS
+restoration. Changed MUTE bindings retire only their own owners and PC cache;
+suppressed CC owners require zero before reuse. Learning/acknowledging a MUTE
+binding must not finish a held main SUS recording. Only targets 33..72 accept
+continuous CC zero as a Learn packet. Serialization remains outside the audio
+callback: JUCE documents that copyState/replaceState use locks and are unsuitable
+for real-time processing ([APVTS reference](https://docs.juce.com/master/classjuce_1_1AudioProcessorValueTreeState.html)).
+
+Shared status helpers retain original buttons and expose bindings/learning via
+tooltips and outlines. Initial muted snapshots must bind UNM as well as MUTE.
+Per-property colour updates preserve the MIDI outline during snapshot refresh.
+This extends controller access to the existing mute action; it does not replace
+its DSP envelope or claim new browser-envelope equivalence.

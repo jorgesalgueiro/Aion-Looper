@@ -729,3 +729,19 @@ Activate the owned test WebView with CDP Page.bringToFront before the mouse
 fixture's compositor-routed wheel input. Keep exact event-count/trust/target/
 focus/preventDefault/value/PCM assertions and selector/coordinate failure evidence;
 never substitute synthetic DOM wheel events to make this gate pass.
+
+Independent loop MUTE MIDI Learn uses targets 73..92, total 93. Continuous CC
+is ONLY 33..72; discrete MUTE Learn requires a positive edge. Preserve original
+latched mute in OD/SUB/SUS, release debounce and PC burst filtering. Never apply
+main-button cut/delete or SUS restoration to independent MUTE. Its bounded Press
+owner stores the real track and buttonOnly flag. Remap/clear only that MUTE owner;
+retain suppressed CC ownership until zero and never finish unrelated held SUS
+capture when learning, acknowledging or clearing a MUTE binding. State version 3
+writes 93 bindings; versions 1/2 read exactly 33/73 and leave new slots empty.
+Keep rollback for invalid/future states and callback allocation checks.
+Retain 240 PCM/immutable-WAV matrix cases, offset/capture/held-owner checks,
+288 original toggleMute action oracle packets, 400 context-menu cases and 2880
+shared status snapshots, plus actual 64/128 pointer/Save/muted-editor-reload tests.
+Bind initial UNM as well as MUTE; update mute colours per property to preserve
+MIDI Learn outline. Preserve original reference HTML/CSS and the separate user
+logo. Stage only feature hunks if looper.js also contains the user's logo edits.

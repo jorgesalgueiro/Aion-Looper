@@ -686,3 +686,21 @@ holding a key emits further keydown events with repeat set, followed by keyup.
 The unchanged original dispatcher is the behavior oracle; the documentation
 explains event delivery, not a new alternative product policy. Custom keyboard
 mappings and keyboard SUS remain separate, unported features.
+
+### Independent MUTE controller coverage (24 October 2026)
+
+The unchanged reference LoopManager.toggleMute action supplies a 288-packet
+state oracle across Note/CC/PC and 16 channels. Native right-click access on main
+MUTE/UNM and LIVE M is the requested controller extension, not a claim that the
+original browser had this exact context-menu route. 240 real-PCM/immutable-WAV
+cases cover 20 loops, three message kinds, channels 1/16 and 64/128 blocks.
+Sample-offset comparisons against the existing queued mute action use 1e-7
+stereo tolerance; capture tests preserve exact nonzero recorded WAV samples.
+New browser transient-envelope equivalence is outside this increment's scope.
+
+Red evidence in build/midi-mute-{before,frontend-before,reload-before,held-before,
+outline-before}.log records unsupported targets, alias routing, initial UNM
+binding, held SUS cancellation on Learn acknowledgement and erased outlines.
+Repairs scope cancellation to changed MUTE owners, retain existing latched DSP,
+bind both captions and preserve outlines through snapshot colour refresh.
+Version 3 retains legacy 33-/73-binding load contracts.

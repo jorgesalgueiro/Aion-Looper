@@ -304,7 +304,7 @@
                 const half=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1/2'),()=>halfSpeed(i));
                 const reset=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='1x'),()=>queueControl('speed',i,1));
                 speed.addEventListener('dblclick',()=>queueControl('speed',i,1));
-                const mute=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='MUTE'),()=>scheduler.enqueue(()=>({action:'mute',track:i,value:snapshot.tracks[i].muted?0:1}),{track:i}));
+                const mute=bind([...row.querySelectorAll('button')].find(e=>['MUTE','UNM'].includes(e.textContent.trim())),()=>scheduler.enqueue(()=>({action:'mute',track:i,value:snapshot.tracks[i].muted?0:1}),{track:i}));
                 bind(row.querySelector('.loop-track-delete'),()=>{stutter.cancelTrack(i);keyboard.cancelTrack(i);command('clear',i);});
                 const solo=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='SOLO'),()=>command('solo',i));
                 const retrigger=bind([...row.querySelectorAll('button')].find(e=>e.textContent.trim()==='RTRG'),()=>command('retrigger',i));
@@ -428,7 +428,9 @@
                 r.mergeSource.disabled=!active||mergeBusy;
                 r.mergeGo.disabled=!active||mergeBusy||!['empty','playing','stopped'].includes(t.state)||!sources.includes(Number(r.mergeSource.value))||r.mergeSource.value==='';
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
-                r.mute.style.cssText=t.muted?'background:#f00;color:#000;border-color:#f00':'';
+                r.mute.style.background=t.muted?'#f00':'';
+                r.mute.style.color=t.muted?'#000':'';
+                r.mute.style.borderColor=t.muted?'#f00':'';
                 r.mute.textContent=t.muted?'UNM':'MUTE';r.mute.setAttribute('aria-pressed',String(t.muted));
                 const input=snapshot.liveInput,live=input?.track===i&&input.startFrame===t.captureStartFrame?{...input,syncMode:['off','static','dynamic'][snapshot.syncMode],now:snapshot.frame/snapshot.sampleRate,barDuration:snapshot.barLength}:null;
                 const recording=t.state==='recording'&&t.dynamicRecorded;

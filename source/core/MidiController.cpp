@@ -6,7 +6,7 @@ bool MidiController::valid(const MidiSettings& s) noexcept {
     if(s.learnTarget < -1||s.learnTarget>=static_cast<int>(MidiSettings::bindingCount)||(s.learnTarget>=20&&s.learnTarget<30)||s.modeOverride < -1||s.modeOverride>2)return false;
     for(unsigned i=0;i<MidiSettings::bindingCount;++i){const auto b=s.bindings[i];if(!b)continue;
         const unsigned kind=b&3,number=(b>>2)&127,channel=b>>9;
-        if(!kind||channel>16||(i>=20&&i<30)||(i>=MidiSettings::volumeBase&&kind!=2)||(kind==2&&(number==120||number==123)))return false;
+        if(!kind||channel>16||(i>=20&&i<30)||(MidiSettings::continuous(static_cast<int>(i))&&kind!=2)||(kind==2&&(number==120||number==123)))return false;
         for(unsigned j=0;j<i;++j){const auto a=s.bindings[j];if(a&&(a&511)==(b&511)&&(!(a>>9)||!channel||(a>>9)==channel))return false;}
     }
     return true;
@@ -38,18 +38,24 @@ void MidiController::cancel(Dispatch& d,int track) noexcept {
         if((p.key>>12)==1)p.active=false;
     }
     nextDeadline=std::numeric_limits<std::uint64_t>::max();
-    for(const auto& p:presses)if(p.active&&!p.suppressed)nextDeadline=std::min(nextDeadline,p.start+static_cast<std::uint64_t>(std::ceil(d.rate*(p.cut?4.0:0.6))));
+    for(const auto& p:presses)if(p.active&&!p.suppressed&&!p.buttonOnly)nextDeadline=std::min(nextDeadline,p.start+static_cast<std::uint64_t>(std::ceil(d.rate*(p.cut?4.0:0.6))));
 }
 void MidiController::prepare(Dispatch& d) noexcept {cancel(d);presses={};settings.learnTarget=-1;learnCaptured=false;mode=0;sustain=false;++modeRevision;}
 void MidiController::overflow(Dispatch& d) noexcept {++overflows;cancel(d);}
 void MidiController::begin(Dispatch& d) noexcept {
     MidiSettings next;
     for(unsigned n=0;n<31&&configs.pop(next);++n){
-        // Slider learning owns no transport gesture. Keep held notes, deadlines,
-        // deferred actions and PC burst suppression when only learn/mixer changes.
+        // Mixer learning must preserve held takes, deadlines and deferred actions.
         const bool transportChanged=!std::equal(next.bindings.begin(),next.bindings.begin()+MidiSettings::volumeBase,settings.bindings.begin());
         if(next.enabled!=settings.enabled||transportChanged)cancel(d);
-        else if(next.bindings!=settings.bindings||next.learnToken!=settings.learnToken||next.learnTarget!=settings.learnTarget||next.learnGeneration!=settings.learnGeneration)cancelLearn();
+        else {
+            if(next.bindings!=settings.bindings||next.learnToken!=settings.learnToken||next.learnTarget!=settings.learnTarget||next.learnGeneration!=settings.learnGeneration)cancelLearn();
+            for(unsigned i=MidiSettings::muteBase;i<MidiSettings::bindingCount;++i)if(next.bindings[i]!=settings.bindings[i])programPulses[i]={};
+            for(auto& p:presses)if(p.active&&p.buttonOnly&&next.bindings[MidiSettings::muteBase+p.track]!=settings.bindings[MidiSettings::muteBase+p.track]){
+                // Reassignment retires only this MUTE owner. CC still needs zero.
+                p.suppressed=true;if((p.key>>12)==1)p.active=false;
+            }
+        }
         if(next.modeOverride>=0){mode=next.modeOverride;++modeRevision;}
         settings=next;settings.modeOverride=-1;
         if(settings.learnGeneration!=d.generation)settings.learnTarget=-1;
@@ -93,11 +99,11 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     // A learn packet may be consumed/rejected, but must still release an action
     // owned by this exact kind/channel/key. Otherwise CC zero strands SUS holds.
     const unsigned key=(kind<<12)|(channel<<7)|e.data1;
-    const bool learnRelease=up&&kind==2&&settings.learnTarget>=static_cast<int>(MidiSettings::volumeBase);
+    const bool learnRelease=up&&kind==2&&MidiSettings::continuous(settings.learnTarget);
     if(learnRelease){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);}
     // Continuous CC learn accepts zero and consumes the event; Note/PC keep
     // their transport mappings while a slider waits for CC, as in the original.
-    if(settings.learnTarget>=static_cast<int>(MidiSettings::volumeBase)&&kind==2){
+    if(MidiSettings::continuous(settings.learnTarget)&&kind==2){
         if(!learnCaptured){
             if(learned.push({settings.learnTarget,midiBinding(2,e.data1),settings.learnToken,d.generation,learnCancellation.load(std::memory_order_relaxed)})){
                 learnCaptured=true;
@@ -114,12 +120,12 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
         if(provisionalTarget<0)return; // Await rejection; never trigger the conflicting button.
         if(((provisionalBinding>>2)&127)==e.data1){continuous(provisionalTarget,e.data2,d);return;}
     }
-    if(settings.learnTarget>=0&&settings.learnTarget<static_cast<int>(MidiSettings::volumeBase)&&down){
+    if(settings.learnTarget>=0&&!MidiSettings::continuous(settings.learnTarget)&&down){
         if(!learnCaptured&&learned.push({settings.learnTarget,midiBinding(kind,e.data1),settings.learnToken,d.generation,learnCancellation.load(std::memory_order_relaxed)}))learnCaptured=true;
         return;
     }
     const int continuousTarget=kind==2?targetFor(settings,e):-1;
-    if(continuousTarget>=static_cast<int>(MidiSettings::volumeBase)){
+    if(MidiSettings::continuous(continuousTarget)){
         continuous(continuousTarget,e.data2,d);return;
     }
     if(up){if(!learnRelease){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);}return;}
@@ -128,7 +134,7 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     if(target<0)return;
     // Resolve current ownership before consulting a former loop press. A held
     // key can have been reassigned to a global mode since its last NoteOn.
-    if(!(kind==1&&target>=30))for(auto& held:presses)if(held.active&&held.key==key){
+    if(!(kind==1&&MidiSettings::globalMode(target)))for(auto& held:presses)if(held.active&&held.key==key){
         // Original handleInputPress discards a lost-release entry only when a
         // fresh loop NoteOn arrives strictly after ten seconds; never a timer.
         if(kind!=1||held.track>=20||d.frame-held.start<=static_cast<std::uint64_t>(std::ceil(d.rate*10.0)))return;
@@ -145,10 +151,16 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     // Original global mode NoteOns bypass handleInputPress: every positive
     // packet toggles, with no held entry or dependency on a matching NoteOff.
     // Learned CC mode buttons still require zero to rearm; PC keeps burst filtering.
-    if(!pulse&&!(kind==1&&target>=30)){for(auto& slot:presses)if(!slot.active){p=&slot;break;}if(!p){overflow(d);return;}
+    if(!pulse&&!(kind==1&&MidiSettings::globalMode(target))){for(auto& slot:presses)if(!slot.active){p=&slot;break;}if(!p){overflow(d);return;}
         *p={};p->active=true;p->key=key;p->track=static_cast<unsigned>(target);p->start=d.frame;
     }
-    if(target>=30){if(target==32)sustain=!sustain;else mode=mode==target-29?0:target-29;++modeRevision;return;}
+    if(MidiSettings::globalMode(target)){if(target==32)sustain=!sustain;else mode=mode==target-29?0:target-29;++modeRevision;return;}
+    if(target>=static_cast<int>(MidiSettings::muteBase)){
+        const auto track=static_cast<unsigned>(target)-MidiSettings::muteBase;const auto t=d.bank.trackView(track);
+        // MUTE is a latched button in every performance mode, never a hold gesture.
+        if(p){p->track=track;p->buttonOnly=true;p->clearEpoch=t.clearEpoch;}
+        apply(LoopAction::mute,track,t.muted?0:1,d);return;
+    }
     const auto t=d.bank.trackView(static_cast<unsigned>(target));
     if(p){p->initial=t.state;p->clearEpoch=t.clearEpoch;p->canDelete=(t.state==LoopState::playing&&mode==0)||t.state==LoopState::stopping;}
     if(sustain&&!pulse){
@@ -164,7 +176,7 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
 }
 void MidiController::tick(Dispatch& d) noexcept {
     if(d.frame>=nextDeadline){nextDeadline=std::numeric_limits<std::uint64_t>::max();
-        for(auto& p:presses)if(p.active&&!p.suppressed&&p.track<20&&!p.sustainAction){
+        for(auto& p:presses)if(p.active&&!p.suppressed&&p.track<20&&!p.sustainAction&&!p.buttonOnly){
             const auto t=d.bank.trackView(p.track);if(t.clearEpoch!=p.clearEpoch){p.suppressed=true;continue;}
             const auto cut=p.start+static_cast<std::uint64_t>(std::ceil(d.rate*0.6)),erase=p.start+static_cast<std::uint64_t>(std::ceil(d.rate*4));
             if(!p.cut&&d.frame>=cut){p.cut=true;if((p.initial==LoopState::playing||p.initial==LoopState::stopping||p.initial==LoopState::stopped))push({TaskKind::cut,p.track,0,p.clearEpoch,epoch},d);}

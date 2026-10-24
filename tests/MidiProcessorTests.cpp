@@ -51,6 +51,20 @@ int main(){
   p->removeListener(&listener);
   std::cout<<"PASS: accepted state host rescan, invalid/queue rejection, exact saved-state preservation\n";
  }
+ // Version 3 appends MUTE bindings; old versions retain every existing pedal/CC assignment.
+ for(const int version:{1,2,3}){
+  auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,64);p->prepareToPlay(8000,64);juce::MemoryBlock original;p->getStateInformation(original);
+  auto xml=juce::AudioProcessor::getXmlFromBinary(original.getData(),static_cast<int>(original.getSize()));auto* stored=xml->getChildByName("MidiSettings");stored->setAttribute("version",version);stored->setAttribute("enabled",1);stored->setAttribute("binding19",static_cast<int>(aion::midiBinding(3,0)));
+  const unsigned count=version==1?33u:version==2?73u:93u;for(unsigned i=count;i<aion::MidiSettings::bindingCount;++i)stored->removeAttribute("binding"+juce::String(i));
+  if(version>=2){stored->setAttribute("binding33",static_cast<int>(aion::midiBinding(2,11)));stored->setAttribute("binding72",static_cast<int>(aion::midiBinding(2,12,16)));}if(version==3)stored->setAttribute("binding73",static_cast<int>(aion::midiBinding(1,60)));
+  juce::MemoryBlock bytes;juce::AudioProcessor::copyXmlToBinary(*xml,bytes);p->setStateInformation(bytes.getData(),static_cast<int>(bytes.getSize()));juce::MemoryBlock saved;p->getStateInformation(saved);auto migrated=juce::AudioProcessor::getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));const auto* midiState=migrated->getChildByName("MidiSettings");
+  check(midiState->getIntAttribute("version")==3&&midiState->getIntAttribute("binding19")==aion::midiBinding(3,0),"Native MUTE schema preserves legacy PC0 and writes version 3");check(midiState->getIntAttribute("binding33",-1)==(version>=2?aion::midiBinding(2,11):0)&&midiState->getIntAttribute("binding72",-1)==(version>=2?aion::midiBinding(2,12,16):0),"Native MUTE schema preserves both ends of legacy continuous targets");
+  for(unsigned i=73;i<aion::MidiSettings::bindingCount;++i)check(midiState->getIntAttribute("binding"+juce::String(i),-1)==(version==3&&i==73?aion::midiBinding(1,60):0),"Old states initialise MUTE mappings unassigned");
+  juce::AudioBuffer<float> buffer(2,64);buffer.clear();juce::MidiBuffer midi;midi.ensureSize(4096);midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8{100}),17);midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8{127}),18);midi.addEvent(juce::MidiMessage::noteOff(1,60),19);audioWatch=true;p->processBlock(buffer,midi);audioWatch=false;
+  const auto state=p->request({juce::JSON::parse(R"({"operation":"snapshot"})")});check(state["midi"]["bindings"].size()==93&&static_cast<bool>(state["tracks"][0]["muted"])==(version==3)&&state["tracks"][0]["state"].toString()=="empty"&&midi.getNumEvents()==3,"Restored MUTE controls work without an editor, preserve repeats/release and raw MIDI pass-through");
+  auto future=juce::AudioProcessor::getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));future->getChildByName("MidiSettings")->setAttribute("version",4);juce::MemoryBlock invalid;juce::AudioProcessor::copyXmlToBinary(*future,invalid);p->setStateInformation(invalid.getData(),static_cast<int>(invalid.getSize()));juce::MemoryBlock after;p->getStateInformation(after);check(after==saved,"Unknown future MIDI schema rejects the entire preset without clearing mappings");
+ }
+ std::cout<<"PASS: MIDI versions 1/2/3 preserve all legacy pedal/CC mappings; persisted MUTE works without editor, repeat/NoteOff isolation, future-schema rejection and no callback allocations\n";
  for(const int block:{64,128}){
   // Real MidiBuffer offsets: panic followed by fresh NoteOn in the same block.
   for(const int channel:{1,16}){

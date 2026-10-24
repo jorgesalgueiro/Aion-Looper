@@ -918,3 +918,20 @@ Run the portable `core_realtime_contract` / `js_native_midi` tests, the producti
 The core gate compares exact stored stereo WAV and covers seven cancellation
 sources; only Stop/stopAll have an unchanged-JS transport oracle. ASan/UBSan core
 and MIDI checks use the existing build/core-asan with leak detection enabled.
+
+### Independent MUTE MIDI Learn
+
+Right-click a loop's original MUTE/UNM button or its LIVE M button, then send a
+Note, positive CC, or Program Change. The first packet learns without toggling;
+the next press toggles latched mute. Release does not restore mute, and holding
+this independent control does not cut/delete the loop. Both button locations
+show the same binding. Escape cancels learning; Shift+right-click clears it.
+Use Save Mappings to persist the assignment. Avoid duplicate input assignments.
+
+Version 3 mapping state reads older version 1/2 mappings with new MUTE slots
+unassigned. Mapping persistence does not implement recorded-loop/project saving.
+The core CTest suites, native processor gate and TestMouseWorkflow.ps1 -MidiOnly
+cover synthetic input at 64/128; -SkipMidi retains mouse/keyboard/export checks.
+Physical MUTE pedal and recorded-loop DAW MIDI workflows need separate checks.
+This increment rebuilds existing development binaries without a package or
+version bump.
