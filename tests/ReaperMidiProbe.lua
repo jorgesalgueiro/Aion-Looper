@@ -25,12 +25,16 @@ return function(run,cfg,tr,fx,render,log)
   if not f then assert(reaper.time_precise()<deadline,"MIDI fixture timeout");coroutine.yield() end
  until f
  f:close()
- for kind=1,3 do
+ local cases={{"1",1,16},{"2",2,16},{"pc-repeat",3,16}}
+ for channel=1,15 do cases[#cases+1]={"pc-"..channel,3,channel} end
+ cases[#cases+1]={"3",3,16}
+ for _,case in ipairs(cases) do
+  local label,kind,channel=table.unpack(case)
   -- Fresh instances prevent earlier renders/loops from supplying false positives.
   reaper.TrackFX_Delete(tr,fx)
   fx=reaper.TrackFX_AddByName(tr,cfg.format..": Aion-Looper",false,-1)
   assert(fx==0,"Cannot recreate exact format")
-  f=assert(io.open(run.."/midi-"..kind..".b64","rb"));local chunk=f:read("*a");f:close()
+  f=assert(io.open(run.."/midi-"..label..".b64","rb"));local chunk=f:read("*a");f:close()
   assert(reaper.TrackFX_SetNamedConfigParm(tr,fx,key,chunk),"Host rejected MIDI fixture")
   local item=assert(reaper.CreateNewMIDIItemInProj(tr,0,1,false))
   local take=assert(reaper.GetActiveTake(item))
@@ -40,15 +44,26 @@ return function(run,cfg,tr,fx,render,log)
    local ppq=math.floor(reaper.MIDI_GetPPQPosFromProjTime(take,time)+0.5)
    events[#events+1]={ppq=ppq,bytes=bytes,order=#events+1}
   end
-  packet(0.05,0x90,36,100);packet(0.06,0x80,36,0)
-  packet(0.20,0x90,36,100);packet(0.21,0x80,36,0)
+  if kind==3 and label~="pc-repeat" then
+   for _,time in ipairs({0.05,0.20}) do
+    for repeatIndex=0,2 do packet(time+repeatIndex*0.001,0xc0+channel-1,127) end
+   end
+   for other=1,16 do if other~=channel then
+    packet(0.24,0xc0+other-1,0);packet(0.54,0xc0+other-1,0)
+   end end
+   packet(0.26,0xc0+channel-1,64);packet(0.56,0xc0+channel-1,64)
+   packet(0.27,0xc0+(channel%16),127)
+  else
+   packet(0.05,0x90,36,100);packet(0.06,0x80,36,0)
+   packet(0.20,0x90,36,100);packet(0.21,0x80,36,0)
+  end
   for _,time in ipairs({0.4,0.7}) do
    if kind==1 then
     packet(time,0x9f,0,100);packet(time+0.001,0x9f,0,127);packet(time+0.02,0x8f,0,0)
    elseif kind==2 then
     packet(time,0xbf,0,127);packet(time+0.001,0xbf,0,64);packet(time+0.02,0xbf,0,0)
    else
-    packet(time,0xcf,0);packet(time+0.001,0xcf,0);packet(time+0.002,0xcf,0)
+    packet(time,0xc0+channel-1,0);packet(time+0.001,0xc0+channel-1,0);packet(time+0.002,0xc0+channel-1,0)
    end
   end
   -- Individual InsertEvt calls cause REAPER to repair unmatched/overlapping
@@ -63,20 +78,20 @@ return function(run,cfg,tr,fx,render,log)
   raw=table.concat(raw)
   assert(reaper.MIDI_SetAllEvts(take,raw),"Host rejected complete raw MIDI item")
   local exact,observed=reaper.MIDI_GetAllEvts(take,"")
-  local evidence=assert(io.open(run.."/midi-"..kind..".expected-events","wb"));evidence:write(raw);evidence:close()
-  evidence=assert(io.open(run.."/midi-"..kind..".events","wb"));evidence:write(observed);evidence:close()
+  local evidence=assert(io.open(run.."/midi-"..label..".expected-events","wb"));evidence:write(raw);evidence:close()
+  evidence=assert(io.open(run.."/midi-"..label..".events","wb"));evidence:write(observed);evidence:close()
   assert(exact and observed==raw,"Host changed source MIDI packets before rendering")
   local counted,notes,ccs,texts=reaper.MIDI_CountEvts(take)
   assert(counted and texts==0,"Unexpected non-MIDI source events")
   -- CountEvts groups paired notes and does not count raw repeated NoteOns as
   -- independent notes. Exact raw readback above is the packet/timing contract.
-  log("midi-item="..kind..",notes="..notes..",ccs="..ccs..",rawPackets="..(#events+1))
-  log("midi-render="..kind)
-  pacedRender("midi-"..kind)
+  log("midi-item="..label..",notes="..notes..",ccs="..ccs..",rawPackets="..(#events+1))
+  log("midi-render="..label)
+  pacedRender("midi-"..label)
   -- Retain the exact project and item for independently inspectable evidence;
   -- recorded audio persistence is intentionally outside this contract.
-  reaper.Main_SaveProjectEx(0,run.."/midi-"..kind..".rpp",8)
-  if kind==3 then
+  reaper.Main_SaveProjectEx(0,run.."/midi-"..label..".rpp",8)
+  if label=="3" then
    -- Reopen host state, then use the saved mapping and item to record a fresh
    -- loop. This proves assignment persistence, not recorded-loop persistence.
    reaper.Main_openProject("noprompt:"..run.."/midi-3.rpp")

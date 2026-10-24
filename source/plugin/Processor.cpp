@@ -139,7 +139,7 @@ void AionProcessor::timerCallback(){
     }
     }catch(...){exportChooser.reset();exportBusy=false;exportStatus="WAV export failed: could not open the save dialog";}
 }
-void AionProcessor::prepareToPlay(double rate, int) { midiInputReady.store(inputAvailable(*this),std::memory_order_release);engine.prepare(rate); }
+void AionProcessor::prepareToPlay(double rate, int) { vst3ProgramOverflow.store(false,std::memory_order_relaxed);midiInputReady.store(inputAvailable(*this),std::memory_order_release);engine.prepare(rate); }
 bool AionProcessor::isBusesLayoutSupported(const BusesLayout& b) const {
     return b.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
         && (b.getMainInputChannelSet().isDisabled() || b.getMainInputChannelSet() == juce::AudioChannelSet::mono()
@@ -168,7 +168,7 @@ void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuff
         if(auto value=position->getLoopPoints()){host.hasLoopPoints=true;host.loopStartPpq=value->ppqStart;host.loopEndPpq=value->ppqEnd;}
     }
     engine.transport=aion::validatedTransport(host);
-    std::size_t midiCount=0,inspected=0;bool midiOverflow=false;
+    std::size_t midiCount=0,inspected=0;bool midiOverflow=vst3ProgramOverflow.exchange(false,std::memory_order_acq_rel);
     engine.setMidiInputAvailable(getTotalNumInputChannels()>0&&midiInputReady.load(std::memory_order_acquire));
     for(const auto metadata:incomingMidi){
         if(++inspected>256){midiOverflow=true;break;}

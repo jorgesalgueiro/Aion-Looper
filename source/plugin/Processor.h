@@ -2,10 +2,11 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include "core/Engine.h"
+#include "plugin/Vst3ProgramRouting.h"
 #include <mutex>
 static_assert(std::atomic<float>::is_always_lock_free, "Audio parameter loads must be lock-free");
 static_assert(std::atomic<bool>::is_always_lock_free, "MIDI input readiness must be lock-free");
-class AionProcessor final : public juce::AudioProcessor, private juce::Timer {
+class AionProcessor final : public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {
 public:
     using ExportDestination = std::function<void(const juce::String&, std::function<void(juce::File)>)>;
     explicit AionProcessor(ExportDestination = {});
@@ -31,12 +32,14 @@ public:
     void releaseStutter() noexcept {engine.cancelStutter();}
     void cancelExport(); // Editor close cancels an unchosen destination.
     void cancelMidiLearn(); // MIDI performance continues without an editor.
+    void programInputOverflow() noexcept override {vst3ProgramOverflow.store(true,std::memory_order_release);}
     aion::AudioInspection inspectAudioThread(std::uint32_t track=0) const noexcept {return engine.inspectAudioThread(track);}
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:
     std::recursive_mutex midiSettingsMutex; // Non-audio configuration/state serialization only.
     aion::MidiSettings midiSettings;
+    std::atomic<bool> vst3ProgramOverflow{false}; // Bounded wrapper input failed; reject its whole next callback.
     std::atomic<bool> midiInputReady{false}; // Device queries stay off processBlock.
     std::array<aion::MidiEvent,256> midiEvents{};
     std::optional<aion::MidiLearnResult> pendingMidiLearn;

@@ -729,3 +729,30 @@ a rapid render after project reopen outran background take commit. Retain this
 evidence alongside the paced 1x scope; do not relax the silence, sample phase or
 nonzero-density assertions to hide it. Physical controllers, driver latency,
 recorded-loop projects and Ardour MIDI routes remain separate acceptance work.
+
+### VST3 PC bridge and host-period oracle (24 October 2026)
+
+No original JS audio or visual assets changed. The wrapper now translates the
+VST3 ProgramList/parameter protocol into the same existing native MIDI dispatch.
+The 4096 portable cases cover sixteen channels, 128 programs and 64/128 blocks,
+with wrong-channel rejection, repeated PC pulses, actual silence/recovery,
+unchanged clip/history and tracked zero callback new/delete. Production JUCE
+checks cover APVTS ID/preset isolation and atomic overflow block rejection/recovery.
+
+The added real-host PC127 record/finish cases initially failed the older phase
+oracle's assumption of exactly 150ms/7200 frames. Retained PCM identifies one
+exact pre-mute period of 7168 frames in this REAPER VST3 run; comparing four actual
+cycles gives error zero. That is a host timing distinction, not evidence of a DSP
+mute phase bug. The original Note36 capture cases retain the old fixed-period
+comparison. Added PC captures now identify exactly one period from pre-mute PCM
+alone and compare 6720 stereo samples four actual cycles later at the same PCM
+tolerance. CLAP must still record 7200 frames. Ambiguous-period and phase/pan/
+silence/leakage/mapping corruption controls must fail. No recovered signal is
+used to choose the expected period and no error tolerance was enlarged.
+
+The initial failure is retained in build/vst3-pc-reaper-matrix.log and its run
+folder. Real-host passing results supersede the earlier missing-PC compatibility
+gap only for their documented formats/host/scope; raw hardware and sample-accurate
+REAPER PC timing, unpaced offline recording and Apple/other-host acceptance remain
+separate. The generated-source guard also preserves upstream bytes/license and
+rejects drift under optimized Python; it does not replace ABI/DAW validators.

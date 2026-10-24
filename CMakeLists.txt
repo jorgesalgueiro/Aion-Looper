@@ -42,6 +42,9 @@ if(BUILD_TESTING)
     find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
     add_test(NAME original_ui_bytes COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/AssetTests.py")
     add_test(NAME reaper_midi_fixture COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/ReaperMidiFixtureTests.py")
+    add_executable(aion_vst3_program_tests tests/Vst3ProgramTests.cpp)
+    target_link_libraries(aion_vst3_program_tests PRIVATE aion_core)
+    add_test(NAME vst3_program_routing COMMAND aion_vst3_program_tests)
     add_executable(aion_core_tests tests/CoreTests.cpp tests/LoopTests.cpp tests/ReverseTests.cpp tests/HistoryTests.cpp tests/MultiplyTests.cpp tests/SyncTests.cpp tests/MetronomeTests.cpp tests/CountInTests.cpp tests/StartPhaseTests.cpp tests/StutterTests.cpp tests/WaveformTests.cpp tests/LiveInputTests.cpp)
     target_link_libraries(aion_core_tests PRIVATE aion_core Threads::Threads)
     target_sources(aion_core_tests PRIVATE tests/ExportTests.cpp)
@@ -140,6 +143,8 @@ if(WIN32 AND TARGET AionLooper_rc_lib)
     add_custom_command(OUTPUT "${aion_generated_dir}/AionLooper_resources.rc"
         APPEND DEPENDS "${aion_info_file}")
 endif()
+
+include(cmake/Vst3Programs.cmake)
 
 target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/ui/WebEditor.cpp)
 target_include_directories(AionLooper PRIVATE source)

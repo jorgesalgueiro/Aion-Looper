@@ -4506,3 +4506,110 @@ previous increment's 64/128, sanitizer and Ardour evidence retains its original
 scope; no product code changed here. Physical pedals/drivers, real-time driver
 buffers, editor Learn through DAWs, full-speed offline recording, VST3 PC and
 Ardour MIDI remain unverified or failing as specified above.
+
+## VST3 per-channel program bridge acceptance — 24 October 2026
+
+Baseline 1264c84b03e62adc2eeda70c717d9299e3350c94 plus this repair. This supersedes
+the preceding missing-Program-Change result for the tested REAPER formats only.
+The generated wrapper adds sixteen hidden MIDI routing parameters/channel units
+and named PC command lists. Existing APVTS IDs/state version 3, one application
+program, bindings and original UI/audio algorithms remain unchanged. No package,
+version bump, SDK checkout modification or hardware assignment change was made.
+
+Final real REAPER 7.82 evidence:
+build/reaper-daw/20261024T135706-1f38cbd1/result.json (passed), with
+build/vst3-pc-reaper-acceptance.log. BOTH actual VST3 and CLAP pass the original
+seven monitor/track-state/project renders plus 20 MIDI renders each:
+- Original Note/CC MUTE cases, with Note36 record/finish and the unchanged fixed
+  7200-frame/four-cycle phase oracle.
+- A separate Note-recorded PC0-only MUTE case: initial PC0 equals the parameter's
+  default, then the next tap repeats PC0 with no intervening program value. Keep
+  both equal-value pulses and the original fixed-period phase check.
+- Sixteen channel-specific PC127 record/finish and PC0 MUTE cases, each with
+  repeated bursts, PC0 on every other channel, an unmapped PC64, a wrong-channel
+  PC127, exact silent mute, nonzero playback/recovery and unchanged center pan.
+- Saved assignment/item reopen on channel 16, then a fresh recording controlled
+  by the saved PC127/PC0 routes; this does not implement saved-loop persistence.
+
+All 40 MIDI renders compare 6720 recovered stereo samples at the same source phase
+with maximum difference 0, at the unchanged 2.1920928955078125e-7 PCM tolerance.
+CLAP's raw-MIDI takes remain 7200 frames. REAPER VST3 PC-driven takes measured
+7168 frames for the nominal 7200-frame interval; Note-driven takes remain 7200.
+The bridge preserves the supplied sample offset, but this host-format PC timing
+is not certified sample-accurate. Added PC captures uniquely identify the source
+period from pre-mute audio alone, then compare four actual cycles later. Ambiguous
+periods are rejected. No recovered audio determines the expected period, no PCM
+error tolerance is enlarged, and the older Note/PC0-only fixed-period checks
+remain. The earlier 19-case run is in
+build/reaper-daw/20261024T134009-8fa6dc11/result.json, also passed. Its preceding
+fixed-150ms assumption failure is retained in build/vst3-pc-reaper-matrix.log and
+build/reaper-daw/20261024T133127-e9fbb85c/result.json. Rechecking those retained
+samples against their independently identified 7168-frame pre-mute period yields
+zero phase error; this was fixture timing, not a mute/source edit.
+
+The final host report retains both module identities, before/after binary hashes,
+raw MIDI byte/timing evidence and hashes, script/runner/test hashes, saved projects
+and source base. Assigned channels and repeated PC0/PC127 actually affect the audio
+through the real wrapper, not private IPC or an injected processor fixture.
+
+Portable and processor evidence:
+- Windows core 21/21, 314.41s: build/vst3-pc-windows-core.log.
+- Ubuntu core 21/21, 422.88s: build/vst3-pc-ubuntu-core.log.
+- ASan/UBSan 3/3, 146.76s: build/vst3-pc-asan.log; leak/error halt enabled,
+  including new program routing, full core and unchanged-JS MIDI tests.
+- New vst3_program_routing covers 4096 actual-PCM cases (16 channels x 128 programs
+  x 64/128), wrong-channel isolation, exact decoded offsets, repeated identical
+  programs, silence/recovery, unchanged clip/history and zero tracked callback
+  new/delete. Invalid values/IDs/offsets and the shared 256-point bound are checked.
+- Production native_midi_processor tests verify no reserved-ID/APVTS collisions,
+  one application program and no preset mutation, atomic entire-MIDI-block overflow
+  rejection without fabricated/raw-MIDI mutation, exact-offset recovery and zero
+  tracked callback allocations at 64/128. Full existing processor tests remain.
+- vst3_wrapper_generation verifies the exact current generated source, upstream
+  bytes/license, idempotence and fail-closed drift under ordinary AND optimized
+  Python. Normalized source SHA256 is
+  91716a2225f034ed4c21e86a37edaaba71bdf3fa161de0938f4e754bb1e61874.
+- The final portable fixture has positive state/PCM and negative malformed-state,
+  silent-output, monitor-leakage, phase/pan/mapping and ambiguous-period controls.
+  Channel-specific fixture XML stays exactly the same total length, with short
+  equivalent numeric values and root whitespace preserving opaque wrapper sizes.
+
+Windows frontend/fixture/routing/generation/processor/CLAP/VST3 group passes 7/7
+in 44.67s (build/vst3-pc-windows-formats-final.log). The newest 20-case fixture and
+optimized-Python guards additionally pass 2/2 in 10.29s
+(build/vst3-pc-final-fixtures.log). An earlier group correctly failed because the
+new native routing test executable had not been built; retain
+build/vst3-pc-windows-formats.log as Not Run, not a passing gate. Building that
+specific target repaired preparation without removing the test.
+
+The FULL production-editor mouse/keyboard/MIDI/export/merge workflow passes at
+both 64 and 128: build/vst3-pc-full-gui.log. This retains real pointer/key learning,
+Save/reload/clear, focused expression sliders, repeated Space panic, held SUS and
+Stop/delete safety, static/dynamic capture, LIVE, STUT, exact WAV and merge/history
+coverage. No physical audio device was opened by the owned synthetic host.
+
+Linux frontend/fixture/routing/generation/processor/LV2 audio/CLAP/LV2+VST3 pluginval
+passes 9/9 in 96.49s (build/vst3-pc-linux-formats.log). Strict assertion/leak gates
+and existing vendor skips/warnings remain. Real Ardour 8.4 libardour/Lua LV2
+48kHz Dummy stereo gain/mute/peak/session recall passes at 64/128:
+build/ardour-daw/20261024T140156-9afab4a3/result.json,
+build/vst3-pc-ardour.log. This remains peak/property/session coverage, not GTK
+pointer interaction, Ardour MIDI recording or physical JACK acceptance. GUI/DAW
+gates ran sequentially across platforms; independent builds/core audits overlapped.
+
+The independent unchanged-JS committed capture/OD/SUB audio audit passes 126 cases,
+965826 samples, maximum absolute error 7.394757495227111e-8 at tolerance 1e-6
+(build/vst3-pc-audio-audit.log). The initial invocation used the wrong DSP probe;
+it failed command-row identity before comparison and is retained separately in
+build/vst3-pc-audio-audit-wrong-probe.log. The accepted run uses the required
+command-stream aion_reference_probe; the product/oracle/tolerance did not change.
+
+Windows and Ubuntu existing binaries rebuilt. Source, generated wrappers,
+embedded asset identities and module hashes are recorded in
+build/vst3-pc-final-evidence.json. Test binaries contain the user's separate local
+logo whitespace override, which remains excluded from the feature commit. New
+routing is bounded and uses prepare-time storage; this is not certification of
+all arbitrary oversized framework MIDI allocation paths. Physical foot controllers,
+ASIO/JACK/CoreAudio latency, Apple/other-host builds, full-speed offline recording
+finalization, DAW-follow/MIDI-clock scheduling, projects and remaining DSP migration
+retain their earlier unverified/unimplemented limits. No next feature started.

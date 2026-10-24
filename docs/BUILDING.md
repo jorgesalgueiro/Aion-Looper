@@ -945,14 +945,14 @@ python tools/TestReaper.py --format CLAP --midi
 python tools/TestReaper.py --format VST3 --midi
 ```
 
-The CLAP command passes the current scoped gate. The VST3 command is intentionally
-strict and currently returns failure for PC0 MUTE on channel 16; Note and CC pass.
-Do not treat the older seven monitor renders or Lua's terminal PASS as acceptance
-of this failing Python audio assertion. The default command without --midi retains
-the older monitor-only scope. The both-format --midi command stops at its first
-failure, so use separate commands to inspect CLAP evidence while VST3 is repaired.
+Both commands pass the current scoped gate after the per-channel VST3 bridge
+repair. The original failing VST3 PC0 result remains in VALIDATION.md as regression
+evidence. Each gate remains strict: Lua's terminal PASS only confirms renders;
+Python independently validates PCM, phase and saved assignments. The default command without --midi retains
+the older monitor-only scope. The both-format --midi command still stops at its first
+failure; use separate commands to inspect format-specific evidence.
 
-The MIDI gate records a fresh loop from synthetic stereo via Note36, finishes it,
+The MIDI gate records fresh loops from synthetic stereo via Note36 or channel-specific PC127, finishes them,
 then tests assigned Note/CC/PC MUTE, duplicate pulses, releases and recovery. It
 compares returned phase samples and center pan and reopens a project to exercise
 the saved assignment/item by recording fresh audio. This is assignment persistence,
@@ -976,3 +976,31 @@ leakage, changed loop phase/pan and lost recalled assignments. REAPER's public
 [ReaScript API](https://www.reaper.fm/sdk/reascript/reascripthelp.html) documents
 the chunk, MIDI_Get/SetAllEvts and configuration APIs used. The config change uses
 persist=0 within the owned isolated profile, never the user's project/preferences.
+
+### Building and checking the VST3 program bridge
+
+The normal native CMake build generates the patched wrapper from the pinned JUCE
+source. No additional SDK or modified dependency checkout is required. The app's
+UI and preset/mapping schema are unchanged; VST3 gains sixteen hidden routing
+parameters and per-channel command lists required by the host protocol.
+
+```powershell
+cmake --build build/windows --config Release --target AionLooper_VST3 aion_midi_processor_tests aion_vst3_program_tests --parallel 2
+ctest --test-dir build/windows -C Release -R "vst3_program_routing|vst3_wrapper_generation|native_midi_processor" --output-on-failure
+python tools/TestReaper.py --midi
+```
+
+```sh
+cmake --build build/linux --target AionLooper_VST3 aion_midi_processor_tests aion_vst3_program_tests -j2
+ctest --test-dir build/linux -R 'vst3_program_routing|vst3_wrapper_generation|native_midi_processor' --output-on-failure
+```
+
+Core-only builds also include vst3_program_routing without JUCE/SDK dependencies.
+The real host gate adds all sixteen channel-specific PC0/PC127 routes and rejects
+wrong-channel and unmapped-program actions. It now checks 20 MIDI renders per
+format plus the original seven monitor renders. REAPER VST3's observed PC capture
+period is 7168 frames versus nominal 7200; its PC event timing remains a host
+acceptance limitation, distinct from preserving supplied sample offsets. The
+phase oracle measures one exact period before mute and compares recovery at the
+same phase; it rejects ambiguity and keeps the original fixed Note timing and
+CLAP 7200-frame checks. Use the existing rebuilt binaries; no package is required.

@@ -67,6 +67,10 @@ def pcm(path):
         return [x[0] for x in struct.iter_unpack('<f', raw)], 1e-7
     raise AssertionError(('Unsupported render format', fmt, bits))
 
+def midi_specs():
+    return [('1',1,16),('2',2,16),('pc-repeat',3,16)]+[('pc-'+str(c),3,c) for c in range(1,16)]+[('3',3,16)]
+
+
 def midi_fixtures(run):
     """Edit only this test plugin's public state, preserving opaque wrapper bytes.
 
@@ -89,29 +93,39 @@ def midi_fixtures(run):
     assert settings is not None and settings.get('version') == '3'
     assert all(settings.get('binding'+str(i)) is not None for i in range(93))
     assert tree.find("PARAM[@id='masterGain']").get('value') == '1.0', 'Expected unity fixture master'
-    for kind in (1,2,3):
+    labels=[]
+    for label,kind,channel in midi_specs():
+        labels.append(label)
+        binding=kind|(channel<<9)
         modified = xml
         for old,new in [(b'<MidiSettings enabled="0"',b'<MidiSettings enabled="1"'),
-                        (b'binding73="0"',b'binding73="'+str(kind).encode()+b'"'),
-                        (b'id="inputMonitor" value="1.0"',b'id="inputMonitor" value="0.0"'),
-                        (b'id="syncMode" value="2.0"',b'id="syncMode" value="0.0"')]:
+                        (b'binding73="0"',b'binding73="'+str(binding).encode()+b'"'),
+                        (b'id="inputMonitor" value="1.0"',b'id="inputMonitor" value="0"'),
+                        (b'id="syncMode" value="2.0"',b'id="syncMode" value="0"')]:
             assert modified.count(old) == 1, ('Unexpected state shape',old)
             modified = modified.replace(old,new)
+        if kind==3 and label!='pc-repeat':
+            old=b'binding0="145"';assert modified.count(old)==1
+            modified=modified.replace(old,b'binding0="'+str(3|(127<<2)|(channel<<9)).encode()+b'"')
+        # Short canonical numeric values reserve enough bytes for channel-specific
+        # bindings; root whitespace preserves every opaque wrapper length field.
+        padding=len(xml)-len(modified);assert padding>=0
+        modified=modified.replace(b'</AionState>',b' '*padding+b'</AionState>')
         assert len(modified) == len(xml)
         state = ET.fromstring(modified)
-        assert state.find('MidiSettings').get('binding73') == str(kind)
+        assert state.find('MidiSettings').get('binding73') == str(binding)
         changed = raw[:pos+8]+modified+raw[pos+8+size:]
         assert len(changed) == len(raw)
         # Publish the first file last: it is the host's fixture-ready signal.
-        (run/('midi-'+str(kind)+'.b64.tmp')).write_text(base64.b64encode(changed).decode(),encoding='ascii')
-    for kind in (3,2,1):
-        (run/('midi-'+str(kind)+'.b64.tmp')).replace(run/('midi-'+str(kind)+'.b64'))
+        (run/('midi-'+label+'.b64.tmp')).write_text(base64.b64encode(changed).decode(),encoding='ascii')
+    for label in reversed(labels):
+        (run/('midi-'+label+'.b64.tmp')).replace(run/('midi-'+label+'.b64'))
 
 
-def verify_midi(run, cases=None):
+def verify_midi(run, cases=None, plugin_format=None):
     if cases is None:cases = []
-    for kind in (1,2,3,'project_reload'):
-        path = run/('midi-'+str(kind)+'.wav')
+    for label,kind,channel in midi_specs()+[('project_reload',3,16)]:
+        path = run/('midi-'+label+'.wav')
         audio,tolerance = pcm(path)
         assert all(math.isfinite(x) for x in audio), 'Nonfinite MIDI loop audio'
         windows = {}
@@ -125,22 +139,37 @@ def verify_midi(run, cases=None):
             if audible:
                 assert all(n > len(values)*0.45 for n in nonzero), (kind,name,nonzero)
             windows[name]={'startSeconds':start,'endSeconds':end,'peaks':peaks,'nonzeroSamples':nonzero}
-        # Four complete 150ms loop cycles separate these windows: MUTE must
-        # preserve playback phase and the recorded source, not restart playback.
-        before = audio[round(.28*48000)*2:round(.35*48000)*2]
-        after = audio[round(.88*48000)*2:round(.95*48000)*2]
-        phase_error = max(abs(a-b) for a,b in zip(before,after))
-        assert phase_error <= tolerance, (kind,'mute altered loop source/phase',phase_error,tolerance)
+        if kind==3 and label!='pc-repeat':
+            # PC program points supplied by this VST3 host are quantized to its
+            # processing quantum. Identify the actual take period BEFORE mute;
+            # never estimate it from the recovered signal being verified.
+            anchor=round(.23*48000);candidates=[]
+            for lag in range(6144,7681):
+                if all(abs(audio[(anchor+j)*2]-audio[(anchor+j+lag)*2])<=tolerance for j in (0,117,239,479)):
+                    if max(abs(audio[(anchor+j)*2]-audio[(anchor+j+lag)*2]) for j in range(480))<=tolerance:
+                        candidates.append(lag)
+            assert len(candidates)==1, (label,'ambiguous/nonperiodic pre-mute source',candidates)
+            period=candidates[0]
+            if plugin_format=='CLAP':assert period==7200, (label,'raw-MIDI capture timing changed',period)
+            before=audio[anchor*2:(anchor+3360)*2]
+            after=audio[(anchor+4*period)*2:(anchor+4*period+3360)*2]
+        else:
+            # Retain the original exact Note-timed 150ms/four-cycle gate.
+            period=7200
+            before=audio[round(.28*48000)*2:round(.35*48000)*2]
+            after=audio[round(.88*48000)*2:round(.95*48000)*2]
+        phase_error=max(abs(a-b) for a,b in zip(before,after))
+        assert phase_error<=tolerance, (label,'mute altered loop source/phase',phase_error,tolerance)
         assert max(abs(audio[i]-audio[i+1]) for i in range(0,len(audio),2)) <= tolerance, 'Original center-pan loop downmix changed'
-        cases.append({'kind':kind,'channel':16,'windows':windows,'recoveredPhaseMaxError':phase_error,
-                      'tolerance':tolerance,'wavSha256':sha(path)})
+        cases.append({'name':label,'kind':kind,'channel':channel,'windows':windows,'recoveredPhaseMaxError':phase_error,
+                      'tolerance':tolerance,'recordedPeriodFrames':period,'wavSha256':sha(path)})
     restored = base64.b64decode((run/'midi-restored.b64').read_text(),validate=True)
     assert restored.count(b'VC2!') == 1
     pos=restored.index(b'VC2!');size,=struct.unpack_from('<I',restored,pos+4)
     state=ET.fromstring(restored[pos+8:pos+8+size])
     mapping=state.find('MidiSettings')
     assert mapping.get('enabled') == '1' and mapping.get('version') == '3'
-    assert mapping.get('binding73') == '3', 'Reopened project lost PC MUTE assignment'
+    assert mapping.get('binding73') == '8195' and mapping.get('binding0') == '8703', 'Reopened project lost PC MUTE assignment'
     assert all(mapping.get('binding'+str(i)) is not None for i in range(93))
     return cases
 
@@ -240,9 +269,9 @@ def main():
                 result['cases'].append({'name':case,'samplesCompared':len(errors),'maxError':error,
                                         'tolerance':tolerance,'nonzeroSamples':nonzero,'wavSha256':sha(run/(case+'.wav'))})
             if args.midi:
-                result['midiSourceEventsSha256'] = {str(k):sha(run/('midi-'+str(k)+'.events')) for k in (1,2,3)}
+                result['midiSourceEventsSha256'] = {label:sha(run/('midi-'+label+'.events')) for label,_,_ in midi_specs()}
                 result['midiCases'] = []
-                verify_midi(run,result['midiCases'])
+                verify_midi(run,result['midiCases'],kind)
                 print(kind+': real-host Note record/finish and mapped MUTE Note/CC/PC silence/recovery/phase plus assignment project recall passed',flush=True)
             result['passed'] = True
             print(kind+': seven real REAPER renders, track-state and project recall passed',flush=True)

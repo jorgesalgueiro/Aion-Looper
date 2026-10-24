@@ -758,13 +758,37 @@ REAPER rewrites. CountEvts groups notes; it is not the raw packet contract.
 Pace MIDI renders at verified project 1x (projrenderlimit, persist=0); full-speed
 offline can outrun worker finalization. Preserve that failed evidence and do not
 claim full-speed offline recording acceptance or loosen PCM/window assertions.
-The strict VST3 gate currently FAILS PC0 on channel 16 while Note/CC pass; retain
-nonzero failure and do not skip/xfail it or call the cross-format feature complete.
-CLAP passes these MIDI cases at 1x. Repair VST3 host program-message delivery before
-advancing, keeping channel, repeated PC0, sample offsets, burst rules and all
-existing parameter IDs/state. Do not fabricate 128 preset changes or call UI IPC
+Retain the reproduced VST3 PC0 failure as historical evidence; the bounded
+per-channel generated-wrapper repair must pass the strict real REAPER gate,
+keeping channel, repeated PC0/PC127, supplied sample offsets, burst rules and all
+existing parameter IDs/state. Never skip/xfail a newly failing host MIDI case. Do not fabricate 128 preset changes or call UI IPC
 from program callbacks to make a mute test pass. Unit/processor MidiBuffer passes
 do not establish actual wrapper delivery. Portable reaper_midi_fixture negative
 controls must reject silent output, monitor leakage, phase/pan corruption and
 lost recalled mappings. No production UI/DSP change, package or version bump is
 needed for this diagnostic gate. Preserve the separate user logo edit.
+
+VST3 Program Change bridge acceptance: cmake/Vst3Programs.cmake generates a copy
+of the exact pinned JUCE 9.0.4 wrapper using tools/patch_vst3_programs.py. Keep
+both normalized SHA256 and exact replacement-count guards mandatory under -O;
+never edit dependency sources or silently accept upstream drift. Sixteen hidden
+wrapper parameters/program units represent MIDI commands, not application presets.
+Keep getNumPrograms()==1, APVTS/schema/old parameter IDs and original HTML unchanged.
+Process every host queue point, including identical values, through the existing
+MIDI engine. Preserve each supplied offset and channel; no setCurrentProgram/UI
+RPC/audio-thread device queries. Decode malformed IDs/values/negative offsets
+without allocation. Bound all program queues together to 256 points and signal
+excess through OverflowSink's lock-free atomic rejection of the entire MIDI block;
+never fabricate MIDI packets. Reset that flag on prepare and preserve raw MIDI.
+Reserve new MIDI storage in prepare, not processing. Retain 4096 real-PCM portable
+channel/program/64/128 cases, the production overflow/recovery/preset/ID tests,
+fail-closed generation tests, validators and the 20-case-per-format REAPER matrix.
+REAPER's VST3 PC-driven capture observed a 7168-frame rather than nominal 7200-frame
+period. Keep the original Note-timed 7200-frame phase test. For the added PC-driven
+cases identify exactly one period using pre-mute PCM alone, then compare a full
+6720-sample recovery window four actual cycles later at the unchanged tolerance;
+reject ambiguous periods and require raw-MIDI CLAP's period to remain 7200.
+Retain the initial failed fixed-period assumption, and do not claim sample-accurate
+REAPER PC timing or fix it with audio sleeps. Supplied-offset portable acceptance
+is separate. Keep 1x pacing and full-speed offline/physical/Apple/other-host limits.
+No packaging/version bump is needed for this compatibility repair.

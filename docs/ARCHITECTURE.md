@@ -1031,3 +1031,41 @@ virtual audio milliseconds before that worker commits a take. The new MIDI host
 gate verifies project render speed 1x plus elapsed time; full-speed offline
 recording/finalization remains a separate unresolved contract. It must not be
 fixed by sleeping, allocating or waiting on the audio callback.
+
+## Bounded per-channel VST3 Program Change repair (24 October 2026)
+
+The preceding diagnostic gap is repaired by a generated wrapper copy; the pinned
+JUCE checkout is unchanged. cmake/Vst3Programs.cmake replaces only this project's
+VST3 client source with the generated translation unit. Generation checks the
+normalized upstream SHA256 and every replacement anchor, including under Python
+optimization, and retains JUCE's original license header. Dependency/version
+updates require deliberate review and fresh acceptance rather than silent patching.
+
+Sixteen hidden VST3 parameters use IDs 0x6a500000..0x6a50000f, with channel units
+0x6a510000..0x6a51000f and program lists 0x6a520000..0x6a52000f. getUnitByBus maps
+event input bus 0's sixteen channels to these units. Each list names the 128 MIDI
+PC commands; it does not create 128 application presets. Aion's getNumPrograms
+remains one and setCurrentProgram remains a no-op. Existing parameter IDs/order,
+APVTS, state version 3, bindings and HTML/CSS remain unchanged.
+
+The audio wrapper reads every program queue point, including equal values, and
+converts its channel/normalized number/supplied sample offset into the existing
+MidiBuffer path. The existing audio-owned MIDI engine retains Learn, matching,
+20ms burst filtering and loop actions. Vst3ProgramRouting.h validates finite
+0..1 normalized values, offsets and reserved IDs without allocation. A shared
+256-point budget bounds all program queues; excess sets OverflowSink's lock-free
+atomic flag. The processor rejects that callback's entire MIDI command set using
+its existing overflow/cancellation policy while retaining raw MIDI pass-through;
+prepare resets the flag. No fabricated MIDI events, preset calls, locks or UI RPC
+are used. The wrapper reserves 8192 MIDI bytes during prepare for bounded routing;
+this is not certification of arbitrary oversized framework MIDI allocation paths.
+
+The real REAPER matrix now includes Note/CC and sixteen channel-specific PC0 MUTE
+plus PC127 record/finish routes, duplicates, every other wrong-channel PC0,
+unmapped PC64, recovery and saved-assignment/item reopen. Existing seven monitor
+renders remain unchanged. PC-driven VST3 capture measured 7168 frames for the
+nominal 7200-frame interval; this host-format path is not certified sample-accurate.
+The bridge preserves supplied offsets in portable 64/128 tests. Phase acceptance
+uses an exact uniquely identified pre-mute period and compares recovery four
+cycles later; the original Note-timed fixed-period gate remains and raw-MIDI CLAP
+must retain its 7200-frame period. Full-speed offline finalization remains pending.

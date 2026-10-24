@@ -51,6 +51,20 @@ int main(){
   p->removeListener(&listener);
   std::cout<<"PASS: accepted state host rescan, invalid/queue rejection, exact saved-state preservation\n";
  }
+ // VST3 program overflow is an atomic block rejection, not synthetic MIDI.
+ for(const int block:{64,128}){
+  auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);
+  const auto rpc=[&](const juce::String& text){auto v=p->request({juce::JSON::parse(text)});check(v.getProperty("ok",false),text.toRawUTF8());return v;};
+  rpc(R"({"operation":"midiConfig","action":"enable","enabled":true})");rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");
+  for(auto* raw:p->getParameters())if(auto* parameter=dynamic_cast<juce::AudioProcessorParameterWithID*>(raw))check(!aion::vst3::programId(juce::VST3ClientExtensions::convertJuceParameterId(parameter->paramID,true)),"Wrapper routing IDs must not collide with existing APVTS parameters");
+  check(p->getNumPrograms()==1,"MIDI routing does not fabricate application presets");
+  juce::MemoryBlock before,after;p->getStateInformation(before);p->setCurrentProgram(127);p->getStateInformation(after);check(before==after,"Program routing never invokes application preset state changes");
+  juce::AudioBuffer<float> audio(2,block);audio.clear();juce::MidiBuffer midi;midi.ensureSize(4096);midi.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),17);
+  audioWatch=true;p->programInputOverflow();p->processBlock(audio,midi);audioWatch=false;
+  auto state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["overflows"])==1&&state["tracks"][0]["state"].toString()=="empty"&&midi.getNumEvents()==1&&state["midi"]["recent"].size()==0&&static_cast<int>(state["midi"]["messages"])==0,"Wrapper overflow drops all actions without fabricating/altering raw MIDI");
+  audioWatch=true;p->processBlock(audio,midi);audioWatch=false;state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["overflows"])==1&&state["tracks"][0]["state"].toString()=="recording"&&static_cast<int>(state["tracks"][0]["length"])==block-17,"Fresh callback recovers after wrapper overflow with exact sample offset");
+ }
+ std::cout<<"PASS: wrapper routing IDs/APVTS/preset isolation, atomic overflow block rejection/recovery, unchanged raw MIDI and no callback allocations at 64/128\n";
  // Version 3 appends MUTE bindings; old versions retain every existing pedal/CC assignment.
  for(const int version:{1,2,3}){
   auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,64);p->prepareToPlay(8000,64);juce::MemoryBlock original;p->getStateInformation(original);
