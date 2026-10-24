@@ -2,16 +2,17 @@
 -- hardware, and no private plugin command/telemetry API. State fixtures come
 -- from this disposable instance through documented vst_chunk/clap_chunk APIs.
 return function(run,cfg,tr,fx,render,log)
- -- Record/finalize involves an asynchronous worker. Pace MIDI audio at 1x:
- -- full-speed offline rendering can outrun worker commit in virtual time.
- assert(reaper.set_config_var_string("projrenderlimit","1",0)==2,"Cannot set project 1x render speed")
+ -- Keep the original paced gate and an explicit unpaced acceptance mode.
+ local speedLimit=cfg.fullSpeed and "0" or "1"
+ assert(reaper.set_config_var_string("projrenderlimit",speedLimit,0)==2,"Cannot set project render speed")
  local function pacedRender(name)
   local valid,speed=reaper.get_config_var_string("projrenderlimit")
-  assert(valid and speed=="1","MIDI fixture must render at 1x")
+  assert(valid and speed==speedLimit,"MIDI fixture render mode changed")
   local started=reaper.time_precise()
   render(name)
   local elapsed=reaper.time_precise()-started
-  assert(elapsed>=0.9,"MIDI render was not paced for one second")
+  if not cfg.fullSpeed then assert(elapsed>=0.9,"MIDI render was not paced for one second") end
+  log("midi-render-mode="..(cfg.fullSpeed and "full-speed" or "1x"))
   log("midi-render-seconds="..name..":"..elapsed)
  end
  local key=cfg.format=="CLAP" and "clap_chunk" or "vst_chunk"

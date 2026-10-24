@@ -34,7 +34,7 @@ public:
     bool learnCurrent(const MidiLearnResult& value) const noexcept {return value.cancellation==learnCancellation.load(std::memory_order_acquire);}
     void begin(Dispatch&) noexcept;
     void event(const MidiEvent&,Dispatch&) noexcept;
-    void tick(Dispatch&) noexcept;
+    void tick(Dispatch&, bool nonRealtime = false) noexcept;
     void cancel(Dispatch&,int track=-1) noexcept;
     void cancelLearn() noexcept {learnCancellation.fetch_add(1,std::memory_order_release);settings.learnTarget=-1;learnCaptured=false;provisionalTarget=-1;provisionalBinding=0;}
     void prepare(Dispatch&) noexcept;

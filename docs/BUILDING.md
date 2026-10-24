@@ -1004,3 +1004,34 @@ acceptance limitation, distinct from preserving supplied sample offsets. The
 phase oracle measures one exact period before mute and compares recovery at the
 same phase; it rejects ambiguity and keeps the original fixed Note timing and
 CLAP 7200-frame checks. Use the existing rebuilt binaries; no package is required.
+
+
+## Offline recording finalization regression
+
+Keep the default paced test and run the distinct full-speed test after building
+the existing Windows VST3/CLAP targets:
+
+```powershell
+python tools/TestReaper.py --midi --format both
+python tools/TestReaper.py --midi --full-speed --format both
+```
+
+The latter requires --midi, explicitly sets project projrenderlimit=0 and keeps
+all seven monitor/recall renders and twenty MIDI PCM/phase cases per format.
+The default still verifies 1x pacing and at least 0.9 seconds per one-second
+MIDI render. Full-speed is a host mode/configuration contract; system load and
+render-dialog overhead need not make total test wall time shorter than audio.
+Both commands use their own disposable REAPER profile, hardware outputs removed,
+module identity/hashes and owned-process timeout. They do not test an existing
+user session or physical MIDI device.
+
+```sh
+cmake --build build/core --target aion_offline_tests -j2
+ctest --test-dir build/core --output-on-failure -R '^offline_finalization$'
+```
+
+For the Windows Visual Studio core tree use build/windows-core, --config Release
+and ctest -C Release. The test checks exact entire-render PCM across 1/64/128
+samples, mono/stereo, simultaneous handoffs, edits/history and worker ownership.
+It does not replace the retained live/reference, sanitizer and production
+processor gates. No installer or package is required for this repair.

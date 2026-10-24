@@ -51,6 +51,22 @@ int main(){
   p->removeListener(&listener);
   std::cout<<"PASS: accepted state host rescan, invalid/queue rejection, exact saved-state preservation\n";
  }
+ // The production processor must forward host offline mode, including changes
+ // after prepare, and commit within the same callback without UI polling sleeps.
+ for(int block:{64,128}){
+  auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);p->setNonRealtime(true);
+  const auto rpc=[&](const char* json){auto reply=p->request({juce::JSON::parse(json)});check(reply.getProperty("ok",false),json);return reply;};
+  rpc(R"({"operation":"midiConfig","action":"enable","enabled":true})");rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");rpc(R"({"operation":"setParameter","id":"masterGain","value":1})");
+  juce::AudioBuffer<float> buffer(2,block);juce::MidiBuffer packets;packets.ensureSize(4096);unsigned frame=0;
+  const auto process=[&]{for(int i=0;i<block;++i){buffer.setSample(0,i,static_cast<float>(std::sin((frame+i)*.071)*.3));buffer.setSample(1,i,static_cast<float>(std::cos((frame+i)*.053)*.2));}audioWatch=true;p->processBlock(buffer,packets);audioWatch=false;packets.clear();frame+=block;return rpc(R"({"operation":"snapshot"})");};
+  packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),17);process();packets.addEvent(juce::MidiMessage::noteOff(1,36),0);process();for(int i=0;i<8;++i)process();
+  const auto before=rpc(R"({"operation":"snapshot"})");const int length=static_cast<int>(before["tracks"][0]["length"])+17;
+  packets.addEvent(juce::MidiMessage::noteOn(1,36,juce::uint8{100}),17);auto state=process();
+  check(state["tracks"][0]["state"].toString()=="playing"&&static_cast<int>(state["tracks"][0]["length"])==length,"Host offline mode must finish exact-offset recording within the callback");
+  check(static_cast<juce::int64>(state["tracks"][0]["waveformId"])>0,"Offline processor committed an immutable PCM clip");
+  for(int i=0;i<4;++i)process();check(buffer.getMagnitude(0,block)>0.01f,"Offline production processor renders actual nonzero recorded PCM");
+  p->setNonRealtime(false);process();p->setNonRealtime(true);process();check(static_cast<int>(rpc(R"({"operation":"snapshot"})")["tracks"][0]["length"])==length,"Live/offline switches preserve the committed clip");
+ }
  // VST3 program overflow is an atomic block rejection, not synthetic MIDI.
  for(const int block:{64,128}){
   auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);

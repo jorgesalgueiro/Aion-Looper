@@ -546,6 +546,16 @@ bool LoopBank::hasCapture() const noexcept {
     for(const auto& track:tracks)if(capturing(track.info.state)||track.info.state==LoopState::armed)return true;
     return false;
 }
+void LoopBank::completeOfflineEdits() noexcept {
+    // Only a host-declared offline render may wait. The worker still owns all
+    // clip allocation, full-buffer DSP and destruction; audio time stands still.
+    auto state=jobState.load(std::memory_order_acquire);
+    while(state==1||state==2){
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+        state=jobState.load(std::memory_order_acquire);
+    }
+    acceptResult();
+}
 void LoopBank::beginBlock() noexcept {acceptResult();for(auto& track:tracks)track.info.peak=0;}
 bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool master,bool replacePending) noexcept {
     const auto deadline=SyncClock::deadline(target*rate);
@@ -593,7 +603,7 @@ void LoopBank::applyPhaseEvents() noexcept {
         blend(track);
     }
 }
-Stereo LoopBank::tick(Stereo input) noexcept {
+Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
     applyPhaseEvents();
     input={safe(input.left),safe(input.right)};Stereo mix{};
     for(auto& t:tracks){
@@ -610,6 +620,8 @@ Stereo LoopBank::tick(Stereo input) noexcept {
                 if(v.state==LoopState::recording)v.length=t.captureLength;
             }
         }
+        // Scheduled/space-limited capture can finish inside this sample.
+        if(nonRealtime)completeOfflineEdits();
         const bool audible=t.clip&&(v.state==LoopState::playing||v.state==LoopState::stopping||v.state==LoopState::overdubbing||v.state==LoopState::substituting||v.state==LoopState::multiplying||(v.state==LoopState::finalizing&&t.playWhileFinalizing));
         if(t.rateRemaining){t.rate+=t.rateIncrement;if(--t.rateRemaining==0)t.rate=t.targetRate;}
         if(t.panRemaining){t.panGain.left+=t.panIncrement.left;t.panGain.right+=t.panIncrement.right;if(--t.panRemaining==0)t.panGain=t.panTarget;}

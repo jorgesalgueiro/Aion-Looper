@@ -1069,3 +1069,31 @@ The bridge preserves supplied offsets in portable 64/128 tests. Phase acceptance
 uses an exact uniquely identified pre-mute period and compares recovery four
 cycles later; the original Note-timed fixed-period gate remains and raw-MIDI CLAP
 must retain its 7200-frame period. Full-speed offline finalization remains pending.
+
+
+## Offline worker completion (24 October 2026)
+
+Live audio keeps the existing bounded queues and asynchronous immutable-clip
+transfer. For host-declared offline rendering only, the processor passes JUCE's
+isNonRealtime flag into Engine::process. The render owner waits for the existing
+worker to publish its result, then consumes it without advancing audio time.
+Clip allocation, editing DSP and destruction remain worker-owned. This exception
+was explicitly approved by the user; it does not add waiting to live callbacks.
+
+Commit boundaries include ordinary commands, each queued MIDI task, zero-sample
+MIDI flushes, and scheduled/capacity-triggered finishes inside LoopBank::tick.
+The bounded MIDI FIFO resumes at the same sample after a worker commit, retaining
+its 128-task limit. No persistent render-mode field, new UI, APVTS parameter,
+MIDI assignment or serialized state change is needed. An unknown mode remains
+realtime; hosts must correctly declare offline processing for this behavior.
+
+The worker wait is conditional on an actual pending job, rather than pacing the
+whole render to 1x. Existing worker exception handling publishes failed results
+through the same ownership/cancellation path. There is no artificial audio delay
+or sample-clock advance while waiting. Host process supervision in the REAPER
+harness retains its timeout; this is not a promise of a bounded offline wall time.
+
+JUCE documents [isNonRealtime](https://docs.juce.com/master/classjuce_1_1AudioProcessor.html)
+for offline rendering. Steinberg's [processing modes](https://steinbergmedia.github.io/vst3_doc/vstinterfaces/namespaceSteinberg_1_1Vst.html)
+permit offline processing to wait for background streaming while requiring live
+processing to run promptly. Prefetch alone must not activate this exception.

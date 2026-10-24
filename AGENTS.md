@@ -792,3 +792,24 @@ Retain the initial failed fixed-period assumption, and do not claim sample-accur
 REAPER PC timing or fix it with audio sleeps. Supplied-offset portable acceptance
 is separate. Keep 1x pacing and full-speed offline/physical/Apple/other-host limits.
 No packaging/version bump is needed for this compatibility repair.
+
+
+Offline finalization exception (user-approved 24 October 2026): only a host-declared
+non-realtime render may wait for existing worker jobs. AionProcessor forwards
+isNonRealtime per callback, with false/default/unknown retaining the nonblocking
+live path. Keep all allocation, full-clip DSP and destruction on the worker.
+Waiting must not advance audio samples. Commit before the next command/MIDI task,
+including same-sample finish/next-track record, and before rendering a scheduled
+or pool-exhaustion finish. Retain bounded MIDI task work, ownership/revision
+cancellation and zero tracked render-owner new/delete. Keep exact complete mono/
+stereo PCM equality at 1/64/128 blocks, ordered capture/OD/SUB/NORM/history/MULT/
+MERGE, static auto-finish at 8/48/96 kHz, capacity finish and cancelled live-origin
+job tests. Retain the initially failing same-sample MIDI handoff case and real
+production host-mode tests. TestReaper.py --midi --full-speed is separate from the
+retained default 1x gate: verify projrenderlimit=0, retain every existing nonzero/
+silence/channel/repeat/reopen/phase assertion and original tolerances. Never
+pace or sleep audio to hide a failure. The offline wait sleeps only while a
+published worker job is pending; the virtual sample clock is held. Keep the
+unpaced failure evidence and REAPER VST3 supplied-timestamp quantization limit;
+this repair does not certify physical latency, host-follow or stored-loop recall.
+Do not infer other DAW/platform offline acceptance from REAPER VST3/CLAP tests.

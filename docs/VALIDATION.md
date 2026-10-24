@@ -4613,3 +4613,77 @@ all arbitrary oversized framework MIDI allocation paths. Physical foot controlle
 ASIO/JACK/CoreAudio latency, Apple/other-host builds, full-speed offline recording
 finalization, DAW-follow/MIDI-clock scheduling, projects and remaining DSP migration
 retain their earlier unverified/unimplemented limits. No next feature started.
+
+
+## Offline recording finalization — 24 October 2026
+
+The user approved waiting only on a host-declared offline render owner. Live
+processing remains nonblocking. The worker still owns allocation, whole-clip DSP
+and destruction; waiting holds virtual time instead of pacing audio at 1x.
+AionProcessor forwards JUCE isNonRealtime on every callback. Core completion
+boundaries include queued commands, individual MIDI FIFO tasks, zero-sample MIDI
+flushes and scheduled/capacity-triggered finishes. The original UI, DSP kernels,
+APVTS/MIDI schemas and physical assignments are unchanged.
+
+Reproduction and repair evidence is retained in build/offline-finalization/:
+
+- offline-before.log and build/reaper-daw/20261024T154121-624c8404/result.json:
+  unpaced CLAP failed real nonzero playback (only 2976 nonzero samples/channel in
+  a required 3360-frame window). This was not an accepted render.
+- offline-midi-before.log: the initial offline wait still deferred the next
+  track's same-sample MIDI record by one sample. The regression remains mandatory;
+  the bounded MIDI FIFO now commits the previous worker job before inspecting its
+  next task, without advancing the clock or increasing its task limit.
+- offline-native-build.log: the first new processor test did not compile because
+  of an ambiguous JUCE var/int comparison; an explicit test-side int conversion
+  corrected it. No assertion or product behavior was changed for that error.
+- offline-final-windows-core.log: final Windows core/reference suite 22/22,
+  338.08 seconds. offline-final-linux-core.log: final Ubuntu 22/22, 422.55 seconds.
+  Its independent unchanged-JS capture/OD/SUB center-pan audit also passed all 126
+  cases / 965826 samples, maximum absolute error 7.394757495227111e-8 at the retained
+  1e-6 tolerance. Browser resampling, envelopes and hardware latency stay excluded.
+- offline-final-sanitizers.log: final ASan/UBSan with leak detection passed 4/4:
+  offline PCM, real-time core, VST3 program routes and original-JS MIDI comparisons.
+- offline-windows-native-tests.log and offline-production-processor.log: Windows
+  offline core/generator/CLAP/VST3 validation 4/4 plus production MidiBuffer 1/1.
+  The production test sets host offline mode after prepare, records/finishes at
+  an exact offset, checks immediate committed/nonzero PCM, then switches live and
+  back without changing the clip. Tracked callback new/delete remains zero.
+- offline-linux-host-tests.log: final Linux offline/generator/production processor,
+  public LV2 audio, CLAP validator and LV2/VST3 pluginval gates 7/7. Actual Ardour
+  libardour/Lua Dummy stereo gain/mute/session recall also passed at 48kHz/64/128;
+  this is not GTK pointer, physical JACK or Ardour offline-recording acceptance.
+- offline-live-gui.log: the full synthetic-audio mouse/keyboard/MIDI/export/merge
+  workflow passed at 64 samples; the first 128-sample attempt failed because no
+  wheel event reached the test (evidence array empty). Preserve that failure.
+  After other Windows host checks finished, the unchanged complete 128-sample
+  workflow passed in offline-live-gui-128-isolated.log. No product/UI/input change,
+  synthetic wheel substitute, assertion removal or tolerance change was made.
+
+Final real REAPER 7.82 evidence:
+
+- build/reaper-daw/20261024T155427-b5aa057c/result.json: full-speed, projrenderlimit=0.
+- build/reaper-daw/20261024T155748-30f5e568/result.json: retained default 1x mode,
+  with the original measured >=0.9s requirement for each one-second MIDI render.
+
+Each run passed seven monitor/track-state/project renders and twenty MIDI renders
+per VST3/CLAP format. Every recovered-loop phase error was zero at the original
+PCM tolerance. Mode is checked before each MIDI render, including project reopen;
+loaded-module identity and before/after hashes match the final rebuilt modules.
+Full-speed is an explicit host render configuration, not a wall-time speed claim.
+
+OfflineTests.cpp retains exact entire-render PCM equality across 1/64/128 samples
+and mono/stereo, simultaneous command/MIDI capture handoffs, OD/SUB/NORM, reverse,
+Undo/Redo/MULT/MERGE, static automatic completion at 8/48/96 kHz, pool exhaustion,
+empty/short/near-capacity lengths, zero-sample MIDI finish and cancelled live-origin
+worker ownership. Worker waits must never advance audio time. Tracked render-owner
+new/delete stays zero; arbitrary system/framework malloc is not globally certified.
+
+The prior full-speed failure is repaired for the tested REAPER VST3/CLAP workflow.
+REAPER VST3 PC-driven capture still receives a 7168-frame rather than nominal
+7200-frame period; the independent pre-mute period oracle and old Note-timed test
+remain unchanged. Supplied-offset core acceptance is separate from host timestamp
+accuracy. Physical ASIO/JACK/CoreAudio latency, Apple/other hosts, full host-follow,
+MIDI clock and stored-loop project persistence remain pending. Hosts must correctly
+declare offline mode; prefetch alone must never enable waiting. No package or
+version bump is created, and the separate user logo edit remains outside the commit.

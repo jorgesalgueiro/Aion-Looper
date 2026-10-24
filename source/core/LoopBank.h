@@ -47,7 +47,9 @@ public:
     bool apply(LoopAction, std::uint32_t track, float value = 0) noexcept;
     bool setStartDelay(std::uint32_t track,double value) noexcept;
     bool clearMergedSource(std::uint32_t track,double serial) noexcept;
-    Stereo tick(Stereo input) noexcept;
+    Stereo tick(Stereo input, bool nonRealtime = false) noexcept;
+    // Offline render owner only: never call on a live audio callback.
+    void completeOfflineEdits() noexcept;
     static constexpr unsigned waveformWidth=720;
     bool copyWaveform(std::uint32_t,std::uint64_t,std::array<float,waveformWidth>&) const noexcept;
     // Audio pins one immutable clip; worker encodes it; message thread takes bytes.

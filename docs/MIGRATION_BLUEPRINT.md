@@ -356,3 +356,13 @@ is introduced. Existing fixed press storage, audio ownership, MIDI/APVTS state
 schema, callback timing and original UI remain. Seven native cancellation sources
 and exact nonzero stereo PCM/64/128 are tested separately from the unchanged-JS
 MIDI Stop oracle and from physical driver/controller acceptance.
+
+
+## Offline completion — 24 October 2026
+
+The user-approved offline-only completion barrier now holds virtual time for
+existing worker jobs; live audio retains the nonblocking ownership graph. Both
+full-speed and retained 1x real REAPER VST3/CLAP matrices pass, with no UI, DSP
+kernel or state-schema change. See VALIDATION.md for exact scope, reproduced
+failures and original timestamp/physical/platform limits. No new feature or
+package is included in this repair.

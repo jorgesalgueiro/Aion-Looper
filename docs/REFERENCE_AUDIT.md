@@ -756,3 +756,13 @@ gap only for their documented formats/host/scope; raw hardware and sample-accura
 REAPER PC timing, unpaced offline recording and Apple/other-host acceptance remain
 separate. The generated-source guard also preserves upstream bytes/license and
 rejects drift under optimized Python; it does not replace ABI/DAW validators.
+
+
+Offline completion is a native host contract, not original-browser scheduling
+parity. The explicit user-approved exception waits only for published worker jobs
+in a host-declared offline callback. Keep exact whole-render block-partition PCM
+and simultaneous MIDI handoff tests alongside the unchanged-JS live/state/DSP
+gates. Final 126-case committed capture/OD/SUB center-pan sound audit remains at
+maximum 7.394757495227111e-8 under 1e-6. Real REAPER full-speed and retained 1x
+Note/CC/PC silence/recovery/phase/reopen matrices pass; none of those claims
+extends to full browser envelopes, physical timing, other hosts or Apple builds.

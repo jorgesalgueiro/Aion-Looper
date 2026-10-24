@@ -71,3 +71,14 @@ hash evidence. This adds no synth/FX feature and does not establish host-follow
 scheduling, MIDI clock, recorded-loop persistence, physical drivers or Apple
 acceptance. Linux CLAP DAW validation remains separate because Ardour 8.4 does
 not host CLAP. See VALIDATION.md for exact evidence.
+
+
+Offline-only completion follows the explicit user-approved exception on
+24 October 2026. It synchronizes the native worker with offline virtual time;
+this is native host behavior rather than unchanged browser scheduling parity.
+The original UI/assets and DSP kernels remain unchanged. Complete offline PCM
+must be identical across 1/64/128 block partitions, including simultaneous
+capture handoffs and existing immutable editing/history operations. Keep live
+unchanged-JS and real-PCM gates independent. REAPER's VST3 PC timestamp
+quantization, other hosts/Apple platforms and recorded-loop project persistence
+remain separate limits; a passing offline render is not physical audio evidence.

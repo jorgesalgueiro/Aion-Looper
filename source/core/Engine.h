@@ -58,7 +58,7 @@ public:
     std::uint32_t generation() const noexcept { return epoch.load(std::memory_order_acquire); }
     void setTarget(float value) noexcept;
     bool enqueue(GainCommand command) noexcept;
-    void process(float* const* channels, int channelCount, int frames,std::span<const MidiEvent> midiEvents={}) noexcept;
+    void process(float* const* channels, int channelCount, int frames,std::span<const MidiEvent> midiEvents={}, bool nonRealtime = false) noexcept;
     bool configureMidi(const MidiSettings& settings) noexcept {return midi->configure(settings);}
     bool popMidiLearn(MidiLearnResult& result) noexcept {return midi->popLearn(result);}
     bool midiLearnCurrent(const MidiLearnResult& result) const noexcept {return midi->learnCurrent(result);}

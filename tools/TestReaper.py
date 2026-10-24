@@ -179,7 +179,9 @@ def main():
     parser.add_argument('--reaper', type=Path, default=Path('C:/Program Files/REAPER (x64)/reaper.exe'))
     parser.add_argument('--format', choices=['VST3', 'CLAP', 'both'], default='both')
     parser.add_argument('--midi', action='store_true', help='Also render main Note record/finish and mapped MUTE Note/CC/PC in the actual host')
+    parser.add_argument("--full-speed", action="store_true", help="Test MIDI finalization without the default 1x render pacing")
     args = parser.parse_args()
+    assert not args.full_speed or args.midi, "--full-speed requires --midi"
     assert sys.platform == 'win32', 'Windows REAPER required'
     assert args.reaper.is_file(), 'REAPER not installed'
     formats = ['VST3', 'CLAP'] if args.format == 'both' else [args.format]
@@ -193,12 +195,12 @@ def main():
     report = {'passed': False, 'host': str(args.reaper.resolve()), 'hostSha256': sha(args.reaper),
               'scriptSha256': sha(ROOT/'tests/ReaperDawProbe.lua'), 'runnerSha256': sha(Path(__file__)),
               'dirtyTracked': subprocess.check_output(['git','diff','--name-only'],cwd=ROOT,text=True).splitlines(),
-              'midiRequested': args.midi, 'midiScriptSha256': sha(ROOT/'tests/ReaperMidiProbe.lua'),
+              'midiRenderMode': 'full-speed' if args.full_speed else '1x', 'midiRequested': args.midi, 'midiScriptSha256': sha(ROOT/'tests/ReaperMidiProbe.lua'),
               'fixtureTestsSha256': sha(ROOT/'tests/ReaperMidiFixtureTests.py'),
               'sourceCommit': subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
               'limits': ['offline renders; no physical driver latency or 64/128 callback certification',
                          'monitor gate: settled gain only, excludes first 100ms smoothing envelope',
-                         'optional MIDI gate uses paced 1x offline rendering, not full-speed worker-commit timing certification',
+                         'MIDI gate checks '+('full-speed' if args.full_speed else 'paced 1x')+' offline rendering; not physical timing certification',
                          'track-state recall only; recorded-loop project storage is not implemented',
                          'no editor interaction, MIDI clock or host-follow scheduling acceptance'], 'formats': []}
     try:
@@ -213,7 +215,7 @@ def main():
             (run/'reaper.ini').write_text('[reaper]\nvstpath64='+ (dirs/'VST3').as_posix()+
                 '\nclap_path_win64='+(dirs/'CLAP').as_posix()+
                 '\naudioclosestop=1\naudiocloseinactive=1\nrenderclosewhendone=4\n', encoding='utf-8')
-            (run/'config.lua').write_text('return {format="'+kind+'",midi='+str(args.midi).lower()+'}\n', encoding='utf-8')
+            (run/'config.lua').write_text('return {format="'+kind+'",midi='+str(args.midi).lower()+',fullSpeed='+str(args.full_speed).lower()+'}\n', encoding='utf-8')
             shutil.copyfile(ROOT/'tests/ReaperMidiProbe.lua', run/'midi.lua')
             shutil.copyfile(ROOT/'tests/ReaperDawProbe.lua', run/'probe.lua')
             samples = []

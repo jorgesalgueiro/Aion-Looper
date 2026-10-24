@@ -58,9 +58,10 @@ bool Engine::applyLoop(LoopAction action,std::uint32_t track,double value) noexc
         (track==countInTrack&&(action==LoopAction::finish||action==LoopAction::stop||action==LoopAction::stopImmediate||action==LoopAction::clear)))countIn.cancel();
     return true;
 }
-void Engine::process(float* const* channels, int count, int frames,std::span<const MidiEvent> midiEvents) noexcept {
+void Engine::process(float* const* channels, int count, int frames,std::span<const MidiEvent> midiEvents, bool nonRealtime) noexcept {
     if (count < 0 || frames < 0 || (count > 0 && channels == nullptr)) return;
     float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
+    if(nonRealtime)loops.completeOfflineEdits();
     loops.beginBlock();
     auto midiContext=midiDispatch();midi->begin(midiContext);
     const auto midiRevision=midiCancellation.load(std::memory_order_acquire);
@@ -85,8 +86,9 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     // Hosts may flush MIDI with no samples. Dispatch at the current frame,
     // without rendering PCM, advancing clocks or draining ordinary UI commands.
     if(frames==0&&!midiEvents.empty()){
-        for(const auto& event:midiEvents)midi->event(event,midiContext);
-        midi->tick(midiContext);
+        for(const auto& event:midiEvents){midi->event(event,midiContext);if(nonRealtime)loops.completeOfflineEdits();}
+        midi->tick(midiContext,nonRealtime);
+        if(nonRealtime)loops.completeOfflineEdits();
     }
     for (int i = 0; i < frames; ++i, ++frame) {
         if (!hasPending) hasPending = commands.pop(pending);
@@ -99,16 +101,21 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
             const bool cancelledStutter=pendingLoop.action==LoopAction::stutterStart&&pendingLoop.stutterRevision!=stutterRevisions[pendingLoop.track].load(std::memory_order_acquire);
             rejected = pendingLoop.generation != generation() ||
                 (!cancelledStutter&&!applyLoop(pendingLoop.action,pendingLoop.track,pendingLoop.value));
+            if(nonRealtime)loops.completeOfflineEdits();
             ++loopApplied; hasPendingLoop = loopCommands.pop(pendingLoop);
         }
         midiContext.frame=frame;
-        while(midiRead<midiEvents.size()&&midiEvents[midiRead].offset<=static_cast<unsigned>(i))midi->event(midiEvents[midiRead++],midiContext);
-        midi->tick(midiContext);
+        while(midiRead<midiEvents.size()&&midiEvents[midiRead].offset<=static_cast<unsigned>(i)){
+            midi->event(midiEvents[midiRead++],midiContext);
+            if(nonRealtime)loops.completeOfflineEdits();
+        }
+        midi->tick(midiContext,nonRealtime);
+        if(nonRealtime)loops.completeOfflineEdits();
         const float left = count > 0 && channels[0] && std::isfinite(channels[0][i]) ? channels[0][i] : 0.0f;
         const float right = count > 1 && channels[1] && std::isfinite(channels[1][i]) ? channels[1][i] : left;
         inputPeak = std::max(inputPeak, std::max(std::abs(left), std::abs(right)));
         liveInput->push(left,right);
-        const auto loopOutput = loops.tick({left, right});
+        const auto loopOutput = loops.tick({left, right},nonRealtime);
         // Monitor-only, like the original direct-to-destination worklet: never
         // feed clicks to capture, and keep its volume independent of MASTER.
         const float click=metronome.tick(frame)+countIn.tick(frame);

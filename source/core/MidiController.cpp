@@ -174,7 +174,7 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
         else if(p){p->cut=p->erase=true;p->canDelete=false;}
     }
 }
-void MidiController::tick(Dispatch& d) noexcept {
+void MidiController::tick(Dispatch& d, bool nonRealtime) noexcept {
     if(d.frame>=nextDeadline){nextDeadline=std::numeric_limits<std::uint64_t>::max();
         for(auto& p:presses)if(p.active&&!p.suppressed&&p.track<20&&!p.sustainAction&&!p.buttonOnly){
             const auto t=d.bank.trackView(p.track);if(t.clearEpoch!=p.clearEpoch){p.suppressed=true;continue;}
@@ -184,7 +184,11 @@ void MidiController::tick(Dispatch& d) noexcept {
             if(!p.cut)nextDeadline=std::min(nextDeadline,cut);else if(!p.erase)nextDeadline=std::min(nextDeadline,erase);
         }
     }
-    for(unsigned n=0;read!=write&&n<128;++n){const auto task=tasks[read];const auto t=d.bank.trackView(task.track);
+    for(unsigned n=0;read!=write&&n<128;++n){
+        // In offline mode, a preceding task may publish a worker job at the
+        // same sample. Commit before inspecting the next task, without moving time.
+        if(nonRealtime)d.bank.completeOfflineEdits();
+        const auto task=tasks[read];const auto t=d.bank.trackView(task.track);
         if(task.epoch!=epoch||task.clearEpoch!=t.clearEpoch){read=(read+1)%tasks.size();continue;}
         if(t.state==LoopState::finalizing)break;
         if(task.kind==TaskKind::main&&t.state==LoopState::empty&&d.bank.finalizationPending())break;

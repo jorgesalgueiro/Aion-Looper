@@ -178,7 +178,7 @@ void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuff
         midiEvents[midiCount++]={static_cast<std::uint32_t>(metadata.samplePosition),bytes[0],static_cast<std::uint8_t>(size>1?bytes[1]:0),static_cast<std::uint8_t>(size>2?bytes[2]:0),static_cast<std::uint8_t>(size)};
     }
     if(midiOverflow){engine.midiOverflow();midiCount=0;}
-    engine.process(audio.getArrayOfWritePointers(), audio.getNumChannels(), audio.getNumSamples(),std::span(midiEvents.data(),midiCount));
+    engine.process(audio.getArrayOfWritePointers(), audio.getNumChannels(), audio.getNumSamples(),std::span(midiEvents.data(),midiCount),isNonRealtime());
 }
 juce::AudioProcessorEditor* AionProcessor::createEditor() { return new AionWebEditor(*this); }
 void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
