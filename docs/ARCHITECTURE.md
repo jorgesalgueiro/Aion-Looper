@@ -1097,3 +1097,14 @@ JUCE documents [isNonRealtime](https://docs.juce.com/master/classjuce_1_1AudioPr
 for offline rendering. Steinberg's [processing modes](https://steinbergmedia.github.io/vst3_doc/vstinterfaces/namespaceSteinberg_1_1Vst.html)
 permit offline processing to wait for background streaming while requiring live
 processing to run promptly. Prefetch alone must not activate this exception.
+
+
+## Keyboard retrigger repeat routing
+
+The presentation adapter routes the original unmapped '/' and NumpadDivide
+shortcuts before ordinary loop-key repeat suppression. Existing modifier and
+text guards stay ahead of dispatch. It uses the same native RTRG command and
+selected-loop route as before; no DSP, worker, APVTS, MIDI or bridge protocol
+change. Repeated shortcuts never create held cut/delete timers. Original markup
+and assets remain unchanged. Keyboard SUS, custom mappings and broader selection
+parity remain independent migration work.

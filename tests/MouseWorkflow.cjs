@@ -207,6 +207,31 @@ let socket;
     await exactlyOne(()=>click('#loop-0 button[title="RTRG"]'),'Stopped RTRG starts playback');
     await state('playing');await wait(s=>s.outputPeak>0.02,'Stopped RTRG produces PCM');
 
+    // Real OS-repeat keydowns must reach the original global RTRG fallback.
+    await evaluate(`window.retriggerKeys=[];window.addEventListener('keydown',e=>{if(e.key==='/'||e.code==='NumpadDivide')window.retriggerKeys.push({code:e.code,repeat:e.repeat,trusted:e.isTrusted,prevented:e.defaultPrevented});});`);
+    for(const [code,vkey,location] of [['Slash',191,0],['NumpadDivide',111,3]]){
+        const fields={code,key:'/',windowsVirtualKeyCode:vkey,nativeVirtualKeyCode:vkey,location};
+        for(const repeat of [false,true,true]){
+            // Move Start using genuine range-key events before each repeat, so
+            // a dropped RTRG cannot pass by merely observing an already-zero value.
+            await evaluate(`document.getElementById('loop-start-slider-0').focus()`);
+            await call('Input.dispatchKeyEvent',{type:'keyDown',code:'ArrowRight',key:'ArrowRight',windowsVirtualKeyCode:39,nativeVirtualKeyCode:39});
+            await call('Input.dispatchKeyEvent',{type:'keyUp',code:'ArrowRight',key:'ArrowRight',windowsVirtualKeyCode:39,nativeVirtualKeyCode:39});
+            const before=await wait(s=>s.tracks[0].startDelay>0&&s.tracks[0].phaseApplyFrame===0,'Nonzero Start before trusted RTRG repeat');
+            await exactlyOne(()=>call('Input.dispatchKeyEvent',{type:'keyDown',...fields,autoRepeat:repeat}),`Trusted ${code} repeat=${repeat} sends one RTRG`);
+            const after=await wait(s=>s.tracks[0].startDelay===0&&s.tracks[0].phaseApplyFrame===0&&s.tracks[0].state==='playing'&&s.outputPeak>0.02,'RTRG repeat resets Start and renders actual PCM');
+            for(const property of ['waveformId','length','undoCount','redoCount'])assert.equal(after.tracks[0][property],before.tracks[0][property],'RTRG repeat preserves '+property);
+        }
+        await call('Input.dispatchKeyEvent',{type:'keyUp',...fields});
+        await click('#native-stop-all');const stopped=await state('stopped');
+        await exactlyOne(()=>call('Input.dispatchKeyEvent',{type:'keyDown',...fields,autoRepeat:true}),'Repeated RTRG starts a stopped loop');
+        await call('Input.dispatchKeyEvent',{type:'keyUp',...fields});
+        const playing=await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Stopped repeated RTRG renders PCM');
+        for(const property of ['waveformId','length','undoCount','redoCount'])assert.equal(playing.tracks[0][property],stopped.tracks[0][property]);
+    }
+    const retriggerKeys=await evaluate('window.retriggerKeys');assert.equal(retriggerKeys.length,8);assert(retriggerKeys.every(e=>e.trusted&&e.prevented));assert.equal(retriggerKeys.filter(e=>e.repeat).length,6,'Actual browser repeat evidence, not synthetic DOM events');
+    console.log('PASS: trusted Slash/keypad Divide repeats reset nonzero Start, retrigger playing/stopped PCM exactly once, and preserve immutable clip/history at '+process.argv[2]);
+
     // Original STUT is momentary: actual pointer hold, release outside and blur.
     const stutRect=()=>evaluate(`(()=>{const e=[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()==='STUT');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,disabled:e.disabled};})()`);
     const stutDown=async()=>{const r=await stutRect();assert(!r.disabled);await call('Input.dispatchMouseEvent',{type:'mousePressed',x:r.x,y:r.y,button:'left',clickCount:1});};

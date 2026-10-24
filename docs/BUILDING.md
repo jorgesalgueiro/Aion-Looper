@@ -1035,3 +1035,13 @@ and ctest -C Release. The test checks exact entire-render PCM across 1/64/128
 samples, mono/stereo, simultaneous handoffs, edits/history and worker ownership.
 It does not replace the retained live/reference, sanitizer and production
 processor gates. No installer or package is required for this repair.
+
+
+Keyboard RTRG repeat acceptance uses `node tests/FrontendTests.cjs` (the complete
+unchanged keyboard dispatcher is the oracle) and `tools/TestMouseWorkflow.ps1`
+against the rebuilt synthetic processor/editor host at 64/128. Require trusted
+browser repeat flags, one native command per repeat, nonzero Start reset, actual
+playing/stopped PCM and immutable clip/history. Keep old wheel, gesture, MIDI,
+export and merge gates. The test injects trusted CDP input, not a physical OS
+keyboard; other browser engines/layouts and DAW shortcut focus remain separate.
+No package is needed for this frontend-only parity repair.

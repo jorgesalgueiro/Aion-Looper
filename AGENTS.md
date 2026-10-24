@@ -813,3 +813,17 @@ published worker job is pending; the virtual sample clock is held. Keep the
 unpaced failure evidence and REAPER VST3 supplied-timestamp quantization limit;
 this repair does not certify physical latency, host-follow or stored-loop recall.
 Do not infer other DAW/platform offline acceptance from REAPER VST3/CLAP tests.
+
+
+Keyboard RTRG repeats must match unchanged App.handleKeyboardPress: an unmapped
+'/' key or NumpadDivide runs before the generic loop-repeat guard, with existing
+modifier/text/content-editable protection. Keep ordinary loop and mode repeat
+debounce. Retain the 1,300 complete-original-dispatcher comparisons and trusted
+WebView2 repeat flags at 64/128: move Start away from zero using actual range-key
+input before each retrigger, require one native command, reset phase and nonzero
+PCM, and preserve waveform/length/Undo/Redo. Test stopped-loop repeat recovery and
+no held cut/delete ownership. Keep the original wheel startup assertion and its
+failed evidence; do not synthesize DOM wheel/key events to bypass a failing gate.
+This is default shortcut repeat parity, not custom mappings, keyboard SUS, broader
+selected-FX routing or physical keyboard/OS layout certification. No DSP/UI markup
+change, package or version bump is required; retain the separate user logo edit.

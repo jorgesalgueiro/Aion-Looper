@@ -514,6 +514,27 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  console.log(`PASS: ${cases} unchanged original Space/repeat/Shift/modifier/text/control routing cases`);
 }
 
+// Original global RTRG shortcuts run before the generic loop-repeat guard.
+{
+ const original=fs.readFileSync(path.join(root,'resources/ui/main.js'),'utf8');
+ const start=original.indexOf('static handleKeyboardPress('),end=original.indexOf('\n    }',start)+6;assert(start>=0);
+ let expected=0,actual=0,cases=0;
+ const oracle={document:{getElementById:()=>null},SAMPLER_HOTKEYS:[],state:{listeningForInput:{active:false},keyMapping:{kbd:new Array(33).fill(null)},midiLearn:{active:false},loops:Array.from({length:20},()=>({retrigger(){++expected;}}))},EffectManager:{activeTab:0}};
+ vm.createContext(oracle);vm.runInContext(`class App{${original.slice(start,end)}};globalThis.dispatch=e=>App.handleKeyboardPress(e);`,oracle);
+ const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ const timers=new Map();let timer=0;
+ const keyboard=new native.window.AionPerformance({track:()=>null,retrigger(){++actual;}},{set:fn=>{timers.set(++timer,fn);return timer;},clear:id=>timers.delete(id)});
+ const targets=[{tagName:'BODY'},{tagName:'BUTTON'},{tagName:'INPUT',type:'text'},{tagName:'TEXTAREA'},{tagName:'SELECT'},...['range','checkbox','radio','button','file','submit','reset','number'].map(type=>({tagName:'INPUT',type}))];
+ for(const tab of [0,19])for(const target of targets)for(const repeat of [false,true])for(const flags of [{},{shiftKey:true},{ctrlKey:true},{metaKey:true},{altKey:true}])for(const shortcut of [{code:'Slash',key:'/'},{code:'NumpadDivide',key:'/'},{code:'NumpadDivide',key:'Unidentified'},{code:'KeyA',key:'/'},{code:'Slash',key:'?'}]){
+  oracle.EffectManager.activeTab=tab;expected=actual=0;let originalPrevented=0,nativePrevented=0;
+  const event={target,repeat,...shortcut,...flags};oracle.dispatch({...event,preventDefault(){++originalPrevented;}});keyboard.down({...event,preventDefault(){++nativePrevented;}});
+  assert.equal(actual,expected,'Original RTRG shortcut '+JSON.stringify(event));assert.equal(nativePrevented,originalPrevented,'Original RTRG preventDefault');++cases;
+ }
+ keyboard.down({code:'Slash',key:'/',repeat:true,target:{tagName:'DIV',isContentEditable:true},preventDefault(){throw Error('Editable text must pass through');}});
+ assert.equal(timers.size,0);assert.equal(keyboard.presses.size,0,'RTRG repeats never create held cut/delete ownership');
+ console.log(`PASS: ${cases} unchanged original RTRG shortcut/repeat/Shift/modifier/character/text/control routing cases`);
+}
+
 // A fresh keyboard press recovers the original lost-release entry only after >10s.
 {
  const source=fs.readFileSync(path.join(root,'resources/ui/main.js'),'utf8');

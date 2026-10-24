@@ -4687,3 +4687,62 @@ accuracy. Physical ASIO/JACK/CoreAudio latency, Apple/other hosts, full host-fol
 MIDI clock and stored-loop project persistence remain pending. Hosts must correctly
 declare offline mode; prefetch alone must never enable waiting. No package or
 version bump is created, and the separate user logo edit remains outside the commit.
+
+
+## Keyboard RTRG repeat parity — 24 October 2026
+
+The unchanged original App.handleKeyboardPress dispatches an unmapped '/' or
+NumpadDivide before its generic repeat guard. Native AionPerformance put it after
+the guard, losing repeated retriggers. Move only this shortcut before loop-key
+repeat suppression, retaining modifier/text/content-editable guards and ordinary
+loop/mode-key debounce. The existing selected-loop/native RTRG route is unchanged;
+no C++ DSP, APVTS/MIDI state, bridge protocol or original markup/assets change.
+
+Observed evidence:
+
+- build/retrigger-repeat-before.log reproduces the mismatch against the complete
+  unchanged original dispatcher: native count zero versus expected one.
+- build/retrigger-repeat-frontend.log passes all 1,300 new original-dispatcher
+  cases: two valid selected-track endpoints, five key/code variants, repeat,
+  Shift/modifier and thirteen target/input types. It separately retains native
+  editable-content protection and requires no held cut/delete timer ownership.
+  Every prior frontend case remains present, including loop/mode repeat guards.
+- build/retrigger-repeat-windows.log: six applicable asset/frontend/bridge/
+  original-JS state/DSP/MIDI gates passed in 9.51s; Ubuntu equivalent passed in
+  14.20s (build/retrigger-repeat-ubuntu.log).
+- build/retrigger-repeat-audio.log: unchanged-JS committed capture/OD/SUB through
+  centre pan, 126 cases / 965826 samples, maximum absolute error
+  7.394757495227111e-8 under the retained 1e-6 threshold. Scope still excludes
+  browser resampling, transition envelopes, latency compensation and sync.
+- build/retrigger-repeat-gui.log retains the initial failed 64-sample startup:
+  no wheel event reached the existing strict window-capture test. No wheel
+  assertion, event, selector or tolerance was changed. The unchanged test then
+  passed in the isolated 64-sample rerun.
+- build/retrigger-repeat-gui-64-retest.log and build/retrigger-repeat-gui-128.log
+  pass the complete production processor/editor mouse/keyboard/MIDI/export/merge
+  workflows. New checks use actual trusted CDP keydown events with repeat flags,
+  not synthetic DOM KeyboardEvents. Before every playing-loop repeat, genuine
+  range-key input moves Start above zero, so observing an old zero cannot pass.
+  Each shortcut sends exactly one accepted command, resets Start/applies phase,
+  renders nonzero PCM and preserves waveform identity/length/Undo/Redo. Repeated
+  keydowns also start stopped PCM. Eight trusted events per buffer size include
+  six repeats, split across Slash and keypad Divide. Existing hold/cancel/panic,
+  MIDI learning, waveform/export/merge and immutable-audio checks are retained.
+- build/retrigger-repeat-reaper.log: the rebuilt Windows VST3/CLAP each pass the
+  seven real REAPER stereo monitor/state/project-recall renders. This is module
+  load/audio/state validation, not DAW keyboard-focus or plugin HTML interaction.
+
+Windows Standalone, VST3, CLAP and the synthetic test host were incrementally
+rebuilt. Their embedded native adapters byte-match current sources, including
+the separate user logo whitespace, which is excluded from this commit. C++
+audio/MIDI/processor source hashes still match the accepted offline-finalization
+baseline. No new allocation/sanitizer claim is inferred from this JS-only change.
+Linux portable JavaScript/state/DSP gates pass; Linux native binaries and GTK/
+WebKit keyboard input were not rebuilt/retested for this increment. macOS/iOS,
+physical keyboard/OS layouts, DAW shortcut-focus routing, custom key mappings,
+keyboard SUS and broader selected-FX targeting remain separate work.
+
+MDN documents the browser's [repeat flag](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/repeat).
+The unchanged application dispatcher defines the required repeat policy; browser
+reference material does not justify changing other shortcut semantics. No package
+or version bump is produced, and the original interface is preserved.
