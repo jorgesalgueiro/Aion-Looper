@@ -4438,3 +4438,71 @@ build/midi-mute-final-source.json. The local test binaries include the separate
 user logo whitespace override; that override is excluded from the feature
 commit. No package/version bump. Other MIDI controls, clock/host-follow,
 projects, synths/effects and physical hardware/platform gates remain pending.
+
+## Strict actual REAPER MIDI gate — 24 October 2026
+
+This increment adds validation, not a new product feature or a VST3 repair.
+Baseline source is 2a89d5b358c6b6bc0edf2c5fe351b369c7efc183 with the local logo
+override preserved. No production C++/DSP/frontend asset changed. No package,
+installer, dependency patch or version bump was produced. The previously passing
+synthetic MUTE tests did not establish actual VST3 Program Change delivery.
+
+Final CLAP result: build/reaper-daw/20261024T123303-2920e9ce/result.json is passed,
+with the existing seven monitor/state/recall PCM cases plus four MIDI cases:
+Note, CC, PC and project-reopened PC assignment. Main Note36 records/finishes a
+fresh loop from synthetic stereo; MUTE channel-16 Note0/CC0/PC0 sends repeated
+packets, releases/rearms and unmutes. Capture remains monitor-silent, playback is
+nonzero in both channels, the mute window is exactly zero and recovery is nonzero.
+For all four cases, the recovered 150ms-loop phase window matches four cycles
+earlier with maximum error 0 at tolerance 2.1920928955078125e-7. Original center-pan
+mono projection and finite output are checked. Reopen verifies all 93 mapping
+slots, version 3, enabled state and PC0 target 73, then records fresh audio from
+the saved item; this is not recorded-loop project persistence. Evidence log:
+build/reaper-midi-clap-acceptance.log. A prior independent paced CLAP run also
+passed in build/reaper-daw/20261024T123002-89484d10/result.json.
+
+Final VST3 result: build/reaper-daw/20261024T123137-19147c0f/result.json is FAILED;
+tools/TestReaper.py --format VST3 --midi exits 1. It retains the seven old monitor
+cases and two successful MIDI Note/CC cases, both with recovered phase error 0.
+PC0 does not mute: both channel peaks are 0.09677410125732422 in the required
+zero window. The same failure was reproduced before pacing in
+build/reaper-daw/20261024T122344-fffea83d/result.json. Final log:
+build/reaper-midi-vst3-paced.log. Keep this as a failed acceptance gate, not an
+expected-failure skip or evidence that MUTE works in every format. This blocks
+advancing the cross-format MIDI feature. The wrapper/program-list repair remains
+pending; architecture and primary-source investigation are in ARCHITECTURE.md.
+
+Both final host runs verify the exact compiled module path in the owned process,
+before/after SHA256 equality, raw item byte/timing identity and saved projects.
+Runner, both Lua script and fixture-test hashes plus source revision are retained.
+No user REAPER process/profile/MIDI assignment was reused. Host script PASS only
+means render completion; the independent Python PCM assertion owns acceptance.
+
+Fixture failures were preserved rather than hidden:
+- build/reaper-midi-first.log: incremental InsertEvt normalized overlapping Notes
+  into separately released taps. The saved source proves the extra NoteOffs.
+- build/reaper-midi-raw.log and reaper-midi-raw-diagnostic.log: the host replaced
+  an empty terminator. Expected/actual binary events are retained in their run
+  directories. Publish the complete stream atomically and supply explicit CC123;
+  require exact readback before rendering, retaining the repeated-Note case.
+- build/reaper-midi-complete-events.log: CountEvts groups paired notes; it is not
+  a count of raw repeated NoteOns. Raw equality remains the strict packet check.
+- build/reaper-midi-clap-final.log: full-speed reopened recording outran the
+  background finalization worker; only 1440 nonzero samples/channel appeared in
+  the 3360-frame playing window. This remains an unpaced-offline limitation.
+  MIDI renders now require project 1x speed and measured duration >=0.9s for one
+  second of audio. Final CLAP measured roughly 1.6s/render including UI/settling;
+  no PCM/window/density/phase tolerance was relaxed. No sleep/wait was added to
+  product audio. Full-speed offline recording/finalization is NOT certified.
+
+Portable reaper_midi_fixture has three test methods with positive/negative
+subcases: preserve opaque wrapper bytes and exact state size; reject seven bad
+states; reject silent playback, monitor leakage, changed phase/pan and lost
+recalled mappings. It is registered with CTest. The final Windows and Ubuntu
+subset original_ui_bytes/reaper_midi_fixture/js_native_midi/native_frontend_commands
+passes 4/4 on each platform (build/reaper-midi-portable-*-final.log). This is a
+focused subset, not a fresh full 20-test/sanitizer/native GUI/Ardour run. The
+previous increment's 64/128, sanitizer and Ardour evidence retains its original
+scope; no product code changed here. Physical pedals/drivers, real-time driver
+buffers, editor Learn through DAWs, full-speed offline recording, VST3 PC and
+Ardour MIDI remain unverified or failing as specified above.

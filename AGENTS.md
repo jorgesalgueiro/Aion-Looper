@@ -745,3 +745,26 @@ shared status snapshots, plus actual 64/128 pointer/Save/muted-editor-reload tes
 Bind initial UNM as well as MUTE; update mute colours per property to preserve
 MIDI Learn outline. Preserve original reference HTML/CSS and the separate user
 logo. Stage only feature hunks if looper.js also contains the user's logo edits.
+
+Real REAPER MIDI gate (24 October 2026) is tools/TestReaper.py --midi. Retain
+all existing seven monitor/track-state/project renders plus main Note record/
+finish and independent MUTE Note/CC/PC repeats/releases, silence/recovery, center
+pan and recovered-loop sample phase, and saved assignment/item reopen. Use only
+documented chunk APIs on the owned disposable instance: equal-length XML edits,
+opaque wrapper preservation, all 93 bindings and raw MIDI identity/readback/hash.
+Publish sorted MIDI_SetAllEvts atomically; incremental InsertEvt repairs incomplete
+notes between inserts. Supply explicit end-of-item CC123, not an empty record
+REAPER rewrites. CountEvts groups notes; it is not the raw packet contract.
+Pace MIDI renders at verified project 1x (projrenderlimit, persist=0); full-speed
+offline can outrun worker finalization. Preserve that failed evidence and do not
+claim full-speed offline recording acceptance or loosen PCM/window assertions.
+The strict VST3 gate currently FAILS PC0 on channel 16 while Note/CC pass; retain
+nonzero failure and do not skip/xfail it or call the cross-format feature complete.
+CLAP passes these MIDI cases at 1x. Repair VST3 host program-message delivery before
+advancing, keeping channel, repeated PC0, sample offsets, burst rules and all
+existing parameter IDs/state. Do not fabricate 128 preset changes or call UI IPC
+from program callbacks to make a mute test pass. Unit/processor MidiBuffer passes
+do not establish actual wrapper delivery. Portable reaper_midi_fixture negative
+controls must reject silent output, monitor leakage, phase/pan corruption and
+lost recalled mappings. No production UI/DSP change, package or version bump is
+needed for this diagnostic gate. Preserve the separate user logo edit.

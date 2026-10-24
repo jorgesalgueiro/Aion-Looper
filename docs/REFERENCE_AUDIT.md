@@ -704,3 +704,28 @@ binding, held SUS cancellation on Learn acknowledgement and erased outlines.
 Repairs scope cancellation to changed MUTE owners, retain existing latched DSP,
 bind both captions and preserve outlines through snapshot colour refresh.
 Version 3 retains legacy 33-/73-binding load contracts.
+
+### Actual host MIDI acceptance boundary (24 October 2026)
+
+No new browser DSP implementation was introduced. tests/ReaperMidiProbe.lua and
+TestReaper.py exercise the already-migrated capture/playback/mute through real
+host MIDI items. Existing unchanged-JS mute and native PCM oracles remain intact.
+Original assets, native UI/DSP, APVTS IDs and hardware assignments are untouched.
+The only CMake change registers the portable reaper_midi_fixture test.
+
+Incremental REAPER MIDI_InsertEvt insertion repaired partially constructed notes:
+it inserted releases, so a supposed repeated held Note became two genuine taps.
+The first muted-Note failure is retained, not a native debounce regression.
+Complete sorted MIDI_SetAllEvts publication preserves the repeated raw NoteOns;
+strict byte-for-byte readback catches host changes. An empty end record was
+rewritten as CC123; the fixture now supplies the real terminator at the intended
+item end. CountEvts describes grouped notes rather than raw NoteOn count.
+
+Actual CLAP 1x renders pass Note/CC/PC recording/play/mute/recovery and assignment
+recall. Actual VST3 Note/CC pass; its PC render remains audible during requested
+mute and therefore fails. That is a host-format compatibility failure, not a new
+original-JS parity pass. Full-speed offline finalization also remains unresolved:
+a rapid render after project reopen outran background take commit. Retain this
+evidence alongside the paced 1x scope; do not relax the silence, sample phase or
+nonzero-density assertions to hide it. Physical controllers, driver latency,
+recorded-loop projects and Ardour MIDI routes remain separate acceptance work.

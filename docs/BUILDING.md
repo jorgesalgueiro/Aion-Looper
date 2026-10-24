@@ -935,3 +935,44 @@ cover synthetic input at 64/128; -SkipMidi retains mouse/keyboard/export checks.
 Physical MUTE pedal and recorded-loop DAW MIDI workflows need separate checks.
 This increment rebuilds existing development binaries without a package or
 version bump.
+
+### Actual REAPER MIDI recording and MUTE gate
+
+Use the existing development binaries; no installer or ZIP is needed:
+
+```powershell
+python tools/TestReaper.py --format CLAP --midi
+python tools/TestReaper.py --format VST3 --midi
+```
+
+The CLAP command passes the current scoped gate. The VST3 command is intentionally
+strict and currently returns failure for PC0 MUTE on channel 16; Note and CC pass.
+Do not treat the older seven monitor renders or Lua's terminal PASS as acceptance
+of this failing Python audio assertion. The default command without --midi retains
+the older monitor-only scope. The both-format --midi command stops at its first
+failure, so use separate commands to inspect CLAP evidence while VST3 is repaired.
+
+The MIDI gate records a fresh loop from synthetic stereo via Note36, finishes it,
+then tests assigned Note/CC/PC MUTE, duplicate pulses, releases and recovery. It
+compares returned phase samples and center pan and reopens a project to exercise
+the saved assignment/item by recording fresh audio. This is assignment persistence,
+not saved-loop persistence or editor Learn/hardware testing. Only the disposable
+instance's state is configured, using documented vst_chunk/clap_chunk APIs.
+MIDI renders require verified 1x offline speed to allow worker finalization;
+full-speed offline and real driver 64/128 acceptance are not certified.
+
+Portable fixture positive/rejection checks run on Windows or Ubuntu:
+
+```powershell
+ctest --test-dir build/windows-core -C Release -R reaper_midi_fixture --output-on-failure
+```
+
+```sh
+ctest --test-dir build/core -R reaper_midi_fixture --output-on-failure
+```
+
+The fixture rejects malformed/ambiguous state, silent failed playback, monitor
+leakage, changed loop phase/pan and lost recalled assignments. REAPER's public
+[ReaScript API](https://www.reaper.fm/sdk/reascript/reascripthelp.html) documents
+the chunk, MIDI_Get/SetAllEvts and configuration APIs used. The config change uses
+persist=0 within the owned isolated profile, never the user's project/preferences.

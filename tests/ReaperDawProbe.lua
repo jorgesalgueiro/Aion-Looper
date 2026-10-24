@@ -81,6 +81,7 @@ local function main()
  reaper.Main_openProject("noprompt:"..run.."/recovery.rpp")
  tr=reaper.GetTrack(0,0);assert(tr and reaper.TrackFX_GetCount(tr)==1,"Project FX recall")
  render("project_reload");verify(0.5,1)
+ if cfg.midi then dofile(run.."/midi.lua")(run,cfg,tr,fx,render,log) end
  log("PASS")
  reaper.Main_SaveProject(0,false)
  reaper.Main_OnCommand(40004,0) -- closes only this isolated instance

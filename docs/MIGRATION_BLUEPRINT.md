@@ -53,7 +53,7 @@ flowchart LR
 | `Engine` | Sample clock, input/loop/output path, command dispatch, parameter smoothing, bounded MIDI/telemetry | Complete transport arbitration, other DSP modules |
 | `LoopBank` | 20 tracks, capture/OD/SUB, immutable PCM, local/global history, MULT/NORM/reverse, Start/RTRG/STUT, merge/export | Remaining editing/import/project state and broader audio acceptance |
 | `MidiController` | Notes/CC/PC, 93 binding slots, loop volume/pan and independent MUTE learn, OD/SUB/SUS, panic/overflow/disconnect cancellation | Other parameter learn, synth pitch/mod/velocity, MIDI clock and HID |
-| `AionProcessor` | JUCE buses, processBlock, APVTS, saved parameters/MIDI, native device routing, IPC, WAV picker/write and validated block-stamped host observations | Full session/project persistence and host sync scheduling/arbitration |
+| `AionProcessor` | JUCE buses, processBlock, APVTS, saved parameters/MIDI, native device routing, IPC, WAV picker/write and validated block-stamped host observations | VST3 host Program Change delivery, full session/project persistence and host sync scheduling/arbitration |
 | `AionWebEditor` | Embedded resources, WebView2 selection on Windows, native RPC, close/reload cancellation | Apple/Linux browser/device acceptance |
 
 Names such as DroneBank, Tracker, FxRack, TransportArbiter and ProjectService in

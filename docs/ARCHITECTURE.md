@@ -1001,3 +1001,33 @@ tooltips and outlines. Initial muted snapshots must bind UNM as well as MUTE.
 Per-property colour updates preserve the MIDI outline during snapshot refresh.
 This extends controller access to the existing mute action; it does not replace
 its DSP envelope or claim new browser-envelope equivalence.
+
+## REAPER Program Change compatibility gap (24 October 2026)
+
+Actual 1x MIDI renders now test the production VST3/CLAP wrappers. Channel-16
+Note/CC control reaches the looper, but VST3 PC0 MUTE does not toggle: the muted
+window remains audible. The same PC/repeat/release workflow passes in CLAP.
+Do not infer wrapper compatibility from an injected juce::MidiBuffer test.
+
+Steinberg maps Program Change to a parameter flagged kIsProgramChange and a
+ProgramListInfo, separately from Note events and CC mapping
+([official MIDI concepts](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical%2BDocumentation/About%2BMIDI/Index.html)).
+The pinned JUCE wrapper creates its program parameter when getNumPrograms()>1;
+Aion currently exposes one program, and its setCurrentProgram is a no-op. Inspect
+[pinned wrapper source](https://github.com/juce-framework/JUCE/blob/3fb5cbc0340758596dac39f7c8de47d562b4896e/modules/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp).
+This identifies the missing compatibility path; it does not prove a proposed
+repair works. LegacyMIDICCOutEvent conversion alone does not make REAPER send PCs.
+
+The next repair must preserve all sixteen channels, every accepted sample offset,
+repeated identical PC0 taps and anchored 20ms burst suppression. Existing APVTS
+IDs and saved mappings must remain compatible. A preset-menu callback that loses
+channel/offset, coalesces equal values, reacts to state recall or fabricates preset
+switches is insufficient. Keep the real-host failure until a bounded wrapper
+bridge passes it and the older MIDI/audio/validator gates. No such production
+bridge is implemented by this diagnostic increment.
+
+Recording finalization uses a worker. An unpaced offline render can consume many
+virtual audio milliseconds before that worker commits a take. The new MIDI host
+gate verifies project render speed 1x plus elapsed time; full-speed offline
+recording/finalization remains a separate unresolved contract. It must not be
+fixed by sleeping, allocating or waiting on the audio callback.
