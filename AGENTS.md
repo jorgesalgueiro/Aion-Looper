@@ -854,3 +854,13 @@ startup-cancel count, JS-disabled navigation and all WAV/cancel/replacement test
 Wait for the reloaded original NORM control to be enabled before clicking;
 native cancellation telemetry alone does not establish document readiness.
 No callback/DSP/state/UI redesign or package is needed for this lifecycle repair.
+
+
+MeterFollower is a calculation component only, not enabled product metering.
+Retain the complete unchanged AudioEngine.readMeter oracle: RMS, 0.8s hold,
+20dB/s decay, 1.2s clip timing, stalled/jittering clocks, disconnected tails,
+context/source/data resets and 128-entry eviction. Keep zero tracked new/delete,
+32768-sample input cap with atomic oversized-window rejection, and supplied-window
+64/128 tests. Do not claim block peaks are original RMS. Native PCM window
+collection/downmix, audible-time transport and original renderer integration
+must independently pass before enabling the original meters or packaging them.

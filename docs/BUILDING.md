@@ -1067,3 +1067,12 @@ It requires zero startup cleanup packets, preserved picker identity and a saved
 normalized WAV, plus all existing cancel/reload/overwrite/DEL cases. Native
 audio/worker processing continues; the picker substitute selects destinations
 only. Use the full command without -ExportOnly for retained transport/MIDI gates.
+
+
+Portable meter-component gates (no SDK/plugin rebuild required):
+Windows: cmake --build build/windows-core --config Release --target aion_meter_probe aion_core_tests
+then ctest --test-dir build/windows-core -C Release --output-on-failure -R "^(core_realtime_contract|js_native_meter)$".
+Ubuntu: cmake --build build/core --target aion_meter_probe aion_core_tests
+then ctest --test-dir build/core --output-on-failure -R "^(core_realtime_contract|js_native_meter)$".
+The JS gate executes unchanged AudioEngine.readMeter over supplied Float32
+windows; this is not native analyser/device/HTML integration acceptance.

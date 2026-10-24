@@ -1129,3 +1129,15 @@ The frontend issues no bootstrap/pagehide cancelExport RPC, since an unscoped
 late cleanup request could cancel a newer chooser. The public explicit Cancel
 operation and existing native sequence/lifetime guards remain available. A
 selected background write keeps its existing completion policy.
+
+
+Meter calculation foundation: core/MeterFollower.h ports complete readMeter math
+with a fixed 128-observation history, readonly Float32-equivalent input span and
+caller-owned stable context/analyser/data identities. Its single owner supplies
+capture and audible clocks; it queries no browser/device and allocates no storage
+during construction/update/destruction. Work is capped at 32768 samples; an
+oversized caller window preserves the previous state. The cap follows the
+[Web Audio analyser bound](https://www.w3.org/TR/webaudio/#dom-analysernode-fftsize).
+No production processor/IPC/UI currently calls this component. Actual native
+window collection, downmix, source lifecycle and audible-latency scheduling are
+separate integration work; existing meter placeholders remain unchanged.

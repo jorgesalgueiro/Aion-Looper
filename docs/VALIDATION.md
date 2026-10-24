@@ -4891,3 +4891,50 @@ retain the accepted baseline; no new real-time allocation/latency claim is made.
 Ubuntu portable gates pass; Linux native UI, Apple platforms, physical drivers,
 OS file-dialog interaction and DAW HTML export were not retested this increment.
 No package/version bump. The user's separate logo edit remains unstaged.
+
+
+## Portable native meter calculation — 24 October 2026
+
+Added core/MeterFollower.h, a bounded single-owner C++ port of the complete
+unchanged AudioEngine.readMeter method. It consumes supplied mono analyser
+windows and stable identity tokens, retaining original RMS release, 0.8s sample
+peak hold, 20dB/s decay, 1.2s clip indication, -60dB floor and 128-item timed
+history. Source/context/data/running/backwards-clock resets, stalled clocks,
+audible-clock jitter and disconnected tails follow the original. Oversized
+windows (>32768) are a native input-contract rejection that preserves state;
+they are not a new user-facing behavior or a browser-array parity claim.
+
+- MeterParity.cjs executes the entire unchanged method with Float32 windows,
+  not a reimplementation of its equations. The final 1,000 observations include
+  0/1/64/128/256/2048/32768 lengths, threshold values, nonfinite samples/clocks,
+  identity changes, stopped contexts, ring wraps and history older than audible
+  time. Maximum absolute error is 2.4868995751603507e-14 at the fixed 1e-12
+  relative-to-max(1, expected) tolerance on Windows, Ubuntu and ASan/UBSan.
+- MeterTests.cpp checks independent exact hold/clip boundaries, finite handling,
+  oversized rejection, wrap/decay and identical analyser observations assembled
+  from 64/128 partitions. Construction/update/destruction has zero tracked
+  new/delete. This is not an arbitrary-malloc or device-latency certificate.
+- build/meter-kernel-windows.log: all nine selected core/reference/bridge gates
+  pass after rebuilding the final probe. build/meter-kernel-ubuntu.log: nine
+  pass on the initial 936-observation matrix; meter-kernel-ubuntu-expanded.log
+  passes the rebuilt final 1,000-observation matrix. LastTest.log in each build
+  retains the detailed comparison output.
+- build/meter-kernel-sanitizers.log: strict -Wall/-Wextra/-Wpedantic/-Werror
+  syntax checks plus core_realtime_contract and js_native_meter pass under
+  AddressSanitizer/UndefinedBehaviorSanitizer with leak detection and halt-on-error.
+- build/meter-kernel-audio.log: retained 126-case / 965,826-sample capture/OD/SUB
+  audit passes; max error 7.394757495227111e-8 at unchanged 1e-6 tolerance.
+
+The first Windows aggregate run used the old 4096-window probe after the test
+matrix was expanded and rejected its larger input (exit 2). That inconsistent
+run is retained in meter-kernel-windows-stale-probe.log and excluded from final
+acceptance; the matching probe was rebuilt before the successful nine-gate rerun.
+No assertion or tolerance was removed to obtain a pass.
+
+This completes the isolated calculation component only. It is not wired into
+production Engine/IPC/UI, collects no native PCM and establishes no browser
+downmix/window, audible/device latency or original-renderer integration parity.
+Existing audio routing and all original UI/JS assets remain unchanged, including
+the separate user logo edit. SDK binaries retain the previous accepted hashes;
+no app/DAW/GUI rebuild or new hardware/Apple/Linux UI claim is made. No package
+or version bump; the visible meters remain a later integration gate.

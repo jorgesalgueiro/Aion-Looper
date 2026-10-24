@@ -109,3 +109,12 @@ repair and passes at 64/128 afterwards, retaining original WAV/transport gates.
 This repairs native IPC ownership without changing original export semantics,
 audio, UI or explicit Cancel. OS picker interaction and Apple/Linux native UI
 acceptance remain separate from the synthetic Windows picker test.
+
+
+Meter calculation component (24 October 2026): native MeterFollower matches
+the complete unchanged readMeter method on 1,000 supplied-window observations,
+including RMS release, peak/clip holds, clock/history/source resets and nonfinite
+input. Fixed storage and no tracked new/delete are tested. It is not connected
+to Engine/IPC/UI: original meter rendering, real native analyser windows/downmix
+and audible latency remain pending. Existing product meter placeholders and
+the LIVE RMS/held-peak migration status above remain unchanged.
