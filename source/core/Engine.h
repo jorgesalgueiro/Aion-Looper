@@ -72,6 +72,8 @@ public:
     AudioInspection inspectAudioThread(std::uint32_t track=0) const noexcept {
         return {track<LoopBank::trackCount?loops.view()[track]:LoopView{},frame,renderedMasterPeak,countIn.flash(frame)};
     }
+    // Raw post-fader/pan loop PCM; audio owner only, no UI/IPC publication yet.
+    bool copyLoopMeterWindow(std::uint32_t track,std::span<float,MeterWindow::size> output) const noexcept {return loops.copyMeterWindow(track,output);}
     Transport transport{}; // Audio-owned; never read directly from the editor.
 private:
     std::unique_ptr<MidiController> midi=std::make_unique<MidiController>();

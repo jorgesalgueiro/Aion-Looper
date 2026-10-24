@@ -1076,3 +1076,20 @@ Ubuntu: cmake --build build/core --target aion_meter_probe aion_core_tests
 then ctest --test-dir build/core --output-on-failure -R "^(core_realtime_contract|js_native_meter)$".
 The JS gate executes unchanged AudioEngine.readMeter over supplied Float32
 windows; this is not native analyser/device/HTML integration acceptance.
+
+
+Raw meter-window gates (24 October 2026): build aion_meter_window_probe and
+aion_core_tests in build/windows-core (Release) or build/core (Ubuntu), then run
+ctest --test-dir <build-directory> --output-on-failure -R
+"^(core_realtime_contract|js_native_meter_window|js_native_meter)$"
+(add -C Release for Windows). Rebuild aion_mouse_host in build/windows before
+running `tools/TestMeterWindowUi.ps1`. It uses an owned synthetic host and a
+dedicated WebView2 profile/CDP port 9235; it rejects an occupied port/test host,
+restores environment variables and closes only its owned process. No physical
+audio device is opened. The actual browser OfflineAudioContext compares raw
+2048-sample analyser windows; it does not certify audible timing or UI metering.
+Retain full `tools/TestMouseWorkflow.ps1 -Blocks 64,128`, native_midi_processor,
+the REAPER full-speed MIDI/render harness and `python3 tools/TestArdour.py` on
+Linux with an available display (the current machine uses WSLg DISPLAY=:0).
+No Xvfb wrapper is needed on this machine. No package/version bump for this
+incomplete visible-meter integration.

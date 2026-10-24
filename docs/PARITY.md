@@ -118,3 +118,15 @@ input. Fixed storage and no tracked new/delete are tested. It is not connected
 to Engine/IPC/UI: original meter rendering, real native analyser windows/downmix
 and audible latency remain pending. Existing product meter placeholders and
 the LIVE RMS/held-peak migration status above remain unchanged.
+
+
+Raw native meter PCM subset (24 October 2026): actual native post-loop-gain/pan
+collection now runs in Engine with 2048-frame chronological windows. Browser
+OfflineAudioContext comparisons pass 40 cases/81,920 samples with zero error,
+including mono, signed stereo/antiphase, prefix and wrap. Core fixtures cover
+actual pan/gain audio and MASTER/monitor/click isolation at 64/128. This closes
+the raw collection/downmix subset only. MeterFollower is still exercised with
+collected windows in tests, not production; source/analyser lifecycle identities,
+audible-time transfer, IPC and original visible rendering remain pending. Raw
+native fade tails are not a claim of original disconnected-analyser behavior.
+Original UI, bindings and product meter placeholders remain unchanged.

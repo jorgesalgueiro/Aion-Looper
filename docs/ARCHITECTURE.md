@@ -1141,3 +1141,18 @@ oversized caller window preserves the previous state. The cap follows the
 No production processor/IPC/UI currently calls this component. Actual native
 window collection, downmix, source lifecycle and audible-latency scheduling are
 separate integration work; existing meter placeholders remain unchanged.
+
+
+Native raw meter tap (24 October 2026): core/MeterWindow.h collects rolling
+2048-frame mono windows after each loop's gain/pan, before the loops enter the
+MASTER/monitor/metronome mix. Stereo mixes as L/2 + R/2. The size and signed
+downmix follow the original analyser and the
+[Web Audio analyser contract](https://www.w3.org/TR/webaudio/#AnalyserNode).
+Twenty fixed windows live in construction-time heap storage to avoid growing
+the Windows callback stack. Clear and prepare reset them; zero-frame callbacks
+preserve them. Engine's copyLoopMeterWindow is an audio-owner-only inspection
+API, not a thread-safe UI read. Collection is passive and does not modify PCM.
+No production MeterFollower call, EngineView/JSON field or renderer change is
+introduced. Source identities (including retriggers and disconnected tails),
+bounded timestamped transfer and audible-time selection remain integration
+gates before the existing original meter renderer can consume these windows.

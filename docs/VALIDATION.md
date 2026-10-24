@@ -4938,3 +4938,42 @@ Existing audio routing and all original UI/JS assets remain unchanged, including
 the separate user logo edit. SDK binaries retain the previous accepted hashes;
 no app/DAW/GUI rebuild or new hardware/Apple/Linux UI claim is made. No package
 or version bump; the visible meters remain a later integration gate.
+
+
+Raw loop meter-window increment (24 October 2026), based on 5cd43ed:
+
+- Windows and Ubuntu portable CTest: 24/24 each. Relevant ASan/UBSan gates:
+  3/3, leak detection and halt-on-error, with strict warning syntax checks.
+- Actual LoopBank/Engine: 36 loop gain/pan/block cases; zero prefix, wrap,
+  antiphase, nonfinite mixed-sample protection, invalid ID, clear/prepare,
+  zero-frame callbacks, MASTER/monitor/click isolation, exact 64/128 PCM and
+  zero tracked callback new/delete. Tests feed collected PCM to MeterFollower.
+- Raw JS/native window oracle: 36 cases/73,728 samples. Actual WebView2
+  OfflineAudioContext: 40 cases/81,920 samples, maximum error 0 (tolerance 1e-6),
+  mono/stereo/antiphase and varying/short signals at 8/44.1/48/96 kHz with
+  64/128 native partitions. This is a data-window test, not audible latency.
+- Retained original capture/OD/SUB audit: 126 cases/965,826 samples, maximum
+  error 7.394757495227111e-08 at unchanged 1e-6 tolerance.
+- Rebuilt native JUCE processor: 1/1 Windows and 1/1 Linux; full synthetic
+  production editor/mouse/keyboard/hold/export/merge/MIDI workflow at 64/128.
+- Rebuilt REAPER Windows VST3 and CLAP: seven render/state/recall cases and
+  twenty MIDI cases per format, full-speed offline. Module hashes stable.
+  Report: build/reaper-daw/20261024T225621-857f2998/result.json.
+- Rebuilt Linux Standalone/VST3/CLAP/LV2; actual Ardour LV2 at 48 kHz, Dummy
+  backend 64/128, gain/mute/session recall. Bundle hashes stable. Report:
+  build/ardour-daw/20261024T230828-e88611d2/result.json.
+
+Logs use build/meter-window-*; final source/binary/report hashes are recorded
+in build/meter-window-final-evidence.json. The attempted xvfb-run wrapper was
+unavailable and its failed log is retained; the Linux processor and Ardour
+were successfully run using the existing WSLg display, without changing gates.
+Ardour checks peaks/session recall through libardour, not GTK interaction or
+sample-exact envelopes. REAPER offline tests do not certify physical MIDI or
+device latency. Linux CLAP was built, not hosted by Ardour (which lacks CLAP).
+No new Apple, physical device, host-follow or MIDI-clock acceptance is claimed.
+
+The mutable PCM windows have one audio owner. No production follower call,
+cross-thread payload, JSON/schema or visible meter has been added. Source
+identity, timestamped bounded transfer and audible-time renderer integration
+remain pending. The separate user logo edit and all original JS/UI behavior
+are retained. No package or version bump; this completes only raw collection.

@@ -294,6 +294,7 @@ void LoopBank::clear(Track& track) noexcept {
     track.blockCount=track.captureLength=0;
     if(track.clip){residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;retire(track.clip);track.clip=nullptr;}
     const auto id=static_cast<std::uint32_t>(&track-tracks.data());
+    (*meterWindows)[id].reset();
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
     const bool muted=track.info.muted;track.info=LoopView{};track.info.muted=muted;
@@ -657,6 +658,8 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         const float step=fadeLength?1.0f/static_cast<float>(fadeLength*4):2;
         t.gain+=std::clamp(desired-t.gain,-step,step);
         const float mono=(out.left+out.right)*0.5f;out={mono*t.panGain.left*t.gain,mono*t.panGain.right*t.gain};
+        // Observe each loop after gain/pan, before MASTER/monitor/click mixing.
+        (*meterWindows)[static_cast<unsigned>(&t-tracks.data())].pushStereo(out.left,out.right);
         v.peak=std::max(v.peak,std::max(std::abs(out.left),std::abs(out.right)));mix.left+=out.left;mix.right+=out.right;
     }
     olderInput=previousInput;previousInput=input;++frame;return mix;

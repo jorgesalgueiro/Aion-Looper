@@ -864,3 +864,17 @@ context/source/data resets and 128-entry eviction. Keep zero tracked new/delete,
 64/128 tests. Do not claim block peaks are original RMS. Native PCM window
 collection/downmix, audible-time transport and original renderer integration
 must independently pass before enabling the original meters or packaging them.
+
+
+Native raw meter windows (24 October 2026): MeterWindow stores the latest 2048
+mono PCM samples for each loop, after loop gain/pan and before MASTER, monitor
+and click. Storage for twenty windows is allocated on the heap at construction;
+callback push/copy/reset stays bounded and has no tracked new/delete. Inspection
+belongs exclusively to the audio owner; never read this mutable storage directly
+from the message thread. Retain actual WebView2 analyser comparisons (including
+varying-signal chronology, zero prefix, wrap and signed stereo cancellation),
+actual LoopBank/Engine tests and all existing callback/GUI/DAW gates. This tap
+contains actual native output/tails, not certified original source identities.
+MeterFollower remains unwired in production. Timestamped bounded transfer,
+source lifecycle and audible-time scheduling must pass before renderer/IPC/UI
+integration. No meter feature package or visible-meter parity claim yet.

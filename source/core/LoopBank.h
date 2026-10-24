@@ -9,6 +9,7 @@
 #include "core/SpscQueue.h"
 #include "core/SyncClock.h"
 #include "core/Wav.h"
+#include "core/MeterWindow.h"
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
@@ -59,6 +60,11 @@ public:
     void beginBlock() noexcept;
     void setAutoPlay(bool enabled) noexcept { autoPlay = enabled; }
     std::array<LoopView, trackCount> view() const noexcept;
+    // Audio owner only, at a callback boundary. Never read this storage from IPC.
+    bool copyMeterWindow(std::uint32_t id,std::span<float,MeterWindow::size> output) const noexcept {
+        if(id>=trackCount)return false;
+        (*meterWindows)[id].copy(output);return true;
+    }
     LoopView trackView(std::uint32_t id) const noexcept {if(id>=trackCount)return {};auto v=tracks[id].info;v.clearEpoch=tracks[id].clearEpoch;v.waveformId=tracks[id].clip?tracks[id].clip->waveformId:0;return v;}
     std::uint32_t capacity() const noexcept { return totalBlocks * blockFrames; }
     std::uint32_t available() const noexcept;
@@ -66,7 +72,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { for(auto& window:*meterWindows)window.reset();frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
 private:
@@ -161,6 +167,8 @@ private:
     std::uint32_t undoSize=0,redoSize=0;
     bool hasCapture() const noexcept;
     std::uint32_t growthRoom(const Track&) const noexcept;
+    // Construction-time heap storage; never grow the Windows audio stack.
+    std::unique_ptr<std::array<MeterWindow,trackCount>> meterWindows=std::make_unique<std::array<MeterWindow,trackCount>>();
     std::array<Track, trackCount> tracks{};
     std::array<std::uint16_t, maxBlocks> freeBlocks{};
     std::vector<float> audio;
