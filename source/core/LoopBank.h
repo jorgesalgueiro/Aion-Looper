@@ -20,6 +20,7 @@ struct LoopView {
     std::uint32_t length = 0, position = 0, undoCount = 0, redoCount = 0;
     std::uint64_t scheduledFrame = 0, clearEpoch = 0;
     std::uint64_t waveformId = 0, captureStartFrame = 0;
+    std::uint64_t sourceRevision = 0; // Native source transitions, not analyser identity.
     std::uint64_t mergeSerial = 0, mergeSourceWaveform = 0, mergeSourceClearEpoch = 0;
     std::uint32_t mergeSource = 20;
     double originalBpm = 0, startDelay = 0;
@@ -65,14 +66,14 @@ public:
         if(id>=trackCount)return false;
         (*meterWindows)[id].copy(output);return true;
     }
-    LoopView trackView(std::uint32_t id) const noexcept {if(id>=trackCount)return {};auto v=tracks[id].info;v.clearEpoch=tracks[id].clearEpoch;v.waveformId=tracks[id].clip?tracks[id].clip->waveformId:0;return v;}
+    LoopView trackView(std::uint32_t id) const noexcept {if(id>=trackCount)return {};auto v=tracks[id].info;v.clearEpoch=tracks[id].clearEpoch;v.sourceRevision=tracks[id].sourceRevision;v.waveformId=tracks[id].clip?tracks[id].clip->waveformId:0;return v;}
     std::uint32_t capacity() const noexcept { return totalBlocks * blockFrames; }
     std::uint32_t available() const noexcept;
     int nextUndo() const noexcept { return undoSize?undoOrder[undoSize-1]:-1; }
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { for(auto& window:*meterWindows)window.reset();frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { for(auto& window:*meterWindows)window.reset();frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
 private:
@@ -91,7 +92,7 @@ private:
         std::array<Clip*,5> undo{},redo{}; // Immutable history leases, matching the reference depth.
         Clip* reverseHold = nullptr; // Old raw clip backing a playing reversed source after NORM.
         bool activeReverse = false;
-        std::uint64_t revision = 0, clearEpoch = 0;
+        std::uint64_t revision = 0, clearEpoch = 0, sourceRevision = 0;
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
         SyncMode recordMode=SyncMode::off;
@@ -157,6 +158,9 @@ private:
     void updateRate(Track&) noexcept;
     void schedules(Track&) noexcept;
     std::uint32_t residentBlocks = 0;
+    static bool hasPlaybackSource(const Track& t) noexcept {
+        const auto s=t.info.state;return t.clip&&(s==LoopState::playing||s==LoopState::stopping||s==LoopState::overdubbing||s==LoopState::substituting||s==LoopState::multiplying||(s==LoopState::finalizing&&t.playWhileFinalizing));
+    }
     void stop(Track&) noexcept;
     void clear(Track&) noexcept;
     void blend(Track&) noexcept;

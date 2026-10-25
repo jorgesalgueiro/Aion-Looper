@@ -36,6 +36,12 @@ struct EngineView {
     MidiView midi{};
     Transport hostTransport{};
 };
+// Identity validation only: not an analyser reset decision or audible-time gate.
+inline bool sameLoopMeterSource(const MeterWindowEvent& event,const EngineView& view) noexcept {
+    if(!event.generation||event.generation!=view.generation||event.track>=LoopBank::trackCount)return false;
+    const auto& track=view.tracks[event.track];
+    return event.clearEpoch==track.clearEpoch&&event.waveformId==track.waveformId&&event.sourceRevision==track.sourceRevision;
+}
 // Audio owner only for prepare/process/target/transport. The message thread is
 // the sole producer of commands; the message thread alone consumes meters.
 class Engine {

@@ -230,6 +230,7 @@ bool LoopBank::clearMergedSource(std::uint32_t id,double serial) noexcept {
     ++source.clearEpoch;clear(source);return true;
 }
 void LoopBank::restartSource(Track& track) noexcept {
+    if(hasPlaybackSource(track))++track.sourceRevision;
     ++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stuttering=track.info.stutterClock=false;
     retire(track.reverseHold);track.reverseHold=nullptr;
     track.activeReverse=track.info.state==LoopState::playing&&track.info.reverse;
@@ -270,6 +271,7 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     return true;
 }
 void LoopBank::stop(Track& track) noexcept {
+    if(hasPlaybackSource(track))++track.sourceRevision;
     track.info.mergeSerial=0;
     if(track.info.state==LoopState::finalizing&&job.merge&&job.track==static_cast<std::uint32_t>(&track-tracks.data()))job.mergeNotify=false;
     track.info.stuttering=track.info.stutterClock=false;
@@ -282,6 +284,7 @@ void LoopBank::stop(Track& track) noexcept {
     track.tail=track.last;track.tailRemaining=fadeLength;track.phase=0;track.info.position=0;
 }
 void LoopBank::clear(Track& track) noexcept {
+    ++track.sourceRevision;
     ++track.phaseEpoch;++track.revision;track.startAt=track.endAt=0;track.plannedFrames=0;
     for(std::uint32_t i=0;i<track.info.undoCount;++i)retire(track.undo[i]);
     for(std::uint32_t i=0;i<track.info.redoCount;++i)retire(track.redo[i]);
@@ -596,6 +599,7 @@ void LoopBank::applyPhaseEvents() noexcept {
         if(valid&&event.frame>frame)break;
         phaseRead=(phaseRead+1)%phaseCapacity;
         if(!valid||track.info.state!=LoopState::playing||!track.clip)continue;
+        ++track.sourceRevision;
         retire(track.reverseHold);track.reverseHold=nullptr;
         track.phase=event.phase;track.activeReverse=event.reverse;track.info.stuttering=track.info.stutterClock=false;
         track.sourceStartFrame=event.sourceStartFrame;track.sourceOffset=event.sourceOffset;
@@ -713,7 +717,7 @@ bool LoopBank::copyWaveform(std::uint32_t id,std::uint64_t expected,std::array<f
 std::array<LoopView,LoopBank::trackCount> LoopBank::view() const noexcept {
     std::array<LoopView,trackCount> views{};
     for(std::uint32_t i=0;i<trackCount;++i){views[i]=tracks[i].info;views[i].waveformId=tracks[i].clip?tracks[i].clip->waveformId:0;views[i].solo=soloTrack==static_cast<int>(i);views[i].effectiveRate=tracks[i].targetRate;
-        views[i].clearEpoch=tracks[i].clearEpoch;views[i].scheduledFrame=tracks[i].startAt?tracks[i].startAt:tracks[i].endAt;
+        views[i].clearEpoch=tracks[i].clearEpoch;views[i].sourceRevision=tracks[i].sourceRevision;views[i].scheduledFrame=tracks[i].startAt?tracks[i].startAt:tracks[i].endAt;
         const auto& t=tracks[i];auto& v=views[i];
         v.stutterClock=v.stutterClock&&t.clip&&(v.state==LoopState::playing||v.state==LoopState::stopping);
         if(v.stutterClock){

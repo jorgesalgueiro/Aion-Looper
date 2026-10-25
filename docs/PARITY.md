@@ -143,3 +143,16 @@ This is native thread-ownership acceptance, not original JS bridge behavior.
 The original meter math/window gates still pass, but playback source/analyser
 lifecycle, audible-time scheduling, IPC and renderer integration remain pending.
 No production follower or frontend meter consumer is connected in this increment.
+
+
+Native meter source metadata (25 October 2026): snapshots now distinguish applied
+source transitions within the same clip/clear/reset generation. Native tests
+cover exact RTRG deadline stamps, cancellation, queued grid stop/play and raw
+history preservation; stale same-clip packets can be identified with a coherent
+view. The unchanged reference oracle verifies 136 object-lifecycle/input-gating
+cases, including stable analyser/data objects through healthy retriggers and
+fresh objects after teardown/play. These are complementary contracts, not a
+claim that native sourceRevision equals a JS analyser ID or graph state.
+Native sound/fade behavior and the original UI remain unchanged. Complete
+graph lifetime/teardown, audible-time scheduling, follower/IPC and original
+renderer integration remain pending; no visible meter or package is enabled.

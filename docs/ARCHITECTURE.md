@@ -1180,3 +1180,32 @@ EngineView/JSON, original UI and production MeterFollower stay unchanged. The
 [JUCE single-reader/single-writer FIFO model](https://docs.juce.com/master/classjuce_1_1AbstractFifo.html)
 supports the ownership pattern; the existing portable SpscQueue supplies storage
 and acquire/release publication without introducing JUCE into the core.
+
+
+Native source revision (25 October 2026): each audio-owned Track now carries a
+sourceRevision, copied coherently to LoopView and MeterWindowEvent. Unlike the
+phaseEpoch cancellation fence, it changes when the native source actually starts,
+is replaced at a phase-event deadline, stops, clears or resets. A queued restart
+or stop does not change the token early; cancelled events cannot change it later.
+Ordinary controls, STUT region changes, reverse latching and NORM retain it until
+an actual source transition. This is runtime metadata, not saved project state.
+
+sameLoopMeterSource compares generation, track bounds, clear epoch, stored clip
+identity and source revision against an immutable EngineView. It detects an old
+packet after stop/replay or same-clip retrigger even when its clip/clear/generation
+are unchanged. It is an identity predicate, not a complete permission to render:
+graph availability and desired audible frame must still be established. An empty
+raw window can match an empty track. Stored clip identity is also distinct from
+the buffer retained by a playing reversed source after NORM.
+
+The unchanged original AudioGraph.retrigger creates a new buffer source while
+preserving the analyser and Float32 data array. Consequently the native revision
+must NOT be used as MeterFollower's analyser/data identity or reset the rolling
+2048-frame window. Original Loop.play after teardown builds a fresh analyser;
+Loop.stop retains it until teardown (25ms immediate, scheduled deadline +50ms),
+and main.js gates reads on its five active states and a non-destroyed graph.
+Disconnected inputs need explicit gating rather than assumptions about retained
+samples; see the [Web Audio analyser contract](https://www.w3.org/TR/webaudio/#AnalyserNode).
+The revision marks native applied audio transitions, not the earlier JS source
+object allocation time. Full graph-lifetime/teardown mapping and audible-time
+selection remain separate integration work; UI/JSON/MeterFollower are unchanged.

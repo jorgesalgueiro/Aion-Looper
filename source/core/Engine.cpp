@@ -136,7 +136,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     (void) meters.push({frame, peak});
     const auto tracks=loops.view();
     meterTransfer->publish(generation(),frame,preparedRate,[&](unsigned id,MeterWindowEvent& event) noexcept {
-        event.clearEpoch=tracks[id].clearEpoch;event.waveformId=tracks[id].waveformId;
+        event.clearEpoch=tracks[id].clearEpoch;event.waveformId=tracks[id].waveformId;event.sourceRevision=tracks[id].sourceRevision;
         (void)loops.copyMeterWindow(id,event.samples);
     });
     if(liveInput->running()){

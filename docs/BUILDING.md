@@ -1107,3 +1107,14 @@ UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1. Rebuild the SDK target
 aion_midi_processor_tests and run CTest -R "^native_midi_processor$" for native
 processor integration. Runnable apps/plugins were not rebuilt for this API-only
 increment; no visible meters have been enabled.
+
+
+Source-stamp checks (25 October 2026): MeterSourceTests.cpp joins aion_core_tests;
+original_meter_source_lifecycle executes unchanged Loop/AudioGraph methods and
+the exact main.js loop-meter input block with audio-node/timer IO stubs. Run
+`node tests/MeterSourceReference.cjs` directly, or rebuild all portable targets
+and run the full CTest suite (now 25 gates). Focused core checks use
+-R "^(core_realtime_contract|original_meter_source_lifecycle|js_native_meter_window|js_native_meter)$"
+with -C Release on Windows. Run the same four gates under core-asan, and rebuild
+aion_midi_processor_tests in each SDK tree for native processor integration.
+No app/plugin package or GUI launch is needed for this internal metadata step.

@@ -9,7 +9,7 @@ namespace aion {
 // endFrame is exclusive in the local audio clock, never a DAW seek position.
 struct MeterWindowEvent {
     std::array<float,MeterWindow::size> samples{};
-    std::uint64_t endFrame=0,clearEpoch=0,waveformId=0;
+    std::uint64_t endFrame=0,clearEpoch=0,waveformId=0,sourceRevision=0;
     double sampleRate=0;
     std::uint32_t generation=0,track=0;
 };

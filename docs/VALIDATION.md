@@ -5030,3 +5030,53 @@ in the SDK trees. No new DAW, physical driver/MIDI, Apple, device
 latency or visible-meter acceptance is claimed. Source-lifecycle identities,
 audible-time selection and original renderer integration are still pending.
 No package, SDK update or version bump.
+
+
+Native meter source revisions (25 October 2026), based on d1e622e:
+
+- Windows and Ubuntu full portable suites: 25/25 each, all probes rebuilt.
+  Relevant ASan/UBSan gates: 4/4 with leak detection/halt-on-error. Strict
+  -Wall/-Wextra/-Wpedantic/-Werror syntax checking also passes.
+- The 136-case original_meter_source_lifecycle gate runs unchanged Loop.play,
+  restart, stop, _teardown and clear, AudioGraph.retrigger, and the exact main.js
+  loop meter input block. It verifies analyser/data preservation through healthy
+  retriggers, replacement after teardown/play, the original 25ms stop timer,
+  destroyed graphs, and active/inactive state gating. Audio nodes/timers are IO
+  stubs: this is object/state parity, not actual browser audio or timer latency.
+- Six native fixtures cover tracks 0/19 at 8/48 kHz plus actual Engine packets
+  at 64/128. Capture without playback creates no source; commit/autoplay does.
+  Controls, reverse latch, STUT and NORM preserve the current native source.
+  Scheduled RTRG retains it before the application sample and advances exactly
+  there, while the raw 2048-frame history shifts without reset. STOP cancels old
+  pending events without later resurrection. Repeated stopped STOP is stable;
+  static/dynamic grid stop/play stamp only actual transitions. Clear/timeline
+  reset invalidate prior stamps.
+- Actual nonzero Engine recordings exercise same-generation/same-clip stale
+  packet rejection after a scheduled replacement, fresh packet recovery and
+  invalid track/zero generation/clear/clip guards. Source waits are bounded so a
+  missing transition fails instead of hanging. Source metadata and validation
+  have zero tracked callback new/delete. The retained 4000 concurrent transfer
+  packets now verify source revision with the other metadata and every sample.
+- Rebuilt native JUCE processor targets: 1/1 Windows and 1/1 Linux, including
+  existing host/MidiBuffer/PCM/state/allocation checks.
+- Retained connected capture/OD/SUB audit: 126 cases / 965,826 samples, max error
+  7.394757495227111e-08 at unchanged 1e-6 tolerance. Original asset,
+  phase/RTRG, sync, history, export, merge and meter calculation/window gates pass.
+
+Evidence: build/meter-source-windows.log, meter-source-ubuntu.log,
+meter-source-sanitizers.log, meter-source-processor-windows.log,
+meter-source-processor-linux.log and meter-source-audio.log. Source, processor
+test binary and unchanged runnable SDK hashes are recorded in
+build/meter-source-final-evidence.json. The native revision is a source change
+stamp, not an analyser identity, graph-availability flag or audible-time decision.
+It is not yet published in UI JSON or used by a production MeterFollower call.
+The original 25/50ms graph teardown and browser-source overlap are not certified
+by native source stamps; original browser object allocation may precede native
+applied-source time. Complete graph/analyser lifetime mapping, audible-time
+selection and original renderer integration remain pending.
+
+Runnable apps/plugins/test-host were not rebuilt; their hashes match the prior
+accepted REAPER/Ardour/64/128 GUI binaries. Only the native processor test targets
+were rebuilt in SDK trees. No new DAW/GUI, physical MIDI/device latency, Apple
+or full-visible-meter acceptance is claimed. The separate user logo edit is
+preserved; no package, SDK update or version bump.

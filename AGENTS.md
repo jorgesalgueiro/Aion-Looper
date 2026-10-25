@@ -895,3 +895,19 @@ failed zero-tail fixture and exact current-tap/eventual-silence replacement.
 Never change DSP to satisfy a raw telemetry assumption. No frontend/JSON consumer
 or production MeterFollower call is enabled. Source/analyser lifecycle and
 audible-time scheduling remain required before visible-meter integration.
+
+
+Native meter source stamps (25 October 2026): sourceRevision observes actual
+native playback source replacement/removal, not phase-command cancellation and
+not JS analyser/data identity. Stamp applied phase events, successful playback
+starts, actual stops, clear and timeline reset; preserve the token while a future
+restart is merely queued and through ordinary controls/STUT/NORM. Keep the exact
+pre-deadline/application-sample tests, cancelled-source no-resurrection, grid
+stop/play, same-clip stale-packet guard, complete 136-case original lifecycle/
+meter-input oracle, and 4000-packet field/PCM coherence tests. Healthy original
+AudioGraph.retrigger retains its analyser and data array: never reset PCM history
+or MeterFollower merely because this native token changes. sameLoopMeterSource
+compares immutable view/packet identities only, not active graph availability or
+audible time. Keep the existing fade-tail contract. Production MeterFollower,
+graph/analyser lifetime mapping, IPC, audible-time scheduling and renderer remain
+unwired. Do not package or claim full meter parity from source-stamp acceptance.

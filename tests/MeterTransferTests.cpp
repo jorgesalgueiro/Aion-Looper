@@ -10,12 +10,12 @@ extern std::atomic<int> allocations;
 namespace {
 void check(bool ok,const char* what){if(!ok){std::cerr<<what<<'\n';std::exit(1);}}
 void fill(unsigned id,aion::MeterWindowEvent& event) noexcept {
-    event.clearEpoch=id+100;event.waveformId=event.endFrame+1000;
+    event.clearEpoch=id+100;event.waveformId=event.endFrame+1000;event.sourceRevision=event.endFrame+id;
     for(unsigned i=0;i<event.samples.size();++i)
         event.samples[i]=static_cast<float>((event.endFrame%10000)*2048+id*32+i);
 }
 void coherent(const aion::MeterWindowEvent& event){
-    check(event.track<20&&event.clearEpoch==event.track+100&&event.waveformId==event.endFrame+1000,"Meter packet identity coherent");
+    check(event.track<20&&event.clearEpoch==event.track+100&&event.waveformId==event.endFrame+1000&&event.sourceRevision==event.endFrame+event.track,"Meter packet identity coherent");
     for(unsigned i=0;i<event.samples.size();++i)
         check(event.samples[i]==static_cast<float>((event.endFrame%10000)*2048+event.track*32+i),"Meter packet PCM not torn/reused");
 }
@@ -102,7 +102,7 @@ void meterTransferTests(){
             a->copyLoopMeterWindow(19,raw);
             check(a->popLoopMeterWindow(*observation),"Engine requested packet delivered");
             const auto view=a->inspectAudioThread(19);
-            check(observation->samples==raw&&observation->endFrame==offset+block&&observation->endFrame==view.frame&&observation->sampleRate==rate&&observation->generation==a->generation()&&observation->track==19&&observation->clearEpoch==view.track.clearEpoch&&observation->waveformId==view.track.waveformId,"Real PCM/clip identity/frame stamp is one coherent callback observation");
+            check(observation->samples==raw&&observation->endFrame==offset+block&&observation->endFrame==view.frame&&observation->sampleRate==rate&&observation->generation==a->generation()&&observation->track==19&&observation->clearEpoch==view.track.clearEpoch&&observation->waveformId==view.track.waveformId&&observation->sourceRevision==view.track.sourceRevision,"Real PCM/clip identity/frame stamp is one coherent callback observation");
             check(al==bl&&ar==br,"Request/pop meter transfer is passive for exact stereo PCM");watch=false;
             nonzero|=std::any_of(raw.begin(),raw.end(),[](float v){return std::abs(v)>0.01f;});
         }
