@@ -12,12 +12,15 @@ struct CallbackClockStamp {
     double sampleRate=0;
     std::uint32_t generation=0;
     bool hasHostTimeNs=false,nonRealtime=false;
+    std::uint32_t outputLatencySamples=0;
+    bool hasOutputLatency=false; // Prepared device report, not a clock correlation.
     bool operator==(const CallbackClockStamp&) const noexcept = default;
 };
 static_assert(std::is_trivially_copyable_v<CallbackClockStamp>);
 inline bool validCallbackClock(const CallbackClockStamp& stamp) noexcept {
     return stamp.generation&&stamp.serial&&stamp.beginFrame<=stamp.endFrame
         &&std::isfinite(stamp.sampleRate)&&stamp.sampleRate>0
-        &&(stamp.hasHostTimeNs||stamp.hostTimeNs==0);
+        &&(stamp.hasHostTimeNs||stamp.hostTimeNs==0)
+        &&(stamp.hasOutputLatency||stamp.outputLatencySamples==0);
 }
 }

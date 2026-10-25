@@ -1181,3 +1181,18 @@ Use the existing configured SDK trees, with AION_TEST_NATIVE_PROCESSOR=ON.
 WSLg supplies DISPLAY=:0 in this environment; no additional Xvfb package is
 required. Standalone/plugin/test-host runnable targets are not rebuilt for this
 internal clock step; no package, SDK download or new GUI/DAW run is required.
+
+Prepared output-latency checks (25 October 2026) add OutputLatencyTests.cpp to
+aion_core_tests; portable CTest remains 27 gates. Rebuild all portable targets
+and run CTest normally. The same six focused clock/meter gates run under
+core-asan. Strict standalone syntax checks require no JUCE SDK:
+
+```sh
+g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -Isource -fsyntax-only tests/OutputLatencyTests.cpp tests/MeterTransferTests.cpp
+```
+
+Rebuild only aion_midi_processor_tests in build/windows (Release) and build/linux,
+then run the native_midi_processor gate using the commands above. Its controlled
+device/prepare-time reader tests missing/error/zero/rate-change reports, cached
+processing and exact saved-state preservation. No physical device, new runnable
+Standalone/plugin build or package is required for these regression checks.

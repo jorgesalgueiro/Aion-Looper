@@ -1,6 +1,7 @@
 #pragma once
 #include "core/SpscQueue.h"
 #include "core/Transport.h"
+#include "core/OutputLatency.h"
 #include "core/LoopBank.h"
 #include "core/Metronome.h"
 #include "core/CountIn.h"
@@ -57,7 +58,7 @@ inline bool sameLoopMeterCallback(const MeterWindowEvent& event,const EngineView
 // the sole producer of commands; the message thread alone consumes meters.
 class Engine {
 public:
-    void prepare(double sampleRate, std::uint32_t poolFrames = LoopBank::defaultFrames);
+    void prepare(double sampleRate, std::uint32_t poolFrames = LoopBank::defaultFrames,DeviceOutputLatency outputLatency = {});
     void configureSync(SyncSettings settings) noexcept {loops.configureSync(settings);}
     void setMonitoring(bool enabled) noexcept { monitoring = enabled; }
     void setMetronome(bool enabled,float volume) noexcept {metronome.setEnabled(enabled);metronome.setVolume(volume);}
@@ -99,6 +100,7 @@ public:
     CallbackClockStamp inspectCallbackClockAudioThread() const noexcept {return callbackClock;}
 private:
     CallbackClockStamp callbackClock{}; // Last completed callback; audio owner only.
+    DeviceOutputLatency outputLatency{}; // Validated and replaced at prepare only.
     std::unique_ptr<MidiController> midi=std::make_unique<MidiController>();
     std::atomic<std::uint32_t> midiCancellation{0};
     std::uint32_t seenMidiCancellation=0;

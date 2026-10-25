@@ -1276,3 +1276,27 @@ and recaptures fresh data after recovery. Audio-owner inspection is diagnostic
 only; UI code must consume snapshots. No callback clock is exposed in frontend
 JSON or fed to PlaybackClockInput: native output latency/origin correlation and
 graph/renderer integration still require acceptance.
+
+Prepared Standalone output latency (25 October 2026): prepareToPlay reads the
+owned AudioIODevice's current sample rate and getOutputLatencyInSamples through
+a small native IO adapter. An ownership check prevents plugin instances from
+borrowing another processor's Standalone device. Missing devices or thrown
+queries remain unavailable; no input latency or plugin processing latency is
+substituted. A controlled OutputLatencyReader is an optional native test seam;
+it is never exposed through IPC or invoked by processBlock.
+
+Engine::prepare validates the report against its normalized prepared sample
+rate. Negative sample counts, nonfinite/mismatched rates and missing reports
+become unavailable; an explicitly reported zero remains available. The report
+is immutable during that generation, replaced on the next prepare, and copied
+as hasOutputLatency/outputLatencySamples in each CallbackClockStamp. Existing
+view/PCM snapshot queues carry both fields together without audio-time driver
+queries or allocation; exact callback pairing also compares these fields.
+
+The [JUCE output-latency contract](https://docs.juce.com/master/classjuce_1_1AudioIODevice.html)
+describes delay from callback delivery to playback in samples. We preserve the
+report instead of treating it as a physical measurement or immediately mapping
+it to the render-end frame. Callback-edge origin, block lead, wall-clock/output
+correlation and live device behavior still need validation before an audible-
+time adapter is enabled. No PlaybackClockInput, renderer or JSON consumer uses
+this metadata yet; no audio scheduling or saved parameter/MIDI state changes.

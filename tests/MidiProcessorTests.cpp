@@ -1,4 +1,5 @@
 #include "plugin/Processor.h"
+#include "plugin/DeviceOutputLatency.h"
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <cstdlib>
 #include <iostream>
@@ -26,6 +27,32 @@ public:
 };
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
+ for(int block:{64,128}){
+  struct Device {
+   double rate=48000;int samples=256;unsigned rateCalls=0,latencyCalls=0;bool fail=false;
+   double getCurrentSampleRate(){check(!audioWatch,"Device rate queried in processBlock");++rateCalls;return rate;}
+   int getOutputLatencyInSamples(){check(!audioWatch,"Device latency queried in processBlock");++latencyCalls;if(fail)throw std::bad_alloc();return samples;}
+  } device;
+  unsigned reads=0;bool readerThrows=false;
+  auto p=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},[&]{check(!audioWatch,"Latency reader reached processBlock");++reads;if(readerThrows)throw std::bad_alloc();return aion::readDeviceOutputLatency(&device);});
+  juce::MemoryBlock saved;p->getStateInformation(saved);check(reads==0,"Construction does not query device latency");
+  juce::AudioBuffer<float> buffer(2,block);buffer.clear();juce::MidiBuffer midi;midi.ensureSize(256);
+  const auto prepare=[&](double rate){p->setPlayConfigDetails(2,2,rate,block);p->prepareToPlay(rate,block);check(p->inspectCallbackClockAudioThread().serial==0,"Prepare clears old callback latency stamp");};
+  const auto run=[&]{buffer.clear();audioWatch=true;p->processBlock(buffer,midi);const auto clock=p->inspectCallbackClockAudioThread();audioWatch=false;return clock;};
+  prepare(48000);auto clock=run();check(clock.hasOutputLatency&&clock.outputLatencySamples==256&&reads==1&&device.rateCalls==1&&device.latencyCalls==1,"Production prepare captures reported device output latency once");
+  const auto generation=clock.generation;device.samples=512;for(unsigned n=0;n<16;++n){clock=run();check(clock.hasOutputLatency&&clock.outputLatencySamples==256&&reads==1,"Callbacks use coherent prepared latency without querying device");}
+  prepare(48000);clock=run();check(clock.generation!=generation&&clock.hasOutputLatency&&clock.outputLatencySamples==512&&reads==2,"Reprepare refreshes latency and generation");
+  device.rate=44100;prepare(48000);check(!run().hasOutputLatency,"Mismatched device rate is not reinterpreted as prepared output latency");
+  device.rate=48000;device.samples=-1;prepare(48000);clock=run();check(!clock.hasOutputLatency&&clock.outputLatencySamples==0,"Negative device report remains missing, never known zero");
+  device.fail=true;prepare(48000);check(!run().hasOutputLatency,"Throwing device getter clears old latency");device.fail=false;
+  readerThrows=true;prepare(48000);check(!run().hasOutputLatency,"Throwing prepare-time IO provider clears old latency");readerThrows=false;
+  device.samples=0;prepare(48000);clock=run();check(clock.hasOutputLatency&&clock.outputLatencySamples==0,"Reported zero remains known zero");
+  device.rate=44100;device.samples=128;prepare(44100);clock=run();check(clock.sampleRate==44100&&clock.hasOutputLatency&&clock.outputLatencySamples==128,"Device change refreshes matching-rate report");
+  juce::MemoryBlock after;p->getStateInformation(after);check(saved==after,"Device latency metadata does not alter saved parameter/MIDI state");
+  auto plugin=std::make_unique<AionProcessor>();plugin->setPlayConfigDetails(2,2,48000,block);plugin->prepareToPlay(48000,block);buffer.clear();audioWatch=true;plugin->processBlock(buffer,midi);audioWatch=false;
+  check(!plugin->inspectCallbackClockAudioThread().hasOutputLatency,"Processor without an owned Standalone device does not invent host output latency");
+ }
+ std::cout<<"PASS: production prepare-only device output latency at 64/128, known zero, missing/error/rate/reset guards, no audio driver queries and unchanged saved state\n";
  // Actual JUCE PositionInfo acquisition: raw callback time is not output time.
  for(int block:{64,128}){
   TestPlayHead head;auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,block);p->prepareToPlay(48000,block);p->setPlayHead(&head);

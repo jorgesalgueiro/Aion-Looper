@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cmath>
 namespace aion {
-void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
+void Engine::prepare(double sampleRate, std::uint32_t poolFrames,DeviceOutputLatency reportedOutputLatency) {
     auto midiContext=midiDispatch();midi->prepare(midiContext);
     double rate = sampleRate;
     if (!std::isfinite(rate) || rate < 8000.0 || rate > 384000.0) rate = 48000.0;
@@ -16,6 +16,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     transport={};
     callbackClock={};
+    outputLatency=validatedOutputLatency(reportedOutputLatency,rate);
     frame = 0; gain = target = increment = renderedMasterPeak = 0.0f; remaining = 0;
     rampLength = static_cast<std::uint32_t>(std::clamp(rate * 0.02, 1.0, 38400.0));
     GainCommand discard{}; while (commands.pop(discard)) {};
@@ -137,7 +138,8 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     renderedMasterPeak=masterPeak;
     auto serial=callbackClock.serial+1;if(!serial)++serial;
     const bool hasHostTime=transport.hostValid&&transport.hasHostTimeNs&&transport.callbackFrame==callbackBegin;
-    callbackClock={serial,callbackBegin,frame,hasHostTime?transport.hostTimeNs:0,preparedRate,generation(),hasHostTime,nonRealtime};
+    callbackClock={serial,callbackBegin,frame,hasHostTime?transport.hostTimeNs:0,preparedRate,generation(),hasHostTime,nonRealtime,
+        outputLatency.available?static_cast<std::uint32_t>(outputLatency.samples):0,outputLatency.available};
     (void) meters.push({frame, peak});
     const auto tracks=loops.view();
     meterTransfer->publish(generation(),frame,preparedRate,[&](unsigned id,MeterWindowEvent& event) noexcept {

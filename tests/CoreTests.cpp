@@ -30,6 +30,7 @@ void meterSourceTests();
 void meterGraphTests();
 void playbackClockTests();
 void callbackClockTests();
+void outputLatencyTests();
 void countInTests();
 void startPhaseTests();
 void stutterTests();
@@ -99,6 +100,7 @@ int main() {
     meterGraphTests();
     playbackClockTests();
     callbackClockTests();
+    outputLatencyTests();
     countInTests();
     startPhaseTests();
     stutterTests();

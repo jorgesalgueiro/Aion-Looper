@@ -1,4 +1,5 @@
 #include "plugin/Processor.h"
+#include "plugin/DeviceOutputLatency.h"
 #include "ui/WebEditor.h"
 #include <cmath>
 #include <iterator>
@@ -7,6 +8,15 @@
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #endif
 namespace {
+aion::DeviceOutputLatency standaloneOutputLatency(const juce::AudioProcessor& processor){
+#if JucePlugin_Build_Standalone
+    if(auto* holder=juce::StandalonePluginHolder::getInstance())
+        if(holder->processor.get()==&processor)return aion::readDeviceOutputLatency(holder->deviceManager.getCurrentAudioDevice());
+#else
+    juce::ignoreUnused(processor);
+#endif
+    return {};
+}
 bool inputAvailable(const juce::AudioProcessor& processor){
 #if JucePlugin_Build_Standalone
     if(auto* holder=juce::StandalonePluginHolder::getInstance()){
@@ -17,7 +27,7 @@ bool inputAvailable(const juce::AudioProcessor& processor){
     return processor.getTotalNumInputChannels()>0;
 }
 }
-AionProcessor::AionProcessor(ExportDestination destination)
+AionProcessor::AionProcessor(ExportDestination destination,OutputLatencyReader latencyReader)
     : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
                                        .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "AionState", {std::make_unique<juce::AudioParameterFloat>(
@@ -34,6 +44,7 @@ AionProcessor::AionProcessor(ExportDestination destination)
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"metronomeEnabled",1},"Metronome",false),
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"metronomeVolume",1},"Metronome volume",juce::NormalisableRange<float>{0,2},0.5f)}) {
     exportDestination=std::move(destination);
+    outputLatencyReader=std::move(latencyReader);
     // Plugin hosts own hardware MIDI routing. Only our Standalone device manager
     // needs OS hotplug notifications; probing here otherwise requires ALSA on WSL.
    #if JucePlugin_Build_Standalone
@@ -139,7 +150,12 @@ void AionProcessor::timerCallback(){
     }
     }catch(...){exportChooser.reset();exportBusy=false;exportStatus="WAV export failed: could not open the save dialog";}
 }
-void AionProcessor::prepareToPlay(double rate, int) { vst3ProgramOverflow.store(false,std::memory_order_relaxed);midiInputReady.store(inputAvailable(*this),std::memory_order_release);engine.prepare(rate); }
+void AionProcessor::prepareToPlay(double rate, int) {
+    vst3ProgramOverflow.store(false,std::memory_order_relaxed);midiInputReady.store(inputAvailable(*this),std::memory_order_release);
+    aion::DeviceOutputLatency latency;
+    try{latency=outputLatencyReader?outputLatencyReader():standaloneOutputLatency(*this);}catch(...){latency={};}
+    engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
+}
 bool AionProcessor::isBusesLayoutSupported(const BusesLayout& b) const {
     return b.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
         && (b.getMainInputChannelSet().isDisabled() || b.getMainInputChannelSet() == juce::AudioChannelSet::mono()

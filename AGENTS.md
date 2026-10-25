@@ -961,3 +961,18 @@ tests, unchanged-PCM and zero tracked new/delete checks. No raw clock JSON or
 production audible-time conversion/renderer is enabled. Native device output
 latency/origin correlation, graph binding and visible-meter acceptance remain
 pending; no package or new DAW/hardware timing claim from this metadata step.
+
+Prepared output-latency report (25 October 2026): the owning Standalone processor
+reads its device's current rate and output latency only in prepareToPlay. Keep
+ownership checks; plugin processors without an owned device retain unavailable
+latency. The controlled native IO reader is a prepare-time test seam, never IPC
+or processBlock. Catch unavailable/throwing device IO, reject negative samples
+and nonfinite/mismatched rates, preserve reported zero as known zero, and replace
+reports on every prepare/generation. Callback stamps, views and requested PCM
+carry availability/sample count together; retain every-field 4000-packet tests,
+64/128/zero/offline/reset cases, unchanged PCM/state and zero tracked new/delete.
+Use getOutputLatencyInSamples, never input or plugin processing latency. This
+is a device report, not measured acoustic latency or an output timestamp. It
+does not justify subtracting it from endFrame without callback-edge/origin and
+block-lead validation. No PlaybackClock conversion, graph/renderer or JSON is
+enabled; physical clock correlation and visible-meter acceptance remain pending.

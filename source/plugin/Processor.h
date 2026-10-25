@@ -9,7 +9,8 @@ static_assert(std::atomic<bool>::is_always_lock_free, "MIDI input readiness must
 class AionProcessor final : public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {
 public:
     using ExportDestination = std::function<void(const juce::String&, std::function<void(juce::File)>)>;
-    explicit AionProcessor(ExportDestination = {});
+    using OutputLatencyReader = std::function<aion::DeviceOutputLatency()>; // Optional controlled prepare-time IO.
+    explicit AionProcessor(ExportDestination = {},OutputLatencyReader = {});
     ~AionProcessor() override;
     void prepareToPlay(double, int) override;
     void releaseResources() override {}
@@ -38,6 +39,7 @@ public:
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:
+    OutputLatencyReader outputLatencyReader; // Never invoked in processBlock or IPC.
     std::recursive_mutex midiSettingsMutex; // Non-audio configuration/state serialization only.
     aion::MidiSettings midiSettings;
     std::atomic<bool> vst3ProgramOverflow{false}; // Bounded wrapper input failed; reject its whole next callback.

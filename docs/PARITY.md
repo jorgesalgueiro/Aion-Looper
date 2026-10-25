@@ -195,3 +195,15 @@ JUCE processor tests exercise optional capture, DAW seeks, loss, reset, zero fra
 and offline mode. The unchanged original getter/meter/graph oracles remain gates.
 No conversion of raw host timestamps to audible time, device latency measurement,
 frontend JSON, graph binding, renderer or package is enabled in this increment.
+
+Prepared device-output latency (25 October 2026) adds the owning Standalone
+device's reported output sample latency to the coherent native callback/PCM
+metadata. Native tests distinguish known zero from unavailable, negative,
+throwing and rate-mismatched reports; preparation refreshes rate/generation.
+Controlled-device tests through the actual JUCE processor prove that queries
+occur during preparation and do not recur in processing. Engine output remains
+bit-identical at 64/128, and saved parameter/MIDI state remains unchanged.
+Every-field concurrent packet tests now include latency availability/sample count.
+The original UI/JS clock, graph and meter oracles are retained. This is native
+metadata acceptance, not measured device latency or audible-time parity; clock
+origin/block-edge alignment, graph/renderer integration and packaging remain pending.

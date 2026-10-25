@@ -5195,3 +5195,40 @@ runnable/logo hashes are recorded in build/callback-clock-final-evidence.json.
 Device output-latency/origin correlation, production audible-time selection,
 graph-owned PCM binding and original renderer/IPC integration remain pending.
 No package, SDK update, version bump or UI/reference asset change is made.
+
+Prepared device output-latency report (25 October 2026): the owning Standalone
+processor captures device sample rate/output latency during preparation, with
+ownership guards and an optional controlled native IO reader. Engine validates
+and replaces the report on every prepare; callback views and requested PCM carry
+availability and sample count together. Reported zero remains distinct from
+missing, negative, throwing or nonfinite/rate-mismatched reports. No driver query
+is added to processBlock, message snapshots or state serialization.
+
+Portable CTest passes 27/27 on Windows and 27/27 on Ubuntu. The six focused
+clock/meter gates pass under ASan/UBSan. Strict -Wall -Wextra -Wpedantic -Werror
+syntax checks pass for OutputLatencyTests and MeterTransferTests. Tests cover
+8/48kHz, 64/128/zero/offline callbacks, maximum int sample count, known zero,
+missing/error/rate guards, prepare/reset generations, exact snapshot pairing,
+and every-field 4000-packet concurrent coherence including output-latency flags.
+Actual monitored Engine PCM remains bit-identical with/without latency reports;
+callback validation/publication retains zero tracked new/delete.
+
+Rebuilt only the native JUCE processor tests: Windows 1/1 and Linux 1/1.
+Controlled-device tests execute the actual processor preparation and prove that
+device/reader queries do not recur during processing. They cover report refresh,
+sample-rate change/mismatch, negative/zero/throwing IO, missing owned device,
+and byte-identical saved parameter/MIDI state. This verifies the lifecycle/IO
+adapter, not physical device latency. The complete unchanged original clock,
+graph, follower and PCM-window oracles remain passing. The connected capture/
+OD/SUB audit passes 126 cases / 965,826 samples, maximum error
+7.394757495227111e-08 at unchanged 1e-6 tolerance.
+
+Evidence: build/output-latency-{windows,ubuntu,sanitizers}.txt,
+build/output-latency-processor-{windows,linux}.txt,
+build/output-latency-audio.json and build/output-latency-final-evidence.json.
+The manifest records source, rebuilt processor test and unchanged runnable SDK/
+user-logo hashes. No app/plugin/test-host runnable was rebuilt or packaged;
+no new REAPER/Ardour/GUI/hardware/Apple acceptance, SDK update or version bump
+is claimed. The report is not an acoustic measurement or correlated output
+timestamp; render-end/callback-edge/block-lead alignment and native audible-time
+conversion remain pending before graph/renderer/IPC integration can be accepted.
