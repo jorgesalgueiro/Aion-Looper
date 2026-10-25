@@ -5116,3 +5116,38 @@ source-stamp evidence; no SDK rebuild, new DAW/GUI/device/Apple acceptance,
 package or version bump is claimed. The original UI and separate user logo edit
 are preserved. Actual graph-event binding, graph-owned PCM notification/transfer,
 audible-time selection and original renderer integration remain pending.
+
+Audible-clock policy (25 October 2026): PlaybackClock ports the complete original
+AudioEngine.playbackTime getter and composes it with LoopMeterGraph's guarded
+observation. The complete unchanged getter + readMeter oracle compares 616
+snapshots on Windows and Ubuntu, maximum error 1.4210854715202004e-14 at retained
+1e-12 relative tolerance. It covers timestamp precedence and millisecond units,
+startup/invalid/overflow/subnormal values, missing/null/throwing timestamp and
+performance APIs, separate base/output latency fallback, context loss/replacement
+and suspension, backwards/stalled clocks, clipping history and ring eviction.
+Native tests exercise actual MeterWindow PCM assembled in 64/128 partitions:
+the delayed clipping window becomes visible at its audible time even after a
+new silent window arrives. Missing-context resets and stale-window atomic
+rejection remain intact; clock selection/composition has zero tracked new/delete.
+
+Windows passes the complete 27-gate suite. Ubuntu's first full run passes 26/27;
+the clock probe's stod conversion rejects the smallest finite timestamp on
+libstdc++. The corrected strtod probe keeps that case and the unchanged policy;
+the corrected CTest gate passes 1/1, accepting all 27 unique gates. The initial
+failure is retained in build/playback-clock-ubuntu.txt and
+build/playback-clock-ubuntu-first-oracle.txt. ASan/UBSan passes the six focused
+core/clock/graph/lifecycle/window/follower gates. Strict Ubuntu -Wall -Wextra
+-Wpedantic -Werror syntax checks pass for the new tests/probe. The retained
+capture/OD/SUB audit passes 126 cases / 965,826 samples at 1e-6 tolerance, maximum
+error 7.394757495227111e-08.
+
+Evidence: build/playback-clock-{windows,ubuntu}.txt,
+build/playback-clock-ubuntu-corrected-clock.txt,
+build/playback-clock-sanitizers.txt, build/playback-clock-{oracle,ubuntu-oracle}.json,
+build/playback-clock-audio.json and build/playback-clock-final-evidence.json.
+The manifest records source and unchanged SDK/processor-test/user-logo hashes.
+Clock/analyser IO is stubbed; these results do not measure hardware latency.
+Actual native device/host timestamp acquisition, validated clock transport,
+graph-owned PCM binding, IPC and original renderer integration remain pending.
+No production caller enables the clock, no audio/UI/reference assets change,
+and no SDK rebuild, new GUI/DAW/hardware/Apple acceptance or package is claimed.

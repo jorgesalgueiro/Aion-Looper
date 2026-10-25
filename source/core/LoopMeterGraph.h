@@ -1,6 +1,7 @@
 #pragma once
 #include "core/MeterFollower.h"
 #include "core/MeterWindow.h"
+#include "core/PlaybackClock.h"
 #include <cstdint>
 
 namespace aion {
@@ -62,6 +63,13 @@ public:
         reading=follower.update(needsWindow?samples:std::span<const float>{},now,playbackTime,context,
             eligible?view.analyser:0,eligible?view.data:0,running);
         return true;
+    }
+    // Compose the reference audible-time policy with the existing atomic
+    // window/graph checks. The caller still owns context identity and IO.
+    bool observe(std::span<const float> samples,std::uint64_t windowIdentity,
+        const PlaybackClockInput& clock,std::uint64_t context,bool running) noexcept {
+        return observe(samples,windowIdentity,clock.hasContext?clock.currentTime:0,
+            playbackTime(clock),clock.hasContext?context:0,running);
     }
     const MeterReading& value() const noexcept {return reading;}
     LoopMeterGraphView inspect() const noexcept {return view;}

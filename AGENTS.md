@@ -927,3 +927,20 @@ window; stale/short required windows reject without editing follower history.
 Do not alias native sourceRevision with graph/analyser/data tokens. Production
 notification mapping, graph-tagged PCM transport, audible-time selection and
 renderer/IPC integration remain pending. No visible-meter parity or package yet.
+
+Audible-clock policy (25 October 2026): PlaybackClock.h ports the complete
+original playbackTime getter, composed with LoopMeterGraph's existing guarded
+observation through an explicit clock-input overload. Keep the complete original
+getter + readMeter oracle (616 supplied snapshots, 1e-12 tolerance), including
+startup/invalid/overflow timestamps, absent/throwing IO, latency fallback, context
+changes, jitter/history and delayed clipping. Preserve subnormal inputs: the
+portable test probe uses strtod because libstdc++ stod rejects a valid minimum
+finite double. Device/host acquisition is NOT implemented by this pure policy.
+Timestamp audio seconds and monotonic performance milliseconds must share their
+respective origins with currentTime/wallTime. Do not infer output latency from
+timestamp/currentTime differences or feed DAW seek positions into this clock.
+Preserve backwards estimates; MeterFollower alone prevents hold-time rewind.
+This clock selects visual observations only, never audio commands or teardown
+timers. Keep zero tracked new/delete, 64/128 delayed-clip selection and stale
+window rejection. Native clock acquisition/transfer, graph binding and renderer
+remain pending; no visible-meter acceptance or package from this isolated port.

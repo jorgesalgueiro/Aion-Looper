@@ -1140,3 +1140,19 @@ node tests/MeterGraphParity.cjs build/core/aion_meter_graph_probe
 
 This header is isolated from production Engine/processor/UI callers. Existing
 SDK binaries are hash-checked rather than rebuilt; no package is needed.
+
+Audible-clock checks (25 October 2026) add aion_playback_clock_probe and the
+js_native_playback_clock CTest gate. Rebuild the portable core targets, then run
+CTest normally for all 27 gates. Minimal focused commands on Ubuntu:
+
+```sh
+cmake --build build/core --parallel 2 --target aion_core_tests aion_playback_clock_probe aion_meter_graph_probe aion_meter_window_probe aion_meter_probe
+ctest --test-dir build/core --output-on-failure -R '^(core_realtime_contract|js_native_playback_clock|js_native_meter_graph|original_meter_source_lifecycle|js_native_meter_window|js_native_meter)$'
+g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -Isource -fsyntax-only tests/PlaybackClockProbe.cpp tests/PlaybackClockTests.cpp
+node tests/PlaybackClockParity.cjs build/core/aion_playback_clock_probe
+```
+
+Windows uses the bundled cmake.exe/ctest.exe shown above, build/windows-core,
+--config Release for builds and -C Release for CTest. The same six focused gates
+run in build/core-asan with the existing ASAN_OPTIONS/UBSAN_OPTIONS. No SDK,
+app/plugin rebuild or package is needed: production callers remain unchanged.

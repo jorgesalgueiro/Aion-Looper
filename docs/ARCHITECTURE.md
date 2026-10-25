@@ -1228,3 +1228,23 @@ Context identity, running status, audio time and audible time remain supplied
 inputs. sourceRevision is not this graph token. Production graph notifications,
 graph-tagged PCM ownership, audible-time transfer and renderer wiring are still
 pending: this tested composition is not called by Engine, IPC or the frontend.
+
+PlaybackClock.h (25 October 2026) supplies the original audible-time selection
+policy to a LoopMeterGraph observation overload. A coherent PlaybackClockInput
+contains local audio seconds, an optional correlated output timestamp and
+monotonic performance milliseconds, plus supplied base/output latency seconds.
+The calculation never queries a device/host/OS clock. Valid initialized output
+timestamps take precedence, extrapolate by elapsed milliseconds, then clamp to
+[0,currentTime]; otherwise sanitized latencies are subtracted once. Missing
+contexts yield zero. Invalid/nonfinite/overflow values follow the original
+fallback; unavailable or throwing timestamp/performance IO is represented as
+hasOutputTimestamp=false by the future adapter. Estimates may move backwards;
+MeterFollower's existing hold-time handling remains responsible for jitter.
+
+This is visual selection, never the audio scheduling clock or timer owner.
+The [Web Audio output timestamp contract](https://www.w3.org/TR/webaudio-1.0/#dom-audiocontext-getoutputtimestamp)
+defines the correlated audio/performance origins and warns against estimating
+latency from their difference. Native acquisition, validated clock transport and
+graph notification/PCM binding still require implementation and acceptance;
+neither DAW seek positions nor guessed device latency are substituted here.
+No production Engine, processor, IPC or renderer caller enables this policy yet.

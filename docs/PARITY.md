@@ -170,3 +170,16 @@ Separate native guards reject stale/short required windows atomically, preserve
 64/128 supplied-PCM invariance and report zero tracked new/delete. This does not
 certify native graph-event binding or live audible-time/renderer integration.
 No product UI, audio processing or original assets change in this increment.
+
+Audible-clock policy subset (25 October 2026): the complete original playbackTime
+getter and complete readMeter match a native PlaybackClock/LoopMeterGraph
+composition across 616 snapshots (maximum error 1.4210854715202004e-14 at 1e-12
+relative tolerance). Cases retain original timestamp precedence, startup zero
+handling, exception/missing API fallbacks, invalid/overflow/subnormal values,
+base/output latency, context loss/suspension, backwards jitter and history wrap.
+Delayed clipping selects earlier audible PCM rather than the newest silent
+window; native tests repeat that behavior at 64/128 and retain stale-window
+atomic rejection with zero tracked new/delete. Snapshot clock/analyser IO is
+stubbed, not hardware evidence. Native device/host timestamp acquisition and
+transport, graph-tagged PCM binding, IPC and original renderer remain pending.
+No DSP, UI, reference assets or package changes accompany this policy port.
