@@ -1300,3 +1300,28 @@ it to the render-end frame. Callback-edge origin, block lead, wall-clock/output
 correlation and live device behavior still need validation before an audible-
 time adapter is enabled. No PlaybackClockInput, renderer or JSON consumer uses
 this metadata yet; no audio scheduling or saved parameter/MIDI state changes.
+
+Callback-edge alignment model (25 October 2026): CallbackAudibleTime.h accepts
+an explicit correlation between one complete callback stamp and its output-
+delivery entry on an owner-assigned monotonic clock. Consumer observations must
+use that same nonzero origin and current engine generation. Raw hostTimeNs is
+never interpreted as this clock. Under the JUCE reported-latency contract, the
+estimate in seconds is:
+
+```text
+clamp((beginFrame - outputLatencySamples) / sampleRate + elapsedSinceEntry,
+      0, endFrame / sampleRate)
+```
+
+Starting from endFrame instead
+would lead by one rendered block; clamping the signed startup offset before
+adding elapsed time would advance during initial device latency.
+
+This pure, allocation-free model rejects missing latency, offline/empty blocks,
+mismatched stamps/origins/generations, backwards or nonfinite wall observations,
+unrepresentable seconds and frame indices above 2^53. Failure preserves the
+previous result. Delayed consumers saturate at the available rendered end; this
+does not assert that a device is still running. It has no production caller and
+does not supply a Web Audio output timestamp or alter PlaybackClock's original
+getter policy. Real IO must establish a delivery-edge correlation first; device
+drift/xruns, graph binding and visible meter integration remain unverified.

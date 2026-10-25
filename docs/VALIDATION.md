@@ -5232,3 +5232,25 @@ no new REAPER/Ardour/GUI/hardware/Apple acceptance, SDK update or version bump
 is claimed. The report is not an acoustic measurement or correlated output
 timestamp; render-end/callback-edge/block-lead alignment and native audible-time
 conversion remain pending before graph/renderer/IPC integration can be accepted.
+
+Callback-delivery audible-time model (25 October 2026): Windows 27/27 and
+Ubuntu 27/27 portable gates pass; the six focused clock/meter gates pass under
+ASan/UBSan. Strict portable compilation passes with warnings treated as errors.
+The new core test reports 19,200 controlled FIFO-timeline observations across
+8/44.1/48/96 kHz, 64/128 blocks and five latency reports, at 1e-12 tolerance.
+It tests callback-start rather than render-end alignment, signed startup delay,
+slow consumers, raw-host-clock independence and atomic rejection of invalid,
+offline, empty or mismatched correlations. Zero tracked new/delete is retained.
+These are explicit-correlation model tests, not observations of a physical DAC.
+
+The complete original JS clock, graph, meter and other existing parity gates
+remain passing. The actual capture/OD/SUB PCM audit passes 126 cases / 965,826
+samples, maximum error 7.394757495227111e-08 at the unchanged 1e-6 tolerance.
+Evidence: build/audible-alignment-{windows,ubuntu,sanitizers}.txt,
+build/audible-alignment-audio.json and build/audible-alignment-final-evidence.json.
+The manifest verifies source hashes, the separate unchanged user-logo edit and
+unchanged runnable SDK/processor-test binaries. No Engine or native processor
+behavior changed, so those SDK targets were not rebuilt. No package, new DAW/
+GUI/hardware/Apple acceptance or version bump is claimed. Actual output-delivery
+clock acquisition/correlation, drift/xrun handling and graph/IPC/renderer wiring
+remain pending; this does not complete the visible-meter feature.

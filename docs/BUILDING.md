@@ -1196,3 +1196,18 @@ then run the native_midi_processor gate using the commands above. Its controlled
 device/prepare-time reader tests missing/error/zero/rate-change reports, cached
 processing and exact saved-state preservation. No physical device, new runnable
 Standalone/plugin build or package is required for these regression checks.
+
+Callback-edge alignment checks (25 October 2026): CallbackAudibleTimeTests.cpp
+joins the existing core_realtime_contract executable, keeping 27 portable gates.
+Run the normal Windows/Ubuntu portable build and CTest commands and the same six
+focused ASan/UBSan gates above. Strict compilation of the new model requires
+only the portable compiler:
+
+```sh
+g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -Isource -fsyntax-only tests/CallbackAudibleTimeTests.cpp
+```
+
+The pure model has no Engine/processor/GUI caller. Existing runnable SDK and
+processor-test binaries are hash-checked, rather than rebuilt for this step.
+Do not package or interpret controlled timing acceptance as live device/DAW
+acceptance; native output-delivery correlation and visible meter wiring remain.

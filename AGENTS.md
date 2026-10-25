@@ -976,3 +976,18 @@ is a device report, not measured acoustic latency or an output timestamp. It
 does not justify subtracting it from endFrame without callback-edge/origin and
 block-lead validation. No PlaybackClock conversion, graph/renderer or JSON is
 enabled; physical clock correlation and visible-meter acceptance remain pending.
+
+Callback audible-time model (25 October 2026): CallbackAudibleTime.h is a pure
+reported-latency model requiring an explicit callback-delivery entry and consumer
+point on the same nonzero owner-assigned monotonic origin. Preserve exact stamp
+and current-generation checks; never derive that origin from raw hostTimeNs.
+Use beginFrame-L plus elapsed, then clamp once to [0,endFrame/rate]; endFrame-L
+at entry leads by one block, and early startup clamping advances prematurely.
+Keep the 19,200 independent delayed-FIFO timeline observations at four rates,
+64/128 blocks, known-zero/long latency, delayed consumer and atomic rejection
+cases, unchanged JS policies and zero tracked new/delete. Empty/offline blocks,
+missing latency, backwards/nonfinite clock points, mismatched stamps/origins and
+unrepresentable frame/seconds observations cannot produce an estimate. This
+model has no production IO/graph/renderer caller. Actual callback-edge clock
+correlation and device drift/xrun behavior remain required before visible-meter
+acceptance. No package or physical timing claim from controlled model tests.

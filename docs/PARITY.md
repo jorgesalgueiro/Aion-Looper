@@ -207,3 +207,16 @@ Every-field concurrent packet tests now include latency availability/sample coun
 The original UI/JS clock, graph and meter oracles are retained. This is native
 metadata acceptance, not measured device latency or audible-time parity; clock
 origin/block-edge alignment, graph/renderer integration and packaging remain pending.
+
+Callback audible-time model (25 October 2026): a controlled delayed-output FIFO
+timeline checks 19,200 observations at 8/44.1/48/96 kHz with 64/128 blocks and
+0/1/32/256/4096 reported latency samples. It independently derives emitted
+frames from the simulated hardware position, including startup and observations
+beyond the last rendered block. Tests detect a full-block lead from using the
+rendered end at entry and premature startup from unsigned/clamped subtraction.
+Wrong origin, stale generation, mismatched callback, offline/zero-size callback,
+missing latency and nonfinite inputs reject atomically. Raw host nanoseconds
+cannot affect an otherwise paired estimate. These are model tests, not physical
+DAC measurements or original-browser device equivalence. Existing complete JS
+getter/graph/meter and actual PCM gates remain separate. No IO acquisition,
+renderer, IPC, saved state, interface or production audio behavior changes.

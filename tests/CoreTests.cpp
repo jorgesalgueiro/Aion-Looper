@@ -29,6 +29,7 @@ void meterTransferTests();
 void meterSourceTests();
 void meterGraphTests();
 void playbackClockTests();
+void callbackAudibleTimeTests();
 void callbackClockTests();
 void outputLatencyTests();
 void countInTests();
@@ -67,6 +68,7 @@ static void hostTransportTests() {
 }
 int main() {
     hostTransportTests();
+    callbackAudibleTimeTests();
     aion::SpscQueue<unsigned, 8> q; unsigned value=0;
     for(unsigned i=0;i<7;++i) check(q.push(i),"queue capacity");
     check(!q.push(99),"overflow must reject");
