@@ -9,6 +9,8 @@ struct Transport {
     double bpm=120.0,ppq=0.0;
     bool playing=false,hostValid=false;
     std::uint64_t callbackFrame=0;
+    std::uint64_t hostTimeNs=0; // Optional raw callback start, never audible output time.
+    bool hasHostTimeNs=false;
     std::int64_t samplePosition=0;
     double seconds=0,barStartPpq=0,loopStartPpq=0,loopEndPpq=0;
     int numerator=0,denominator=0;
@@ -28,6 +30,7 @@ inline Transport validatedTransport(Transport t) noexcept {
     t.hasLoopPoints=t.hasLoopPoints&&std::isfinite(t.loopStartPpq)&&std::isfinite(t.loopEndPpq)&&t.loopEndPpq>t.loopStartPpq;
     if(!t.hasLoopPoints)t.loopStartPpq=t.loopEndPpq=0;
     if(!t.hasSamples)t.samplePosition=0;
+    if(!t.hasHostTimeNs)t.hostTimeNs=0;
     return t;
 }
 }

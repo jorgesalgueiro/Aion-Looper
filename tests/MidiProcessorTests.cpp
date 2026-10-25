@@ -26,6 +26,27 @@ public:
 };
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
+ // Actual JUCE PositionInfo acquisition: raw callback time is not output time.
+ for(int block:{64,128}){
+  TestPlayHead head;auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,block);p->prepareToPlay(48000,block);p->setPlayHead(&head);
+  juce::AudioBuffer<float> buffer(2,block);buffer.clear();juce::MidiBuffer midi;midi.ensureSize(256);std::uint64_t frame=0;
+  for(unsigned n=0;n<32;++n){
+   const int frames=n%7?block:0;buffer.setSize(2,frames,false,false,true);buffer.clear();
+   juce::AudioPlayHead::PositionInfo position;const auto raw=n%4==1?std::uint64_t{0}:std::numeric_limits<std::uint64_t>::max()-n;
+   if(n%4<2)position.setHostTimeNs(raw);
+   position.setTimeInSamples(n%2?-48000:999999);position.setTimeInSeconds(n%2?-1:999);head.position=n%4==3?juce::Optional<juce::AudioPlayHead::PositionInfo>{}:juce::Optional<juce::AudioPlayHead::PositionInfo>{position};
+   p->setNonRealtime(n%5==0);audioWatch=true;p->processBlock(buffer,midi);const auto clock=p->inspectCallbackClockAudioThread();audioWatch=false;
+   check(aion::validCallbackClock(clock)&&clock.serial==n+1&&clock.beginFrame==frame&&clock.endFrame==frame+frames&&clock.sampleRate==48000,"Production callback captures local block interval, not DAW seek position");
+   check(clock.hasHostTimeNs==(n%4<2)&&clock.hostTimeNs==(n%4<2?raw:0)&&clock.nonRealtime==(n%5==0),"Production optional uint64/zero/missing timestamp and offline mode exact");frame+=frames;
+  }
+  const auto calls=head.calls;p->request({juce::JSON::parse(R"({"operation":"snapshot"})")});juce::MemoryBlock saved;p->getStateInformation(saved);
+  check(head.calls==calls&&head.outsideAudio==0,"Timestamp queried once per callback, never from message/state owner");
+  const auto generation=p->inspectCallbackClockAudioThread().generation;p->prepareToPlay(48000,block);
+  check(p->inspectCallbackClockAudioThread().serial==0&&!p->inspectCallbackClockAudioThread().hasHostTimeNs,"Production prepare clears prior callback timestamp");
+  p->setPlayHead(nullptr);buffer.setSize(2,block,false,false,true);buffer.clear();audioWatch=true;p->processBlock(buffer,midi);audioWatch=false;
+  check(p->inspectCallbackClockAudioThread().generation!=generation&&!p->inspectCallbackClockAudioThread().hasHostTimeNs,"Detached playhead/reset cannot reuse old timestamp");
+ }
+ std::cout<<"PASS: production JUCE callback timestamp capture at 64/128, zero frames, optional loss, offline/reset and audio-only host queries\n";
  {
   auto p=std::make_unique<AionProcessor>();
   const auto routing=p->request({juce::JSON::parse(R"({"operation":"midiDevices"})")});

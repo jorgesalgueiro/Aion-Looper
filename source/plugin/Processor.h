@@ -34,6 +34,7 @@ public:
     void cancelMidiLearn(); // MIDI performance continues without an editor.
     void programInputOverflow() noexcept override {vst3ProgramOverflow.store(true,std::memory_order_release);}
     aion::AudioInspection inspectAudioThread(std::uint32_t track=0) const noexcept {return engine.inspectAudioThread(track);}
+    aion::CallbackClockStamp inspectCallbackClockAudioThread() const noexcept {return engine.inspectCallbackClockAudioThread();}
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:

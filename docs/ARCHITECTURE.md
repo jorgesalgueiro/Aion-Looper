@@ -1248,3 +1248,31 @@ latency from their difference. Native acquisition, validated clock transport and
 graph notification/PCM binding still require implementation and acceptance;
 neither DAW seek positions nor guessed device latency are substituted here.
 No production Engine, processor, IPC or renderer caller enables this policy yet.
+
+Raw native callback clock (25 October 2026): processBlock now copies the optional
+JUCE PositionInfo hostTimeNs getter from the existing single playhead observation.
+The [JUCE API](https://docs.juce.com/master/classjuce_1_1AudioPlayHead_1_1PositionInfo.html)
+describes callback timing; it does not promise this is an audible-output timestamp
+in the same origin as a UI performance clock. The pinned AudioProcessorPlayer
+also forwards an optional device callback hostTimeNs through its playhead in
+Standalone mode. Missing timestamps stay explicit, and engaged zero remains
+distinct from missing. Nanoseconds stay uint64, including values above 2^53;
+there is no lossy JSON or double conversion.
+
+CallbackClockStamp binds that optional raw value to the Engine's local callback
+[beginFrame,endFrame), rate, generation, nonzero callback serial and offline flag.
+The stamp is embedded in EngineView and each on-request MeterWindowEvent through
+the existing bounded SPSC queues. It adds no clock query, lock, wait or allocation
+to processing. Serial distinguishes consecutive zero-sample callbacks even when
+frame, rate, source and generation are unchanged. A host observation with the
+wrong callback-start frame is not attached; prepare resets the observation.
+Offline timestamps are retained as raw metadata, not used for live interpolation.
+
+sameLoopMeterCallback validates exact view/packet callback pairing and internal
+frame/rate/generation consistency. It is not an active/audible permission; source
+identity, actual graph ownership, current Engine generation and audible selection
+remain separate responsibilities. Queue saturation preserves old complete tuples
+and recaptures fresh data after recovery. Audio-owner inspection is diagnostic
+only; UI code must consume snapshots. No callback clock is exposed in frontend
+JSON or fed to PlaybackClockInput: native output latency/origin correlation and
+graph/renderer integration still require acceptance.

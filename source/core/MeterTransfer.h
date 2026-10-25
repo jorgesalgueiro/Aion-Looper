@@ -1,6 +1,7 @@
 #pragma once
 #include "core/MeterWindow.h"
 #include "core/SpscQueue.h"
+#include "core/CallbackClock.h"
 #include <atomic>
 #include <cstdint>
 
@@ -12,6 +13,7 @@ struct MeterWindowEvent {
     std::uint64_t endFrame=0,clearEpoch=0,waveformId=0,sourceRevision=0;
     double sampleRate=0;
     std::uint32_t generation=0,track=0;
+    CallbackClockStamp callbackClock{};
 };
 
 // Construct on the heap off audio. One audio publisher and one message consumer.

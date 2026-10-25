@@ -944,3 +944,20 @@ This clock selects visual observations only, never audio commands or teardown
 timers. Keep zero tracked new/delete, 64/128 delayed-clip selection and stale
 window rejection. Native clock acquisition/transfer, graph binding and renderer
 remain pending; no visible-meter acceptance or package from this isolated port.
+
+Raw callback-clock capture (25 October 2026): preserve JUCE's optional
+PositionInfo hostTimeNs as uint64 nanoseconds, including engaged zero, without
+converting it to a Web Audio output/performance timestamp or guessing its origin.
+Query the playhead only in processBlock. Engine attaches one CallbackClockStamp
+to its coherent view and each requested meter packet: generation, nonzero serial,
+local half-open callback range, rate, optional raw host time and offline flag.
+Zero-sample callbacks advance serial, not frames. Prepare clears the observation;
+host loss/mismatched callback frame clears raw availability. sameLoopMeterCallback
+is exact callback identity only; retain separate source, graph and current-engine
+generation checks before future use. Keep seven-packet queue ownership, bounded
+copies and slow-consumer recovery. Retain every-field 4000-packet coherence,
+64/128/zero-frame/reset/saturation tests, actual processor optional timestamp
+tests, unchanged-PCM and zero tracked new/delete checks. No raw clock JSON or
+production audible-time conversion/renderer is enabled. Native device output
+latency/origin correlation, graph binding and visible-meter acceptance remain
+pending; no package or new DAW/hardware timing claim from this metadata step.

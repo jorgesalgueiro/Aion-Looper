@@ -183,3 +183,15 @@ atomic rejection with zero tracked new/delete. Snapshot clock/analyser IO is
 stubbed, not hardware evidence. Native device/host timestamp acquisition and
 transport, graph-tagged PCM binding, IPC and original renderer remain pending.
 No DSP, UI, reference assets or package changes accompany this policy port.
+
+Native callback-clock transport (25 October 2026) now carries actual optional
+JUCE callback timestamps with local sample intervals in coherent EngineView and
+meter packets. This is a native metadata contract, not a JS audible-clock parity
+claim. Tests retain exact uint64 and engaged-zero/missing semantics, zero-frame
+serial changes, generation/reset and queue-full recovery. All fields and PCM
+remain coherent across 4000 concurrent packets; 64/128 Engine tests compare real
+monitored output bit-for-bit against an engine without host timestamps. Actual
+JUCE processor tests exercise optional capture, DAW seeks, loss, reset, zero frames
+and offline mode. The unchanged original getter/meter/graph oracles remain gates.
+No conversion of raw host timestamps to audible time, device latency measurement,
+frontend JSON, graph binding, renderer or package is enabled in this increment.

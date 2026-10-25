@@ -15,6 +15,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     transport={};
+    callbackClock={};
     frame = 0; gain = target = increment = renderedMasterPeak = 0.0f; remaining = 0;
     rampLength = static_cast<std::uint32_t>(std::clamp(rate * 0.02, 1.0, 38400.0));
     GainCommand discard{}; while (commands.pop(discard)) {};
@@ -60,6 +61,7 @@ bool Engine::applyLoop(LoopAction action,std::uint32_t track,double value) noexc
 }
 void Engine::process(float* const* channels, int count, int frames,std::span<const MidiEvent> midiEvents, bool nonRealtime) noexcept {
     if (count < 0 || frames < 0 || (count > 0 && channels == nullptr)) return;
+    const auto callbackBegin=frame;
     float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
     if(nonRealtime)loops.completeOfflineEdits();
     loops.beginBlock();
@@ -133,10 +135,14 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     }
     // Telemetry is lossy by design; never wait when the editor is closed/slow.
     renderedMasterPeak=masterPeak;
+    auto serial=callbackClock.serial+1;if(!serial)++serial;
+    const bool hasHostTime=transport.hostValid&&transport.hasHostTimeNs&&transport.callbackFrame==callbackBegin;
+    callbackClock={serial,callbackBegin,frame,hasHostTime?transport.hostTimeNs:0,preparedRate,generation(),hasHostTime,nonRealtime};
     (void) meters.push({frame, peak});
     const auto tracks=loops.view();
     meterTransfer->publish(generation(),frame,preparedRate,[&](unsigned id,MeterWindowEvent& event) noexcept {
         event.clearEpoch=tracks[id].clearEpoch;event.waveformId=tracks[id].waveformId;event.sourceRevision=tracks[id].sourceRevision;
+        event.callbackClock=callbackClock;
         (void)loops.copyMeterWindow(id,event.samples);
     });
     if(liveInput->running()){
@@ -154,7 +160,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
         if(loops.copyWaveform(id,revision,event.peaks)&&waveforms->push(event)){sentWaveforms[id]=revision;++emitted;}
         else break; // Closed/slow editor: retry later, never wait.
     }
-    (void) views->push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame),midi->view(),transport});
+    (void) views->push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame),midi->view(),transport,callbackClock});
 }
 bool Engine::enqueueExport(ExportRequest request) noexcept {
     if(exportOutstanding||request.generation!=generation()||!request.generation||request.track>=LoopBank::trackCount||!request.waveformId)return false;

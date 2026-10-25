@@ -5151,3 +5151,47 @@ Actual native device/host timestamp acquisition, validated clock transport,
 graph-owned PCM binding, IPC and original renderer integration remain pending.
 No production caller enables the clock, no audio/UI/reference assets change,
 and no SDK rebuild, new GUI/DAW/hardware/Apple acceptance or package is claimed.
+
+Raw native callback clock (25 October 2026): production processBlock captures
+the optional JUCE PositionInfo hostTimeNs from its existing audio-only host
+observation. Engine carries it as exact uint64 nanoseconds in CallbackClockStamp
+with local begin/end frames, generation, nonzero serial, rate and offline flag.
+The complete stamp is transferred with EngineView and requested PCM packets.
+There is no conversion to an audible-output/performance clock or frontend JSON.
+
+Acceptance covers 8/48kHz and 64/128/zero-frame callbacks, engaged zero versus
+missing timestamps, high-bit uint64 values, DAW seek independence, host loss,
+wrong-start-frame suppression, reset/generation reuse, saturated queues and
+recovery. Same-frame/same-source/same-generation zero-size callbacks require
+different serials; old PCM cannot pair with a newer callback snapshot. Exact
+view/packet tuple comparison is identity only, not graph/audible readiness.
+4000 concurrent packets verify every clock field, including changing optional
+and offline flags, along with all metadata and PCM. Real monitored Engine output
+is bit-identical with and without raw host timestamps; tracked callback new/delete
+remains zero.
+
+Portable CTest: Windows 27/27 and Ubuntu 27/27. The final strengthened core
+executable was rebuilt/rerun directly on Windows, Ubuntu and ASan/UBSan. The six
+focused sanitizer gates also pass. Strict -Wall -Wextra -Wpedantic -Werror syntax
+checks pass for CallbackClockTests and MeterTransferTests. The complete unchanged
+377-observation graph and 616-observation audible-clock oracles remain passing
+alongside the original follower/window/loop/MIDI/export/sync gates. The connected
+capture/OD/SUB PCM audit retains 126 cases / 965,826 samples, maximum error
+7.394757495227111e-08 at unchanged 1e-6 tolerance.
+
+Rebuilt only the native JUCE processor test target in each SDK tree: Windows
+1/1 and Linux 1/1. Actual processor tests cover raw optional timestamp acquisition,
+full uint64 precision, zero frames, unavailable/detached playheads, offline mode,
+reset, and audio-owner-only host reads at 64/128. These use a controlled JUCE
+playhead; they are not physical output timestamp or device-latency measurements.
+Runnable Standalone/plugin/test-host hashes match the preceding accepted SDK
+artifacts; no new REAPER/Ardour/GUI/hardware/Apple acceptance is claimed.
+
+Logs: build/callback-clock-{windows,ubuntu,sanitizers}.txt,
+build/callback-clock-{windows,ubuntu,sanitizer}-final-core.txt,
+build/callback-clock-processor-{windows,linux}.txt and
+build/callback-clock-audio.json. Source, rebuilt processor test and unchanged
+runnable/logo hashes are recorded in build/callback-clock-final-evidence.json.
+Device output-latency/origin correlation, production audible-time selection,
+graph-owned PCM binding and original renderer/IPC integration remain pending.
+No package, SDK update, version bump or UI/reference asset change is made.

@@ -159,6 +159,7 @@ void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuff
     aion::Transport host;host.callbackFrame=engine.clock();
     if (auto* head = getPlayHead()) if (auto position = head->getPosition()) {
         host.hostValid=true;host.playing=position->getIsPlaying();host.recording=position->getIsRecording();host.looping=position->getIsLooping();
+        if(auto value=position->getHostTimeNs()){host.hasHostTimeNs=true;host.hostTimeNs=*value;}
         if(auto value=position->getBpm()){host.hasBpm=true;host.bpm=*value;}
         if(auto value=position->getPpqPosition()){host.hasPpq=true;host.ppq=*value;}
         if(auto value=position->getTimeInSamples()){host.hasSamples=true;host.samplePosition=*value;}

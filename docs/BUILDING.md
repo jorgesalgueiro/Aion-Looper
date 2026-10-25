@@ -1156,3 +1156,28 @@ Windows uses the bundled cmake.exe/ctest.exe shown above, build/windows-core,
 --config Release for builds and -C Release for CTest. The same six focused gates
 run in build/core-asan with the existing ASAN_OPTIONS/UBSAN_OPTIONS. No SDK,
 app/plugin rebuild or package is needed: production callers remain unchanged.
+
+Raw callback-clock checks (25 October 2026): CallbackClockTests.cpp is included
+in aion_core_tests; the portable suite still has 27 CTest gates. Rebuild the
+portable targets and run CTest normally. The existing six focused meter/clock
+gates above also run under core-asan. After strengthening the concurrent tuple
+checks, the final aion_core_tests executables were rebuilt/rerun directly on
+Windows, Ubuntu and ASan/UBSan; no reference fixture or tolerance was relaxed.
+
+The production processor now captures the optional JUCE callback time, so also
+build only aion_midi_processor_tests in each SDK tree and run its native gate:
+
+```powershell
+& .toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --build build/windows --config Release --target aion_midi_processor_tests
+& .toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe --test-dir build/windows -C Release --output-on-failure -R '^native_midi_processor$'
+```
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_midi_processor_tests
+ctest --test-dir build/linux --output-on-failure -R '^native_midi_processor$'
+```
+
+Use the existing configured SDK trees, with AION_TEST_NATIVE_PROCESSOR=ON.
+WSLg supplies DISPLAY=:0 in this environment; no additional Xvfb package is
+required. Standalone/plugin/test-host runnable targets are not rebuilt for this
+internal clock step; no package, SDK download or new GUI/DAW run is required.

@@ -35,12 +35,23 @@ struct EngineView {
     unsigned countInFlash=0;
     MidiView midi{};
     Transport hostTransport{};
+    CallbackClockStamp callbackClock{};
 };
 // Identity validation only: not an analyser reset decision or audible-time gate.
 inline bool sameLoopMeterSource(const MeterWindowEvent& event,const EngineView& view) noexcept {
     if(!event.generation||event.generation!=view.generation||event.track>=LoopBank::trackCount)return false;
     const auto& track=view.tracks[event.track];
     return event.clearEpoch==track.clearEpoch&&event.waveformId==track.waveformId&&event.sourceRevision==track.sourceRevision;
+}
+// Exact callback pairing only; source/graph availability and audible-time
+// selection remain separate checks. Offline stamps may match without being a
+// live output clock. Never combine a packet with a newer callback's timestamp.
+inline bool sameLoopMeterCallback(const MeterWindowEvent& event,const EngineView& view) noexcept {
+    const auto& clock=view.callbackClock;
+    return validCallbackClock(clock)&&event.generation==view.generation&&clock.generation==view.generation
+        &&event.track<LoopBank::trackCount&&event.callbackClock==clock
+        &&event.endFrame==clock.endFrame&&view.frame==clock.endFrame
+        &&event.sampleRate==clock.sampleRate&&view.sampleRate==clock.sampleRate;
 }
 // Audio owner only for prepare/process/target/transport. The message thread is
 // the sole producer of commands; the message thread alone consumes meters.
@@ -85,7 +96,9 @@ public:
     // Raw post-fader/pan loop PCM; audio owner only, no UI/IPC publication yet.
     bool copyLoopMeterWindow(std::uint32_t track,std::span<float,MeterWindow::size> output) const noexcept {return loops.copyMeterWindow(track,output);}
     Transport transport{}; // Audio-owned; never read directly from the editor.
+    CallbackClockStamp inspectCallbackClockAudioThread() const noexcept {return callbackClock;}
 private:
+    CallbackClockStamp callbackClock{}; // Last completed callback; audio owner only.
     std::unique_ptr<MidiController> midi=std::make_unique<MidiController>();
     std::atomic<std::uint32_t> midiCancellation{0};
     std::uint32_t seenMidiCancellation=0;

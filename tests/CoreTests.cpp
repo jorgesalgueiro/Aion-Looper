@@ -29,6 +29,7 @@ void meterTransferTests();
 void meterSourceTests();
 void meterGraphTests();
 void playbackClockTests();
+void callbackClockTests();
 void countInTests();
 void startPhaseTests();
 void stutterTests();
@@ -97,6 +98,7 @@ int main() {
     meterSourceTests();
     meterGraphTests();
     playbackClockTests();
+    callbackClockTests();
     countInTests();
     startPhaseTests();
     stutterTests();
