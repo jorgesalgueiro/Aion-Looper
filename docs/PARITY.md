@@ -130,3 +130,16 @@ collected windows in tests, not production; source/analyser lifecycle identities
 audible-time transfer, IPC and original visible rendering remain pending. Raw
 native fade tails are not a claim of original disconnected-analyser behavior.
 Original UI, bindings and product meter placeholders remain unchanged.
+
+
+Raw PCM transfer subset (25 October 2026): Engine can now pass requested windows
+to one message owner with bounded SPSC copies, end-frame/rate/reset/clear/clip
+metadata, queue-full recovery and generation filtering. Actual nonzero Engine
+PCM/tap comparisons cover 8/48 kHz and 64/128 blocks, with exact stereo output
+unchanged by transfer. Thread tests check 4000 complete packets. Same-generation
+clear/clip staleness is exposed by metadata and must be rejected using a current
+view before future rendering. Raw fade tails are retained, then become silent.
+This is native thread-ownership acceptance, not original JS bridge behavior.
+The original meter math/window gates still pass, but playback source/analyser
+lifecycle, audible-time scheduling, IPC and renderer integration remain pending.
+No production follower or frontend meter consumer is connected in this increment.

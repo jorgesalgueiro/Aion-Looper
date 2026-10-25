@@ -4977,3 +4977,56 @@ cross-thread payload, JSON/schema or visible meter has been added. Source
 identity, timestamped bounded transfer and audible-time renderer integration
 remain pending. The separate user logo edit and all original JS/UI behavior
 are retained. No package or version bump; this completes only raw collection.
+
+
+Raw meter transfer increment (25 October 2026), based on 4747bcb:
+
+- Windows and Ubuntu full portable suites: 24/24 each, all linked probes rebuilt.
+  Relevant ASan/UBSan core/window/follower gates: 3/3, leak detection and
+  halt-on-error. Strict -Wall/-Wextra/-Wpedantic/-Werror syntax check also passes.
+  After strengthening only the Engine fixture to use ordinary live callbacks
+  following deterministic worker finish, affected core/window/follower checks
+  were rebuilt and repeated: 3/3 Windows, 3/3 Ubuntu and 3/3 ASan/UBSan. Production
+  code and original reference gates were unchanged during that fixture extension.
+- Rebuilt Windows and Linux JUCE processor targets: native_midi_processor 1/1
+  on each platform, retaining real MidiBuffer/host/PCM/allocation regressions.
+- Transfer tests cover invalid track IDs, coalescing 1000 requests, exactly seven
+  queue slots, at most two window copies per callback, 500 saturated callbacks,
+  all twenty tracks recovering without overwritten PCM, prepare cancellation,
+  bounded old-generation draining and untouched failure output.
+- 4000 exchanges between two real owners validate every sample and identity of
+  each packet. Tracked new/delete remains zero on both request/pop and publishing
+  owners after construction; no ThreadSanitizer or arbitrary-malloc claim.
+- Actual Engine tests at 8/48 kHz and 64/128 compare transferred nonzero PCM
+  exactly to the audio-owned 2048-frame tap and coherent clip/clear metadata.
+  Exclusive end-frame and sample-rate stamps, zero-frame callbacks, delayed clear
+  packets, fresh cleared-tail PCM, eventual exact silence, changed-rate prepare
+  rejection and fresh empty-window recovery pass. Identical stereo audio from
+  a second Engine with no requests proves the transfer is passive in these cases.
+- Retained original meter/window oracle gates pass. Connected capture/OD/SUB
+  audit: 126 cases / 965,826 samples, maximum error 7.394757495227111e-08
+  at unchanged 1e-6 tolerance.
+
+The first Ubuntu and sanitizer runs rejected a fixture that expected immediate
+zero PCM after rendering a cleared loop. Existing LoopBank clear intentionally
+retains a short output fade. Failed evidence remains in
+build/meter-transfer-ubuntu-clear-assumption.log and
+build/meter-transfer-sanitizers-clear-assumption.log. The corrected fixture keeps
+the delayed-clear case, requires exact equality to the real current tap (including
+that tail), and adds eventual exact silence after the rolling window advances.
+No DSP change or relaxed tolerance was used to obtain a pass. The initial sandbox
+WSL service access denial was resolved by running WSL outside the sandbox.
+
+Full-suite logs: build/meter-transfer-windows.log, meter-transfer-ubuntu-final.log;
+final affected checks: build/meter-transfer-live-windows.log,
+meter-transfer-live-ubuntu.log and meter-transfer-live-sanitizers.log. Retained
+audit: build/meter-transfer-audio.log. Source hashes
+and unchanged SDK binary hashes are in build/meter-transfer-final-evidence.json.
+Original assets, meter collection/follower kernels and the user's separate logo
+edit are preserved. Runnable app/plugin/test-host hashes equal the prior accepted
+REAPER, Ardour and 64/128 GUI builds; those host/GUI tests were not rerun for this
+unexposed Engine telemetry API. Only native processor test targets were rebuilt
+in the SDK trees. No new DAW, physical driver/MIDI, Apple, device
+latency or visible-meter acceptance is claimed. Source-lifecycle identities,
+audible-time selection and original renderer integration are still pending.
+No package, SDK update or version bump.

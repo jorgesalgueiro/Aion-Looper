@@ -878,3 +878,20 @@ contains actual native output/tails, not certified original source identities.
 MeterFollower remains unwired in production. Timestamped bounded transfer,
 source lifecycle and audible-time scheduling must pass before renderer/IPC/UI
 integration. No meter feature package or visible-meter parity claim yet.
+
+
+Raw meter transfer (25 October 2026): keep MeterTransfer constructed on the heap,
+one audio publisher and one message owner for request/pop. Coalesce the twenty
+track requests; publish at most two complete 2048-sample packets per callback.
+Full queues preserve unread packets and retain pending requests for a fresh
+capture after recovery. Prepare cancels requests without resetting queue indices
+or popping from the producer. Keep the consumer's bounded generation filter,
+failure-output preservation, exclusive local end-frame/rate/clear/clip stamps,
+all-track fairness and 4000-packet concurrent coherence/allocation tests. Same-
+generation clear/clip changes require comparison with a coherent current view;
+generation sampled at pop is not a guarantee across a later prepare/use. Raw
+cleared-loop windows include the existing output fade tail: retain the initially
+failed zero-tail fixture and exact current-tap/eventual-silence replacement.
+Never change DSP to satisfy a raw telemetry assumption. No frontend/JSON consumer
+or production MeterFollower call is enabled. Source/analyser lifecycle and
+audible-time scheduling remain required before visible-meter integration.

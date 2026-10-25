@@ -5,6 +5,7 @@
 #include "core/Metronome.h"
 #include "core/CountIn.h"
 #include "core/LiveInput.h"
+#include "core/MeterTransfer.h"
 #include "core/MidiController.h"
 #include <cstdint>
 namespace aion {
@@ -53,6 +54,9 @@ public:
     }
     bool finalizationPending() const noexcept { return loops.finalizationPending(); }
     bool popLiveInput(LiveInputEvent& event) noexcept {return liveInput->pop(event);}
+    // Message owner only. On-request raw telemetry, not enabled visible metering.
+    bool requestLoopMeterWindow(std::uint32_t track) noexcept {return meterTransfer->request(track);}
+    bool popLoopMeterWindow(MeterWindowEvent& event) noexcept {return meterTransfer->pop(event,generation());}
     bool popWaveform(WaveformEvent& event) noexcept {return waveforms->pop(event);}
     bool popView(EngineView& view) noexcept { return views->pop(view); }
     std::uint32_t generation() const noexcept { return epoch.load(std::memory_order_acquire); }
@@ -93,6 +97,8 @@ private:
     std::array<std::atomic<std::uint32_t>,LoopBank::trackCount> stutterRevisions{};
     std::array<std::uint32_t,LoopBank::trackCount> seenStutterRevisions{};
     std::unique_ptr<LiveInput> liveInput=std::make_unique<LiveInput>();
+    static_assert(LoopBank::trackCount==MeterTransfer::trackCount);
+    std::unique_ptr<MeterTransfer> meterTransfer=std::make_unique<MeterTransfer>();
     Metronome metronome;
     CountIn countIn;
     std::uint32_t countInTrack=0;

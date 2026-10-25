@@ -1093,3 +1093,17 @@ the REAPER full-speed MIDI/render harness and `python3 tools/TestArdour.py` on
 Linux with an available display (the current machine uses WSLg DISPLAY=:0).
 No Xvfb wrapper is needed on this machine. No package/version bump for this
 incomplete visible-meter integration.
+
+
+Raw meter transfer regression (25 October 2026): MeterTransferTests.cpp is part
+of aion_core_tests. Build that target and the retained aion_meter_window_probe /
+aion_meter_probe in build/windows-core (Release) or build/core, then run CTest
+with -R "^(core_realtime_contract|js_native_meter_window|js_native_meter)$".
+Use -C Release for Windows. For the full portable suite, rebuild all core-build
+targets and run CTest without -R. No SDK download, GUI launch or package is
+required to test this on-request Engine telemetry API. Ubuntu core-asan runs
+the same three gates with ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 and
+UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1. Rebuild the SDK target
+aion_midi_processor_tests and run CTest -R "^native_midi_processor$" for native
+processor integration. Runnable apps/plugins were not rebuilt for this API-only
+increment; no visible meters have been enabled.

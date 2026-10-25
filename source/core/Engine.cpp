@@ -11,7 +11,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames) {
     if (preparedRate != rate || loops.capacity() != std::clamp(poolFrames / LoopBank::blockFrames, 1u, LoopBank::maxBlocks) * LoopBank::blockFrames)
         loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005), rate);
     else (void) loops.apply(LoopAction::stopAll, 0);
-    loops.resetTimeline();liveInput->cancel();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
+    loops.resetTimeline();liveInput->cancel();meterTransfer->reset();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     transport={};
@@ -135,6 +135,10 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     renderedMasterPeak=masterPeak;
     (void) meters.push({frame, peak});
     const auto tracks=loops.view();
+    meterTransfer->publish(generation(),frame,preparedRate,[&](unsigned id,MeterWindowEvent& event) noexcept {
+        event.clearEpoch=tracks[id].clearEpoch;event.waveformId=tracks[id].waveformId;
+        (void)loops.copyMeterWindow(id,event.samples);
+    });
     if(liveInput->running()){
         const auto& track=tracks[liveInput->track()];
         if(track.state==LoopState::recording&&track.dynamicRecorded)(void)liveInput->publish(frame);

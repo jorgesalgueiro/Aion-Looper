@@ -25,6 +25,7 @@ void syncTests();
 void metronomeTests();
 void meterTests();
 void meterWindowTests();
+void meterTransferTests();
 void countInTests();
 void startPhaseTests();
 void stutterTests();
@@ -89,6 +90,7 @@ int main() {
     metronomeTests();
     meterTests();
     meterWindowTests();
+    meterTransferTests();
     countInTests();
     startPhaseTests();
     stutterTests();

@@ -1156,3 +1156,27 @@ No production MeterFollower call, EngineView/JSON field or renderer change is
 introduced. Source identities (including retriggers and disconnected tails),
 bounded timestamped transfer and audible-time selection remain integration
 gates before the existing original meter renderer can consume these windows.
+
+
+Raw meter ownership transfer (25 October 2026): core/MeterTransfer.h provides a
+construction-time heap SPSC queue with seven usable complete PCM packets and
+separate producer/consumer scratch. Engine's message owner requests tracks with
+requestLoopMeterWindow; repeated requests coalesce into a lock-free 20-bit mask.
+At callback end, at most two windows are copied with their local exclusive
+endFrame, sampleRate, generation, clearEpoch and waveformId. These are local audio
+timestamps, not host seek positions, source identities or measured audible time.
+Round-robin pending requests survive queue-full; unread PCM is never overwritten.
+Recovery copies the current tap instead of replaying the failed scratch packet.
+No request means no PCM copying/publication.
+
+popLoopMeterWindow is message-owner-only and filters reset generations with at
+most seven pops, preserving the caller's output on failure. Prepare cancels
+requests, not queue contents/indices, so it cannot steal consumer ownership.
+Before any future renderer use, compare epoch and clear/clip stamps against a
+coherent current view. A pop's generation sample cannot certify freshness after
+a concurrent/later prepare; refresh requests after reset. Clip identities also
+do not cover play/retrigger/analyser lifecycle, which remains separate work.
+EngineView/JSON, original UI and production MeterFollower stay unchanged. The
+[JUCE single-reader/single-writer FIFO model](https://docs.juce.com/master/classjuce_1_1AbstractFifo.html)
+supports the ownership pattern; the existing portable SpscQueue supplies storage
+and acquire/release publication without introducing JUCE into the core.
