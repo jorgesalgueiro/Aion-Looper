@@ -27,6 +27,7 @@ void meterTests();
 void meterWindowTests();
 void meterTransferTests();
 void meterSourceTests();
+void meterGraphTests();
 void countInTests();
 void startPhaseTests();
 void stutterTests();
@@ -93,6 +94,7 @@ int main() {
     meterWindowTests();
     meterTransferTests();
     meterSourceTests();
+    meterGraphTests();
     countInTests();
     startPhaseTests();
     stutterTests();

@@ -911,3 +911,19 @@ compares immutable view/packet identities only, not active graph availability or
 audible time. Keep the existing fade-tail contract. Production MeterFollower,
 graph/analyser lifetime mapping, IPC, audible-time scheduling and renderer remain
 unwired. Do not package or claim full meter parity from source-stamp acceptance.
+
+Meter graph composition (25 October 2026): LoopMeterGraph is an isolated,
+single-owner explicit lifecycle/readMeter component, not production graph wiring.
+Keep the unchanged Loop/AudioGraph + main.js gate + complete readMeter numeric
+oracle, current 377-observation trace, 1e-12 tolerance and tracked-allocation /
+64/128 tests. Healthy retriggers retain graph/data/history; teardown detaches
+only analyser, while clear resets history only with an attached analyser.
+Preserve original retained holds after detached clear. Timer requests are 25ms
+immediate and scheduled deadline +50ms, with explicit owner delivery; never
+infer teardown from audio time. Plain play-while-stopping cancels the timer;
+an intervening queued state retains it on play. Retain its failed-before-fix
+fixture evidence. Active observations require the graph-owned complete 2048
+window; stale/short required windows reject without editing follower history.
+Do not alias native sourceRevision with graph/analyser/data tokens. Production
+notification mapping, graph-tagged PCM transport, audible-time selection and
+renderer/IPC integration remain pending. No visible-meter parity or package yet.

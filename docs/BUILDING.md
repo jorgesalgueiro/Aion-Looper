@@ -1118,3 +1118,25 @@ and run the full CTest suite (now 25 gates). Focused core checks use
 with -C Release on Windows. Run the same four gates under core-asan, and rebuild
 aion_midi_processor_tests in each SDK tree for native processor integration.
 No app/plugin package or GUI launch is needed for this internal metadata step.
+
+Meter graph composition checks (25 October 2026) add aion_meter_graph_probe and
+the js_native_meter_graph CTest gate. Minimal Windows commands from the repo:
+
+```powershell
+& .toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --build build/windows-core --config Release --target aion_core_tests aion_meter_graph_probe aion_meter_probe aion_meter_window_probe
+& .toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe --test-dir build/windows-core -C Release --output-on-failure -R '^(core_realtime_contract|original_meter_source_lifecycle|js_native_meter_graph|js_native_meter_window|js_native_meter)$'
+```
+
+Ubuntu uses the same targets in build/core (omit --config Release and -C
+Release). Rebuild all portable targets before the complete CTest suite, now 26
+gates. For sanitizer coverage build those targets in build/core-asan and run the
+same five gates with ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 and
+UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1. Strict header/probe compilation:
+
+```sh
+g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -Isource -fsyntax-only tests/MeterGraphProbe.cpp tests/MeterGraphTests.cpp
+node tests/MeterGraphParity.cjs build/core/aion_meter_graph_probe
+```
+
+This header is isolated from production Engine/processor/UI callers. Existing
+SDK binaries are hash-checked rather than rebuilt; no package is needed.

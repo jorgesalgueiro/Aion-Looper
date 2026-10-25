@@ -1209,3 +1209,22 @@ samples; see the [Web Audio analyser contract](https://www.w3.org/TR/webaudio/#A
 The revision marks native applied audio transitions, not the earlier JS source
 object allocation time. Full graph-lifetime/teardown mapping and audible-time
 selection remain separate integration work; UI/JSON/MeterFollower are unchanged.
+
+LoopMeterGraph (25 October 2026) composes explicit successful graph-lifetime
+notifications with MeterFollower. It owns no device, clock, native Engine graph,
+timer or heap storage. Healthy source retrigger needs no graph notification;
+fresh graph construction assigns fresh analyser/data tokens. Teardown detaches
+the analyser while retaining data and decay history. Original clear resets meter
+history only with an attached analyser; clear after teardown retains the holds.
+Stop returns a timer request (25ms immediate, future deadline +50ms); only the
+event owner delivers teardown. Audio-clock progression must not invent timer
+delivery. Playing while stopping cancels it, but playing after an intervening
+queued state change retains the original pending timer, matching the reference.
+
+Observation uses the original five-state/non-destroyed graph gate. When PCM is
+required, callers must supply exactly 2048 samples bearing the current graph's
+data token; stale/short windows fail without modifying history or cached values.
+Context identity, running status, audio time and audible time remain supplied
+inputs. sourceRevision is not this graph token. Production graph notifications,
+graph-tagged PCM ownership, audible-time transfer and renderer wiring are still
+pending: this tested composition is not called by Engine, IPC or the frontend.

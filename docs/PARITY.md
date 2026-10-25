@@ -156,3 +156,17 @@ claim that native sourceRevision equals a JS analyser ID or graph state.
 Native sound/fade behavior and the original UI remain unchanged. Complete
 graph lifetime/teardown, audible-time scheduling, follower/IPC and original
 renderer integration remain pending; no visible meter or package is enabled.
+
+Meter graph/read composition (25 October 2026): LoopMeterGraph now matches the
+unchanged Loop/AudioGraph methods, exact main.js input gate and complete
+AudioEngine.readMeter across 377 trace observations at 1e-12 relative tolerance.
+These cover retained retrigger identities, stop/explicit late timer delivery,
+fresh play, attached versus detached clear, destroyed graphs, all twelve states,
+suspended/replaced contexts, held/backwards audible clocks and history wrap.
+The queued-during-stop timer case first failed and was corrected in the native
+model without changing the reference behavior. Audio nodes/timer IO are stubbed;
+supplied Float32 windows are compared numerically, not browser-generated audio.
+Separate native guards reject stale/short required windows atomically, preserve
+64/128 supplied-PCM invariance and report zero tracked new/delete. This does not
+certify native graph-event binding or live audible-time/renderer integration.
+No product UI, audio processing or original assets change in this increment.

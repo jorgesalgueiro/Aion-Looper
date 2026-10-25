@@ -5080,3 +5080,39 @@ accepted REAPER/Ardour/64/128 GUI binaries. Only the native processor test targe
 were rebuilt in SDK trees. No new DAW/GUI, physical MIDI/device latency, Apple
 or full-visible-meter acceptance is claimed. The separate user logo edit is
 preserved; no package, SDK update or version bump.
+
+Meter graph/read composition (25 October 2026): added the isolated
+LoopMeterGraph component and a complete original-method numeric oracle. The
+377-observation trace executes unchanged Loop/AudioGraph methods, the exact
+main.js input gate and complete AudioEngine.readMeter using Float32 windows.
+Maximum error is 2.842170943040401e-14 at retained 1e-12 relative tolerance.
+Audio-node and timer IO are stubbed; timer callbacks are explicitly delivered.
+It checks healthy retrigger identity retention, stopped/destroyed graph gating,
+fresh play, attached/detached clear, suspended/replaced contexts, audible-clock
+stalls/jitter, history wrap, stop timer requests and late delivery. A queued
+state change before play initially lost an existing cleanup timer in the model;
+build/meter-graph-timer-before.txt records the failure. Native code was corrected
+to retain it, preserving original behavior. Neither reference code nor tolerance
+was changed to obtain acceptance.
+
+Native tests additionally cover atomic stale/short required-window rejection,
+invalid stop clocks, exact supplied-window 64/128 behavior and zero tracked
+new/delete through lifecycle/read operations. These are native input contracts,
+not claims about original invalid arguments or arbitrary malloc interception.
+The retained connected PCM audit passes 126 cases / 965,826 samples at unchanged
+1e-6 tolerance (maximum error 7.394757495227111e-08).
+
+The complete portable suites pass 26/26 on Windows and Ubuntu. After the timer
+correction, the five focused Windows gates and the two changed Ubuntu gates
+were rebuilt/rerun; ASan/UBSan runs the five focused gates on corrected sources.
+See build/meter-graph-{windows,ubuntu}.txt,
+build/meter-graph-{windows,ubuntu}-final-focused.txt,
+build/meter-graph-sanitizers.txt and build/meter-graph-final-evidence.json for
+checks and hashes; build/meter-graph-oracle.json records numeric comparison.
+
+No production Engine/processor/IPC/UI caller uses this composition yet. SDK
+app/plugin/test-host and processor test binary hashes match the preceding
+source-stamp evidence; no SDK rebuild, new DAW/GUI/device/Apple acceptance,
+package or version bump is claimed. The original UI and separate user logo edit
+are preserved. Actual graph-event binding, graph-owned PCM notification/transfer,
+audible-time selection and original renderer integration remain pending.
