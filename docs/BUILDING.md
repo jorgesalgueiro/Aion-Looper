@@ -1211,3 +1211,19 @@ The pure model has no Engine/processor/GUI caller. Existing runnable SDK and
 processor-test binaries are hash-checked, rather than rebuilt for this step.
 Do not package or interpret controlled timing acceptance as live device/DAW
 acceptance; native output-delivery correlation and visible meter wiring remain.
+
+Processor-entry clock checks (25 October 2026): rebuild the existing portable
+targets and run all 27 gates on Windows/Ubuntu, plus the same six focused
+ASan/UBSan clock/meter gates. Rebuild only aion_midi_processor_tests in the
+Windows Release and Linux SDK build trees, then run native_midi_processor as
+above. Its controlled noexcept clock reader checks warm-up/read counts and
+invalid/reset behavior; its default reader is bracketed by the real JUCE
+counter. No device controller or package is required for these checks.
+
+```sh
+g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -Isource -fsyntax-only tests/CallbackClockTests.cpp tests/MeterTransferTests.cpp
+```
+
+Runnable Standalone/plugin/test-host targets remain unchanged for this raw
+observation increment; do not claim live output timing from processor-entry
+capture alone. Output-delivery correlation and graph/renderer binding remain.

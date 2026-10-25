@@ -1325,3 +1325,22 @@ does not assert that a device is still running. It has no production caller and
 does not supply a Web Audio output timestamp or alter PlaybackClock's original
 getter policy. Real IO must establish a delivery-edge correlation first; device
 drift/xruns, graph binding and visible meter integration remain unverified.
+
+Processor-entry observation (25 October 2026): the first operation in
+AionProcessor::processBlock samples JUCE's high-resolution millisecond counter
+and converts to seconds. prepareToPlay warms the same reader before callbacks.
+An immutable noexcept function pointer provides a controlled native test seam;
+there is no IPC configuration, dynamic callable allocation or device query.
+ProcessorClockObservation is carried inside the exact callback stamp, view and
+requested PCM packet. Missing, negative or nonfinite readings normalize to an
+unavailable zero; known zero is valid. Prepare clears the entire old stamp.
+
+The [JUCE counter](https://docs.juce.com/master/classjuce_1_1Time.html) has its own
+monotonic origin. Inspection of pinned JUCE 9.0.4 shows QueryPerformanceCounter
+on Windows and CLOCK_MONOTONIC on Linux. Neither raw hostTimeNs nor DAW sample/
+PPQ positions are used to manufacture this observation. The pinned Standalone
+holder/player performs MIDI collection, buffer preparation and callback locking
+before invoking processBlock: processor entry is therefore a separate edge
+from device callback delivery. No automatic CallbackClockCorrelation is formed.
+Output-delivery correlation, drift/xrun behavior, graph lifetime binding and
+renderer/IPC integration still require validation before meters can be enabled.

@@ -17,6 +17,14 @@ public:
  mutable unsigned calls=0,outsideAudio=0;
  juce::Optional<PositionInfo> getPosition() const override {++calls;if(!audioWatch)++outsideAudio;return position;}
 };
+namespace {
+double controlledClockSeconds=0;
+unsigned clockInAudio=0,clockOutsideAudio=0;
+double controlledProcessorClock() noexcept {
+ if(audioWatch)++clockInAudio;else ++clockOutsideAudio;
+ return controlledClockSeconds;
+}
+}
 class StateHostListener final : public juce::AudioProcessorListener {
 public:
  unsigned changes=0; bool rescan=false,dirty=false;
@@ -27,6 +35,29 @@ public:
 };
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
+ for(int block:{64,128}){
+  clockInAudio=clockOutsideAudio=0;controlledClockSeconds=100;
+  auto p=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},AionProcessor::OutputLatencyReader{},&controlledProcessorClock);
+  check(clockInAudio==0&&clockOutsideAudio==0,"Clock not queried during construction");
+  juce::MemoryBlock saved;p->getStateInformation(saved);
+  p->setPlayConfigDetails(2,2,48000,block);p->prepareToPlay(48000,block);
+  check(clockOutsideAudio==1&&clockInAudio==0&&!p->inspectCallbackClockAudioThread().processorEntry.available,"Prepare warms clock and clears old observation");
+  juce::AudioBuffer<float> buffer(2,block);juce::MidiBuffer midi;midi.ensureSize(256);
+  for(unsigned n=0;n<20;++n){
+   controlledClockSeconds=n%5==0?std::numeric_limits<double>::quiet_NaN():n%5==1?-1:n%5==2?std::numeric_limits<double>::infinity():n%5==3?0:100+static_cast<double>(n)*.125;
+   const int frames=n%4?block:0;buffer.setSize(2,frames,false,false,true);buffer.clear();p->setNonRealtime(n%3==0);
+   audioWatch=true;p->processBlock(buffer,midi);const auto clock=p->inspectCallbackClockAudioThread();audioWatch=false;
+   check(clock.processorEntry==aion::validatedProcessorClock({controlledClockSeconds,true})&&clockInAudio==n+1&&clockOutsideAudio==1,"Exactly one entry read per live/offline/zero callback; invalid readings clear atomically");
+  }
+  const auto reads=clockInAudio+clockOutsideAudio;
+  p->request({juce::JSON::parse(R"({"operation":"snapshot"})")});juce::MemoryBlock after;p->getStateInformation(after);
+  check(saved==after&&clockInAudio+clockOutsideAudio==reads,"Snapshot/state do not sample clock or mutate saved parameters/MIDI");
+  const auto generation=p->inspectCallbackClockAudioThread().generation;p->prepareToPlay(48000,block);
+  check(clockOutsideAudio==2&&!p->inspectCallbackClockAudioThread().processorEntry.available&&p->inspectCallbackClockAudioThread().serial==0,"Reprepare clears processor entry and warms again");
+  buffer.setSize(2,block,false,false,true);buffer.clear();controlledClockSeconds=250;audioWatch=true;p->processBlock(buffer,midi);audioWatch=false;
+  check(p->inspectCallbackClockAudioThread().generation!=generation&&p->inspectCallbackClockAudioThread().processorEntry.seconds==250,"Fresh generation receives fresh clock");
+ }
+ std::cout<<"PASS: actual processor-entry acquisition at 64/128, warm/read counts, invalid/zero/offline/reset, no message/state queries\n";
  for(int block:{64,128}){
   struct Device {
    double rate=48000;int samples=256;unsigned rateCalls=0,latencyCalls=0;bool fail=false;
@@ -62,7 +93,10 @@ int main(){
    juce::AudioPlayHead::PositionInfo position;const auto raw=n%4==1?std::uint64_t{0}:std::numeric_limits<std::uint64_t>::max()-n;
    if(n%4<2)position.setHostTimeNs(raw);
    position.setTimeInSamples(n%2?-48000:999999);position.setTimeInSeconds(n%2?-1:999);head.position=n%4==3?juce::Optional<juce::AudioPlayHead::PositionInfo>{}:juce::Optional<juce::AudioPlayHead::PositionInfo>{position};
+   const auto before=juce::Time::getMillisecondCounterHiRes()*.001;
    p->setNonRealtime(n%5==0);audioWatch=true;p->processBlock(buffer,midi);const auto clock=p->inspectCallbackClockAudioThread();audioWatch=false;
+   const auto after=juce::Time::getMillisecondCounterHiRes()*.001;
+   check(clock.processorEntry.available&&clock.processorEntry.seconds>=before&&clock.processorEntry.seconds<=after,"Real native entry counter is bracketed by same-origin JUCE observations, independently of host time");
    check(aion::validCallbackClock(clock)&&clock.serial==n+1&&clock.beginFrame==frame&&clock.endFrame==frame+frames&&clock.sampleRate==48000,"Production callback captures local block interval, not DAW seek position");
    check(clock.hasHostTimeNs==(n%4<2)&&clock.hostTimeNs==(n%4<2?raw:0)&&clock.nonRealtime==(n%5==0),"Production optional uint64/zero/missing timestamp and offline mode exact");frame+=frames;
   }

@@ -991,3 +991,20 @@ unrepresentable frame/seconds observations cannot produce an estimate. This
 model has no production IO/graph/renderer caller. Actual callback-edge clock
 correlation and device drift/xrun behavior remain required before visible-meter
 acceptance. No package or physical timing claim from controlled model tests.
+
+Processor-entry counter capture (25 October 2026): sample the JUCE high-resolution
+counter once as the first processBlock operation, after warming its immutable
+noexcept reader in prepareToPlay. Carry ProcessorClockObservation separately
+from raw host nanoseconds and device latency. Normalize missing/negative/
+nonfinite input, retain known zero, clear old observations at prepare and keep
+exact packet/view pairing including these fields. Preserve 4000-packet coherence,
+64/128/zero/offline/reset/saturation, bit-identical monitored PCM, zero tracked
+new/delete, actual native reader counts, real same-counter bracketing and exact
+saved parameter/MIDI state. Never acquire processorEntry from IPC/state code;
+existing MIDI UI timers retain their separate use of the JUCE counter.
+The JUCE Standalone holder/player does work before processBlock; this timestamp
+is NOT the device output-delivery edge. Do not automatically feed it to
+CallbackClockCorrelation, reinterpret it as an output timestamp, or mix its
+origin with hostTimeNs/performance.now. Actual output-delivery correlation,
+drift/xrun handling and graph/renderer wiring remain unverified. No package or
+visible-meter/physical timing claim from this raw observation increment.

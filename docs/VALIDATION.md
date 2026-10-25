@@ -5254,3 +5254,37 @@ behavior changed, so those SDK targets were not rebuilt. No package, new DAW/
 GUI/hardware/Apple acceptance or version bump is claimed. Actual output-delivery
 clock acquisition/correlation, drift/xrun handling and graph/IPC/renderer wiring
 remain pending; this does not complete the visible-meter feature.
+
+Processor-entry clock capture (25 October 2026): Windows and Ubuntu each accept
+all 27 portable gates after correcting a new core fixture. The initial complete
+runs were 26/27: the fixture's extra invalid-clock callbacks left old EngineView
+entries queued before its reset assertion. The fix consumes each view using the
+existing consumer path; production queue/reset behavior was not changed. The
+corrected core gate then passes independently on Windows and Ubuntu. ASan/UBSan
+initially passed the five other focused gates and reproduces the same fixture
+failure; the corrected core gate passes there too (six accepted gates). No
+unaffected gates were repeated after this test-only repair. The pre-fix source
+and all initial/recheck logs are retained. An initial Windows relink also met the
+still-running old test executable's lock; relinking succeeded after it exited.
+
+Rebuilt only the actual native processor test targets: Windows 1/1, Linux 1/1.
+They verify preparation warm-up, exactly one noexcept counter-reader call per
+processBlock at 64/128, zero/offline callbacks, invalid/known-zero input,
+reprepare, no observation-reader calls from state/snapshot code, exact saved
+parameter/MIDI bytes, default JUCE-counter bracketing independent of host seeks,
+and zero tracked callback new/delete. Core tests retain 4000-packet every-field
+coherence and bit-identical actual monitored PCM. Strict portable compilation
+passes. All unchanged original JS gates pass. The capture/OD/SUB audio audit
+passes 126 cases / 965,826 samples, maximum error 7.394757495227111e-08 at 1e-6.
+
+Evidence: build/processor-entry-{windows,ubuntu,sanitizers}.txt,
+build/processor-entry-core-recheck-{windows,ubuntu,asan}.txt,
+build/processor-entry-native-{windows,linux}.txt, build/processor-entry-audio.json,
+build/processor-entry-callback-fixture-before.cpp and
+build/processor-entry-final-evidence.json. The manifest records retained
+failures, corrected gates, source/native-test hashes and unchanged runnable SDK,
+clock-policy and separate user-logo hashes. No package, new runnable app/plugin,
+DAW/GUI/hardware/Apple acceptance, SDK update or version bump is claimed.
+Processor entry follows host/device wrapper work and is not the output-delivery
+edge; no automatic audible-time correlation, graph binding, IPC or renderer is
+enabled. Those remain necessary before visible-meter acceptance.

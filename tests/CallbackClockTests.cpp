@@ -14,6 +14,7 @@ void callbackClockTests(){
     host.hasHostTimeNs=true;host.hostTimeNs=0;check(validatedTransport(host).hasHostTimeNs,"Engaged zero timestamp is distinct from missing timestamp");
     for(double rate:{8000.0,48000.0})for(unsigned block:{64u,128u}){
         auto a=std::make_unique<Engine>(),b=std::make_unique<Engine>();a->prepare(rate,8192);b->prepare(rate,8192);a->setTarget(1);b->setTarget(1);
+        a->setMonitoring(true);b->setMonitoring(true);
         std::array<float,128> al{},ar{},bl{},br{};float* ac[]={al.data(),ar.data()};float* bc[]={bl.data(),br.data()};
         auto packet=std::make_unique<MeterWindowEvent>();EngineView view;
         watch=true;
@@ -22,10 +23,12 @@ void callbackClockTests(){
             host={};host.hostValid=n%4!=3;host.callbackFrame=begin;host.hasHostTimeNs=n%4<2;host.hostTimeNs=n%4==1?0:(std::uint64_t{1}<<63)+n;
             host.hasSamples=true;host.samplePosition=n%2?-48000:999999;host.hasSeconds=true;host.seconds=n%2?-1:999;
             a->transport=validatedTransport(host);check(a->requestLoopMeterWindow(n%20),"Request paired meter window");
-            a->process(ac,2,frames,{},n%5==0);b->process(bc,2,frames,{},n%5==0);
+            const ProcessorClockObservation entry{n%4?static_cast<double>(n)*.125:std::numeric_limits<double>::quiet_NaN(),n%3!=0};
+            a->process(ac,2,frames,{},n%5==0,entry);b->process(bc,2,frames,{},n%5==0);
             check(al==bl&&ar==br,"Raw host timestamp observation leaves actual monitored PCM bit-identical");
             check(a->popView(view)&&a->popLoopMeterWindow(*packet),"Coherent callback view and PCM packet published");
             const auto& clock=view.callbackClock;
+            check(clock.processorEntry==validatedProcessorClock(entry)&&!b->inspectCallbackClockAudioThread().processorEntry.available,"Processor entry normalized and transferred without affecting default callers or PCM");
             check(validCallbackClock(clock)&&clock==a->inspectCallbackClockAudioThread()&&clock.serial==n+1&&clock.beginFrame==begin&&clock.endFrame==begin+frames&&clock.sampleRate==rate,"Local callback interval/rate/serial exact at 64/128 and zero frames");
             check(clock.hasHostTimeNs==(host.hostValid&&host.hasHostTimeNs)&&clock.hostTimeNs==(clock.hasHostTimeNs?host.hostTimeNs:0)&&clock.nonRealtime==(n%5==0),"Raw optional 64-bit timestamp and offline status remain exact");
             check(sameLoopMeterCallback(*packet,view)&&sameLoopMeterSource(*packet,view),"Transferred raw window and source can match exact callback snapshot");
@@ -33,7 +36,7 @@ void callbackClockTests(){
         }
         // Full queues preserve old tuples. Zero-frame callbacks all share one
         // frame/rate/generation/source: only serial prevents false pairing.
-        for(unsigned n=0;n<32;++n){a->transport={};a->requestLoopMeterWindow(19);a->process(ac,2,0);}
+        for(unsigned n=0;n<32;++n){a->transport={};a->requestLoopMeterWindow(19);a->process(ac,2,0,{},false,{static_cast<double>(n),true});}
         MeterWindowEvent retained;EngineView retainedView;unsigned pairs=0;
         while(a->popView(view)){check(a->popLoopMeterWindow(*packet)&&sameLoopMeterCallback(*packet,view),"Saturated queues retain matching original timestamp/PCM tuples");retained=*packet;retainedView=view;++pairs;}
         check(pairs==7,"Seven bounded callback/PCM packets survive saturation");
@@ -43,6 +46,12 @@ void callbackClockTests(){
         bad=view;bad.callbackClock.beginFrame=bad.frame+1;check(!sameLoopMeterCallback(*packet,bad),"Reversed callback range rejected");
         bad=view;bad.sampleRate=rate+1;check(!sameLoopMeterCallback(*packet,bad),"Rate-incoherent clock/PCM pair rejected");
         bad=view;bad.callbackClock.hostTimeNs=1;check(!sameLoopMeterCallback(*packet,bad),"Unavailable timestamp cannot carry stale nanoseconds");
+        bad=view;bad.callbackClock.processorEntry={1,false};check(!sameLoopMeterCallback(*packet,bad),"Unavailable processor entry cannot carry stale seconds");
+        bad=view;bad.callbackClock.processorEntry={1,true};check(!sameLoopMeterCallback(*packet,bad),"Different processor entry rejects exact callback pairing");
+        for(double invalid:{-1.0,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}){
+            a->process(ac,2,0,{},false,{invalid,true});check(a->inspectCallbackClockAudioThread().processorEntry==ProcessorClockObservation{},"Invalid processor entry clears stale availability and seconds");
+            check(a->popView(view)&&view.callbackClock.processorEntry==ProcessorClockObservation{},"Consumer drains each invalid-entry view before reset test");
+        }
         const auto generation=a->generation();watch=false;
         a->prepare(rate,8192);check(a->generation()!=generation&&a->inspectCallbackClockAudioThread().serial==0,"Prepare clears prior raw callback observation");
         watch=true;a->requestLoopMeterWindow(19);a->process(ac,2,0);check(a->popView(view)&&a->popLoopMeterWindow(*packet)&&sameLoopMeterCallback(*packet,view)&&!sameLoopMeterCallback(retained,view),"Reset clock reuse cannot match prior generation");

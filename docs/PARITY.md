@@ -220,3 +220,15 @@ cannot affect an otherwise paired estimate. These are model tests, not physical
 DAC measurements or original-browser device equivalence. Existing complete JS
 getter/graph/meter and actual PCM gates remain separate. No IO acquisition,
 renderer, IPC, saved state, interface or production audio behavior changes.
+
+Processor-entry clock capture (25 October 2026): core tests carry normalized
+processor observations through coherent views/PCM at 64/128 and zero frames,
+including queue saturation, recovery, reset, missing/invalid/known-zero input
+and every-field 4000-packet concurrent transfer. Actual monitored Engine output
+is bit-identical with and without these observations. Native JUCE processor
+tests count one clock read per callback, preparation warm-up, no message/state
+reads through this reader and exact saved parameter/MIDI bytes. Default native readings are
+bracketed by two observations of the same JUCE counter, independently of
+optional/raw host time and seeks. This is processor-entry capture acceptance,
+not a device-delivery or acoustic timing measurement. No audible correlation,
+visible meter, UI/JSON or audio scheduling change is enabled.

@@ -8,6 +8,7 @@
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #endif
 namespace {
+double processorClockSeconds() noexcept {return juce::Time::getMillisecondCounterHiRes()*0.001;}
 aion::DeviceOutputLatency standaloneOutputLatency(const juce::AudioProcessor& processor){
 #if JucePlugin_Build_Standalone
     if(auto* holder=juce::StandalonePluginHolder::getInstance())
@@ -27,7 +28,7 @@ bool inputAvailable(const juce::AudioProcessor& processor){
     return processor.getTotalNumInputChannels()>0;
 }
 }
-AionProcessor::AionProcessor(ExportDestination destination,OutputLatencyReader latencyReader)
+AionProcessor::AionProcessor(ExportDestination destination,OutputLatencyReader latencyReader,ProcessorClockReader clockReader)
     : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
                                        .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "AionState", {std::make_unique<juce::AudioParameterFloat>(
@@ -45,6 +46,7 @@ AionProcessor::AionProcessor(ExportDestination destination,OutputLatencyReader l
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"metronomeVolume",1},"Metronome volume",juce::NormalisableRange<float>{0,2},0.5f)}) {
     exportDestination=std::move(destination);
     outputLatencyReader=std::move(latencyReader);
+    processorClockReader=clockReader?clockReader:&processorClockSeconds;
     // Plugin hosts own hardware MIDI routing. Only our Standalone device manager
     // needs OS hotplug notifications; probing here otherwise requires ALSA on WSL.
    #if JucePlugin_Build_Standalone
@@ -151,6 +153,7 @@ void AionProcessor::timerCallback(){
     }catch(...){exportChooser.reset();exportBusy=false;exportStatus="WAV export failed: could not open the save dialog";}
 }
 void AionProcessor::prepareToPlay(double rate, int) {
+    (void)processorClockReader(); // Warm platform counter paths before processing.
     vst3ProgramOverflow.store(false,std::memory_order_relaxed);midiInputReady.store(inputAvailable(*this),std::memory_order_release);
     aion::DeviceOutputLatency latency;
     try{latency=outputLatencyReader?outputLatencyReader():standaloneOutputLatency(*this);}catch(...){latency={};}
@@ -162,6 +165,7 @@ bool AionProcessor::isBusesLayoutSupported(const BusesLayout& b) const {
             || b.getMainInputChannelSet() == juce::AudioChannelSet::stereo());
 }
 void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer& incomingMidi) {
+    const aion::ProcessorClockObservation entry{processorClockReader(),true};
     const juce::ScopedNoDenormals noDenormals;
     for (int c = getTotalNumInputChannels(); c < audio.getNumChannels(); ++c) audio.clear(c, 0, audio.getNumSamples());
     if (getTotalNumInputChannels() == 1 && audio.getNumChannels() >= 2)
@@ -195,7 +199,7 @@ void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuff
         midiEvents[midiCount++]={static_cast<std::uint32_t>(metadata.samplePosition),bytes[0],static_cast<std::uint8_t>(size>1?bytes[1]:0),static_cast<std::uint8_t>(size>2?bytes[2]:0),static_cast<std::uint8_t>(size)};
     }
     if(midiOverflow){engine.midiOverflow();midiCount=0;}
-    engine.process(audio.getArrayOfWritePointers(), audio.getNumChannels(), audio.getNumSamples(),std::span(midiEvents.data(),midiCount),isNonRealtime());
+    engine.process(audio.getArrayOfWritePointers(), audio.getNumChannels(), audio.getNumSamples(),std::span(midiEvents.data(),midiCount),isNonRealtime(),entry);
 }
 juce::AudioProcessorEditor* AionProcessor::createEditor() { return new AionWebEditor(*this); }
 void AionProcessor::getStateInformation(juce::MemoryBlock& data) {

@@ -10,7 +10,8 @@ class AionProcessor final : public juce::AudioProcessor, public aion::vst3::Over
 public:
     using ExportDestination = std::function<void(const juce::String&, std::function<void(juce::File)>)>;
     using OutputLatencyReader = std::function<aion::DeviceOutputLatency()>; // Optional controlled prepare-time IO.
-    explicit AionProcessor(ExportDestination = {},OutputLatencyReader = {});
+    using ProcessorClockReader = double (*)() noexcept; // Immutable native test seam, never IPC.
+    explicit AionProcessor(ExportDestination = {},OutputLatencyReader = {},ProcessorClockReader = nullptr);
     ~AionProcessor() override;
     void prepareToPlay(double, int) override;
     void releaseResources() override {}
@@ -40,6 +41,7 @@ public:
     juce::AudioProcessorValueTreeState parameters;
 private:
     OutputLatencyReader outputLatencyReader; // Never invoked in processBlock or IPC.
+    ProcessorClockReader processorClockReader=nullptr;
     std::recursive_mutex midiSettingsMutex; // Non-audio configuration/state serialization only.
     aion::MidiSettings midiSettings;
     std::atomic<bool> vst3ProgramOverflow{false}; // Bounded wrapper input failed; reject its whole next callback.
