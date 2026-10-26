@@ -32,6 +32,11 @@ public:
         if(!owner.cleanupCurrent(deadline.pending())){stopTimer();deadline.cancel();}
         else if(!isTimerRunning())schedule(wallTime());
     }
+    bool consumeClear(const MeterGraphEvent& event) noexcept {
+        assertMessageThread();
+        if(!owner.consumeClear(event))return false;
+        synchronise();return true;
+    }
     bool pending() const noexcept {assertMessageThread();return deadline.pending().serial!=0;}
 private:
     static void assertMessageThread() noexcept {jassert(juce::MessageManager::existsAndIsCurrentThread());}

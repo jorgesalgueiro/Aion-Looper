@@ -458,3 +458,24 @@ seven readings after teardown while the sample clock is frozen. These are
 controlled explicit lifecycle notifications, not automatic production wiring or
 hardware/output-timestamp evidence. The unchanged-JS graph oracle remains the
 377-observation reference; no original JS or numeric tolerance is changed.
+
+### Actual clear receipt to owner/timer (26 October 2026)
+
+Native clear publication now identifies the removed raw window without changing
+its existing zero current-ticket meaning. The owner consumes only matching,
+nonduplicate current-generation receipts from a healthy stream. Attached clear
+resets history while clear delivered after timer teardown preserves data/holds,
+matching the existing original-JS graph oracle. Tests use actual Engine DEL at
+sample 17 and actual recorded clipped PCM at 64/128, including a previously
+unconsumed clear delivered after a new same-generation graph, hostile fields,
+duplicate delivery, event loss and prepare. Stereo PCM remains exactly paired.
+The native message-loop fixture routes actual DEL while cleanup is pending,
+cancels the JUCE timer and verifies the same-generation re-recorded graph survives.
+Production shared-stream dispatch/playback mapping and visible meters remain
+unfinished. No UI, DSP tolerance or original-JS behavior change is accepted here.
+
+Also retain the stopped-buffer ordering regression: after an old clear, record a
+new clip and report its buffer before starting a graph. The old receipt must not
+clear that buffer or mutate retained data/readings. Because a boolean buffer
+notification has no identity proof, receipt consumption rejects after any buffer
+notice following graph start until fresh graph ownership is established.

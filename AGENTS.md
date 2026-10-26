@@ -1255,3 +1255,21 @@ frozen sample time, retained readings and zero tracked callback new/delete.
 The adapter has no production playback notification caller yet; complete lifecycle
 mapping, overlap PCM ownership, device continuity and renderer acceptance remain
 required. Keep visible meters disabled and do not package on this component gate.
+
+Clear-event handoff: `MeterGraphEvent.retiredTicket` records the preceding actual
+window word on clear; keep current `ticket` zero. Repeated clear without a new
+window retires zero. Preserve full-width metadata and concurrent event checks.
+Only the sole Engine-pop message consumer may route these receipts. Owner clear
+requires current generation/track, matching nonzero retained ticket, a new serial
+and healthy stream before/after candidate calculation. Cancel timer metadata only
+on accepted clear; the JUCE adapter then synchronises/cancels its timer. Preserve
+attached reset versus detached retained history, unconsumed old clear after a
+same-generation replacement, malformed/duplicate/lost/prepare rejection, exact
+paired actual Engine 64/128 PCM and native pending-timer DEL/re-recorded recovery.
+Zero retired tickets do not identify pending/unaccepted graphs: full playback
+mapping and shared-stream routing remain required. No visible meter or package.
+Buffer-notice fence: any setBuffer notification following graph start makes old
+clear-receipt buffer ownership ambiguous. Reject consumption until a fresh accepted
+graph start, or use an explicitly ordered clear. Retain the actual DEL/new stopped
+clip/buffer notice/no-new-graph regression as well as replacement-ticket cases.
+Do not infer buffer identity from a boolean or weaken the retained clear checks.

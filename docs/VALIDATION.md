@@ -6022,3 +6022,78 @@ and `build/cleanup-timer-assets.txt`. `build/WriteCleanupTimerEvidence.py` verif
 current gate results, original-JS lifecycle coverage, inherited full-suite logs,
 source/PCM/assets hashes, rebuilt native test executables and unchanged production/
 SDK/other-format/logo hashes, producing `build/cleanup-timer-evidence.json`.
+
+### Clear receipt to meter owner and JUCE timer (26 October 2026)
+
+Added the actual removed-window identity to native raw clear publication, and an
+explicit receipt handoff to LoopMeterLifecycle / LoopMeterCleanupTimer. Current
+cleared-window ticket remains zero; retiredTicket is the preceding audio-published
+window identity, captured before invalidation. A repeated clear without a new
+start retires zero. The existing fixed SPSC is still constructed on the heap;
+publication adds constant atomic/metadata work only at native mutations.
+
+Owner receipt delivery requires the current generation/track and matching nonzero
+retained ticket, a new serial and a healthy stream before/after candidate clear.
+Attached history/data resets, while clear delivered after teardown preserves the
+original detached holds/data. Accepted clear cancels cleanup metadata; the JUCE
+adapter also cancels its native timer. Failed delivery preserves prior metadata
+and all seven readings.
+
+The core fixture uses actual recorded clipped PCM and actual DEL at sample 17 for
+64/128 blocks. It checks foreign fields, duplicate delivery, old already-consumed
+AND previously unconsumed clear after same-generation replacement, detached
+history retention, retained receipt after event loss and prepare rejection, with
+exact paired Engine stereo PCM and zero tracked new/delete. Stream checks retain
+4000 concurrent start/clear exchanges, now checking removed identities, full-width
+uint32 tickets and repeated-clear zero. The native fixture runs the real desktop
+message loop, delivers actual Engine DEL while cleanup is pending, then records
+and starts a new graph in the same generation and verifies no old callback detaches
+it. The unchanged-JS 377-observation graph/owner oracle is retained.
+
+This handoff assumes a sole consumer of actual Engine-pop receipts; it is not an
+external message decoder or authenticity check. It does not itself drain the shared
+stream, connect the production processor, infer play/buffer/stop notifications or
+resolve zero-ticket pending/unaccepted graphs. Those mappings, per-graph overlap
+PCM, backend continuity, renderer/GUI/DAW/hardware/Apple acceptance remain pending.
+Original assets, DSP source, processor/build configuration and tolerances are
+unchanged. Native tests and Standalone are rebuilt; other-format binaries retain
+their prior hashes and are not new host acceptance. No package/version/dependency
+change or remote push. Meter feature acceptance is still incomplete.
+
+Review caught a further ordering case: report a newly recorded stopped buffer
+after old DEL, before a new graph start. The retained window ticket still names
+the old graph and cannot prove the new buffer belongs to that clear. A conservative
+buffer-notice fence now rejects receipt delivery after any setBuffer notification
+following graph start, until fresh graph ownership is established or the caller
+uses explicitly ordered clear. The new actual DEL/record/buffer/no-graph regression
+checks buffer, data and readings remain intact. The boolean API intentionally
+cannot distinguish repeat notifications from new buffer identities, so ambiguous
+cases remain unavailable pending complete buffer/lifecycle mapping.
+
+Initial full suites passed Windows **28/28**, 357.40s, and Ubuntu **28/28**, 572.90s.
+After the final message-owner-only fence, rerun the affected six realtime/clock/
+meter gates, native processor/SDK gates and ASan/UBSan gates. The other **26 portable
+executables** are hash-checked unchanged across this final guard rebuild; the full
+28-test logs precede this final guard and are not described as a second full run.
+Committed PCM passes **126 cases / 965,826 samples**, maximum absolute error
+**7.394757495227111e-8**, unchanged **1e-6** tolerance; asset identity, deterministic
+embedding and tamper checks pass. Capture/OD/SUB audit scope excludes playback
+envelopes, browser resampling, latency compensation and sync.
+
+Final checks after the buffer-notice fence:
+
+- Windows affected realtime/clock/meter **6/6**, 110.07s.
+- Ubuntu same affected suite **6/6**, 57.37s.
+- ASan/UBSan same suite **6/6**, 177.21s.
+- Windows native processor/SDK **2/2**, 4.55s.
+- Ubuntu native processor/SDK **2/2**, 11.11s.
+
+Both native runs retain actual pending-timer DEL/re-recorded recovery and **18
+linked production AudioDeviceManager blocks**, with no skips/assertions/leaks.
+Current logs are `build/clear-receipt-final-{windows,linux,asan}.txt` and
+`build/clear-receipt-final-native-{windows,linux}.txt`; initial full logs are
+`build/clear-receipt-full-{windows,linux}.txt`. The evidence writer
+`build/WriteClearReceiptEvidence.py` verifies current results, initial full runs,
+the 26 unaffected portable executables, original-JS lifecycle coverage, PCM/assets,
+rebuilt native test/Standalone targets and unchanged SDK/other-format/logo hashes,
+producing `build/clear-receipt-evidence.json`.

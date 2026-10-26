@@ -21,11 +21,17 @@ public:
     // Call only after the Engine prepare barrier; same-generation reset is a no-op.
     bool reset() noexcept {
         const auto next=engine.generation();if(next==generation)return false;
-        generation=next;ticket=0;graph=LoopMeterGraph{};receipt={};cleanup={};
+        generation=next;ticket=0;lastClearSerial=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
         // Keep timer serials across prepare; old delivered callbacks cannot alias.
         return true;
     }
-    bool setBuffer(bool available) noexcept {if(!current())return false;graph.setBuffer(available);return true;}
+    bool setBuffer(bool available) noexcept {
+        if(!current())return false;
+        // A boolean notification cannot prove that the committed buffer is the
+        // one an older raw-window clear removed. Require fresh graph ownership
+        // or an explicitly ordered clear after any intervening buffer notice.
+        graph.setBuffer(available);bufferNoticeSinceStart=true;return true;
+    }
     bool setState(MeterLoopState state) noexcept {
         if(!current()||static_cast<unsigned>(state)>static_cast<unsigned>(MeterLoopState::multiplying))return false;
         graph.setState(state);return true;
@@ -37,7 +43,7 @@ public:
         LoopCommand command{LoopAction::meterGraphStart,id,0,generation,frame,0};
         command.meterGraphTicket=ticket+1;
         if(!engine.enqueueLoop(command))return false; // No graph/timer/follower mutation on saturation.
-        graph=candidate;++ticket;
+        graph=candidate;++ticket;bufferNoticeSinceStart=false;
         const auto identity=graph.inspect();receipt={generation,id,ticket,identity.analyser,identity.data};
         if(identity.teardownDelay<0)cleanup={};
         // Original queued->play retains the old stop timer; stopping->play cancels it.
@@ -67,6 +73,17 @@ public:
     bool clear() noexcept {
         if(!current())return false;
         graph.clear();receipt={};cleanup={};return true; // Ticket high-water survives clear.
+    }
+    // Sole message consumer supplies an actual Engine-pop receipt. Never route
+    // a raw clear to an unaccepted/pending or replacement graph by track alone.
+    bool consumeClear(const MeterGraphEvent& event) noexcept {
+        const auto matches=[&]() noexcept {
+            return observable()&&event.kind==MeterGraphEventKind::cleared&&event.generation==generation
+                &&event.track==id&&event.serial>lastClearSerial&&event.ticket==0
+                &&event.retiredTicket&&event.retiredTicket==ticket&&!bufferNoticeSinceStart;
+        };
+        if(!commitLoopMeterObservation(graph,matches,[](LoopMeterGraph& candidate) noexcept {candidate.clear();return true;}))return false;
+        lastClearSerial=event.serial;receipt={};cleanup={};return true;
     }
     bool destroyGraph() noexcept {if(!current())return false;graph.destroyGraph();return true;}
     bool request() noexcept {
@@ -105,7 +122,8 @@ private:
     bool observable() const noexcept {return current()&&engine.meterGraphEventsCurrent()&&current();}
     Engine& engine;
     std::uint32_t id=0,generation=0,ticket=0;
-    std::uint64_t timerSerial=0;
+    std::uint64_t timerSerial=0,lastClearSerial=0;
+    bool bufferNoticeSinceStart=true;
     LoopMeterGraph graph;
     LoopMeterBinding receipt{};
     MeterCleanupRequest cleanup{};

@@ -34,9 +34,22 @@ struct Fixture {
     void prepare(){
         for(auto* e:{engine.get(),control.get()}){
             e->prepare(48000,81920,{true,48000,0});e->configureSync({aion::SyncMode::off,120,1,4,4,false});e->setMonitoring(false);e->setTarget(1);
-            check(e->enqueueLoop({aion::LoopAction::record,19,1,e->generation(),0,0})&&e->enqueueLoop({aion::LoopAction::finish,19,2,e->generation(),4096,0}),"Prepare actual recorded timer PCM");
         }
+        record();
+    }
+    void record(){
+        const auto start=engine->clock();
+        for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({aion::LoopAction::record,19,1,e->generation(),start,0})
+            &&e->enqueueLoop({aion::LoopAction::finish,19,2,e->generation(),start+4096,0}),"Prepare actual recorded timer PCM");
         for(unsigned n=0;n<8192/block;++n)cycle(true);
+    }
+    void clearFromAudio(){
+        const auto receipt=owner->cleanupRequest();
+        for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({aion::LoopAction::clear,19,3,e->generation(),0,0}),"Queue DEL while native timer is pending");cycle();
+        aion::MeterGraphEvent event;unsigned accepted=0;
+        while(engine->popMeterGraphEvent(event))if(timer->consumeClear(event))++accepted;
+        check(accepted==1&&!timer->pending()&&!owner->inspect().buffer&&!owner->inspect().data
+            &&!owner->deliverCleanup(receipt),"Actual DEL receipt cancels JUCE timer and clears attached history");
     }
     void play(){
         for(auto* e:{engine.get(),control.get()}){
@@ -107,6 +120,13 @@ private:
         case 6:
             if(wall()-started<.08)return;
             check(f->owner->inspect().present&&f->owner->inspect().data==data&&f->owner->deliverCleanup(obsolete),"Message-thread destruction cancels delivery without editing owner");
+            f->timer=std::make_unique<aion::LoopMeterCleanupTimer>(*f->owner);f->play();
+            check(f->timer->stop(8),"Arm timer before actual native DEL");f->clearFromAudio();
+            f->record();f->owner->setBuffer(true);f->play();capture();stage=7;break;
+        case 7:
+            if(wall()-started<.08)return;
+            check(f->owner->inspect().present&&f->owner->inspect().data==data&&!f->timer->pending()
+                &&reading(f->owner->value())==held,"Cleared timer cannot detach the same-generation re-recorded graph");
             if(f->block==64){begin(128);break;}
             stopTimer();juce::MessageManager::getInstance()->stopDispatchLoop();break;
         }
@@ -122,4 +142,5 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     {std::lock_guard lock(mutex);finished=true;}changed.notify_one();watchdog.join();
     check(allocations.load()==0,"Native timer actual Engine callbacks have zero tracked new/delete");
     std::cout<<"PASS: real JUCE message-loop cleanup at 64/128, 25/50ms, late delivery, cancellation/replacement, queued-play retention, prepare/destruction and exact PCM; zero tracked callback new/delete\n";
+    std::cout<<"PASS: actual DEL receipt cancels pending JUCE cleanup and preserves same-generation re-recorded graph at 64/128\n";
 }

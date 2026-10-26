@@ -1716,3 +1716,43 @@ The adapter currently has only a native acceptance-fixture caller. Production
 buffer/play/stop notifications and complete lifecycle dispatch are still required.
 Nothing enables a renderer, changes original assets or establishes physical audio
 clock continuity. Timer scheduling is not audio-thread work.
+
+### Clear-event ownership handoff (26 October 2026)
+
+Raw clear events now retain `retiredTicket`: the actual window ticket removed at
+publication. `ticket` remains zero for a cleared window. The single audio publisher
+reads its preceding generation/ticket word before invalidating it, so the value
+is independent of queue delivery time and preserves full uint32 identity. A second
+clear without a new window retires zero. This adds fixed construction-time queue
+storage and constant work at a mutation; no audio callback allocation or wait.
+
+`LoopMeterLifecycle::consumeClear` accepts Engine-pop receipts only for its current
+Engine generation, track and retained ticket, with a nonzero serial newer than its
+last accepted clear and a healthy event stream. It uses the existing candidate /
+recheck commit path. Attached clear resets original history/data; detached clear
+retains the original data/holds. Pending and replacement tickets reject older
+receipts. Timer metadata is cancelled only after accepted delivery. The JUCE
+adapter's matching method immediately stops its pending native timer.
+
+There must be one Engine stream consumer routing events to matching owners. These
+methods do not themselves drain the shared stream or infer play/buffer/stop state.
+A zero retired ticket cannot prove which pending/unaccepted graph to clear; such
+cases need the eventual explicit playback lifecycle mapping. Production processor
+and renderer wiring remain pending, as do overlap PCM ownership/device continuity.
+
+Approach comparison: [Freewheeling](https://github.com/free-wheeling/freewheeling)
+provides configurable live looping on JACK; its interface/backend is not the
+reference for this migration. [SooperLooper's engine](https://github.com/essej/sooperlooper/blob/master/src/engine.hpp)
+separates realtime event queues, main-thread updates and loop-management handoffs.
+That separation supports retaining Aion's existing bounded value SPSC and explicit
+ownership receipts. The unchanged Ascii-Looper remains the behavior/UI oracle;
+these projects informed the handoff design, without importing a new dependency.
+
+Final review added a conservative buffer-notification fence. A boolean setBuffer
+notification after graph start cannot prove whether it describes that graph's old
+buffer or a newly committed stopped buffer. Receipt delivery rejects after any
+such notification until a new graph start establishes fresh ownership (or the
+caller performs an explicitly ordered clear). This prevents delayed old DEL from
+removing newly reported buffer metadata before playback starts. It leaves ordinary
+window observations and explicit stop/clear APIs intact; repeated notifications
+may conservatively require the eventual full buffer/lifecycle mapping.

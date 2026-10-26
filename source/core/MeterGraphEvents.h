@@ -8,6 +8,7 @@ struct MeterGraphEvent {
     std::uint64_t serial=0,frame=0,clearEpoch=0;
     std::uint32_t generation=0,track=0,ticket=0;
     MeterGraphEventKind kind=MeterGraphEventKind::cleared;
+    std::uint32_t retiredTicket=0; // Actual window removed by clear; never a JS graph inference.
 };
 // Heap-owned SPSC stream. Any loss invalidates the generation until prepare.
 // Never silently resynchronise from later events/snapshots or reset queue indices.
@@ -25,10 +26,13 @@ public:
         const auto generation=active.load(std::memory_order_acquire);
         if(!generation||lost.load(std::memory_order_acquire))return;
         if(track>=trackCount){lost.store(generation,std::memory_order_release);return;}
+        const auto previous=windows[track].load(std::memory_order_relaxed); // Same audio publisher.
+        const auto retired=kind==MeterGraphEventKind::cleared&&(previous>>32)==generation?
+            static_cast<std::uint32_t>(previous):0u;
         const auto currentTicket=kind==MeterGraphEventKind::started?ticket:0;
         windows[track].store((static_cast<std::uint64_t>(generation)<<32)|currentTicket,std::memory_order_release);
         if(serial==std::numeric_limits<std::uint64_t>::max()||
-            !events.push({++serial,frame,clearEpoch,generation,track,ticket,kind}))
+            !events.push({++serial,frame,clearEpoch,generation,track,ticket,kind,retired}))
             lost.store(generation,std::memory_order_release);
     }
     bool current(std::uint32_t generation) const noexcept {

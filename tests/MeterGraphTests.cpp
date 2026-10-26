@@ -37,6 +37,63 @@ void cleanupDeadlineTests(){
     std::cout<<"PASS: cleanup deadline origin, duplicate/no-postpone, 25/50ms, replacement, cancellation, full-width identities and invalid clocks; zero tracked new/delete\n";
 }
 auto readingTuple(const aion::MeterReading& value){return std::array<double,7>{value.rms,value.peak,value.linearPeak,value.peakDb,value.rmsPercent,value.peakPercent,value.clipped?1.0:0.0};}
+void clearReceiptOwnerTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u}){
+        auto engine=std::make_unique<Engine>(),control=std::make_unique<Engine>();
+        auto view=std::make_unique<EngineView>();auto packet=std::make_unique<MeterWindowEvent>();
+        for(auto* e:{engine.get(),control.get()}){e->prepare(48000,81920,{true,48000,0});e->configureSync({SyncMode::off,120,1,4,4,false});e->setMonitoring(false);e->setTarget(1);}
+        std::array<float,128> l{},r{},cl{},cr{};float* channels[]={l.data(),r.data()},*cc[]={cl.data(),cr.data()};
+        const auto cycle=[&](bool offline=false){for(unsigned i=0;i<block;++i)l[i]=r[i]=1.8f*std::sin((engine->clock()+i)*.037);cl=l;cr=r;
+            engine->process(channels,2,static_cast<int>(block),{},offline);control->process(cc,2,static_cast<int>(block),{},offline);
+            check(l==cl&&r==cr,"Clear receipt delivery preserves exact paired Engine PCM");while(engine->popView(*view)){};};
+        const auto record=[&]{const auto start=engine->clock();for(auto* e:{engine.get(),control.get()}){
+            check(e->enqueueLoop({LoopAction::record,19,1,e->generation(),start,0})&&e->enqueueLoop({LoopAction::finish,19,2,e->generation(),start+4096,0}),"Record clear receipt fixture");}
+            for(unsigned n=0;n<8192/block;++n)cycle(true);};
+        record();LoopMeterLifecycle owner(*engine,19);owner.setBuffer(true);
+        const auto play=[&]{check(owner.start(engine->clock()),"Explicit clear receipt graph start");
+            for(unsigned n=0;n<2048/block;++n){check(owner.request(),"Request actual clear receipt PCM");cycle();check(engine->popLoopMeterWindow(*packet),"Actual clear receipt PCM packet");
+                const double t=static_cast<double>(view->frame)/48000;check(owner.observe(*packet,*view,view->callbackClock,{t,t}),"Observe actual clear receipt PCM");}};
+        const auto clear=[&]{MeterGraphEvent event,removed{};const auto at=engine->clock()+17;
+            for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({LoopAction::clear,19,3,e->generation(),at,0}),"Queue actual DEL receipt");cycle();
+            while(engine->popMeterGraphEvent(event))if(event.kind==MeterGraphEventKind::cleared&&event.track==19)removed=event;
+            check(removed.serial&&removed.frame==at&&removed.ticket==0&&removed.retiredTicket==owner.binding().ticket,"DEL identifies its actual removed window at sample 17");return removed;};
+        watch=true;play();check(owner.value().clipped,"Attached clear fixture has actual clipped history");owner.stop(1);const auto timer=owner.cleanupRequest();
+        const auto event=clear();const auto held=readingTuple(owner.value());const auto graph=owner.inspect();
+        const auto rejected=[&](MeterGraphEvent bad){check(!owner.consumeClear(bad)&&readingTuple(owner.value())==held
+            &&owner.inspect().data==graph.data&&owner.inspect().analyser==graph.analyser&&owner.inspect().buffer==graph.buffer
+            &&owner.inspect().state==graph.state&&owner.cleanupRequest()==timer,"Foreign/malformed clear leaves owner, timer and all readings unchanged");};
+        auto bad=event;bad.track=18;rejected(bad);bad=event;++bad.generation;rejected(bad);bad=event;++bad.retiredTicket;rejected(bad);
+        bad=event;bad.retiredTicket=0;rejected(bad);bad=event;bad.serial=0;rejected(bad);bad=event;bad.ticket=1;rejected(bad);bad=event;bad.kind=MeterGraphEventKind::started;rejected(bad);
+        check(owner.consumeClear(event)&&!owner.inspect().buffer&&!owner.inspect().present&&!owner.inspect().data
+            &&owner.value().peak==0&&!owner.cleanupRequest().serial&&!owner.deliverCleanup(timer),"Actual attached clear resets history and cancels its pending cleanup");
+        check(!owner.consumeClear(event),"Duplicate clear receipt is consumed at most once");
+        // Keep the old receipt until a new graph exists in the same generation.
+        record();owner.setBuffer(true);play();const auto replacement=readingTuple(owner.value());const auto data=owner.inspect().data;
+        check(!owner.consumeClear(event)&&owner.inspect().data==data&&readingTuple(owner.value())==replacement&&owner.inspect().buffer,"Delayed old clear cannot erase same-generation replacement");
+        const auto unconsumed=clear();record();owner.setBuffer(true);
+        const auto stoppedBufferData=owner.inspect().data;const auto stoppedBufferReading=readingTuple(owner.value());
+        check(!owner.consumeClear(unconsumed)&&owner.inspect().buffer&&owner.inspect().data==stoppedBufferData
+            &&readingTuple(owner.value())==stoppedBufferReading,"Old clear cannot erase a newly reported buffer before its graph starts");
+        owner.stop(1.5);play();
+        const auto freshData=owner.inspect().data;const auto freshReading=readingTuple(owner.value());
+        check(!owner.consumeClear(unconsumed)&&owner.inspect().data==freshData&&readingTuple(owner.value())==freshReading
+            &&owner.inspect().buffer,"Unconsumed old clear cannot target a fresh same-generation ticket");
+        // Detached clear retains the original data/history quirk.
+        const auto detachedEvent=clear();owner.stop(2);const auto detachedTimer=owner.cleanupRequest();check(owner.deliverCleanup(detachedTimer),"Detach before clear receipt delivery");
+        const auto detachedData=owner.inspect().data;const auto detachedReading=readingTuple(owner.value());
+        check(owner.consumeClear(detachedEvent)&&!owner.inspect().buffer&&owner.inspect().data==detachedData
+            &&readingTuple(owner.value())==detachedReading,"Delayed detached clear preserves original data and follower holds");
+        // Event loss invalidates even an already popped clear receipt.
+        record();owner.setBuffer(true);play();const auto lost=clear();
+        for(unsigned n=0;n<256;++n){for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({LoopAction::clear,0,10+n,e->generation(),0,0}),"Saturate clear receipt stream");if(n%100==99)cycle();}cycle();
+        const auto beforeLoss=readingTuple(owner.value());check(!engine->meterGraphEventsCurrent()&&!owner.consumeClear(lost)
+            &&readingTuple(owner.value())==beforeLoss&&owner.inspect().buffer,"Retained popped clear cannot bypass stream loss");watch=false;
+        for(auto* e:{engine.get(),control.get()})e->prepare(48000,81920,{true,48000,0});owner.reset();
+        check(!owner.consumeClear(lost)&&!owner.inspect().buffer,"Prepare rejects an old clear receipt");
+    }
+    std::cout<<"PASS: actual DEL receipts route attached/detached clear, reject foreign/duplicate/delayed/lost/prepare events, retain exact paired 64/128 PCM and zero tracked new/delete\n";
+}
 void currentWindowTokenTests(){
     using namespace aion;
     auto stream=std::make_unique<MeterGraphEvents>();MeterGraphEvent event;
@@ -56,7 +113,7 @@ void currentWindowTokenTests(){
     watch=true;
     for(unsigned n=1;n<=2000;++n){while(ready.load(std::memory_order_acquire)!=n*2-1)std::this_thread::yield();
         check(stream->owns(1,n%20,n)&&stream->pop(event,1)&&event.ticket==n&&event.kind==MeterGraphEventKind::started,"Concurrent explicit start publishes coherent current token and event");ack.store(n*2-1,std::memory_order_release);
-        while(ready.load(std::memory_order_acquire)!=n*2)std::this_thread::yield();check(!stream->owns(1,n%20,n)&&stream->pop(event,1)&&event.kind==MeterGraphEventKind::cleared,"Concurrent clear invalidates token before consumer delivery");ack.store(n*2,std::memory_order_release);}
+        while(ready.load(std::memory_order_acquire)!=n*2)std::this_thread::yield();check(!stream->owns(1,n%20,n)&&stream->pop(event,1)&&event.kind==MeterGraphEventKind::cleared&&event.retiredTicket==n,"Concurrent clear invalidates token and preserves removed window before consumer delivery");ack.store(n*2,std::memory_order_release);}
     watch=false;producer.join();
     std::cout<<"PASS: current-window tokens preserve full-width identities, reject unconsumed replacement/clear, isolate tracks and 4000 concurrent start/clear events; zero tracked new/delete\n";
 }
@@ -205,6 +262,10 @@ void graphEventTests(){
     check(!stream->current(7)&&!stream->pop(event,7),"Draining a lost stream never silently repairs it");
     stream->reset(8);stream->publish(MeterGraphEventKind::started,19,0xffffffffu,0xffffffffffffffffull,9007199254740993ull);
     check(stream->pop(event,8)&&event.serial==1&&event.generation==8&&event.track==19&&event.ticket==0xffffffffu&&event.frame==0xffffffffffffffffull&&event.clearEpoch==9007199254740993ull,"Fresh generation preserves full integer precision");
+    stream->publish(MeterGraphEventKind::cleared,19,0,1,2);
+    check(stream->pop(event,8)&&event.retiredTicket==0xffffffffu&&event.ticket==0,"Clear preserves full-width removed ticket without relabelling the cleared window");
+    stream->publish(MeterGraphEventKind::cleared,19,0,2,3);
+    check(stream->pop(event,8)&&event.retiredTicket==0,"Repeated clear cannot reuse an already removed window identity");
     stream->publish(MeterGraphEventKind::cleared,0,0,1,2);stream->reset(9);stream->publish(MeterGraphEventKind::started,1,1,3,4);
     check(stream->pop(event,9)&&event.generation==9&&event.serial==1&&event.track==1&&!stream->pop(event,9),"Prepare discards old queued generations without resetting SPSC ownership");
     watch=false;
@@ -227,7 +288,7 @@ void graphEventTests(){
         check(!engine->popMeterGraphEvent(event),"Healthy RTRG never invents a new analyser/window receipt");
         const auto clearFrame=engine->clock()+5;
         for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::clear,19,5,e->generation(),clearFrame,0});cycle();
-        check(engine->popMeterGraphEvent(event)&&event.kind==MeterGraphEventKind::cleared&&event.frame==clearFrame&&event.ticket==0&&event.track==19&&event.clearEpoch==view->tracks[19].clearEpoch,"DEL reports exact native clear epoch/frame");
+        check(engine->popMeterGraphEvent(event)&&event.kind==MeterGraphEventKind::cleared&&event.frame==clearFrame&&event.ticket==0&&event.retiredTicket==1&&event.track==19&&event.clearEpoch==view->tracks[19].clearEpoch,"DEL reports exact native clear epoch/frame and removed window");
         start(2,0);cycle();check(!engine->popMeterGraphEvent(event),"No committed clip means no accepted reset receipt");
         // A bounded telemetry failure cannot change performance acknowledgements.
         for(unsigned n=0;n<255;++n)for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({LoopAction::clear,0,10+n,e->generation(),0,0}),"Fill ordinary command queue for event saturation");
@@ -464,6 +525,7 @@ void meterGraphTests(){
         if(block==64)baseline=reading;else check(reading.rms==baseline.rms&&reading.peak==baseline.peak&&reading.rmsPercent==baseline.rmsPercent,"Exact supplied-window graph meter 64/128 invariance");
     }
     cleanupDeadlineTests();
+    clearReceiptOwnerTests();
     boundGraphTests();
     currentWindowTokenTests();
     clearFreshnessOwnerTests();
