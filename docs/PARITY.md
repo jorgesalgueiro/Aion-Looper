@@ -353,3 +353,28 @@ MIDI Stop also drains pending and queued internal graph starts without changing
 UI acknowledgement/rejection fields; the next ordinary UI command must apply
 immediately. Retain the explicit zero-sample Stop regression at 64/128 and the
 pre-fix failure in build/graph-reset-panic-before.txt.
+
+### Lifecycle coordinator and future-start interference (26 October 2026)
+
+The existing unchanged Loop/AudioGraph trace now also drives LoopMeterLifecycle
+through the real Engine command producer. All 377 state/analyser/data/cleanup-delay
+observations match. The original 14-field graph/follower comparison remains;
+the new seven-field owner trace intentionally excludes native PCM/ballistics,
+which are exercised separately with paired actual Engines at 64/128 samples.
+It preserves stopping->play cancellation, queued->play retaining a cleanup timer,
+repeated stop replacement, detached data/hold retention and attached clear reset.
+
+Real-engine cases cover receipt gating before a sample-17 reset, healthy RTRG,
+queue saturation without owner mutation/ticket consumption, buffer removal,
+invalid track/generation, old coherent packets after prepare and nonrecycled timer
+serials. The volume-delay regression is retained in
+build/lifecycle-owner-future-before.txt. The fix is checked against immediate UI
+volume/acknowledgement and exact stereo output, plus full deferred storage,
+frame/FIFO ordering, full integer precision and clear compaction. DEL followed by
+a newly committed clip, UI Stop All and zero-sample MIDI Stop cannot inherit an
+old deferred reset. Tracked callback new/delete remain zero.
+
+No comparison tolerance or original frontend source changed. IO stubs in the JS
+trace and supplied audible time in the paired-engine tests are not browser audio,
+a physical clock or a production graph-notification source. The meter feature
+remains incomplete; visible controls and packages stay deferred.

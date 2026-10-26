@@ -7,6 +7,7 @@
 #include "core/CountIn.h"
 #include "core/LiveInput.h"
 #include "core/MeterTransfer.h"
+#include "core/MeterGraphStarts.h"
 #include "core/MidiController.h"
 #include <cstdint>
 namespace aion {
@@ -124,6 +125,7 @@ private:
     std::unique_ptr<LiveInput> liveInput=std::make_unique<LiveInput>();
     static_assert(LoopBank::trackCount==MeterTransfer::trackCount);
     std::unique_ptr<MeterTransfer> meterTransfer=std::make_unique<MeterTransfer>();
+    std::unique_ptr<MeterGraphStarts> meterGraphStarts=std::make_unique<MeterGraphStarts>();
     Metronome metronome;
     CountIn countIn;
     std::uint32_t countInTrack=0;

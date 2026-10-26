@@ -1355,3 +1355,23 @@ build/graph-reset-final-ctest-{windows,linux}.txt; full-run provenance is in
 build/graph-reset-full-source-sha256.json. Keep each build tree's CTest calls
 sequential. The final focused expression is:
 `^(core_realtime_contract|js_native_playback_clock|js_native_meter_graph|original_meter_source_lifecycle|js_native_meter_window|js_native_meter)$`.
+
+### Lifecycle owner regression gates (26 October 2026)
+
+The existing aion_core_tests and aion_meter_graph_probe targets contain the new
+owner/scheduler fixtures; no additional executable/package or dependency is
+needed. js_native_meter_graph runs its existing 14-field comparison and a second
+377-row seven-field lifecycle-owner comparison against unchanged JS. Keep the
+same six core/meter/clock focused gates and the full portable CTest suite.
+Engine scheduling changed, so rebuild the existing native processor/Standalone
+targets and run their two gates; retain ASan/UBSan and AudioParityAudit.cjs.
+Never overlap CTest calls in one build tree or edit compiling sources mid-build.
+
+Evidence uses build/lifecycle-owner-{ctest-windows,ctest-linux,ctest-asan}.txt,
+build/lifecycle-owner-full-ctest-{windows,linux}.txt,
+build/lifecycle-owner-native-ctest-{windows,linux}.txt,
+build/lifecycle-owner-audio.json, build/lifecycle-owner-assets.txt and
+build/lifecycle-owner-evidence.json. The retained pre-fix failure is
+build/lifecycle-owner-future-before.txt. These are validation artifacts, not new
+release packages. Other-format binaries are deliberately not rebuilt or validated
+as this revision. No version bump, package, UI activation or push is included.

@@ -1,5 +1,6 @@
 #include "core/LoopMeterGraph.h"
 #include "core/LoopMeterObservation.h"
+#include "core/LoopMeterLifecycle.h"
 #include <atomic>
 #include <cstdlib>
 #include <iostream>
@@ -10,6 +11,128 @@ extern std::atomic<int> allocations;
 namespace {void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}}
 namespace {
 auto readingTuple(const aion::MeterReading& value){return std::array<double,7>{value.rms,value.peak,value.linearPeak,value.peakDb,value.rmsPercent,value.peakPercent,value.clipped?1.0:0.0};}
+void deferredStartTests(){
+    using namespace aion;
+    auto pending=std::make_unique<MeterGraphStarts>();MeterGraphStart output{};output.ticket=999;
+    watch=true;
+    check(!pending->popDue(0,output)&&output.ticket==999,"Empty deferred start leaves destination untouched");
+    check(pending->push(1000,9,0,10)&&pending->push(500,8,1,20)&&pending->push(1000,7,0,11),"Schedule out-of-order frame notifications");
+    check(!pending->popDue(499,output)&&pending->popDue(500,output)&&output.ticket==20,"Earliest frame wins independently of arrival");
+    check(pending->popDue(1000,output)&&output.ticket==10&&pending->popDue(1000,output)&&output.ticket==11,"Same-frame graph starts preserve FIFO order");
+    pending->clear();
+    for(unsigned n=0;n<MeterGraphStarts::capacity;++n)check(pending->push(1000+n%7,123,n%2,n+1),"Deferred start capacity is fully usable");
+    check(!pending->push(1,0,0,999)&&pending->size()==MeterGraphStarts::capacity,"Full deferred storage rejects without eviction or growth");
+    pending->discardIf([](const MeterGraphStart& start){return start.track==0;});check(pending->size()==128,"Clear frees deferred capacity without touching other tracks");
+    MeterGraphStart previous{};while(pending->popDue(2000,output)){check(output.track==1&&(output.frame>previous.frame||(output.frame==previous.frame&&output.order>previous.order)),"Compaction retains sample and FIFO priority");previous=output;}
+    pending->clear();const auto maximum=std::numeric_limits<std::uint64_t>::max();
+    check(pending->push(maximum,maximum,19,0xffffffffu)&&!pending->popDue(maximum-1,output)&&pending->popDue(maximum,output)&&output.clearEpoch==maximum&&output.ticket==0xffffffffu,"Deferred frame/epoch/ticket fields retain full integer precision");
+    pending->clear();watch=false;
+    for(unsigned block:{64u,128u}){
+        auto engine=std::make_unique<Engine>();auto view=std::make_unique<EngineView>();engine->prepare(48000,8192);
+        watch=true;
+        for(unsigned n=0;n<255;++n){LoopCommand command{LoopAction::meterGraphStart,0,0,engine->generation(),1000000,0};command.meterGraphTicket=n+1;check(engine->enqueueLoop(command),"Fill input FIFO with future telemetry");}
+        engine->process(nullptr,0,static_cast<int>(block));while(engine->popView(*view)){}
+        engine->process(nullptr,0,static_cast<int>(block));while(engine->popView(*view)){}
+        for(unsigned n=256;n<=257;++n){LoopCommand command{LoopAction::meterGraphStart,0,0,engine->generation(),1000000,0};command.meterGraphTicket=n;check(engine->enqueueLoop(command),"Deferred capacity boundary remains bounded");}
+        check(engine->enqueueLoop({LoopAction::volume,0,41,engine->generation(),0,.5}),"Volume follows full deferred storage");engine->process(nullptr,0,static_cast<int>(block));
+        check(engine->popView(*view)&&view->lastRequestId==41&&!view->rejected&&view->tracks[0].volume==.5f,"Saturated deferred telemetry cannot starve or reject UI commands");
+        watch=false;
+    }
+    std::cout<<"PASS: fixed deferred graph-start heap ordering/precision/compaction/full capacity, bounded 64/128 ingress and UI progress; zero tracked new/delete\n";
+}
+void lifecycleOwnerTests(){
+    using namespace aion;
+    const auto bindingFields=[](LoopMeterBinding b){return std::array<std::uint64_t,5>{b.generation,b.track,b.ticket,b.analyser,b.data};};
+    const auto graphFields=[](LoopMeterGraphView v){return std::array<double,7>{static_cast<double>(v.state),v.buffer?1.:0.,v.present?1.:0.,v.destroyed?1.:0.,static_cast<double>(v.analyser),static_cast<double>(v.data),v.teardownDelay};};
+    for(unsigned block:{64u,128u}){
+        auto engine=std::make_unique<Engine>(),control=std::make_unique<Engine>();
+        auto packet=std::make_unique<MeterWindowEvent>();auto view=std::make_unique<EngineView>();
+        for(auto* e:{engine.get(),control.get()}){e->prepare(48000,81920,{true,48000,0});e->configureSync({SyncMode::off,120,1,4,4,false});e->setMonitoring(false);e->setTarget(1);
+            e->enqueueLoop({LoopAction::record,19,1,e->generation(),0,0});e->enqueueLoop({LoopAction::finish,19,2,e->generation(),4096,0});}
+        std::array<float,128> left{},right{},cl{},cr{};float* channels[]={left.data(),right.data()},*cc[]={cl.data(),cr.data()};
+        for(unsigned at=0;at<8192;at+=block){left.fill(.3f);right.fill(.2f);cl=left;cr=right;engine->process(channels,2,static_cast<int>(block),{},true);control->process(cc,2,static_cast<int>(block),{},true);while(engine->popView(*view)){};}
+        LoopMeterLifecycle owner(*engine,19);LoopMeterLifecycle invalid(*engine,20);
+        watch=true;
+        check(!invalid.setBuffer(true)&&!invalid.start(0)&&!invalid.request(),"Invalid lifecycle owner cannot address another track");
+        check(owner.setBuffer(true)&&owner.start(engine->clock()+block+17),"Explicit owner enqueues a future graph start");
+        for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({LoopAction::volume,19,4,e->generation(),0,.5}),"UI volume command follows future meter notification");
+        bool requireImmediateVolume=true;
+        const auto capture=[&]{
+            check(owner.request(),"Active owned graph requests only its own ticket");
+            left.fill(0);right.fill(0);cl=left;cr=right;
+            engine->process(channels,2,static_cast<int>(block));control->process(cc,2,static_cast<int>(block));
+            check(engine->popLoopMeterWindow(*packet),"Owned actual window delivered");while(engine->popView(*view)){};
+            if(requireImmediateVolume){check(view->tracks[19].volume==.5f&&view->lastRequestId==4,"Future meter notification must not postpone ordinary UI volume command");requireImmediateVolume=false;}
+            check(left==cl&&right==cr,"Graph owner notifications preserve bit-identical actual Engine stereo PCM");
+            const auto time=static_cast<double>(view->frame)/view->sampleRate;
+            return owner.observe(*packet,*view,view->callbackClock,{time,time});
+        };
+        const auto empty=readingTuple(owner.value());
+        check(!capture()&&readingTuple(owner.value())==empty,"Enqueue before audio reset never observes old rolling PCM");
+        check(capture()&&owner.value().peak>.01,"Audio-owner receipt activates the lifecycle observation");
+        const auto first=bindingFields(owner.binding());const auto stable=readingTuple(owner.value());
+        const auto observedTime=static_cast<double>(view->frame)/view->sampleRate;
+        check(owner.setBuffer(false)&&!owner.request()&&!owner.observe(*packet,*view,view->callbackClock,{observedTime,observedTime})&&readingTuple(owner.value())==stable,"Removed buffer rejects requests and observations without follower mutation");
+        check(owner.setBuffer(true),"Restore committed buffer notification without changing graph ownership");
+        check(!owner.start(engine->clock())&&!owner.reset()&&bindingFields(owner.binding())==first&&readingTuple(owner.value())==stable,"Duplicate play and same-generation reset cannot reuse tickets or erase history");
+        const auto source=packet->sourceRevision;
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::retrigger,19,3,e->generation(),e->clock(),0});
+        unsigned calls=0;do{check(capture(),"Healthy RTRG observations retain the existing owner");}while(packet->sourceRevision==source&&++calls<100);
+        check(packet->sourceRevision!=source&&bindingFields(owner.binding())==first,"Actual source replacement retains analyser/data/ticket");
+        check(owner.stop(1),"Immediate stop requests original cleanup");const auto oldTimer=owner.cleanupRequest();
+        check(oldTimer.delay==.025&&owner.start(engine->clock()),"Play while stopping cancels cleanup and queues fresh window");
+        const auto second=bindingFields(owner.binding());
+        check(!owner.deliverCleanup(oldTimer)&&bindingFields(owner.binding())==second&&owner.inspect().present,"Cancelled timer cannot detach replacement graph");
+        check(capture(),"Fresh replacement graph recovers on actual window acknowledgement");
+        check(owner.stop(2),"Queue saturation fixture has pending cleanup");
+        const auto superseded=owner.cleanupRequest();check(owner.stop(2.01)&&!owner.deliverCleanup(superseded),"Repeated stop supersedes the prior cleanup token even on the same graph");
+        auto wrongDelay=owner.cleanupRequest();wrongDelay.delay+=.001;check(!owner.deliverCleanup(wrongDelay),"Malformed cleanup receipt cannot change graph ownership");
+        const auto beforeGraph=graphFields(owner.inspect());const auto beforeReading=readingTuple(owner.value());const auto beforeBinding=bindingFields(owner.binding());const auto beforeTimer=owner.cleanupRequest();
+        for(unsigned n=0;n<255;++n)check(engine->enqueueLoop({LoopAction::volume,19,100+n,engine->generation(),engine->clock(),.5}),"Fill existing performance queue exactly");
+        check(!owner.start(engine->clock())&&graphFields(owner.inspect())==beforeGraph&&readingTuple(owner.value())==beforeReading&&bindingFields(owner.binding())==beforeBinding&&owner.cleanupRequest()==beforeTimer,"Full command queue rejects graph creation atomically including cleanup and follower");
+        check(capture()&&capture(),"Existing graph remains observable while bounded command budget drains");
+        check(owner.start(engine->clock())&&owner.binding().ticket==second[2]+1&&capture(),"Queue recovery spends one fresh ticket, never the rejected candidate");
+        check(owner.stop(3,4)&&owner.setState(MeterLoopState::queued),"Original queued-during-scheduled-stop fixture");const auto retainedTimer=owner.cleanupRequest();
+        check(owner.start(engine->clock())&&owner.cleanupRequest()==retainedTimer,"Queued->play preserves original timer rather than guarding it by the new graph ticket");
+        check(capture(),"Queued replacement graph acknowledges its own window");const auto retained=readingTuple(owner.value());const auto retainedData=owner.inspect().data;
+        check(owner.deliverCleanup(retainedTimer)&&!owner.inspect().present&&owner.inspect().data==retainedData&&readingTuple(owner.value())==retained&&!owner.request(),"Original retained timer detaches current graph and preserves data/holds");
+        check(!owner.deliverCleanup(retainedTimer)&&owner.clear()&&owner.inspect().data==retainedData&&readingTuple(owner.value())==retained,"Repeated callback rejected; detached clear retains original data/history quirk");
+        check(owner.setBuffer(true)&&owner.start(engine->clock())&&capture(),"Fresh graph after detached clear uses a new ticket");
+        check(owner.stop(5),"Prepare invalidation has outstanding timer");const auto staleTimer=owner.cleanupRequest();const auto staleBinding=bindingFields(owner.binding());const auto staleReading=readingTuple(owner.value());
+        watch=false;for(auto* e:{engine.get(),control.get()})e->prepare(48000,81920,{true,48000,0});watch=true;
+        check(!owner.request()&&!owner.start(0)&&!owner.deliverCleanup(staleTimer)&&bindingFields(owner.binding())==staleBinding,"Changed Engine generation freezes old owner without follower mutation");
+        const auto staleTime=static_cast<double>(view->frame)/view->sampleRate;
+        check(!owner.observe(*packet,*view,view->callbackClock,{staleTime,staleTime})&&readingTuple(owner.value())==staleReading,"Old coherent packet/clock cannot revive a stale owner after prepare");
+        check(owner.reset()&&owner.binding().ticket==0&&owner.value().peak==0&&!owner.deliverCleanup(staleTimer),"Explicit context reset invalidates graph and old timer");
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::play,19,1,e->generation(),0,0});
+        check(owner.setBuffer(true)&&owner.start(0)&&owner.binding().ticket==1&&capture(),"Prepared owner restarts ticket sequence only under a new Engine generation");
+        check(owner.stop(6)&&owner.cleanupRequest().serial>staleTimer.serial,"Timer serials never recycle across prepare");
+        auto forged=staleTimer;forged.generation=engine->generation();check(!owner.deliverCleanup(forged),"Old serial cannot masquerade as a new-generation timer");
+        check(owner.destroyGraph()&&!owner.request(),"Destroyed graph cannot request PCM");
+        check(owner.clear()&&owner.value().peak==0,"Attached clear resets follower under the original policy");
+        // A DEL followed by a fresh take must not inherit a deferred reset from
+        // the deleted graph, even after a new committed clip exists at its due frame.
+        const auto cycle=[&](bool offline=false){
+            left.fill(.2f);right.fill(.1f);cl=left;cr=right;engine->requestLoopMeterWindow(19);
+            engine->process(channels,2,static_cast<int>(block),{},offline);control->process(cc,2,static_cast<int>(block),{},offline);
+            check(left==cl&&right==cr,"Deferred cancellation preserves exact control PCM");
+            check(engine->popLoopMeterWindow(*packet)&&packet->windowGraphTicket==0,"Cancelled graph start never resets a replacement/paused source");
+        };
+        LoopCommand future{LoopAction::meterGraphStart,19,0,engine->generation(),engine->clock()+5*block,0};future.meterGraphTicket=1000;check(engine->enqueueLoop(future),"Queue old graph reset before DEL");
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::clear,19,10,e->generation(),0,0});cycle();
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::record,19,11,e->generation(),0,0});cycle();
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::finish,19,12,e->generation(),0,0});cycle(true);
+        check(packet->waveformId!=0,"Replacement clip is committed before stale reset deadline");for(unsigned n=0;n<5;++n)cycle();
+        future.frame=engine->clock()+2*block;future.meterGraphTicket=1001;check(engine->enqueueLoop(future),"Queue future graph reset before UI Stop All");
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::stopAll,19,13,e->generation(),0,0});for(unsigned n=0;n<4;++n)cycle();
+        MidiSettings settings;settings.enabled=true;for(auto* e:{engine.get(),control.get()})check(e->configureMidi(settings),"Enable zero-sample MIDI Stop cancellation");
+        future.frame=engine->clock()+3*block;future.meterGraphTicket=1002;check(engine->enqueueLoop(future),"Queue future reset before MIDI Stop");cycle();
+        const MidiEvent stop{0,252,0,0,1};for(auto* e:{engine.get(),control.get()})e->process(nullptr,0,0,{&stop,1});
+        for(unsigned n=0;n<5;++n)cycle();
+        watch=false;
+    }
+    std::cout<<"PASS: lifecycle owner actual Engine queue/receipt, atomic saturation/recovery, retained RTRG, cancelled/replaced/queued cleanup tokens, context reset and identical 64/128 PCM; zero tracked new/delete\n";
+}
 void boundGraphTests(){
     using namespace aion;
     for(unsigned block:{64u,128u}){
@@ -109,6 +232,8 @@ void meterGraphTests(){
         if(block==64)baseline=reading;else check(reading.rms==baseline.rms&&reading.peak==baseline.peak&&reading.rmsPercent==baseline.rmsPercent,"Exact supplied-window graph meter 64/128 invariance");
     }
     boundGraphTests();
+    deferredStartTests();
+    lifecycleOwnerTests();
     check(allocations.load()==0,"Graph lifecycle/read composition has zero tracked new/delete");
     std::cout<<"PASS: explicit meter graph lifetime, stale/short-window rejection, detached versus attached clear, stop timer requests, fresh play and supplied PCM 64/128; zero tracked new/delete\n";
 }

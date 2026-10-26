@@ -5644,3 +5644,58 @@ This is still a primitive without production graph-notification/cleanup timer
 mapping, device-continuity proof, coherent live renderer pairing or visible
 meters. No new DAW, GUI, physical-controller/DAC or Apple acceptance is claimed.
 No UI/IPC enable, package, version bump or push is included.
+
+### Lifecycle owner and nonblocking future starts (26 October 2026)
+
+LoopMeterLifecycle now composes explicit graph notifications, queue acceptance,
+bindings and externally delivered stop-cleanup receipts. It is noncopyable and
+must persist per Engine/track across editor reopen. Same-generation reset cannot
+recycle tickets; changed-generation reset follows the prepare barrier. Queue
+saturation leaves graph, reading, binding, cleanup request and ticket unchanged.
+Buffer removal, stale-generation packets and invalid/cancelled/superseded timer
+receipts reject without follower mutation. Original queued->play deliberately
+retains a stop timer that can detach the replacement graph; stopping->play cancels
+it. Teardown/attached-versus-detached clear and healthy RTRG history are preserved.
+
+The unchanged original Loop/AudioGraph trace now compares 377 seven-field owner
+state/identity/cleanup-delay observations in addition to its existing 14-field
+policy/follower comparison. Audio/timer IO is stubbed in that oracle. Separately,
+paired actual Engines at 64/128 check window receipt gating, sample-17 starts,
+healthy retrigger ownership, queue failure/recovery and exact stereo PCM.
+
+A further acceptance test reproduced future meter work at the performance FIFO
+head delaying an ordinary volume command. The failure is retained at
+build/lifecycle-owner-future-before.txt. The fix transfers future meter starts
+into a construction-time, fixed 256-entry audio-owned min-heap ordered by sample
+frame and arrival. Transfers and due applications share the existing 128-command
+callback budget. Full storage never waits or grows and cannot block ordinary
+controls behind a future timestamp. Its rejection does not acknowledge/reject a
+UI action; only an actual matching window receipt permits observation. Clear
+invalidates old clear epochs, including DEL followed by a newly committed clip;
+UI/MIDI Stop All and prepare cancel deferred starts. Tests also cover full integer
+precision, same-frame FIFO order, compaction and zero-sample MIDI Stop.
+
+Final evidence: focused core/meter/clock gates 6/6 per OS, full portable suites
+28/28 per OS, ASan/UBSan 6/6. Native processor and Standalone targets were rebuilt;
+native gates passed 2/2 per OS with all 18 linked AudioDeviceManager blocks and
+no skips/assertions. Callback fixtures retain zero tracked new/delete; they do
+not instrument malloc or prove a worst-case physical device deadline. The actual
+committed capture/OD/SUB PCM audit passed 126 cases/965,826 samples with maximum
+error 7.394757495227111e-08 at unchanged 1e-6 tolerance; its existing envelope,
+browser-resampling and latency exclusions remain. Asset byte/deterministic
+embedding/tamper checks also passed against the local .reference/Ascii-Looper.
+
+Logs: build/lifecycle-owner-ctest-{windows,linux,asan}.txt,
+build/lifecycle-owner-full-ctest-{windows,linux}.txt,
+build/lifecycle-owner-native-ctest-{windows,linux}.txt, their build logs,
+build/lifecycle-owner-audio.json and build/lifecycle-owner-assets.txt.
+The checked writer build/WriteLifecycleOwnerEvidence.py records gate/source/
+artifact/failure hashes in build/lifecycle-owner-evidence.json and verifies
+unchanged original UI/DSP/clock/SDK hooks, other-format binaries and separate logo.
+
+This is still an internal owner and scheduler boundary. A production source of
+validated lifecycle notifications, real timer scheduling, graph-specific PCM
+ownership during transitions, coherent live clock/device continuity and renderer
+integration remain unfinished. The coordinator's notification methods do not
+replace DSP play/stop/clear actions. No new GUI/DAW/controller/DAC or Apple
+acceptance is inferred. No UI/IPC activation, package, version bump or push.

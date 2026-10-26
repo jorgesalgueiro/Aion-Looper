@@ -53,5 +53,12 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  const run=spawnSync(process.argv[2],[],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:8*1024*1024});assert.equal(run.status,0,run.stderr);
  const actual=run.stdout.trim().split('\n').map(line=>line.trim().split(/\s+/).map(Number));assert.equal(actual.length,expected.length);let maximum=0;
  for(let i=0;i<expected.length;++i){assert.equal(actual[i].length,14);for(let j=0;j<14;++j){const error=Math.abs(actual[i][j]-expected[i][j]);maximum=Math.max(maximum,error);assert(Number.isFinite(actual[i][j])&&error<=(j<6?0:1e-12*Math.max(1,Math.abs(expected[i][j]))),JSON.stringify({step:i,command:commands[i],field:j,actual:actual[i],expected:expected[i]}));}}
+ // Reuse every unchanged-JS lifecycle observation for the queue/timer owner.
+ // The seven fields deliberately exclude follower readings: this probe supplies
+ // graph notifications but does not render/acknowledge native PCM.
+ const owned=spawnSync(process.argv[2],['--lifecycle'],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:8*1024*1024});assert.equal(owned.status,0,owned.stderr);
+ const ownedRows=owned.stdout.trim().split('\n').map(row=>row.trim().split(/\s+/).map(Number));assert.equal(ownedRows.length,expected.length);
+ for(let i=0;i<expected.length;++i){assert.equal(ownedRows[i].length,7);for(let j=0;j<7;++j)assert(Math.abs(ownedRows[i][j]-expected[i][j])<=(j<6?0:1e-12),JSON.stringify({ownerStep:i,command:commands[i],field:j,actual:ownedRows[i],expected:expected[i].slice(0,7)}));}
+ console.log(JSON.stringify({lifecycleOwnerParity:true,observations:ownedRows.length,scope:'Explicit graph notifications and timer delivery through the existing Engine command producer; unchanged-JS state/identity/delay oracle, no browser PCM or production notification origin.'}));
  console.log(JSON.stringify({parity:true,observations:expected.length,maximumAbsoluteError:maximum,relativeTolerance:1e-12,scope:'Unchanged Loop/AudioGraph lifecycle, complete main-loop gate and readMeter composition on supplied Float32 windows; explicit timer delivery with IO stubs. Native graph notification binding, browser PCM, audible-time transport and UI excluded.'},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});

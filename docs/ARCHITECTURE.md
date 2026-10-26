@@ -1520,3 +1520,41 @@ MIDI Stop also drains pending and queued internal graph starts without changing
 UI acknowledgement/rejection fields; the next ordinary UI command must apply
 immediately. Retain the explicit zero-sample Stop regression at 64/128 and the
 pre-fix failure in build/graph-reset-panic-before.txt.
+
+### Meter lifecycle ownership and deferred notifications (26 October 2026)
+
+LoopMeterLifecycle is a message-owned, noncopyable per-track coordinator bound to
+one Engine lifetime. It accepts explicit successful lifecycle notifications, not
+inferences from a sampled LoopView or sourceRevision. start copies the existing
+LoopMeterGraph policy and commits the candidate binding/ticket only after the
+existing command FIFO accepts the internal start. Enqueue success is not audio
+acceptance: every observation still requires the returned actual window ticket,
+source identity and coherent callback/clock. A saturated FIFO leaves graph,
+follower, cleanup request, binding and ticket untouched. Same-generation reset
+cannot recycle tickets; changed-generation reset follows the prepare barrier.
+Do not recreate the coordinator when an editor closes/reopens.
+
+Stop notifications return opaque generation/serial/delay cleanup receipts. No
+clock is queried and no timer is started here. The event owner must deliver the
+requested wall timer. Cancelled/replaced/malformed receipts cannot detach a new
+graph. Preserve the original special case: queued->play retains its stop timer,
+so delivery of that still-current receipt tears down the replacement graph.
+Stopping->play cancels it. Teardown retains data/holds; attached versus detached
+clear preserves the original difference. Healthy RTRG never creates a new receipt.
+These notification methods do not replace DSP play/stop/clear actions.
+
+A reproduced regression showed that putting a future meter start at the FIFO
+head postponed a normal volume command. Engine now transfers future meter work
+to MeterGraphStarts, a fixed 256-entry audio-owned min-heap allocated during Engine
+construction. Frame/arrival ordering preserves sample and same-frame FIFO order.
+Heap insert/remove use standard bounded heap algorithms ([C++ draft](https://eel.is/c++draft/alg.heap.operations)).
+Transfers and due applications share the existing 128-command callback budget;
+actual reset frame is always the applied frame, including budget-delayed work.
+Full storage rejects telemetry without blocking normal controls or producing UI
+acknowledgements. Missing audio receipts remain ineligible for graph observation.
+Clear/merge-source clear prune invalid clear epochs; Stop All and prepare cancel
+all deferred starts. The live callback adds no waits, locks or dynamic storage.
+
+Production notification generation, actual timer scheduling, graph-specific PCM
+ownership during transitions, coherent live clock pairing/device continuity and
+renderer delivery remain separate unfinished work. No UI/IPC metering is enabled.

@@ -11,7 +11,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames,DeviceOutputLat
     if (preparedRate != rate || loops.capacity() != std::clamp(poolFrames / LoopBank::blockFrames, 1u, LoopBank::maxBlocks) * LoopBank::blockFrames)
         loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005), rate);
     else (void) loops.apply(LoopAction::stopAll, 0);
-    loops.resetTimeline();liveInput->cancel();meterTransfer->reset();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
+    loops.resetTimeline();liveInput->cancel();meterTransfer->reset();meterGraphStarts->clear();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     transport={};
@@ -51,6 +51,9 @@ bool Engine::applyMidi(LoopAction action,std::uint32_t track,double value) noexc
 bool Engine::applyLoop(LoopAction action,std::uint32_t track,double value) noexcept {
     const bool ok=action==LoopAction::startDelay?loops.setStartDelay(track,value):action==LoopAction::clearMergedSource?loops.clearMergedSource(track,value):loops.apply(action,track,static_cast<float>(value));
     if(!ok)return false;
+    if(action==LoopAction::stopAll||action==LoopAction::clearAll)meterGraphStarts->clear();
+    else if(action==LoopAction::clear||action==LoopAction::clearMergedSource)
+        meterGraphStarts->discardIf([&](const MeterGraphStart& start) noexcept {return start.clearEpoch!=loops.trackView(start.track).clearEpoch;});
     auto context=midiDispatch();
     if(action==LoopAction::stopAll||action==LoopAction::clearAll)midi->cancel(context);
     else if(action==LoopAction::clear)midi->cancel(context,static_cast<int>(track));
@@ -102,11 +105,19 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
         while (hasPending && pending.frame <= frame && applied < 128) {
             setTarget(pending.gain); ++applied; hasPending = commands.pop(pending);
         }
+        MeterGraphStart dueStart{};
+        while(loopApplied<128&&meterGraphStarts->popDue(frame,dueStart)){
+            if(dueStart.clearEpoch==loops.trackView(dueStart.track).clearEpoch)(void)loops.startMeterGraph(dueStart.track,dueStart.ticket);
+            ++loopApplied;
+        }
         if (!hasPendingLoop) hasPendingLoop = loopCommands.pop(pendingLoop);
-        while (hasPendingLoop && pendingLoop.frame <= frame && loopApplied < 128) {
+        while (hasPendingLoop && (pendingLoop.frame <= frame||pendingLoop.action==LoopAction::meterGraphStart) && loopApplied < 128) {
             if(pendingLoop.action==LoopAction::meterGraphStart){
                 // Internal telemetry must not acknowledge or reject a UI action.
-                if(pendingLoop.generation==generation())(void)loops.startMeterGraph(pendingLoop.track,pendingLoop.meterGraphTicket);
+                if(pendingLoop.generation==generation()){
+                    if(pendingLoop.frame>frame)(void)meterGraphStarts->push(pendingLoop.frame,loops.trackView(pendingLoop.track).clearEpoch,pendingLoop.track,pendingLoop.meterGraphTicket);
+                    else (void)loops.startMeterGraph(pendingLoop.track,pendingLoop.meterGraphTicket);
+                }
             }else{
                 lastRequestId = pendingLoop.requestId;
                 const bool cancelledStutter=pendingLoop.action==LoopAction::stutterStart&&pendingLoop.stutterRevision!=stutterRevisions[pendingLoop.track].load(std::memory_order_acquire);

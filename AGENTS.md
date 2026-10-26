@@ -1148,3 +1148,24 @@ MIDI Stop also drains pending and queued internal graph starts without changing
 UI acknowledgement/rejection fields; the next ordinary UI command must apply
 immediately. Retain the explicit zero-sample Stop regression at 64/128 and the
 pre-fix failure in build/graph-reset-panic-before.txt.
+
+Meter lifecycle owner: keep one noncopyable LoopMeterLifecycle per Engine/track
+for the Engine lifetime, not per editor. Feed explicit successful graph/buffer/
+state/stop/teardown/clear notifications; do not derive them from snapshots or
+sourceRevision. Reset only after the prepare barrier and only for a changed
+generation. Queue failure must leave graph, binding, follower, timer and ticket
+unchanged. Require the actual window receipt before observing. Preserve cancelled/
+superseded timer rejection and original queued->play retaining the old stop timer
+(which can detach the replacement graph). Keep the 377-observation unchanged-JS
+state/identity/delay comparison and actual Engine 64/128 PCM tests.
+
+Future meter starts must leave the performance FIFO immediately. The audio owner
+keeps at most 256 in construction-time heap storage, ordered by frame then arrival;
+move/apply work shares the existing 128-per-callback command budget. Reject full
+storage without waiting, allocation or UI acknowledgement/rejection changes. Clear
+invalidates matching clear epochs; Stop All and prepare cancel deferred starts.
+Retain the reproduced volume-delay failure in build/lifecycle-owner-future-before.txt,
+FIFO/saturation/precision tests, immediate volume progress, DEL/new-clip, UI Stop All
+and zero-sample MIDI Stop cancellation, exact PCM and zero tracked new/delete.
+Neither the new owner nor timer receipts constitute a runtime notification producer,
+wall-clock scheduler, device-continuity proof or visible-meter acceptance. No package.
