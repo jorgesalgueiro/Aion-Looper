@@ -1,10 +1,73 @@
 #include "core/LoopMeterGraph.h"
+#include "core/LoopMeterObservation.h"
 #include <atomic>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
+#include <limits>
 extern thread_local bool watch;
 extern std::atomic<int> allocations;
 namespace {void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}}
+namespace {
+auto readingTuple(const aion::MeterReading& value){return std::array<double,7>{value.rms,value.peak,value.linearPeak,value.peakDb,value.rmsPercent,value.peakPercent,value.clipped?1.0:0.0};}
+void boundGraphTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u}){
+        auto engine=std::make_unique<Engine>();auto packet=std::make_unique<MeterWindowEvent>();auto view=std::make_unique<EngineView>();
+        engine->prepare(48000,81920,{true,48000,0});engine->setMonitoring(false);engine->setTarget(1);
+        engine->configureSync({SyncMode::off,120,1,4,4,false});
+        engine->enqueueLoop({LoopAction::record,19,1,engine->generation(),0,0});
+        engine->enqueueLoop({LoopAction::finish,19,2,engine->generation(),4096,0});
+        std::array<float,128> left{},right{};float* channels[]={left.data(),right.data()};
+        watch=true;
+        for(unsigned frame=0;frame<8192;frame+=block){left.fill(.8f);right.fill(.6f);engine->process(channels,2,static_cast<int>(block),{},frame<=4096);while(engine->popView(*view)){};}
+        LoopMeterGraph graph;graph.setBuffer(true);graph.startGraph();
+        LoopMeterBinding binding{engine->generation(),19,1,graph.inspect().analyser,graph.inspect().data};
+        const auto capture=[&]{
+            check(engine->requestLoopMeterWindow(19,engine->generation(),binding.ticket),"Request actual Engine PCM with a graph ticket");
+            engine->process(channels,2,static_cast<int>(block));
+            check(engine->popLoopMeterWindow(*packet),"Bound Engine reply delivered");while(engine->popView(*view)){};
+        };
+        const auto timeFor=[&]{const double now=static_cast<double>(view->frame)/view->sampleRate;return CallbackAudibleTime{now,now};};
+        capture();check(observeBoundLoopMeterWindow(graph,binding,*packet,*view,view->callbackClock,timeFor())&&graph.value().peak>.01,"Actual bound Engine window reaches the explicit graph with supplied clock");
+        const auto accepted=readingTuple(graph.value());
+        for(unsigned field=0;field<23;++field){
+            auto bad=*packet;auto wrongView=*view;auto receipt=binding;auto clock=view->callbackClock;auto time=timeFor();
+            switch(field){
+                case 0:bad.graphTicket=0;break;case 1:++bad.graphTicket;break;case 2:++receipt.ticket;break;
+                case 3:++receipt.generation;break;case 4:++receipt.data;break;case 5:++receipt.analyser;break;
+                case 6:++bad.clearEpoch;break;case 7:++bad.waveformId;break;case 8:++bad.sourceRevision;break;
+                case 9:++clock.serial;break;case 10:--bad.endFrame;break;case 11:bad.sampleRate*=2;break;
+                case 12:clock.nonRealtime=true;bad.callbackClock=wrongView.callbackClock=clock;break;
+                case 13:time.renderedTime+=1;break;case 14:time.audibleTime=std::numeric_limits<double>::quiet_NaN();break;
+                case 15:time.audibleTime=time.renderedTime+1;break;case 16:receipt.track=bad.track=20;break;
+                case 17:bad.generation=0;break;case 18:wrongView.generation=0;break;
+                case 19:clock.beginFrame=clock.endFrame;bad.callbackClock=wrongView.callbackClock=clock;break;
+                case 20:clock.hasOutputLatency=false;bad.callbackClock=wrongView.callbackClock=clock;break;
+                case 21:time.renderedTime=std::numeric_limits<double>::infinity();break;case 22:receipt.ticket=0;break;
+            }
+            check(!observeBoundLoopMeterWindow(graph,receipt,bad,wrongView,clock,time)&&readingTuple(graph.value())==accepted,"Every stale/malformed graph/source/callback/time rejection preserves the follower");
+        }
+        const auto old=*packet;
+        graph.teardown();graph.clear();graph.setBuffer(true);graph.startGraph();
+        binding={engine->generation(),19,2,graph.inspect().analyser,graph.inspect().data};
+        check(sameLoopMeterSource(old,*view)&&sameLoopMeterCallback(old,*view),"Old graph reply can still match all native source/callback fields");
+        check(!observeBoundLoopMeterWindow(graph,binding,old,*view,view->callbackClock,timeFor()),"Graph recreation cannot re-label an old queued reply even for the exact same source and callback");
+        capture();check(observeBoundLoopMeterWindow(graph,binding,*packet,*view,view->callbackClock,timeFor()),"New graph request provenance recovers with fresh callback PCM");
+        const auto analyser=binding.analyser,data=binding.data,source=packet->sourceRevision;
+        engine->enqueueLoop({LoopAction::retrigger,19,3,engine->generation(),engine->clock(),0});
+        unsigned calls=0;
+        do {capture();check(observeBoundLoopMeterWindow(graph,binding,*packet,*view,view->callbackClock,timeFor()),"Healthy RTRG keeps its graph receipt while each reply matches its current source");}
+        while(packet->sourceRevision==source&&++calls<20);
+        check(packet->sourceRevision!=source&&graph.inspect().analyser==analyser&&graph.inspect().data==data,"Source replacement never aliases or resets analyser/data identity");
+        graph.destroyGraph();const auto retained=readingTuple(graph.value());
+        check(!observeBoundLoopMeterWindow(graph,binding,*packet,*view,view->callbackClock,timeFor())&&readingTuple(graph.value())==retained,"Destroyed graphs reject queued windows without mutating history");
+        graph.teardown();check(!observeBoundLoopMeterWindow(graph,binding,*packet,*view,view->callbackClock,timeFor()),"Detached retained data is not an active graph");
+        watch=false;
+    }
+    std::cout<<"PASS: bound actual Engine meter packets, 23 atomic rejection fields, same-source old-graph rejection, fresh receipts and retained RTRG analyser at 64/128; zero tracked new/delete\n";
+}
+}
 void meterGraphTests(){
     using namespace aion;
     LoopMeterGraph graph;std::array<float,2048> samples{};samples.fill(1.25f);
@@ -42,6 +105,7 @@ void meterGraphTests(){
         const auto reading=meter.value();watch=false;
         if(block==64)baseline=reading;else check(reading.rms==baseline.rms&&reading.peak==baseline.peak&&reading.rmsPercent==baseline.rmsPercent,"Exact supplied-window graph meter 64/128 invariance");
     }
+    boundGraphTests();
     check(allocations.load()==0,"Graph lifecycle/read composition has zero tracked new/delete");
     std::cout<<"PASS: explicit meter graph lifetime, stale/short-window rejection, detached versus attached clear, stop timer requests, fresh play and supplied PCM 64/128; zero tracked new/delete\n";
 }

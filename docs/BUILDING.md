@@ -1318,3 +1318,14 @@ unavailable/stop/reprepare, old cached views, release during a wall read and fre
 recovery, at 64/128, without opening physical audio. Recheck the existing meter,
 clock, frontend/bridge reference gates and PCM audit; no package or dependency
 installation is needed. This is not a new xrun detector or visible-meter gate.
+
+Generation-bound graph requests use the same existing portable/native targets.
+Rebuild all portable probes/tests after Engine.h/MeterTransfer.h changes; run
+the full core CTest suites on Windows and Ubuntu, the six focused core/meter/
+clock gates under ASan/UBSan, and the existing PCM audit. Rebuild the native
+processor test and Standalone wrappers, then rerun their two SDK/processor gates.
+No new CMake target, runtime dependency, plugin-format package or installation
+is required. The new atomic request word requires always-lock-free uint64_t
+atomics and deliberately has no locking fallback. Graph ticket/receipt tests
+use controlled explicit graph notifications and supplied clock results; they do
+not establish real native graph-start window initialisation or physical timing.

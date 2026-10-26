@@ -314,3 +314,18 @@ an old numeric stamp can remain mathematically valid while the production
 reader must reject it. This distinction prevents historical availability being
 used as a live-device flag. Physical output continuity and xrun handling remain
 separate; no inferred dropout threshold or new JS/UI policy is introduced.
+
+Graph request provenance (26 October 2026): sourceRevision, waveformId and an
+exact callback match can all remain valid for an old graph's queued response.
+Retain that counterexample: only a new graph ticket distinguishes it. Bind each
+reply to the explicit current graph receipt and coherent source/view/clock tuple
+before invoking unchanged LoopMeterGraph/MeterFollower code. Do not reset
+analyser history for healthy retrigger source revisions. A zero graph ticket is
+the legacy diagnostic path and cannot satisfy a bound graph observation.
+Retain atomic generation/ticket coalescing, request-during-fill, seven-packet
+saturation/recapture, reset, full-width words, 4000 real-owner exchanges with
+bound/unbound requests and exact passive Engine PCM at 8/48 kHz and 64/128.
+Observation tests use actual Engine packets with supplied clock results and 23
+malformed/stale cases; they do not certify new graph window reset timing or a
+physical/native audible clock. Keep all unchanged-JS graph/window/meter/clock
+oracles and their original tolerances. No UI/IPC binding or package is enabled.

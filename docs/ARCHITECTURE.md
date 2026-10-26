@@ -1466,3 +1466,25 @@ default production acquisition uses JUCE's high-resolution counter throughout.
 The API has controlled native callers; UI/IPC remain unbound. Its guarantee is
 the processor's prepare/release lifecycle, not proof of a physically running
 device, output FIFO continuity, xrun recovery or graph/PCM freshness.
+
+Meter request provenance now has a generation-bound overload. The message owner
+issues a nonzero 32-bit graph ticket, never reusing it for another graph within
+one Engine generation. One lock-free 64-bit word carries generation/ticket
+together; the existing bit mask is only a wake hint. Audio claims that word
+before capture. A request arriving during fill cannot re-tag the current event;
+an unpublished queue-full request can coalesce to a newer ticket and must
+recapture current PCM. Empty late wake hints do not duplicate a consumed request.
+Prepare cancels pending words without resetting SPSC queue ownership. Legacy
+diagnostic requests remain unbound and their replies carry graphTicket zero.
+
+LoopMeterObservation.h composes an explicit LoopMeterBinding receipt with the
+existing source and exact callback guards. Only an attached, active graph with
+matching generation/track/ticket/analyser/data accepts a committed window and
+its paired supplied audible-time observation. Invalid packets leave follower
+history untouched. A healthy source retrigger retains graph/analyser identity;
+new graph receipts cannot reuse old queued PCM even when native source and
+callback fields still match. Tickets certify request provenance only, not graph
+creation or zero-prefix initialisation of its native analyser window. Explicit
+native graph notifications/window resets, original cleanup timer delivery,
+device continuity, current view/clock pairing and renderer integration remain
+separate requirements before visible metering can be enabled.

@@ -74,6 +74,9 @@ public:
     bool popLiveInput(LiveInputEvent& event) noexcept {return liveInput->pop(event);}
     // Message owner only. On-request raw telemetry, not enabled visible metering.
     bool requestLoopMeterWindow(std::uint32_t track) noexcept {return meterTransfer->request(track);}
+    bool requestLoopMeterWindow(std::uint32_t track,std::uint32_t requestedGeneration,std::uint32_t graphTicket) noexcept {
+        return requestedGeneration==generation()&&meterTransfer->request(track,requestedGeneration,graphTicket);
+    }
     bool popLoopMeterWindow(MeterWindowEvent& event) noexcept {return meterTransfer->pop(event,generation());}
     bool popWaveform(WaveformEvent& event) noexcept {return waveforms->pop(event);}
     bool popView(EngineView& view) noexcept { return views->pop(view); }

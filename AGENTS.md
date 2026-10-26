@@ -1111,3 +1111,21 @@ processor lifecycle boundary, not a physical running-device/xrun signal. Do not
 add driver polling or infer FIFO continuity from getXRunCount or callback jitter;
 backend evidence and graph/renderer freshness remain required before enabling
 visible meters. Preserve original UI and defer packages until feature acceptance.
+
+Graph request provenance: carry nonzero generation/ticket in one always-lock-free
+uint64 atomic word per track; never recycle a ticket for another graph within a
+generation. The request mask is only a wake hint: skip empty claimed words rather
+than publishing a duplicate. Keep claimed tickets immutable through fill, retain
+pending words on queue-full and recapture current PCM when coalescing a newer
+request. Reset cancels pending words without resetting SPSC ownership. Legacy
+requests/replies have graphTicket zero and are not bound graph observations.
+Before observing, match explicit graph analyser/data, ticket, generation/track,
+current coherent source and exact callback/clock; reject without follower edits.
+Keep the same-source/same-callback old-graph counterexample, 23 hostile cases,
+4000 bound/unbound owner exchanges, seven-packet saturation, 20-track fairness,
+generation/reset and exact passive 64/128 PCM/zero-allocation gates. Tickets do
+not establish native graph creation/window reset or timer delivery. Do not map
+sourceRevision directly to analyser identity or infer graph transitions only
+from snapshots; healthy retriggers retain graph history. Explicit native graph
+notifications/zero-prefix windows, device continuity, coherent live clock pairing
+and renderer acceptance remain required before visible meters or packaging.

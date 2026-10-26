@@ -5543,3 +5543,57 @@ rebuilt artifacts; verifies unchanged core/processBlock, original policies,
 SDK/generated hooks, other-format binaries and separate user logo; and records
 prior full-suite evidence distinctly from this increment's targeted checks.
 No package/version bump or new GUI/DAW/physical/Apple acceptance is claimed.
+
+### Generation-bound meter graph requests (26 October 2026)
+
+MeterTransfer now carries an optional nonzero graph ticket with its requested
+Engine generation in one always-lock-free uint64 atomic word per track. The
+existing request bit mask is only a wake hint. Audio claims a request before
+filling PCM; a newer request during fill cannot re-tag that old event. Pending
+queue-full requests may coalesce, but recovery recaptures current PCM rather
+than relabelling an old scratch buffer. Reset cancels pending words without
+changing queue ownership. Old-generation requests are dropped before fill;
+legacy diagnostic replies explicitly retain graphTicket zero. The existing
+seven usable slots, two-window copy limit and twenty-track fairness remain.
+
+LoopMeterBinding/observeBoundLoopMeterWindow compose explicit current graph
+identity and request provenance with existing source and exact callback guards
+before invoking unchanged follower code. Native sourceRevision is not an
+analyser identity. The decisive actual-Engine counterexample keeps the same
+source and exact callback after explicit graph teardown/recreation: both old
+native identity helpers still match, but the new graph ticket rejects the reply.
+A fresh bound response recovers; healthy native RTRG changes sourceRevision while
+retaining analyser/data identity and history. Twenty-three stale/malformed
+graph/source/view/callback/time cases reject without changing the meter value.
+
+Transfer tests cover coalescing, a request crossing fill, immutable full-queue
+tickets, fresh recapture after saturation, stale generation/reset, all generation
+and ticket bits, and 4000 real-owner exchanges alternating bound/unbound requests.
+Actual paired Engines at 8/48 kHz and 64/128 carry exact tickets with identical
+stereo PCM and current windows/metadata; both owners retain zero tracked
+new/delete. Graph composition uses actual Engine packets with supplied clock
+results, not a physical/native output timestamp. Existing original-JS graph,
+window, meter and clock oracles and tolerances remain unchanged.
+
+Tickets certify request provenance only. They do not initialise a new native
+analyser window, derive graph transitions from snapshots, deliver the original
+25/50ms cleanup timers, establish device continuity or enable a renderer.
+Explicit graph notification/window-reset mapping and live source/view/clock
+pairing remain required. The receipt issuer must not reuse a ticket for another
+graph during one Engine generation. No UI/IPC metering or package is enabled.
+
+Validation passes: full portable suites 28/28 on Windows and Ubuntu; ASan/UBSan
+core/meter/clock gates 6/6; rebuilt native processor and Standalone targets on
+both systems; native SDK/processor gates 2/2 per host, including all 18 linked
+real-manager blocks without skips. PCM audit passes 126 cases/965,826 samples,
+maximum absolute error 7.394757495227111e-08 at the unchanged 1e-6 tolerance,
+within its existing committed capture/OD/SUB scope. No tolerance or preserved
+source was changed to obtain these results.
+
+Evidence: build/graph-ticket-full-{windows,linux}.txt,
+build/graph-ticket-asan.txt, build/graph-ticket-native-{windows,linux}.txt,
+their build logs, build/graph-ticket-audio.json and build/graph-ticket-evidence.json.
+The manifest hashes changed sources, test logs and rebuilt artifacts, and checks
+unchanged audio/DSP/processor/graph policies, SDK/generated hooks, original JS,
+other-format binaries and separate user logo. No new physical controller, DAW,
+GUI, native graph-notification or Apple acceptance is inferred.

@@ -27,9 +27,38 @@ void coherent(const aion::MeterWindowEvent& event){
     for(unsigned i=0;i<event.samples.size();++i)
         check(event.samples[i]==static_cast<float>((event.endFrame%10000)*2048+event.track*32+i),"Meter packet PCM not torn/reused");
 }
+void ticketTests(){
+    using namespace aion;
+    auto transfer=std::make_unique<MeterTransfer>();auto event=std::make_unique<MeterWindowEvent>();
+    watch=true;
+    check(!transfer->request(20,5,1)&&!transfer->request(0,0,1)&&!transfer->request(0,5,0),"Bound request requires valid track, generation and nonzero graph ticket");
+    transfer->request(19,5,1);transfer->request(19,5,2);
+    transfer->publish(5,100,48000,fill);
+    check(transfer->pop(*event,5)&&event->graphTicket==2&&event->endFrame==100,"Newest unpublished graph request coalesces atomically");coherent(*event);
+    unsigned fills=0;
+    transfer->request(19,4,3);transfer->publish(5,200,48000,[&](unsigned id,MeterWindowEvent& e){++fills;fill(id,e);});
+    check(!fills&&!transfer->pop(*event,5),"Old-generation bound requests cannot be relabelled by a fresh producer");
+    // A request crossing the PCM fill must not re-tag the in-flight old event.
+    transfer->request(19,5,3);
+    transfer->publish(5,300,48000,[&](unsigned id,MeterWindowEvent& e){fill(id,e);transfer->request(id,5,4);});
+    check(transfer->pop(*event,5)&&event->graphTicket==3&&event->endFrame==300,"In-flight reply retains claimed ticket when a new graph requests during fill");
+    transfer->publish(5,400,48000,fill);check(transfer->pop(*event,5)&&event->graphTicket==4&&event->endFrame==400,"Crossed request gets freshly captured PCM on its next reply");coherent(*event);
+    transfer->publish(5,500,48000,fill);check(!transfer->pop(*event,5),"Wake hints cannot duplicate a consumed request");
+    for(unsigned id=0;id<7;++id){transfer->request(id,5,id+10);transfer->publish(5,600+id,48000,fill);}
+    transfer->request(19,5,100);transfer->publish(5,700,48000,fill); // Queue full: retain request, not scratch PCM.
+    transfer->request(19,5,101);
+    for(unsigned id=0;id<7;++id){check(transfer->pop(*event,5)&&event->track==id&&event->graphTicket==id+10,"Saturated queue preserves immutable original tickets");coherent(*event);}
+    transfer->publish(5,800,48000,fill);check(transfer->pop(*event,5)&&event->graphTicket==101&&event->endFrame==800,"Saturation recovery coalesces a new graph and recaptures current PCM");coherent(*event);
+    transfer->request(19,5,102);transfer->reset();transfer->publish(6,0,8000,fill);check(!transfer->pop(*event,6),"Reset cancels bound pending requests without resetting queue ownership");
+    transfer->request(19,~0u,~0u);transfer->publish(~0u,900,48000,fill);check(transfer->pop(*event,~0u)&&event->graphTicket==~0u,"Full-width generation and ticket preserve all bits");
+    transfer->request(19);transfer->publish(7,1000,48000,fill);check(transfer->pop(*event,7)&&!event->graphTicket,"Legacy diagnostic requests remain explicitly unbound");
+    watch=false;
+    std::cout<<"PASS: graph-ticket coalescing, fill interleaving, saturation recapture, generation/reset rejection and full-width request words; zero tracked new/delete\n";
+}
 }
 void meterTransferTests(){
     using namespace aion;
+    ticketTests();
     auto transfer=std::make_unique<MeterTransfer>();
     auto event=std::make_unique<MeterWindowEvent>();
     watch=true;
@@ -76,9 +105,10 @@ void meterTransferTests(){
     std::thread consumer([&]{
         auto received=std::make_unique<MeterWindowEvent>();watch=true;
         for(unsigned n=0;n<4000;++n){
-            const auto id=n%20;threaded->request(id);
+            const auto id=n%20;const auto ticket=n%2?n+1:0;
+            if(ticket)threaded->request(id,7,ticket);else threaded->request(id);
             while(!threaded->pop(*received,7))std::this_thread::yield();
-            check(received->track==id&&received->sampleRate==96000,"Concurrent meter request owner/rate");coherent(*received);
+            check(received->track==id&&received->sampleRate==96000&&received->graphTicket==ticket,"Concurrent meter request owner/rate/graph ticket");coherent(*received);
         }
         watch=false;done.store(true,std::memory_order_release);
     });
@@ -106,9 +136,14 @@ void meterTransferTests(){
             // Finish deterministically on the worker, then verify the nonzero
             // playback/transfer path with ordinary nonblocking live callbacks.
             const bool offline=offset<=4096;
-            watch=true;a->requestLoopMeterWindow(19);a->process(ac,2,static_cast<int>(block),{},offline);b->process(bc,2,static_cast<int>(block),{},offline);
+            const auto ticket=offset/block%2?offset/block+1:0;
+            watch=true;
+            check(!a->requestLoopMeterWindow(19,a->generation()+1,1),"Actual Engine rejects foreign generation requests");
+            if(ticket)check(a->requestLoopMeterWindow(19,a->generation(),ticket),"Actual Engine accepts a bound graph request");else a->requestLoopMeterWindow(19);
+            a->process(ac,2,static_cast<int>(block),{},offline);b->process(bc,2,static_cast<int>(block),{},offline);
             a->copyLoopMeterWindow(19,raw);
             check(a->popLoopMeterWindow(*observation),"Engine requested packet delivered");
+            check(observation->graphTicket==ticket,"Actual Engine carries exact bound/unbound graph provenance");
             const auto view=a->inspectAudioThread(19);
             check(observation->samples==raw&&observation->endFrame==offset+block&&observation->endFrame==view.frame&&observation->sampleRate==rate&&observation->generation==a->generation()&&observation->track==19&&observation->clearEpoch==view.track.clearEpoch&&observation->waveformId==view.track.waveformId&&observation->sourceRevision==view.track.sourceRevision,"Real PCM/clip identity/frame stamp is one coherent callback observation");
             check(al==bl&&ar==br,"Request/pop meter transfer is passive for exact stereo PCM");watch=false;
