@@ -5422,3 +5422,30 @@ No package/version bump or automatic audible clock, graph/IPC/renderer is enable
 Raw acquisition now observes JUCE's enclosing AudioIODevice callback, not an OS
 driver interrupt or DAC timestamp. Drift/xruns, audible selection, visible meters
 and physical acceptance remain unfinished.
+
+### WSL ALSA sequencer enabled (26 October 2026)
+
+The earlier missing-sequencer limitation above is resolved on this machine.
+Installed alsa-utils and built the matching official Microsoft WSL
+linux-msft-wsl-6.18.54.1 kernel with SND_SEQUENCER, SND_SEQ_MIDI,
+SND_SEQ_MIDI_EVENT and SND_SEQ_DEVICE as modules. The active release is
+6.18.54.1-microsoft-standard-WSL2-aion-midi. Matching modules and headers were
+staged using Microsoft's artifact VHDX generator; module vermagic, artifact
+SHA256 hashes and the image filesystem check pass. Activation followed explicit
+user approval for the global WSL restart, with configuration backup/rollback.
+
+Normal user jorge now belongs to audio; /dev/snd/seq is a real character device
+(root:audio, 0660), and unprivileged aconnect -l succeeds with the kernel System
+Timer/Announce ports. A dedicated modules-load.d entry loads snd-seq at startup.
+
+Without rebuilding or changing application/test sources, native SDK generation
+and processor gates pass 2/2 in build/alsa-midi-native-linux.txt. The processor
+test now actually runs and passes all 18 linked production AudioDeviceManager
+blocks at 64/128, alongside the 144 original/instrumented splitter callbacks.
+There is no missing-sequencer skip or JUCE assertion in this run. The old failed
+and skipped logs remain intact. Evidence: build/alsa-midi-environment.json.
+
+This establishes the synthetic-device manager fixture on Linux and real ALSA
+sequencer access, not physical USB MIDI, expression-pedal response, hardware
+audio timing, visible meters or new DAW/platform acceptance. No application
+package, version bump or UI change was made.
