@@ -11,6 +11,15 @@ struct LoopMeterBinding {
     std::uint32_t generation=0,track=0,ticket=0;
     std::uint64_t analyser=0,data=0;
 };
+// Message owner only. Calculate into fixed-size local state and commit only
+// while evidence is still current. No allocation/wait and no audio-thread copy.
+template<class Current,class Observe>
+bool commitLoopMeterObservation(LoopMeterGraph& graph,Current&& current,Observe&& observe) noexcept {
+    if(!current())return false;
+    auto candidate=graph;
+    if(!observe(candidate)||!current())return false;
+    graph=candidate;return true;
+}
 // Compose existing graph, PCM/source and exact callback guards. This only
 // observes an active, attached graph. Inactive/silence observations and original
 // timer delivery remain explicit owner operations. A request ticket proves

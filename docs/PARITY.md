@@ -432,3 +432,15 @@ full-width generation/tickets, unconsumed replacement/clear invalidation, invali
 queries, prepare and 4000 concurrent producer/consumer start/clear exchanges.
 Existing raw-window, source/RTRG, loss-latch, original-JS lifecycle and PCM parity
 gates remain required. No original JS, tolerance or UI change is part of this fix.
+
+### Observation rollback before clear-event consumption (26 October 2026)
+
+A retained owner now rejects a suspended-context observation after normal DEL
+before event consumption, preserving all seven follower readings. Both observation
+paths calculate into a candidate and revalidate before commit. The 64/128 fixture
+uses actual recorded clipped PCM and drives actual paired Engine DEL at the final
+guard query. Rejection preserves subsequent hidden-history, peak-hold, clip-expiry
+and decay behavior against an untouched reference trajectory. Additional cases
+reject before calculation, reject failed calculation and accept healthy commit.
+The unchanged original-JS lifecycle oracle remains at 377 supplied observations;
+no new full-field 377-observation owner claim or physical timing claim is made.

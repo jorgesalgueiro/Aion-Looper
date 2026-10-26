@@ -48,9 +48,26 @@ void clearFreshnessOwnerTests(){
         check(owner.value().clipped&&owner.value().peak>=1,"Actual clipped PCM establishes nonzero retained history");*saved=*view;
         const auto before=readingTuple(owner.value());const double time=static_cast<double>(saved->frame)/48000;
         MeterGraphEvent event;while(engine->popMeterGraphEvent(event)){};
-        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::clear,19,10,e->generation(),0,0});cycle();
+        // Place actual audio DEL at the commit recheck deterministically.
+        // Candidate clocks are supplied policy inputs, not hardware evidence.
+        LoopMeterGraph transaction;transaction.setBuffer(true);transaction.startGraph();
+        check(transaction.observe(packet->samples,transaction.inspect().data,time,time,engine->generation(),true),"Seed transactional follower from actual captured PCM");
+        auto baseline=transaction;unsigned checks=0;
+        check(!commitLoopMeterObservation(transaction,[&]() noexcept {
+            if(++checks==2){for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::clear,19,10,e->generation(),0,0});cycle();}
+            return engine->loopMeterGraphCurrent(engine->generation(),19,owner.binding().ticket);
+        },[&](LoopMeterGraph& candidate) noexcept {return candidate.observe(packet->samples,candidate.inspect().data,time+.25,time+.25,engine->generation(),true);})
+            &&checks==2&&readingTuple(transaction.value())==readingTuple(baseline.value()),"Actual DEL at commit recheck discards candidate observation atomically");
+        transaction.teardown();baseline.teardown();
+        for(unsigned n=0;n<240;++n){const double now=time+.01*n;
+            transaction.observe({},0,now,now,engine->generation(),true);baseline.observe({},0,now,now,engine->generation(),true);
+            check(readingTuple(transaction.value())==readingTuple(baseline.value()),"Rejected candidate leaves hidden history, hold/clip deadlines and future decay unchanged");}
+        unsigned updates=0;check(!commitLoopMeterObservation(transaction,[]() noexcept {return false;},[&](LoopMeterGraph&) noexcept {++updates;return true;})&&updates==0,"Invalid precheck never calculates a candidate");
+        const auto prior=transaction.inspect();check(!commitLoopMeterObservation(transaction,[]() noexcept {return true;},[](LoopMeterGraph& candidate) noexcept {candidate.clear();return false;})&&transaction.inspect().data==prior.data&&readingTuple(transaction.value())==readingTuple(baseline.value()),"Failed candidate calculation cannot leak graph or follower edits");
+        check(commitLoopMeterObservation(transaction,[]() noexcept {return true;},[](LoopMeterGraph& candidate) noexcept {candidate.clear();return true;})&&transaction.inspect().state==MeterLoopState::empty,"Healthy double-checked observation commits candidate state");
         check(engine->meterGraphEventsCurrent(),"Normal DEL has no event loss");
         check(!owner.observe(*packet,*saved,saved->callbackClock,{time,time})&&readingTuple(owner.value())==before,"Normal DEL must reject retained coherent PCM before its event is consumed");
+        check(!owner.observeUnavailable(time+1,time+1,engine->generation(),false)&&readingTuple(owner.value())==before,"Normal DEL must reject suspended-context observation before consuming clear");
         bool cleared=false;while(engine->popMeterGraphEvent(event))if(event.track==19&&event.kind==MeterGraphEventKind::cleared)cleared=true;
         check(cleared&&engine->meterGraphEventsCurrent()&&!owner.observe(*packet,*saved,saved->callbackClock,{time,time})&&readingTuple(owner.value())==before,"Consuming DEL cannot revive the old graph window");
         check(owner.clear()&&owner.value().peak==0,"Explicit attached clear resets the original meter state");
@@ -65,7 +82,7 @@ void clearFreshnessOwnerTests(){
         check(engine->meterGraphEventsCurrent()&&owner.observe(*packet,*saved,saved->callbackClock,{fresh,fresh})&&readingTuple(owner.value())==retained,"Unrelated track clear preserves this graph identity");
         watch=false;
     }
-    std::cout<<"PASS: normal DEL rejects retained coherent PCM before/after event consumption, same-generation new graph recovery and unrelated-track isolation at 64/128 with identical PCM; zero tracked new/delete\n";
+    std::cout<<"PASS: transactional observation and normal DEL reject retained PCM/suspended reads before/after event consumption, same-generation new graph recovery and unrelated-track isolation at 64/128 with identical PCM; zero tracked new/delete\n";
 }
 void lostEventOwnerTests(){
     using namespace aion;

@@ -73,18 +73,22 @@ public:
             &&engine.requestLoopMeterWindow(id,generation,receipt.ticket);
     }
     bool observe(const MeterWindowEvent& packet,const EngineView& view,const CallbackClockStamp& clock,CallbackAudibleTime time) noexcept {
-        return observable()&&engine.loopMeterGraphCurrent(generation,id,receipt.ticket)&&observeBoundLoopMeterWindow(graph,receipt,packet,view,clock,time);
+        return commitLoopMeterObservation(graph,
+            [&]() noexcept {return observable()&&engine.loopMeterGraphCurrent(generation,id,receipt.ticket);},
+            [&](LoopMeterGraph& candidate) noexcept {return observeBoundLoopMeterWindow(candidate,receipt,packet,view,clock,time);});
     }
     // Explicit message-owner observation when the original main-loop gate would
     // not read an analyser. Supplied context/audible clocks only; never infer a
     // stopped device from missing PCM or use this to conceal a stale packet.
     bool observeUnavailable(double now,double playbackTime,std::uint64_t context,bool running) noexcept {
-        if(!observable()||!std::isfinite(now)||!std::isfinite(playbackTime))return false;
+        if(!std::isfinite(now)||!std::isfinite(playbackTime))return false;
         const auto identity=graph.inspect();
         const bool needsWindow=running&&context&&LoopMeterGraph::activeState(identity.state)
             &&identity.present&&!identity.destroyed&&identity.analyser&&identity.data;
         if(needsWindow)return false; // A live attached graph must take the bound PCM path.
-        return graph.observe({},0,now,playbackTime,context,running);
+        return commitLoopMeterObservation(graph,
+            [&]() noexcept {return observable()&&(!receipt.ticket||engine.loopMeterGraphCurrent(generation,id,receipt.ticket));},
+            [&](LoopMeterGraph& candidate) noexcept {return candidate.observe({},0,now,playbackTime,context,running);});
     }
     LoopMeterGraphView inspect() const noexcept {return graph.inspect();}
     const MeterReading& value() const noexcept {return graph.value();}

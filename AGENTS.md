@@ -1226,3 +1226,17 @@ paired 64/128 stereo PCM and zero tracked new/delete. Keep the pre-fix failure i
 build/clear-owner-before.txt. Requests may precede actual reset acknowledgement;
 only observing requires current accepted ownership. Rebuild existing native
 processor/Standalone targets after these core header changes; no package yet.
+
+Transactional meter observations: calculate a fixed-size LoopMeterGraph candidate
+on the message owner, then commit only if both the initial and final evidence
+checks succeed. Failed calculation or postcheck must not edit follower history,
+peak/clip deadlines or graph state. Both bound PCM and explicit unavailable reads
+use this path. While a receipt is attached, unavailable/suspended observations
+must also match the current audio-owned window ticket; a pending normal DEL must
+not be converted into silence before owner clear handling. Detached receipt-zero
+silence remains supported. Preserve the suspended-after-DEL pre-fix failure in
+build/observation-commit-before.txt and deterministic actual-DEL-at-postcheck,
+future history/hold/decay rollback, precheck/candidate failure and healthy commit
+cases at 64/128 with exact paired PCM/zero tracked new/delete. The fixed-size copy
+is message-thread work, never an audio callback. This is not event dispatch,
+timer scheduling, device continuity or renderer acceptance; no package yet.

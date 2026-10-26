@@ -5912,3 +5912,61 @@ overlap PCM, coherent live clock/renderer pairing and GUI/DAW/hardware/Apple
 acceptance remain unfinished. No original UI or audio sample algorithm change,
 package, dependency/version change or remote push. Only existing native processor
 and Standalone targets were rebuilt; user's logo edit remains separate and unchanged.
+
+### Transactional owner observations and suspended-after-DEL rejection — 26 October 2026
+
+Base: local `918f909`. Reproduced another observation-path gap: after normal DEL,
+with its event unconsumed and stream healthy, the active PCM path rejected old
+ownership but a supplied suspended-context observation still changed the old
+follower. The pre-fix executable failed with
+`Normal DEL must reject suspended-context observation before consuming clear`
+in `build/observation-commit-before.txt`.
+
+While a receipt remains attached, explicit unavailable observations now also
+require its current audio-owned window identity. Both observation paths calculate
+into a fixed-size local LoopMeterGraph candidate and commit only after a second
+evidence check. A rejected precheck, failed calculation or detected invalidation
+at the postcheck leaves the original graph/follower untouched. Explicit detached
+receipt-zero silence remains supported. Copying is message-owner work; no audio
+callback copy, allocation, wait, device query or timer was introduced.
+
+The new deterministic fixture seeds from actual recorded clipped PCM, calculates
+a candidate under supplied policy clocks, then executes actual paired Engine DEL
+at the second guard query. It checks rejection and compares subsequent hidden
+history, peak/clip deadlines and decay with an untouched reference trajectory.
+This places a specific invalidation interleaving; it is not a physical timing or
+exhaustive concurrency claim. Additional cases reject before calculation, reject
+failed calculation and accept healthy commit. All actual paired Engine stereo
+PCM remains bit-identical at 64/128 with zero tracked callback new/delete.
+
+Final current gates:
+
+- Windows targeted realtime/clock/meter **6/6**, 102.21s:
+  `build/observation-commit-ctest-windows.txt`.
+- Ubuntu same suite **6/6**, 57.55s:
+  `build/observation-commit-ctest-linux.txt`.
+- ASan/UBSan same suite **6/6**, 184.82s:
+  `build/observation-commit-ctest-asan.txt`.
+- Committed PCM **126 cases / 965,826 samples**, maximum error
+  **7.394757495227111e-8**, unchanged **1e-6** tolerance:
+  `build/observation-commit-audio.json`. Capture/OD/SUB scope excludes playback
+  envelopes, browser resampling, latency compensation and sync.
+- Original UI byte identity, deterministic embedding and tamper rejection:
+  `build/observation-commit-assets.txt`.
+- Original-JS graph oracle and seven-field owner lifecycle comparison remain
+  unchanged, including 377 supplied lifecycle observations.
+
+Only owner/observation headers and the test changed under source/tests; they still
+have no production caller. The full portable **28/28** and native **2/2** per OS
+are preserved `918f909` baseline gates, not rerun here. Native binaries, SDK hooks,
+other-format artifacts and the separate logo edit remain byte-identical. Evidence
+writer `build/WriteObservationCommitEvidence.py` verifies these hashes plus current
+source/log/PCM/asset hashes and the pre-fix failure, producing
+`build/observation-commit-evidence.json`.
+
+Limits: the final guard is the observation's acceptance point and cannot prevent
+later audio transitions. It does not dispatch events, implement cleanup timers,
+prove current physical delivery/device continuity or establish coherent live
+renderer pairing. Production playback/buffer/stop wiring, per-graph overlap PCM
+and GUI/DAW/hardware/Apple acceptance remain unfinished. No original UI change,
+package, version/dependency change or remote push.

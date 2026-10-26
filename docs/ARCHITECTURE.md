@@ -1664,3 +1664,29 @@ This identity describes raw-window reset/clear only. It does not infer JS graph
 creation from native source revisions, assert fresh device delivery or implement
 the full playback/buffer/stop notification consumer. Cleanup timers, graph-specific
 overlap PCM and live renderer/device-continuity acceptance remain unfinished.
+
+### Transactional meter observation commit (26 October 2026)
+
+The suspended-context no-window path also needs current-window validation while
+an analyser receipt is attached. A new pre-fix counterexample executes normal
+DEL, keeps its event unconsumed, then supplies suspension: the active PCM path
+rejects but the old unavailable path resets/mutates the retained follower. It now
+rejects until the owner handles the clear or otherwise receives valid lifecycle
+notifications. Explicitly detached receipt-zero observations retain their original
+silence behavior.
+
+`commitLoopMeterObservation` first checks evidence, calculates into a fixed-size
+local graph/follower candidate, checks evidence again and commits only on success.
+Both bound PCM and unavailable observations use it. No graph/follower field is
+committed after a failed calculation or detected invalidation. This optimistic
+check has its acceptance point at the final query; it does not stop later audio
+transitions or certify device continuity. No allocation, wait or audio-thread
+copy is introduced. The helper and owner still have no production caller.
+
+The regression places actual Engine DEL at the second guard query deterministically,
+checks candidate rejection, then compares subsequent silence history/hold/clip/
+decay with an untouched reference trajectory. Supplied candidate times are policy
+inputs, not hardware timing evidence. Ordinary JUCE Timer callbacks run on the
+[message thread and may be delayed](https://docs.juce.com/master/classjuce_1_1Timer.html),
+so future event dispatch/cleanup must preserve these validity checks rather than
+assuming timer delivery and audio mutation are simultaneous.
