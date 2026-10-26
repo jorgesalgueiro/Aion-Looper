@@ -11,6 +11,39 @@ extern std::atomic<int> allocations;
 namespace {void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}}
 namespace {
 auto readingTuple(const aion::MeterReading& value){return std::array<double,7>{value.rms,value.peak,value.linearPeak,value.peakDb,value.rmsPercent,value.peakPercent,value.clipped?1.0:0.0};}
+void lostEventOwnerTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u}){
+        auto engine=std::make_unique<Engine>(),control=std::make_unique<Engine>();auto packet=std::make_unique<MeterWindowEvent>();auto view=std::make_unique<EngineView>(),saved=std::make_unique<EngineView>();
+        for(auto* e:{engine.get(),control.get()}){e->prepare(48000,81920,{true,48000,0});e->configureSync({SyncMode::off,120,1,4,4,false});e->setMonitoring(false);e->setTarget(1);e->enqueueLoop({LoopAction::record,19,1,e->generation(),0,0});e->enqueueLoop({LoopAction::finish,19,2,e->generation(),4096,0});}
+        std::array<float,128> l{},r{},cl{},cr{};float* channels[]={l.data(),r.data()},*cc[]={cl.data(),cr.data()};
+        const auto cycle=[&](bool offline=false){for(unsigned i=0;i<block;++i)l[i]=r[i]=1.8f*std::sin((engine->clock()+i)*.037);cl=l;cr=r;engine->process(channels,2,static_cast<int>(block),{},offline);control->process(cc,2,static_cast<int>(block),{},offline);check(l==cl&&r==cr,"Lost meter events preserve bit-identical paired Engine PCM");while(engine->popView(*view)){};};
+        for(unsigned n=0;n<8192/block;++n)cycle(true);
+        LoopMeterLifecycle owner(*engine,19);owner.setBuffer(true);check(owner.start(engine->clock()),"Create owner before notification loss");
+        watch=true;
+        for(unsigned n=0;n<2048/block;++n){check(owner.request(),"Healthy owner requests actual PCM");cycle();check(engine->popLoopMeterWindow(*packet),"Healthy actual PCM reply");const double t=static_cast<double>(view->frame)/48000;check(owner.observe(*packet,*view,view->callbackClock,{t,t}),"Healthy actual window establishes owner history");}
+        check(owner.value().clipped&&owner.value().peak>=1,"Actual clipped PCM establishes nonzero retained history");*saved=*view;
+        const auto before=readingTuple(owner.value());const double time=static_cast<double>(saved->frame)/48000;
+        MeterGraphEvent event;while(engine->popMeterGraphEvent(event)){};
+        for(unsigned n=0;n<255;++n)for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({LoopAction::clear,0,10+n,e->generation(),0,0}),"Fill notification storage without clearing observed loop");
+        cycle();cycle();check(engine->meterGraphEventsCurrent(),"Full event storage has not yet lost a notification");
+        for(auto* e:{engine.get(),control.get()}){e->enqueueLoop({LoopAction::clear,19,300,e->generation(),0,0});e->enqueueLoop({LoopAction::volume,19,301,e->generation(),0,.4});}cycle();
+        check(!engine->meterGraphEventsCurrent()&&view->lastRequestId==301&&!view->rejected&&view->tracks[19].volume==.4f,"Actual DEL is lost while ordinary UI controls continue");
+        check(!owner.observe(*packet,*saved,saved->callbackClock,{time,time})&&readingTuple(owner.value())==before,"Lost lifecycle events must reject a retained coherent PCM/view/clock without follower mutation");
+        check(!owner.request(),"Lost lifecycle stream rejects further owner PCM requests");
+        check(owner.stop(time),"Explicit stop metadata remains usable after telemetry loss");const auto timer=owner.cleanupRequest();
+        const auto binding=owner.binding();const auto graph=owner.inspect();
+        check(!owner.start(engine->clock())&&owner.binding().ticket==binding.ticket&&owner.inspect().analyser==graph.analyser&&owner.cleanupRequest()==timer,"Lost stream rejects graph-start candidate without ticket or timer mutation");
+        check(owner.deliverCleanup(timer),"Explicit cleanup must not be stranded by telemetry loss");
+        check(!owner.observeUnavailable(time+2,time+2,engine->generation(),true)&&readingTuple(owner.value())==before,"Loss cannot be converted to a silent observation or expire held history");
+        while(engine->popMeterGraphEvent(event)){};
+        check(!owner.reset()&&!owner.request()&&!owner.observeUnavailable(0,0,0,false)&&readingTuple(owner.value())==before,"Queue drain and same-generation reset cannot revive a lost owner");
+        check(owner.clear()&&readingTuple(owner.value())==before,"Explicit detached clear retains original follower history even after notification loss");
+        watch=false;for(auto* e:{engine.get(),control.get()})e->prepare(48000,81920);watch=true;
+        check(!owner.observeUnavailable(0,0,0,false)&&owner.reset()&&owner.observeUnavailable(0,0,0,false),"Fresh prepare plus explicit owner reset recovers unavailable observations");watch=false;
+    }
+    std::cout<<"PASS: owner rejects retained coherent PCM after actual lost DEL, blocks request/start/silence through drain, preserves cleanup and prepare recovery at 64/128 with exact PCM; zero tracked new/delete\n";
+}
 void unavailableOwnerTests(){
     using namespace aion;
     for(unsigned block:{64u,128u}){
@@ -332,6 +365,7 @@ void meterGraphTests(){
         if(block==64)baseline=reading;else check(reading.rms==baseline.rms&&reading.peak==baseline.peak&&reading.rmsPercent==baseline.rmsPercent,"Exact supplied-window graph meter 64/128 invariance");
     }
     boundGraphTests();
+    lostEventOwnerTests();
     unavailableOwnerTests();
     graphEventTests();
     deferredStartTests();

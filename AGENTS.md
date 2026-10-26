@@ -1198,3 +1198,16 @@ all-seven-field reference-graph equality, audible delay/hold/clip expiry, twelve
 state gates, missing/suspended/destroyed context, nonfinite clock rejection and
 prepare-stale owner tests. Context/time are supplied model inputs, not backend
 suspension/continuity evidence. No production caller or renderer is enabled yet.
+
+Lost-event owner rejection: LoopMeterLifecycle must check the Engine's latched
+meter-event stream validity before start, request, bound PCM observation or
+unavailable/silence observation; bracket the stream query with Engine-generation
+checks. A retained old PCM/view/clock can be internally coherent after an actual
+DEL notification is lost, so packet-local checks alone are insufficient. Rejection
+must leave follower, ticket and timer unchanged. Keep explicit stop/teardown/
+clear/timer delivery available on the current generation so telemetry loss cannot
+strand cleanup; detached clear retains original history. Queue drain and same-
+generation reset do not recover; fresh prepare plus owner reset does. Preserve the
+pre-fix failure in build/lost-owner-before.txt and actual clipped PCM/lost DEL/UI
+progress/paired stereo 64/128 tests. This loss latch is not a complete production
+notification consumer, normal clear freshness or device-continuity proof.

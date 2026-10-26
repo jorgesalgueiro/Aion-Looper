@@ -31,7 +31,7 @@ public:
         graph.setState(state);return true;
     }
     bool start(std::uint64_t frame) noexcept {
-        if(!current()||ticket==std::numeric_limits<std::uint32_t>::max())return false;
+        if(!observable()||ticket==std::numeric_limits<std::uint32_t>::max())return false;
         auto candidate=graph;
         if(!candidate.startGraph())return false;
         LoopCommand command{LoopAction::meterGraphStart,id,0,generation,frame,0};
@@ -68,18 +68,18 @@ public:
     bool destroyGraph() noexcept {if(!current())return false;graph.destroyGraph();return true;}
     bool request() noexcept {
         const auto identity=graph.inspect();
-        return current()&&receipt.ticket&&identity.buffer&&identity.present&&!identity.destroyed
+        return observable()&&receipt.ticket&&identity.buffer&&identity.present&&!identity.destroyed
             &&LoopMeterGraph::activeState(identity.state)&&identity.analyser==receipt.analyser&&identity.data==receipt.data
             &&engine.requestLoopMeterWindow(id,generation,receipt.ticket);
     }
     bool observe(const MeterWindowEvent& packet,const EngineView& view,const CallbackClockStamp& clock,CallbackAudibleTime time) noexcept {
-        return current()&&observeBoundLoopMeterWindow(graph,receipt,packet,view,clock,time);
+        return observable()&&observeBoundLoopMeterWindow(graph,receipt,packet,view,clock,time);
     }
     // Explicit message-owner observation when the original main-loop gate would
     // not read an analyser. Supplied context/audible clocks only; never infer a
     // stopped device from missing PCM or use this to conceal a stale packet.
     bool observeUnavailable(double now,double playbackTime,std::uint64_t context,bool running) noexcept {
-        if(!current()||!std::isfinite(now)||!std::isfinite(playbackTime))return false;
+        if(!observable()||!std::isfinite(now)||!std::isfinite(playbackTime))return false;
         const auto identity=graph.inspect();
         const bool needsWindow=running&&context&&LoopMeterGraph::activeState(identity.state)
             &&identity.present&&!identity.destroyed&&identity.analyser&&identity.data;
@@ -92,6 +92,10 @@ public:
     MeterCleanupRequest cleanupRequest() const noexcept {return cleanup;}
 private:
     bool current() const noexcept {return id<LoopBank::trackCount&&generation&&generation==engine.generation();}
+    // Event loss invalidates retained graph/window receipts for this generation.
+    // Recheck generation around the stream query; cleanup metadata still uses
+    // current() so telemetry loss cannot strand an explicit stop/clear/timer.
+    bool observable() const noexcept {return current()&&engine.meterGraphEventsCurrent()&&current();}
     Engine& engine;
     std::uint32_t id=0,generation=0,ticket=0;
     std::uint64_t timerSerial=0;

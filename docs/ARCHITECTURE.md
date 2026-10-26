@@ -1610,3 +1610,26 @@ suspended clock does not invent elapsed decay. This follows the preserved JS
 main-loop/readMeter gate; the [Web Audio suspension specification](https://www.w3.org/TR/webaudio/#dom-audiocontext-suspend)
 also distinguishes suspended context time from wall time and retained analyser
 data. No automatic production caller or visible renderer is introduced.
+
+### Meter owner rejects lost lifecycle streams (26 October 2026)
+
+A reproduced counterexample retained an actual PCM packet with its old coherent
+EngineView/callback clock, filled all 255 event slots, then executed DEL on that
+loop. The DEL event was lost, yet the owner accepted the retained packet because
+its local graph/source/callback checks still matched the old view. The stream's
+loss latch was already invalid; the owner had not consulted it.
+
+The owner now requires both current Engine generation and valid stream before
+starting a graph, requesting PCM, consuming a bound window or observing explicit
+unavailability. Generation is checked on both sides of the stream query. These
+rejections leave graph candidate, ticket, cleanup request and follower untouched.
+A lost event cannot be converted to a silent observation that decays away retained
+clipping/peak evidence. Draining the queue or same-generation reset cannot recover
+validity; the prepare barrier and explicit owner reset are required.
+
+Explicit current-generation stop/teardown/clear and cleanup delivery remain usable
+after loss. They do not claim fresh PCM evidence and must not become stranded by
+a telemetry failure. Detached clear still retains the original follower-history
+quirk. This adds no audio-thread work or production caller. Normal event delivery,
+production graph ownership, cleanup scheduling, per-graph overlap PCM and backend
+continuity/live renderer pairing remain separate unfinished gates.

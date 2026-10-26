@@ -5796,3 +5796,58 @@ callback timed out. Production play/buffer/stop notifications, timer scheduling,
 graph-specific overlap PCM, coherent live clock/renderer pairing and actual
 DAW/hardware/Apple acceptance remain unfinished. No package, push, dependency or
 version change; user's logo edit remains unstaged and unchanged.
+
+### Lost lifecycle notifications invalidate owner observations — 26 October 2026
+
+Base: `5eec35c`. Reproduced a missing invalidation guard in the lifecycle owner:
+retain an actual clipped PCM packet and its matching old EngineView/callback,
+fill all 255 graph-event slots, then execute DEL on the observed loop. The event
+stream correctly latched loss, but owner.observe still accepted that internally
+coherent old tuple. The pre-fix executable failed with:
+`Lost lifecycle events must reject a retained coherent PCM/view/clock without follower mutation`
+in `build/lost-owner-before.txt`.
+
+The fix gates start, PCM request, bound observation and explicit unavailable
+observation on current generation plus valid event stream, with generation checks
+around the stream query. It preserves explicit stop, clear, teardown and timer
+delivery so telemetry failure cannot strand cleanup. Same-generation reset or
+queue drain cannot restore validity. Fresh prepare plus owner reset recovers the
+unavailable path. Original detached-clear follower retention is preserved.
+
+Actual Engine fixtures at 64/128 retain clipped history, lose a real DEL event,
+verify subsequent volume acknowledgement/progress, reject the old coherent tuple
+without changes to all seven follower readings, reject start without ticket/timer
+mutation and reject silence fallback through queue drain. Explicit cleanup and
+prepare recovery remain usable. Paired Engine stereo PCM is bit-identical with
+zero tracked callback new/delete.
+
+Final current gates:
+
+- Windows targeted realtime/clock/meter **6/6**, 105.59s:
+  `build/lost-owner-ctest-windows.txt`.
+- Ubuntu same suite **6/6**, 56.89s:
+  `build/lost-owner-ctest-linux.txt`.
+- ASan/UBSan same suite **6/6**, 180.92s:
+  `build/lost-owner-ctest-asan.txt`.
+- Committed PCM **126 cases / 965,826 samples**, maximum error
+  **7.394757495227111e-8**, unchanged **1e-6** tolerance:
+  `build/lost-owner-audio.json`. Capture/OD/SUB scope through center pan excludes
+  playback envelopes, browser resampling, latency compensation and sync.
+- Original UI byte identity, deterministic embedding and tamper rejection:
+  `build/lost-owner-assets.txt`.
+- Original-JS graph oracle and seven-field owner lifecycle comparison remain
+  unchanged, including the existing 377 supplied lifecycle observations.
+
+Only the owner header and test changed under source/tests; no production
+translation unit includes the owner. Full portable **28/28** and native **2/2** per
+OS remain the preserved `c603735` baseline, not rerun here. Evidence writer
+`build/WriteLostOwnerEvidence.py` verifies current gate totals/new PASS labels,
+pre-fix failure, source/log/PCM/asset hashes, inherited logs and unchanged native/
+SDK/other-format artifacts plus the separate logo edit, producing
+`build/lost-owner-evidence.json`.
+
+Limits: this specifically rejects evidence after latched event loss. It does not
+supply a production notification consumer, normal clear/view freshness guarantee,
+cleanup scheduler, per-graph overlap PCM, backend suspension/continuity evidence
+or live renderer pairing. GUI/DAW/hardware/Apple acceptance remains incomplete.
+No production audio/UI change, package, dependency/version change or remote push.

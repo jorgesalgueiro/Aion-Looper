@@ -407,3 +407,15 @@ stale prepare generation. Paired Engine stereo PCM remains bit-identical with
 zero tracked callback new/delete. The existing 377-observation JS graph oracle
 and seven-field owner lifecycle comparison remain unchanged; this increment does
 not claim 377 full-field owner observations or native backend suspension proof.
+
+### Lost lifecycle stream counterexample (26 October 2026)
+
+The new regression retains an actual clipped PCM window, matching source view and
+exact callback clock. At both 64/128 it saturates the 255-slot notification queue
+then loses a real DEL event while a subsequent volume command still succeeds.
+Before the fix, owner.observe accepted the old coherent tuple. It now rejects
+without changing all seven follower readings, rejects requests/start candidates/
+silence fallback through queue drain, preserves explicit cleanup and original
+detached-clear history, and recovers only after prepare plus owner reset. Paired
+Engine stereo PCM remains bit-identical with zero tracked callback new/delete.
+No original JS, parity tolerance, renderer or production audio code changed.
