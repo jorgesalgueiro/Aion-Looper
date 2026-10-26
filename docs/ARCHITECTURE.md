@@ -1452,3 +1452,17 @@ preserves the previous output on rejection. Host nanoseconds are never used as
 the native origin. This adapter has controlled core and linked-manager callers
 only: it does not itself establish ongoing device continuity, graph/PCM freshness
 or a production renderer clock. No automatic meter/UI binding is enabled.
+
+AionProcessor::readDevicePlayback supplies the native message-owner boundary
+for that adapter. It consumes at most eight coherent views into this processor's
+existing cache and accepts no caller-supplied callback stamp. A private atomic
+session token becomes unavailable before release/prepare, including counter
+warm-up, and becomes active only after successful owned preparation. The reader
+matches the current Engine generation and rechecks both generation and session
+after its native wall read before committing the result. It never reads an
+audio-owned frame directly or queries a driver. Tokens/pointers stay private.
+The configured immutable counter reader supplies processor and wall times;
+default production acquisition uses JUCE's high-resolution counter throughout.
+The API has controlled native callers; UI/IPC remain unbound. Its guarantee is
+the processor's prepare/release lifecycle, not proof of a physically running
+device, output FIFO continuity, xrun recovery or graph/PCM freshness.

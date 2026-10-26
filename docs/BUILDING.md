@@ -1310,3 +1310,11 @@ ASan/UBSan commands above. No new target, application package or Standalone
 rebuild is needed for this header/test-only adapter increment. Keep unchanged-JS
 clock/meter comparisons and the PCM audit. Device continuity, xrun recovery and
 graph/renderer integration remain pending.
+
+The owned message playback reader changes Processor.h/cpp: build the existing
+aion_midi_processor_tests and AionLooper_Standalone targets on each host and run
+the same native SDK/processor gates. The fixture checks native-counter brackets,
+unavailable/stop/reprepare, old cached views, release during a wall read and fresh
+recovery, at 64/128, without opening physical audio. Recheck the existing meter,
+clock, frontend/bridge reference gates and PCM audit; no package or dependency
+installation is needed. This is not a new xrun detector or visible-meter gate.

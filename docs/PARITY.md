@@ -304,3 +304,13 @@ linked manager now exercise this adapter with JUCE's actual high-resolution
 counter as well as the unchanged synthetic FIFO test. This establishes adapter
 arithmetic and clock ordering under controlled IO, not a physical DAC clock,
 xrun recovery or visible-meter parity. UI/IPC and original JS remain unchanged.
+
+Owned message clock boundary (26 October 2026): the production processor reader
+must use only its own coherent view and current prepared lifecycle/generation.
+Keep bounded view draining, actual native-counter bracketing, unavailable owner,
+stop/reprepare with old cached views, release inside the wall read and fresh
+recovery at 64/128. Retain the historical pure-model acceptance after release:
+an old numeric stamp can remain mathematically valid while the production
+reader must reject it. This distinction prevents historical availability being
+used as a live-device flag. Physical output continuity and xrun handling remain
+separate; no inferred dropout threshold or new JS/UI policy is introduced.

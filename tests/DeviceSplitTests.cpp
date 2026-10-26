@@ -11,6 +11,28 @@
 
 namespace {
 void check(bool ok,const char* text){if(!ok){std::cerr<<text<<'\n';std::exit(1);}}
+// Controlled lifecycle race at the exact native wall read, without sleeps or
+// unsafe concurrent access to the processor's message-owned cache.
+AionProcessor* releaseAtWallRead=nullptr;
+double releasingCounter() noexcept {
+    if(auto* owner=std::exchange(releaseAtWallRead,nullptr))owner->releaseResources();
+    return juce::Time::getMillisecondCounterHiRes()*.001;
+}
+void playbackRead(AionProcessor& processor,const aion::CallbackClockStamp& expected){
+    DevicePlaybackObservation value;
+    const double before=juce::Time::getMillisecondCounterHiRes()*.001;
+    check(processor.readDevicePlayback(value)&&value.callback==expected,"Message reader takes only its owning processor's coherent callback");
+    const double after=juce::Time::getMillisecondCounterHiRes()*.001;
+    aion::CallbackAudibleTime lower,upper;
+    check(aion::capturedDeviceAudibleTime(expected,7,{7,before},expected.generation,lower)
+        &&aion::capturedDeviceAudibleTime(expected,7,{7,after},expected.generation,upper),"Native reader bracket shares actual JUCE counter origin");
+    check(value.time.renderedTime==upper.renderedTime&&value.time.audibleTime>=lower.audibleTime-1e-12
+        &&value.time.audibleTime<=upper.audibleTime+1e-12,"Owned native playback read is bracketed by actual counter readings");
+}
+void noPlaybackRead(AionProcessor& processor){
+    DevicePlaybackObservation value{{},{42,43}},before=value;
+    check(!processor.readDevicePlayback(value)&&value==before,"Unavailable/stopped/reprepared reader preserves the previous result");
+}
 // Controlled IO only: no physical device is opened or driver clock invented.
 class SplitDevice final : public juce::AudioIODevice {
 public:
@@ -65,9 +87,9 @@ public:
     const void* deliveryOwner=this;
     std::uint64_t deliverySerial=0;
     double deliverySeconds=0,entryLower=0;
-    explicit SplitSink(double r,bool delivery):rate(r),requireDelivery(delivery){
+    explicit SplitSink(double r,bool delivery,AionProcessor::ProcessorClockReader reader=nullptr):rate(r),requireDelivery(delivery){
         const auto latency=[r]{return aion::DeviceOutputLatency{true,r,256};};
-        processor=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},latency,nullptr,&binding);
+        processor=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},latency,reader,&binding);
         reference=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},latency);
         midi.ensureSize(256);referenceMidi.ensureSize(256);
         for(auto* p:{processor.get(),reference.get()})
@@ -79,10 +101,12 @@ public:
         for(auto* p:{processor.get(),reference.get()}){
             p->setPlayConfigDetails(2,2,rate,std::max(1,device->getCurrentBufferSizeSamples()));
             p->prepareToPlay(rate,std::max(1,device->getCurrentBufferSizeSamples()));
+            noPlaybackRead(*p);
         }
     }
     void audioDeviceStopped() override{
         ++stops;processor->releaseResources();reference->releaseResources();
+        noPlaybackRead(*processor);noPlaybackRead(*reference);
     }
     void audioDeviceIOCallbackWithContext(const float* const* input,int numInput,float* const* output,int numOutput,int frames,const juce::AudioIODeviceCallbackContext& context) override{
         check(numInput==2&&numOutput==2&&frames>0&&frames<=128,"Actual JUCE splitter bounds channels/length");
@@ -173,6 +197,8 @@ void deviceManagerClockTests(bool& watch,std::atomic<int>& allocations){
             watch=tracked;
             device->callback->audioDeviceIOCallbackWithContext(inputs,2,outputs,2,frames,{});
             watch=false;
+            playbackRead(*sink.processor,sink.processor->inspectCallbackClockAudioThread());
+            noPlaybackRead(*sink.reference);
             check(sink.offset==static_cast<unsigned>(frames)&&outL[static_cast<unsigned>(frames)]==-99&&outR[static_cast<unsigned>(frames)]==-99,"Real manager preserves exact enclosing coverage and bounds");
             sink.begin+=static_cast<unsigned>(frames);
         };
@@ -214,6 +240,9 @@ void deviceSplitTests(bool& watch,std::atomic<int>& allocations){
                 watch=true;
                 splitter->audioDeviceIOCallbackWithContext(inputs,2,outputs,2,frames,{sink.expectedHost});
                 watch=false;
+                if(frames&&delivery)playbackRead(*sink.processor,sink.processor->inspectCallbackClockAudioThread());
+                else if(!delivery)noPlaybackRead(*sink.processor);
+                noPlaybackRead(*sink.reference);
                 check(sink.offset==static_cast<unsigned>(frames)&&sink.calls-before==static_cast<unsigned>((frames+block-1)/block),"Actual splitter delivers each frame exactly once including partial/empty buffers");
                 check(outL[static_cast<unsigned>(frames)]==-99&&outR[static_cast<unsigned>(frames)]==-99,"Splitter never writes beyond device buffer");
                 sink.begin+=static_cast<unsigned>(frames);
@@ -236,4 +265,33 @@ void deviceSplitTests(bool& watch,std::atomic<int>& allocations){
     check(allocations.load()==0,"Actual JUCE splitter, production processors and split model have zero tracked callback new/delete");
     std::cout<<"PASS: "<<callbacks<<" original/instrumented JUCE split callbacks, exact enclosing entry/range, 64/128, partial/empty/zero-max/restart, raw context, exact PCM/state, synthetic FIFO clock; zero tracked new/delete\n";
     deviceManagerClockTests(watch,allocations);
+    for(int block:{64,128}){
+        SplitDevice device(block,48000);SplitSink sink(48000,true,&releasingCounter);
+        aion_delivery_split_test::CallbackMaxSizeEnforcer splitter(sink,&sink);
+        std::array<float,128> inL{},inR{},outL{},outR{};inL.fill(.2f);inR.fill(-.1f);
+        const float* inputs[]={inL.data(),inR.data()};float* outputs[]={outL.data(),outR.data()};
+        for(unsigned c=0;c<2;++c){sink.expectedInput[c]=inputs[c];sink.expectedOutput[c]=outputs[c];}
+        splitter.audioDeviceAboutToStart(&device);
+        const auto drive=[&]{
+            sink.total=static_cast<unsigned>(block);sink.offset=0;sink.deliverySerial=0;
+            sink.entryLower=juce::Time::getMillisecondCounterHiRes()*.001;
+            watch=true;splitter.audioDeviceIOCallbackWithContext(inputs,2,outputs,2,block,{});watch=false;
+            sink.begin+=static_cast<unsigned>(block);
+        };
+        drive();const auto stale=sink.processor->inspectCallbackClockAudioThread();
+        playbackRead(*sink.processor,stale);
+        releaseAtWallRead=sink.processor.get();noPlaybackRead(*sink.processor);
+        check(!releaseAtWallRead,"Release occurred during the message clock read");
+        // The pure model intentionally has no lifecycle owner and still accepts
+        // this old stamp. The production boundary must reject it after release.
+        aion::CallbackAudibleTime historical;
+        check(aion::capturedDeviceAudibleTime(stale,1,{1,juce::Time::getMillisecondCounterHiRes()*.001},stale.generation,historical),"Historical model stamp alone cannot prove a running device");
+        noPlaybackRead(*sink.processor);
+        splitter.audioDeviceStopped();splitter.audioDeviceAboutToStart(&device);
+        noPlaybackRead(*sink.processor);drive();
+        check(sink.processor->inspectCallbackClockAudioThread().generation!=stale.generation,"Reprepare replaces the owning generation");
+        playbackRead(*sink.processor,sink.processor->inspectCallbackClockAudioThread());
+        splitter.audioDeviceStopped();
+    }
+    std::cout<<"PASS: owned message playback reader, actual counter bracketing, no foreign scope, release during read, stop/reprepare rejection and fresh recovery at 64/128; no physical timing claim\n";
 }

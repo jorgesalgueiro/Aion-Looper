@@ -155,13 +155,14 @@ void AionProcessor::timerCallback(){
     }catch(...){exportChooser.reset();exportBusy=false;exportStatus="WAV export failed: could not open the save dialog";}
 }
 void AionProcessor::invalidateDeviceClock() noexcept {
+    activeDeviceClockEpoch.store(0,std::memory_order_release);
     if(deviceClockOwner)deviceClockOwner->advance();
     deviceClockOwner=nullptr;deviceClockEpoch=0;
 }
 void AionProcessor::releaseResources(){invalidateDeviceClock();}
 void AionProcessor::prepareToPlay(double rate, int) {
-    (void)processorClockReader(); // Warm platform counter paths before processing.
     invalidateDeviceClock();
+    (void)processorClockReader(); // Warm platform counter paths after invalidating old observations.
     auto* nextDeviceClockOwner=controlledDeviceClockOwner;
 #if JucePlugin_Build_Standalone
     if(auto* holder=juce::StandalonePluginHolder::getInstance())
@@ -173,6 +174,29 @@ void AionProcessor::prepareToPlay(double rate, int) {
     engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
     deviceClockOwner=nextDeviceClockOwner;
     deviceClockEpoch=deviceClockOwner?deviceClockOwner->advance():0;
+    activeDeviceClockEpoch.store(deviceClockEpoch,std::memory_order_release);
+}
+bool AionProcessor::readDevicePlayback(DevicePlaybackObservation& output) noexcept {
+    JUCE_ASSERT_MESSAGE_THREAD
+    const auto session=activeDeviceClockEpoch.load(std::memory_order_acquire);
+    if(!session)return false;
+    // Bound consumption even if audio publishes while the message owner reads.
+    // Views carry their own complete callback stamp; do not query audio-owned
+    // engine.clock() or accept another processor's caller-supplied metadata.
+    for(unsigned n=0;n<8&&engine.popView(latest);++n){}
+    const auto generation=engine.generation();
+    if(!generation||latest.generation!=generation)return false;
+    DevicePlaybackObservation candidate;
+    candidate.callback=latest.callbackClock;
+    // This private origin identifies the configured native counter reader,
+    // shared with processor capture. It is not a device epoch or host clock.
+    constexpr std::uint64_t counterOrigin=1;
+    const aion::MonotonicClockPoint wall{counterOrigin,processorClockReader()};
+    if(!aion::capturedDeviceAudibleTime(candidate.callback,counterOrigin,wall,generation,candidate.time)
+        ||activeDeviceClockEpoch.load(std::memory_order_acquire)!=session
+        ||engine.generation()!=generation)return false;
+    output=candidate;
+    return true;
 }
 bool AionProcessor::isBusesLayoutSupported(const BusesLayout& b) const {
     return b.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()

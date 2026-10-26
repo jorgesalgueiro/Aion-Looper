@@ -5494,3 +5494,52 @@ build/captured-clock-evidence.json. The manifest verifies source/log hashes and
 unchanged SDK/generated hooks, JS policies, Standalone/other-format binaries and
 the separate logo hash. No new GUI, DAW, physical controller, Apple or visible
 meter acceptance is claimed from this conversion helper.
+
+### Owned production message playback reader (26 October 2026)
+
+AionProcessor::readDevicePlayback now supplies the native read boundary around
+the captured-device model. It accepts no foreign callback argument, consumes at
+most eight coherent Engine views into its own message cache, and matches the
+current generation. A private atomic active session is cleared before release
+or prepare counter warm-up and published only after successful owned preparation.
+The reader rechecks session/generation after its native counter read and writes
+the result only on success. No driver query, host timestamp interpretation or
+audio-owned frame read is added. The processBlock body and all core DSP remain
+unchanged. Only controlled native callers currently use this API; no UI/IPC
+fields or automatic metering are enabled.
+
+Native fixtures compare reads against external JUCE counter brackets and require
+unbound owners, empty prepared generations, stop/reprepare with retained cache
+and release inside the exact wall read to reject without mutating output. The
+same controlled native counter seam then proves fresh 64/128 recovery. The
+historical pure model is deliberately still accepted after release, showing why
+its numbers alone cannot establish a live lifecycle. Original/instrumented
+splitters, linked real manager, exact nonzero PCM/state identity and zero tracked
+steady callback new/delete remain required.
+
+This is the processor prepare/release lifecycle, not a physical device-running
+flag. In the pinned JUCE SDK, xrun reports can be unavailable or combine input
+and output events; their public contract does not certify an output FIFO clock.
+No universal cross-thread driver polling or jitter threshold was added. Device
+continuity/drift/xruns, graph/PCM freshness, renderer/IPC and physical acceptance
+remain unfinished. See JUCE's AudioIODevice getXRunCount documentation:
+[JUCE AudioIODevice documentation](https://docs.juce.com/master/classjuce_1_1AudioIODevice.html).
+
+Validation: rebuilt existing native processor tests and real Standalone wrappers
+on Windows and Ubuntu. Native SDK/processor gates pass 2/2 on each, including 18
+linked-manager blocks without skips and the new lifecycle-read regressions.
+The seven focused unchanged-JS meter/clock/frontend/bridge gates pass on each OS.
+PCM audit: 126 cases, 965,826 samples, maximum absolute error
+7.394757495227111e-08 at the unchanged 1e-6 tolerance, within its existing
+committed capture/OD/SUB scope. The prior 28/28 portable and ASan/UBSan core
+results are retained, not rerun or claimed as sanitizer coverage of this new
+native method; all core sources and processBlock are unchanged.
+
+Evidence: build/owned-clock-build-{windows,linux}.txt,
+build/owned-clock-native-{windows,linux}.txt,
+build/owned-clock-reference-{windows,linux}.txt, build/owned-clock-audio.json and
+build/owned-clock-evidence.json. The manifest hashes changed sources, logs and
+rebuilt artifacts; verifies unchanged core/processBlock, original policies,
+SDK/generated hooks, other-format binaries and separate user logo; and records
+prior full-suite evidence distinctly from this increment's targeted checks.
+No package/version bump or new GUI/DAW/physical/Apple acceptance is claimed.

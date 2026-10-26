@@ -1097,3 +1097,17 @@ fixture must run here without a skip. This helper has no production UI/graph
 caller: future callers must additionally establish lifecycle/PCM freshness and
 drift/xrun handling. Do not infer visible-meter or physical DAC acceptance from
 this arithmetic/ordering increment. No package yet.
+
+Owned message playback boundary: readDevicePlayback accepts no foreign stamp;
+use this processor's coherent cached view, current Engine generation and private
+atomic active session. Invalidate before any prepare counter warm-up and before
+release; publish only after successful owned preparation. Recheck session and
+generation after the native wall read and preserve output on failure. Drain at
+most eight views, never audio-owned engine.clock(), hardware IO or raw host time.
+Keep native-counter brackets, unbound owner, cached view after stop/reprepare,
+release during the read and fresh 64/128 recovery tests, alongside exact PCM/state
+and steady zero callback new/delete. Tokens/pointers remain private. This is a
+processor lifecycle boundary, not a physical running-device/xrun signal. Do not
+add driver polling or infer FIFO continuity from getXRunCount or callback jitter;
+backend evidence and graph/renderer freshness remain required before enabling
+visible meters. Preserve original UI and defer packages until feature acceptance.

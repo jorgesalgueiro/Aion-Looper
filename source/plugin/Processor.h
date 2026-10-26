@@ -2,11 +2,17 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include "core/Engine.h"
+#include "core/CallbackAudibleTime.h"
 #include "plugin/Vst3ProgramRouting.h"
 #include <mutex>
 static_assert(std::atomic<float>::is_always_lock_free, "Audio parameter loads must be lock-free");
 static_assert(std::atomic<bool>::is_always_lock_free, "MIDI input readiness must be lock-free");
 namespace aion {class DeviceCallbackBinding;}
+struct DevicePlaybackObservation {
+    aion::CallbackClockStamp callback{};
+    aion::CallbackAudibleTime time{};
+    bool operator==(const DevicePlaybackObservation&) const noexcept = default;
+};
 class AionProcessor final : public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {
 public:
     using ExportDestination = std::function<void(const juce::String&, std::function<void(juce::File)>)>;
@@ -38,6 +44,9 @@ public:
     void programInputOverflow() noexcept override {vst3ProgramOverflow.store(true,std::memory_order_release);}
     aion::AudioInspection inspectAudioThread(std::uint32_t track=0) const noexcept {return engine.inspectAudioThread(track);}
     aion::CallbackClockStamp inspectCallbackClockAudioThread() const noexcept {return engine.inspectCallbackClockAudioThread();}
+    // Message owner only. Reads this processor's coherent view, never a foreign
+    // supplied stamp. Reported-latency estimate; not xrun/DAC calibration or IPC.
+    bool readDevicePlayback(DevicePlaybackObservation&) noexcept;
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:
@@ -46,6 +55,7 @@ private:
     aion::DeviceCallbackBinding* controlledDeviceClockOwner=nullptr; // Immutable controlled IO seam; never IPC.
     aion::DeviceCallbackBinding* deviceClockOwner=nullptr; // Replaced at prepare; audio lifecycle only.
     std::uint32_t deviceClockEpoch=0;
+    std::atomic<std::uint32_t> activeDeviceClockEpoch{0}; // Private lifecycle guard, never telemetry.
     void invalidateDeviceClock() noexcept;
     std::recursive_mutex midiSettingsMutex; // Non-audio configuration/state serialization only.
     aion::MidiSettings midiSettings;
