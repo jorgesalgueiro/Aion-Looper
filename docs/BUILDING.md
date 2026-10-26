@@ -1296,3 +1296,17 @@ additional fixture requires /dev/snd/seq. Without it, the fixture explicitly
 reports unavailable and the other processor/splitter gates still run. Do not
 silence assertions or treat that capability skip as Linux manager acceptance.
 Run the same native command on a Linux host with the sequencer to close that gap.
+
+The current Ubuntu/WSL host now provides a real ALSA sequencer; the same native
+gate runs all 18 linked-manager blocks. A stock kernel with SND_SEQUENCER disabled
+cannot gain this device from alsa-utils alone. See docs/VALIDATION.md for the
+matching Microsoft kernel setup and runtime evidence; do not force-load modules
+built against another kernel. ALSA virtual ports do not establish USB/controller
+access.
+
+The captured-device audible adapter adds cases to the existing aion_core_tests
+and aion_midi_processor_tests targets, so use the same core, native SDK and
+ASan/UBSan commands above. No new target, application package or Standalone
+rebuild is needed for this header/test-only adapter increment. Keep unchanged-JS
+clock/meter comparisons and the PCM audit. Device continuity, xrun recovery and
+graph/renderer integration remain pending.

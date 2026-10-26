@@ -106,6 +106,17 @@ public:
             check(delivery.frames==total&&delivery.frameOffset==offset&&delivery.seconds>=entryLower&&delivery.seconds<=stamp.deviceEntry.seconds,"Real enclosing entry precedes holder/processor and carries the exact split range");
             if(!offset){deliverySerial=delivery.serial;deliverySeconds=delivery.seconds;}
             check(delivery.serial==deliverySerial&&delivery.seconds==deliverySeconds,"Every part retains one enclosing callback identity and entry");
+            // Both raw acquisition and this read use JUCE's native high-res
+            // counter. Origin 29 belongs to this controlled IO owner only.
+            // Compare the captured edge with an independent FIFO expression;
+            // never substitute holder/processor dispatch or hostTimeNs for it.
+            const double now=juce::Time::getMillisecondCounterHiRes()*.001;
+            aion::CallbackAudibleTime captured;
+            check(aion::capturedDeviceAudibleTime(stamp,29,{29,now},stamp.generation,captured),"Captured real manager/splitter edge converts with explicitly shared native counter origin");
+            const double elapsedFrames=(now-deliverySeconds)*rate;
+            const double emitted=std::max(0.0,static_cast<double>(begin)+elapsedFrames-256);
+            const double expected=std::min(emitted,static_cast<double>(stamp.endFrame))/rate;
+            check(std::abs(captured.audibleTime-expected)<1e-12,"Captured native edge estimate retains independent FIFO range/latency arithmetic");
         }
         for(int c=0;c<2;++c)for(int i=0;i<frames;++i){
             check(actual.getSample(c,i)==control.getSample(c,i),"Split clock capture leaves production monitored PCM bit-identical");

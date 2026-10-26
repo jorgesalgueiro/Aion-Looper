@@ -88,8 +88,56 @@ void callbackAudibleTimeTests(){
         auto anchor=correlation;anchor.deliveredFrames=range.first;anchor.frameOffset=range.second;
         rejected(stamp,anchor,{1,100},7);
     }
+    // Exercise the adapter with captured-edge-shaped observations against the
+    // independent FIFO oracle above, not a preconstructed model correlation.
+    std::uint64_t capturedObservations=0;
+    for(double rate:{8000.0,44100.0,48000.0,96000.0})for(unsigned block:{64u,128u})
+    for(unsigned latency:{0u,1u,256u,4096u})for(unsigned total:{1u,block,block+1,3*block+17})
+    for(unsigned index=0;index<12;++index)for(unsigned offset=0;offset<total;offset+=block){
+        const auto deliveredBegin=static_cast<std::uint64_t>(index)*total;
+        const auto length=std::min(block,total-offset);
+        const double edge=100+static_cast<double>(deliveredBegin)/rate;
+        CallbackClockStamp captured{index+1,deliveredBegin+offset,deliveredBegin+offset+length,0,rate,3,false,false,latency,true};
+        captured.deviceEntry={edge+1/rate,index+1,length,true,{edge,index+1,total,offset,true}};
+        captured.processorEntry={edge+2/rate,true};
+        for(unsigned lag:{2u,31u,128u,4096u}){
+            const auto physical=deliveredBegin+lag;
+            const double emitted=physical>latency?static_cast<double>(physical-latency):0;
+            const double expected=std::min(emitted,static_cast<double>(captured.endFrame))/rate;
+            CallbackAudibleTime value;
+            check(capturedDeviceAudibleTime(captured,19,{19,edge+static_cast<double>(lag)/rate},3,value),"Captured device adapter accepts explicit shared native origin and ordered edges");
+            check(std::abs(value.audibleTime-expected)<1e-12,"Captured delivery adapter matches independent FIFO, including split offset and delayed consumer");
+            ++capturedObservations;
+        }
+    }
+    CallbackClockStamp captured{1,1024,1152,0,48000,7,false,false,256,true};
+    captured.deviceEntry={100.001,1,128,true,{100,1,256,128,true}};
+    captured.processorEntry={100.002,true};
+    const auto rejectCaptured=[&](CallbackClockStamp candidate,std::uint64_t origin,MonotonicClockPoint wall,unsigned generation){
+        result=unchanged;
+        check(!capturedDeviceAudibleTime(candidate,origin,wall,generation,result)&&result==unchanged,"Captured adapter rejects missing, stale, unordered and inconsistent observations without mutation");
+    };
+    rejectCaptured(captured,0,{1,101},7);rejectCaptured(captured,1,{2,101},7);
+    rejectCaptured(captured,1,{1,100.001},7);rejectCaptured(captured,1,{1,101},8);
+    for(unsigned field=0;field<10;++field){
+        auto candidate=captured;
+        switch(field){
+            case 0:candidate.deviceEntry={};break;
+            case 1:candidate.deviceEntry.delivery={};break;
+            case 2:candidate.processorEntry={};break;
+            case 3:candidate.processorEntry.seconds=100;break;
+            case 4:candidate.deviceEntry.delivery.seconds=101;break;
+            case 5:candidate.deviceEntry.delivery.frameOffset=129;break;
+            case 6:candidate.deviceEntry.frames=127;break;
+            case 7:candidate.nonRealtime=true;break;
+            case 8:candidate.hasOutputLatency=false;candidate.outputLatencySamples=0;break;
+            case 9:candidate.deviceEntry.delivery.frameOffset=~0u;break;
+        }
+        rejectCaptured(candidate,1,{1,101},7);
+    }
     watch=false;
     check(allocations.load()==0,"Callback audible-time model has zero tracked new/delete");
     std::cout<<"PASS: "<<observations<<" callback-start/FIFO audible-time observations at 64/128; startup, delayed consumer, clock rejection; zero tracked new/delete\n";
     std::cout<<"PASS: "<<splitObservations<<" split-buffer FIFO observations, partial tails, malformed ranges; zero tracked new/delete\n";
+    std::cout<<"PASS: "<<capturedObservations<<" captured device adapter/FIFO observations, explicit native origin, edge ordering and atomic rejection; zero tracked new/delete\n";
 }

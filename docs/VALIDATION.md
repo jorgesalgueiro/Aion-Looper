@@ -5449,3 +5449,48 @@ This establishes the synthetic-device manager fixture on Linux and real ALSA
 sequencer access, not physical USB MIDI, expression-pedal response, hardware
 audio timing, visible meters or new DAW/platform acceptance. No application
 package, version bump or UI change was made.
+
+### Captured device audible-time adapter (26 October 2026)
+
+capturedDeviceAudibleTime now builds the existing FIFO-model correlation from
+the actual captured enclosing AudioIODevice edge and its original total/offset.
+The caller must explicitly establish a nonzero shared native counter origin and
+provide the current generation. It requires nonempty live callbacks, known
+prepared output latency and ordered delivery/holder/processor/wall observations.
+Missing, malformed, backwards, mismatched or offline data rejects without
+changing the caller's previous result. Host nanoseconds never establish the
+native origin. No device query, allocation, lock or audio scheduling is added.
+
+Retained the original 19,200 unsplit and 13,824 split independent FIFO cases and
+added 12,288 captured-edge adapter observations at 8/44.1/48/96 kHz, 64/128,
+known-zero/long latency, partial buffers, startup and delayed reads. Native tests
+also call the adapter through the instrumented splitter and real linked manager
+using the same JUCE high-resolution counter as acquisition, with an independent
+FIFO expression for the known synthetic range/latency. Original splitter and
+synthetic-anchor controls, exact nonzero PCM/state identity and zero tracked
+callback new/delete remain intact. The full manager's existing first scratch
+allocation and locks are still outside this steady allocation acceptance.
+
+This adapter has controlled test callers only. It does not establish device
+continuity across xruns/restarts, graph/PCM freshness or physical DAC timing.
+Production audible selection, graph binding, IPC and the renderer remain
+unfinished. Original JS/HTML/CSS, SDK sources and the separate logo edit are
+preserved; no application package or Standalone wrapper rebuild is required.
+
+Validation passes: 28/28 portable gates on Windows and Ubuntu (the full core gate
+and remaining 27 run separately), 2/2 native SDK/processor gates on each platform,
+and the full core gate under ASan/UBSan. Both platforms execute the extra 18 real
+linked-manager blocks with no missing-sequencer skip or assertion. The unchanged
+JS clock/meter/graph/window and other reference comparisons retain their original
+tolerances. The PCM audit passes 126 cases/965,826 samples, maximum absolute
+error 7.394757495227111e-08 at 1e-6, within its existing committed capture/OD/SUB
+scope; it does not cover browser resampling, latency compensation or envelopes.
+
+Evidence: build/captured-clock-core-{windows,linux}.txt and detail snapshots,
+build/captured-clock-rest-{windows,linux}.txt,
+build/captured-clock-native-{windows,linux}.txt, build/captured-clock-asan.txt
+and its detail log, build/captured-clock-audio.json and
+build/captured-clock-evidence.json. The manifest verifies source/log hashes and
+unchanged SDK/generated hooks, JS policies, Standalone/other-format binaries and
+the separate logo hash. No new GUI, DAW, physical controller, Apple or visible
+meter acceptance is claimed from this conversion helper.

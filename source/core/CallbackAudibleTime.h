@@ -58,4 +58,23 @@ inline bool callbackAudibleTime(const CallbackClockStamp& callback,
     result={end,std::clamp(audible,0.0,end)};
     return true;
 }
+// Adapter for the captured Standalone AudioIODevice edge. The native IO owner
+// must explicitly supply the nonzero origin shared by its JUCE counter reader
+// and wall; no origin can be established from a host timestamp or a number's
+// magnitude. Exact lifecycle/current-generation checks remain the caller's job.
+// This remains a reported-latency estimate, not driver/DAC calibration. It does
+// not establish continuity across xruns, device restarts or stale PCM/graphs.
+inline bool capturedDeviceAudibleTime(const CallbackClockStamp& callback,
+                                     std::uint64_t nativeOrigin,MonotonicClockPoint wall,
+                                     std::uint32_t generation,CallbackAudibleTime& result) noexcept {
+    const auto& holder=callback.deviceEntry;
+    const auto& delivery=holder.delivery;
+    if(!nativeOrigin||wall.origin!=nativeOrigin||!validCallbackClock(callback)
+        ||!holder.available||!delivery.available||!callback.processorEntry.available
+        ||holder.seconds>callback.processorEntry.seconds
+        ||wall.seconds<callback.processorEntry.seconds)return false;
+    const CallbackClockCorrelation correlation{callback,{nativeOrigin,delivery.seconds},
+                                               delivery.frames,delivery.frameOffset};
+    return callbackAudibleTime(callback,correlation,wall,generation,result);
+}
 }

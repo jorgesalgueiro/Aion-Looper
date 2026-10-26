@@ -290,4 +290,17 @@ fixture remains enabled on Linux hosts with /dev/snd/seq; WSL without it reports
 unavailable because the stock constructor starts a MIDI observer. Its failed
 attempt is retained. This is a documented acceptance gap, not a Linux manager or
 physical MIDI pass; the instrumented splitter/production-processor cases remain
-mandatory on both systems.
+mandatory on both systems. Follow-up on 26 October enabled the real WSL ALSA
+sequencer: the 18 linked-manager blocks now pass on Linux too, without a skip or
+MIDI assertion. See docs/VALIDATION.md for the retained before/after evidence.
+
+Captured-device audible adapter (26 October 2026): retain the original 19,200
+unsplit and 13,824 split FIFO observations plus 12,288 independent captured-edge
+adapter observations at four rates, 64/128, known-zero/long latency, partial
+tails and delayed reads. Missing enclosing/holder/processor capture, wrong
+generation/origin, backwards edges, offline callbacks and malformed ranges must
+reject without changing the result. The original/instrumented splitter and real
+linked manager now exercise this adapter with JUCE's actual high-resolution
+counter as well as the unchanged synthetic FIFO test. This establishes adapter
+arithmetic and clock ordering under controlled IO, not a physical DAC clock,
+xrun recovery or visible-meter parity. UI/IPC and original JS remain unchanged.

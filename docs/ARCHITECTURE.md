@@ -1441,3 +1441,14 @@ This is the AudioIODevice callback edge received by JUCE's manager, not a measur
 DAC timestamp or the operating system driver's interrupt. There is still no
 production audible-time conversion, graph binding, IPC or visible-meter caller;
 device drift/xruns and renderer/physical acceptance remain separate gates.
+
+Captured-device conversion is available through capturedDeviceAudibleTime in
+CallbackAudibleTime.h. An IO owner must explicitly establish a nonzero native
+counter origin shared by the captured edge and its wall read. The adapter
+requires a valid current-generation stamp, known output latency, nonempty live
+callback, captured enclosing delivery and ordered delivery/holder/processor/wall
+times. It supplies the captured total/offset to the existing FIFO model and
+preserves the previous output on rejection. Host nanoseconds are never used as
+the native origin. This adapter has controlled core and linked-manager callers
+only: it does not itself establish ongoing device continuity, graph/PCM freshness
+or a production renderer clock. No automatic meter/UI binding is enabled.

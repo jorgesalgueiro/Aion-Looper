@@ -1082,3 +1082,18 @@ constructing the manager, retain its failed attempt and do not claim Linux
 manager acceptance. Never silence JUCE MIDI assertions or loosen CTest's
 assertion detector to turn this environment limit into evidence. The actual
 manager fixture must still run on a host with the prerequisite.
+
+Captured-device audible adapter (26 October 2026): preserve explicit nonzero
+native-origin ownership and current-generation pairing; never derive either
+from hostTimeNs or timestamp magnitude. Require live nonempty callbacks, known
+prepared latency, enclosing delivery, holder and processor capture with ordered
+delivery <= holder <= processor <= wall. Supply actual enclosing frames/offset
+to the existing model; reject atomically. Retain the independent original FIFO
+and split oracles plus 12,288 captured adapter cases, malformed/missing/offline
+and stale-origin/generation rejection, actual original/instrumented splitter and
+linked-manager checks with the shared JUCE counter, exact PCM/state and tracked
+zero new/delete. The WSL ALSA prerequisite is now installed and the real manager
+fixture must run here without a skip. This helper has no production UI/graph
+caller: future callers must additionally establish lifecycle/PCM freshness and
+drift/xrun handling. Do not infer visible-meter or physical DAC acceptance from
+this arithmetic/ordering increment. No package yet.
