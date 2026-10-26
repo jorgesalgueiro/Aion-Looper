@@ -378,3 +378,19 @@ No comparison tolerance or original frontend source changed. IO stubs in the JS
 trace and supplied audible time in the paired-engine tests are not browser audio,
 a physical clock or a production graph-notification source. The meter feature
 remains incomplete; visible controls and packages stay deferred.
+
+### Runtime raw-window receipt boundary (26 October 2026)
+
+The new native receipt stream covers explicit accepted meter-window starts and
+clear mutations only. Actual paired Engines at 64/128 check sample-17 execution,
+no receipt for duplicate/no-clip reset, healthy RTRG retention, exact DEL frame and
+clear epoch, ordered per-track Clear All, saturation without performance-command
+starvation, generation invalidation/recovery and bit-identical stereo PCM. Direct
+stream tests preserve full-width integer fields and reject retained events after
+any overflow without modifying the caller's destination.
+
+The unchanged original JS lifecycle oracle remains separate: its 377 observations
+check the supplied-event owner, not automatic native graph-lifetime equivalence.
+In particular, raw-window reset events cannot stand in for JS graph creation,
+stop timers, per-graph overlap PCM or a working visible meter. No parity tolerance,
+reference source, renderer or UI was changed.

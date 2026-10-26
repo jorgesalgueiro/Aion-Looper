@@ -1375,3 +1375,14 @@ build/lifecycle-owner-evidence.json. The retained pre-fix failure is
 build/lifecycle-owner-future-before.txt. These are validation artifacts, not new
 release packages. Other-format binaries are deliberately not rebuilt or validated
 as this revision. No version bump, package, UI activation or push is included.
+
+### Raw-window receipt regression increment (26 October 2026)
+
+Use the existing portable and native build trees and test commands above; no new
+package or dependency is needed. The core realtime test now covers the actual
+LoopBank reset/clear publisher and bounded generation-loss stream. It is included
+in `core_realtime_contract`; the existing meter graph/window/clock JS tests remain
+required. Rebuild `aion_midi_processor_tests` and `AionLooper_Standalone` after this
+LoopBank layout change, then run `native_midi_processor` and
+`standalone_clock_sdk_generation`. This does not enable the visible meter or
+constitute REAPER, Ardour, physical hardware or Apple acceptance.

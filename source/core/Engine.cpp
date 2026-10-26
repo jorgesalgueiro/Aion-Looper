@@ -11,7 +11,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames,DeviceOutputLat
     if (preparedRate != rate || loops.capacity() != std::clamp(poolFrames / LoopBank::blockFrames, 1u, LoopBank::maxBlocks) * LoopBank::blockFrames)
         loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005), rate);
     else (void) loops.apply(LoopAction::stopAll, 0);
-    loops.resetTimeline();liveInput->cancel();meterTransfer->reset();meterGraphStarts->clear();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
+    loops.resetTimeline();loops.resetMeterGraphEvents(generation());liveInput->cancel();meterTransfer->reset();meterGraphStarts->clear();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
     LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     transport={};

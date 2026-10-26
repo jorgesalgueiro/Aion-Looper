@@ -11,6 +11,58 @@ extern std::atomic<int> allocations;
 namespace {void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}}
 namespace {
 auto readingTuple(const aion::MeterReading& value){return std::array<double,7>{value.rms,value.peak,value.linearPeak,value.peakDb,value.rmsPercent,value.peakPercent,value.clipped?1.0:0.0};}
+void graphEventTests(){
+    using namespace aion;
+    auto stream=std::make_unique<MeterGraphEvents>();MeterGraphEvent event{};event.ticket=999;
+    watch=true;
+    check(!stream->current(0)&&!stream->pop(event,1)&&event.ticket==999,"Unprepared event stream rejects without output mutation");
+    stream->reset(7);
+    for(unsigned n=0;n<255;++n)stream->publish(MeterGraphEventKind::started,n%20,n+1,9007199254740993ull+n,0xffffffffffffffffull);
+    check(stream->current(7),"All 255 event slots are usable");
+    stream->publish(MeterGraphEventKind::cleared,0,0,42,9);
+    check(!stream->current(7)&&!stream->pop(event,7)&&event.ticket==999,"One lost event invalidates all retained receipts and leaves output untouched");
+    stream->publish(MeterGraphEventKind::started,0,256,43,9);
+    check(!stream->current(7)&&!stream->pop(event,7),"Draining a lost stream never silently repairs it");
+    stream->reset(8);stream->publish(MeterGraphEventKind::started,19,0xffffffffu,0xffffffffffffffffull,9007199254740993ull);
+    check(stream->pop(event,8)&&event.serial==1&&event.generation==8&&event.track==19&&event.ticket==0xffffffffu&&event.frame==0xffffffffffffffffull&&event.clearEpoch==9007199254740993ull,"Fresh generation preserves full integer precision");
+    stream->publish(MeterGraphEventKind::cleared,0,0,1,2);stream->reset(9);stream->publish(MeterGraphEventKind::started,1,1,3,4);
+    check(stream->pop(event,9)&&event.generation==9&&event.serial==1&&event.track==1&&!stream->pop(event,9),"Prepare discards old queued generations without resetting SPSC ownership");
+    watch=false;
+    for(unsigned block:{64u,128u}){
+        auto engine=std::make_unique<Engine>(),control=std::make_unique<Engine>();auto view=std::make_unique<EngineView>();
+        for(auto* e:{engine.get(),control.get()}){e->prepare(48000,81920);e->setMonitoring(false);e->setTarget(1);e->configureSync({SyncMode::off,120,1,4,4,false});
+            e->enqueueLoop({LoopAction::record,19,1,e->generation(),0,0});e->enqueueLoop({LoopAction::finish,19,2,e->generation(),4096,0});}
+        std::array<float,128> l{},r{},cl{},cr{};float* channels[]={l.data(),r.data()},*cc[]={cl.data(),cr.data()};
+        const auto cycle=[&](bool offline=false){l.fill(.3f);r.fill(.2f);cl=l;cr=r;engine->process(channels,2,static_cast<int>(block),{},offline);control->process(cc,2,static_cast<int>(block),{},offline);check(l==cl&&r==cr,"Runtime receipt publication preserves bit-identical paired Engine stereo PCM");while(engine->popView(*view)){};};
+        for(unsigned n=0;n<8192/block;++n)cycle(true);
+        while(engine->popMeterGraphEvent(event)){};
+        watch=true;
+        const auto begin=engine->clock();const auto start=[&](unsigned ticket,std::uint64_t frame){LoopCommand command{LoopAction::meterGraphStart,19,0,engine->generation(),frame,0};command.meterGraphTicket=ticket;check(engine->enqueueLoop(command),"Queue explicit native window reset");};
+        start(1,begin+block+17);
+        for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({LoopAction::volume,19,3,e->generation(),0,.6}),"Ordinary volume behind future reset");
+        cycle();check(!engine->popMeterGraphEvent(event)&&view->lastRequestId==3,"No receipt before actual sample reset; UI progresses");
+        cycle();check(engine->popMeterGraphEvent(event)&&event.kind==MeterGraphEventKind::started&&event.frame==begin+block+17&&event.track==19&&event.ticket==1&&event.generation==engine->generation(),"Audio producer reports actual sample-17 reset, not enqueue/callback time");
+        start(1,0);cycle();check(!engine->popMeterGraphEvent(event),"Rejected duplicate reset emits no success receipt");
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::retrigger,19,4,e->generation(),0,0});cycle();
+        check(!engine->popMeterGraphEvent(event),"Healthy RTRG never invents a new analyser/window receipt");
+        const auto clearFrame=engine->clock()+5;
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::clear,19,5,e->generation(),clearFrame,0});cycle();
+        check(engine->popMeterGraphEvent(event)&&event.kind==MeterGraphEventKind::cleared&&event.frame==clearFrame&&event.ticket==0&&event.track==19&&event.clearEpoch==view->tracks[19].clearEpoch,"DEL reports exact native clear epoch/frame");
+        start(2,0);cycle();check(!engine->popMeterGraphEvent(event),"No committed clip means no accepted reset receipt");
+        // A bounded telemetry failure cannot change performance acknowledgements.
+        for(unsigned n=0;n<255;++n)for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({LoopAction::clear,0,10+n,e->generation(),0,0}),"Fill ordinary command queue for event saturation");
+        cycle();cycle();check(engine->meterGraphEventsCurrent(),"Native producer fills exactly 255 event slots");
+        for(auto* e:{engine.get(),control.get()}){e->enqueueLoop({LoopAction::clear,0,300,e->generation(),0,0});e->enqueueLoop({LoopAction::volume,19,301,e->generation(),0,.4});}cycle();
+        check(!engine->meterGraphEventsCurrent()&&view->lastRequestId==301&&!view->rejected&&view->tracks[19].volume==.4f,"Lost notification latches invalidity while performance commands still succeed");
+        event.ticket=777;check(!engine->popMeterGraphEvent(event)&&event.ticket==777&&!engine->meterGraphEventsCurrent(),"Lost native stream rejects its queued receipts without output mutation or silent recovery");
+        watch=false;for(auto* e:{engine.get(),control.get()})e->prepare(48000,81920);watch=true;
+        check(engine->meterGraphEventsCurrent()&&!engine->popMeterGraphEvent(event),"Prepare alone recovers stream under a fresh generation");
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::clearAll,0,1,e->generation(),0,0});cycle();
+        for(unsigned n=0;n<20;++n)check(engine->popMeterGraphEvent(event)&&event.serial==n+1&&event.track==n&&event.generation==engine->generation()&&event.kind==MeterGraphEventKind::cleared,"Clear All produces explicit ordered per-track facts in fresh generation");
+        check(!engine->popMeterGraphEvent(event),"No extra inferred lifecycle events");watch=false;
+    }
+    std::cout<<"PASS: actual window reset/clear event producer, exact sample-17 64/128 receipts, duplicate/RTRG rejection, ordered Clear All, latched overflow/prepare recovery and identical PCM; zero tracked new/delete\n";
+}
 void deferredStartTests(){
     using namespace aion;
     auto pending=std::make_unique<MeterGraphStarts>();MeterGraphStart output{};output.ticket=999;
@@ -232,6 +284,7 @@ void meterGraphTests(){
         if(block==64)baseline=reading;else check(reading.rms==baseline.rms&&reading.peak==baseline.peak&&reading.rmsPercent==baseline.rmsPercent,"Exact supplied-window graph meter 64/128 invariance");
     }
     boundGraphTests();
+    graphEventTests();
     deferredStartTests();
     lifecycleOwnerTests();
     check(allocations.load()==0,"Graph lifecycle/read composition has zero tracked new/delete");

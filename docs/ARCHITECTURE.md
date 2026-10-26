@@ -1558,3 +1558,36 @@ all deferred starts. The live callback adds no waits, locks or dynamic storage.
 Production notification generation, actual timer scheduling, graph-specific PCM
 ownership during transitions, coherent live clock pairing/device continuity and
 renderer delivery remain separate unfinished work. No UI/IPC metering is enabled.
+
+### Raw meter-window mutation receipts (26 October 2026)
+
+`MeterGraphEvents` supplies the first runtime notification boundary for explicit
+raw-window resets and clears. `LoopBank::startMeterGraph` publishes only after
+accepting the increasing integer ticket and resetting the window. `clear` emits
+at the actual clear mutation, including clears reached through native helpers.
+The receipt carries generation, ordered serial, track, ticket, clear epoch and
+actual local sample frame. Deferred starts therefore report their execution
+sample rather than command enqueue time or callback start. Healthy source
+retrigger and normalization do not imply a new analyser and emit no reset fact.
+
+Storage is allocated with LoopBank construction. The audio producer performs one
+bounded SPSC push without allocation, waiting or UI command acknowledgement edits.
+There are 255 usable slots. On overflow, a lock-free generation latch invalidates
+all stream receipts until the next prepare; consuming the remaining queue cannot
+restore validity. The message owner must recheck `meterGraphEventsCurrent()` before
+using any retained receipt, and require its generation to match Engine::generation().
+Prepare changes generation without resetting queue
+indices. Consumer pops discard at most 255 stale/lost entries; a full retained old
+queue can conservatively invalidate a new generation if publication precedes its
+drain. No event or snapshot is used to invent the lost transition history.
+
+These facts do not determine when original JS graphs are constructed, which may
+precede scheduled source playback, nor do they represent 25/50ms cleanup timer
+delivery. The existing LoopMeterLifecycle remains unconnected to production
+play/stop/buffer events. Graph-specific PCM during old/new overlap, coherent device
+continuity/audible clock pairing and renderer acceptance are still required.
+There is no frontend/IPC enablement or package in this increment.
+
+Reference: the [Web Audio AnalyserNode specification](https://www.w3.org/TR/webaudio-1.1/#dom-analysernode-getfloattimedomaindata)
+defines each node's most recent downmixed frames. Native source revisions and
+aggregate output alone cannot establish that node-specific ownership.

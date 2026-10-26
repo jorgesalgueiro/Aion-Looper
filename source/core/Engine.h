@@ -80,6 +80,10 @@ public:
         return requestedGeneration==generation()&&meterTransfer->request(track,requestedGeneration,graphTicket);
     }
     bool popLoopMeterWindow(MeterWindowEvent& event) noexcept {return meterTransfer->pop(event,generation());}
+    // Raw-window mutation receipts, not full playback graph lifecycle.
+    // Recheck stream validity before using retained receipts.
+    bool popMeterGraphEvent(MeterGraphEvent& event) noexcept {return loops.popMeterGraphEvent(event,generation());}
+    bool meterGraphEventsCurrent() const noexcept {return loops.meterGraphEventsCurrent(generation());}
     bool popWaveform(WaveformEvent& event) noexcept {return waveforms->pop(event);}
     bool popView(EngineView& view) noexcept { return views->pop(view); }
     std::uint32_t generation() const noexcept { return epoch.load(std::memory_order_acquire); }

@@ -298,6 +298,7 @@ void LoopBank::clear(Track& track) noexcept {
     if(track.clip){residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;retire(track.clip);track.clip=nullptr;}
     const auto id=static_cast<std::uint32_t>(&track-tracks.data());
     (*meterWindows)[id].reset();meterGraphTickets[id]=0;meterGraphFrames[id]=0;
+    meterGraphEvents->publish(MeterGraphEventKind::cleared,id,0,frame,track.clearEpoch);
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
     const bool muted=track.info.muted;track.info=LoopView{};track.info.muted=muted;

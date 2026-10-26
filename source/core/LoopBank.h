@@ -10,6 +10,7 @@
 #include "core/SyncClock.h"
 #include "core/Wav.h"
 #include "core/MeterWindow.h"
+#include "core/MeterGraphEvents.h"
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
@@ -71,8 +72,13 @@ public:
     bool startMeterGraph(std::uint32_t id,std::uint32_t ticket) noexcept {
         if(id>=trackCount||!ticket||ticket<=meterGraphHighWater[id]||!tracks[id].clip)return false;
         meterGraphHighWater[id]=meterGraphTickets[id]=ticket;meterGraphFrames[id]=frame;
-        (*meterWindows)[id].reset();return true;
+        (*meterWindows)[id].reset();
+        meterGraphEvents->publish(MeterGraphEventKind::started,id,ticket,frame,tracks[id].clearEpoch);return true;
     }
+    // Prepare barrier/audio producer; message owner consumes the same stream.
+    void resetMeterGraphEvents(std::uint32_t generation) noexcept {meterGraphEvents->reset(generation);}
+    bool popMeterGraphEvent(MeterGraphEvent& event,std::uint32_t generation) noexcept {return meterGraphEvents->pop(event,generation);}
+    bool meterGraphEventsCurrent(std::uint32_t generation) const noexcept {return meterGraphEvents->current(generation);}
     std::uint32_t meterGraphTicket(unsigned id) const noexcept {return id<trackCount?meterGraphTickets[id]:0;}
     std::uint64_t meterGraphFrame(unsigned id) const noexcept {return id<trackCount?meterGraphFrames[id]:0;}
     LoopView trackView(std::uint32_t id) const noexcept {if(id>=trackCount)return {};auto v=tracks[id].info;v.clearEpoch=tracks[id].clearEpoch;v.sourceRevision=tracks[id].sourceRevision;v.waveformId=tracks[id].clip?tracks[id].clip->waveformId:0;return v;}
@@ -183,6 +189,7 @@ private:
     // Construction-time heap storage; never grow the Windows audio stack.
     std::array<std::uint32_t,trackCount> meterGraphTickets{},meterGraphHighWater{};
     std::array<std::uint64_t,trackCount> meterGraphFrames{};
+    std::unique_ptr<MeterGraphEvents> meterGraphEvents=std::make_unique<MeterGraphEvents>();
     std::unique_ptr<std::array<MeterWindow,trackCount>> meterWindows=std::make_unique<std::array<MeterWindow,trackCount>>();
     std::array<Track, trackCount> tracks{};
     std::array<std::uint16_t, maxBlocks> freeBlocks{};

@@ -5699,3 +5699,49 @@ ownership during transitions, coherent live clock/device continuity and renderer
 integration remain unfinished. The coordinator's notification methods do not
 replace DSP play/stop/clear actions. No new GUI/DAW/controller/DAC or Apple
 acceptance is inferred. No UI/IPC activation, package, version bump or push.
+
+### Raw meter-window mutation event producer — 26 October 2026
+
+Base: local `fd74186`. Added the bounded runtime receipt producer directly at
+accepted LoopBank meter-window resets and clear mutations. No playback graph
+birth is inferred from sourceRevision or a snapshot. New tests retain exact
+sample-17 execution at 64/128, duplicate/no-clip rejection, healthy RTRG retention,
+DEL frame/epoch, ordered twenty-track Clear All, full-width integer fields,
+latched overflow with untouched pop destination, performance command progress,
+stale-generation discard and fresh prepare recovery. Paired actual Engines keep
+bit-identical stereo PCM with zero tracked callback new/delete.
+
+Final unchanged-source gates:
+
+- Windows complete portable suite: **28/28**, 351.44s,
+  `build/graph-events-full-ctest-windows.txt`.
+- Ubuntu complete portable suite: **28/28**, 556.59s,
+  `build/graph-events-full-ctest-linux.txt`.
+- ASan/UBSan realtime/clock/meter gates: **6/6**, 181.08s,
+  `build/graph-events-ctest-asan.txt`.
+- Rebuilt production processor/Standalone checks: Windows **2/2**, Ubuntu **2/2**,
+  `build/graph-events-native-ctest-{windows,linux}.txt`. Both include all eighteen
+  linked AudioDeviceManager synthetic blocks; no skipped ALSA gate, assertion or
+  physical IO claim. Only these existing native targets were rebuilt.
+- Original-JS supplied-event owner comparison remains **377 observations** on each
+  OS. This is separate from the native raw-window event producer.
+- Committed PCM audit: **126 cases / 965,826 samples**, maximum absolute error
+  **7.394757495227111e-8** against unchanged **1e-6** tolerance;
+  `build/graph-events-audio.json`. Scope remains capture/overdub/substitute through
+  center pan, excluding playback envelopes, browser resampling, latency and sync.
+- Asset gate: original UI byte identity, deterministic embedding and tamper
+  rejection passed in `build/graph-events-assets.txt`. User logo edit remains
+  separate and unchanged. Existing SDK instrumentation, other format artifacts,
+  processor/editor/IPC and original reference assets are unchanged.
+
+Evidence: `build/WriteGraphEventsEvidence.py` verifies gate totals, new event-test
+PASS labels, native manager blocks, source/binary/log hashes and retained SDK/
+other-format/logo hashes, producing `build/graph-events-evidence.json`.
+
+Limits: these receipts certify raw-window reset/clear facts only. The existing
+lifecycle owner still has no production playback/buffer/stop event connection or
+wall-clock cleanup scheduler. Old/new graph-specific PCM, device continuity,
+coherent audible-clock/renderer pairing, visible-meter and actual DAW/hardware/
+Apple acceptance remain incomplete. Any lost stream remains invalid until prepare;
+retained receipts require both matching generation and current stream validity.
+No UI enablement, dependency/version change, package or remote push.

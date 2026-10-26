@@ -1169,3 +1169,19 @@ FIFO/saturation/precision tests, immediate volume progress, DEL/new-clip, UI Sto
 and zero-sample MIDI Stop cancellation, exact PCM and zero tracked new/delete.
 Neither the new owner nor timer receipts constitute a runtime notification producer,
 wall-clock scheduler, device-continuity proof or visible-meter acceptance. No package.
+
+Raw-window mutation events: LoopBank publishes MeterGraphEvents only after an
+accepted startMeterGraph reset or in clear(), carrying actual local sample frame,
+clear epoch, integer ticket/track and Engine prepare generation. These are raw
+window facts, not inferred JS analyser creation or playback lifecycle. Do not emit
+fresh-graph receipts on healthy RTRG/NORM/sourceRevision changes. The heap-owned
+SPSC has 255 usable slots; any overflow latches the entire generation invalid,
+including retained receipts, until prepare. Consumers must recheck validity before
+using retained facts. Queue indices are never reset by prepare; stale generations
+are discarded by bounded consumer pops. A full old-generation backlog can make a
+new publication overflow until consumed; do not silently repair a lossy stream.
+Retain sample-17 64/128, duplicate/no-clip rejection, precise DEL, ordered Clear All,
+full-width fields, overflow/UI progress, generation recovery, exact paired stereo
+PCM and zero tracked callback new/delete tests. This is not yet a production
+play/stop/buffer lifecycle producer, owner connection, timer scheduler or renderer.
+Keep visible meters disabled and do not package on this gate alone.
