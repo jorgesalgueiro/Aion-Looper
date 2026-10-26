@@ -270,3 +270,24 @@ calling the processor. Both paths retain zero tracked callback new/delete.
 This is controlled splitter/model acceptance, not physical delivery correlation.
 The holder scope still describes only its own dispatch edge; production meter
 selection, graph binding, IPC and visible-meter acceptance remain unfinished.
+
+Enclosing IO acquisition (26 October 2026) keeps the synthetic FIFO oracle and
+original splitter control, then checks the same scopes added to the generated
+production module. All sub-blocks must share one original callback serial/time,
+carry the exact total/offset, and precede holder/processor entry on the JUCE
+counter. PCM, raw optional context and saved state stay unchanged. Portable
+tests cover owner/range/thread/nesting, empty/invalid clocks, expired and changed
+lifecycle, prepare between token/clock reads and invalidation during holder wait.
+The 4000-packet test varies every enclosing field alongside the existing tuple.
+No JS clock policy, MIDI assignment, transport, UI, timing tolerance or audio
+command changes. Raw callback capture is not an acoustic timing measurement;
+audible selection, drift/xruns and visible-meter graph/renderer remain pending.
+
+The linked real-manager fixture additionally passes synthetic IO on Windows.
+Steady callback allocation acceptance follows the stock manager's scratch-buffer
+warm-up and does not cover existing first-callback allocation or locks. The same
+fixture remains enabled on Linux hosts with /dev/snd/seq; WSL without it reports
+unavailable because the stock constructor starts a MIDI observer. Its failed
+attempt is retained. This is a documented acceptance gap, not a Linux manager or
+physical MIDI pass; the instrumented splitter/production-processor cases remain
+mandatory on both systems.

@@ -1055,3 +1055,30 @@ new/delete. Do not infer enclosing delivery time from split holder times or
 forwarded hostTimeNs. Production origin/range acquisition, drift/xruns and
 graph/renderer binding are still required; no visible-meter or hardware timing
 acceptance and no package from these controlled tests.
+
+Enclosing IO capture (26 October 2026): retain generated-only audio_devices
+instrumentation and exact manager/cpp/mm reversibility with licenses intact.
+Never edit the SDK checkout. Capture before max-size adaptation/manager work;
+scope each sub-block with the exact enclosing total/offset. The manager owner
+key must match the holder's manager. Keep separate holder and enclosing clocks,
+single-use processor ownership and coherent view/PCM publication; no pointer or
+private token in telemetry. Read device/configuration epochs before the counter.
+Bound prepare/stop invalidates pending enclosing observations conservatively;
+recheck at holder consumption, not just construction. Preserve nested/thread/
+range/invalid/empty/prepare/stop tests, actual original/instrumented splitters,
+4000 every-field packets, bit-identical PCM/state and zero tracked new/delete.
+Use source-local include paths for the generated module. Keep manager/player
+locks, mixing, pointer adaptation and zero-size guard unchanged. This observes
+JUCE's received AudioIODevice callback, not OS driver/DAC time. No automatic
+audible correlation, graph/renderer, visible-meter or physical/Apple acceptance
+and no package from raw acquisition alone.
+
+Keep the real linked AudioDeviceManager synthetic-device fixture as well as the
+original/instrumented splitter controls. Qualify its allocation check as steady
+after stock scratch warm-up; do not claim the whole existing manager/player is
+lock/first-allocation-free. The stock constructor's MIDI observer requires
+/dev/snd/seq on Linux. If absent, report that extra fixture unavailable before
+constructing the manager, retain its failed attempt and do not claim Linux
+manager acceptance. Never silence JUCE MIDI assertions or loosen CTest's
+assertion detector to turn this environment limit into evidence. The actual
+manager fixture must still run on a host with the prerequisite.

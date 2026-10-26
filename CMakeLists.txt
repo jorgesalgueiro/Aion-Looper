@@ -174,6 +174,7 @@ endif()
 
 include(cmake/Vst3Programs.cmake)
 include(cmake/StandaloneClock.cmake)
+include(cmake/DeviceDelivery.cmake)
 
 target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/ui/WebEditor.cpp)
 target_include_directories(AionLooper PRIVATE source)

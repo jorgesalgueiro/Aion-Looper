@@ -13,6 +13,20 @@ struct ProcessorClockObservation {
 inline ProcessorClockObservation validatedProcessorClock(ProcessorClockObservation value) noexcept {
     return value.available&&std::isfinite(value.seconds)&&value.seconds>=0?value:ProcessorClockObservation{};
 }
+// Outer AudioIODevice callback before JUCE's max-size adaptation/manager work.
+// A counter observation and range, not a measured DAC or host output timestamp.
+struct DeviceDeliveryObservation {
+    double seconds=0;
+    std::uint64_t serial=0;
+    std::uint32_t frames=0,frameOffset=0;
+    bool available=false;
+    bool operator==(const DeviceDeliveryObservation&) const noexcept = default;
+};
+inline bool validDeviceDelivery(DeviceDeliveryObservation value) noexcept {
+    return value.available?(std::isfinite(value.seconds)&&value.seconds>=0&&value.serial
+                            &&value.frames&&value.frameOffset<value.frames)
+                          :(value.seconds==0&&value.serial==0&&value.frames==0&&value.frameOffset==0);
+}
 // Standalone holder callback entry, after any device-manager dispatch work.
 // Raw observation only: not a driver/DAC timestamp or calibrated latency edge.
 struct DeviceCallbackObservation {
@@ -20,11 +34,15 @@ struct DeviceCallbackObservation {
     std::uint64_t serial=0;
     std::uint32_t frames=0;
     bool available=false;
+    DeviceDeliveryObservation delivery{};
     bool operator==(const DeviceCallbackObservation&) const noexcept = default;
 };
 inline bool validDeviceCallback(DeviceCallbackObservation value) noexcept {
-    return value.available?(std::isfinite(value.seconds)&&value.seconds>=0&&value.serial&&value.frames)
-                          :(value.seconds==0&&value.serial==0&&value.frames==0);
+    return validDeviceDelivery(value.delivery)
+        &&(value.available?(std::isfinite(value.seconds)&&value.seconds>=0&&value.serial&&value.frames
+                            &&(!value.delivery.available||(value.delivery.seconds<=value.seconds
+                                &&value.frames<=value.delivery.frames-value.delivery.frameOffset)))
+                           :(value.seconds==0&&value.serial==0&&value.frames==0&&!value.delivery.available));
 }
 inline DeviceCallbackObservation validatedDeviceCallback(DeviceCallbackObservation value,int frames) noexcept {
     return value.available&&validDeviceCallback(value)&&frames>0&&value.frames==static_cast<std::uint32_t>(frames)?value:DeviceCallbackObservation{};

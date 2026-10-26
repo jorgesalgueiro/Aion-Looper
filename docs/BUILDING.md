@@ -1274,3 +1274,25 @@ separate namespace and never replaces SDK code. Existing generator gates check
 LF/CRLF, missing/duplicate anchors and byte-for-byte source correspondence.
 Run the portable core gate under the existing ASan/UBSan configuration too.
 These controlled tests cannot establish physical output or host timing parity.
+
+Enclosing IO capture (26 October 2026) uses the same core/native/Standalone
+commands above. DeviceDelivery.cmake generates aion_audio_devices.cpp/mm and
+aion_AudioDeviceManager.cpp beside the holder hook. Only that module source gets
+the SDK-relative include path. The native test also compiles the instrumented
+splitter in a separate namespace and retains the original splitter control.
+standalone_clock_generation checks portable LF/CRLF/drift fixtures;
+standalone_clock_sdk_generation checks the actual pinned SDK, exact reversibility
+and generated module/test copies. Keep the SDK checkout unchanged and compile
+both the processor test and Standalone so the real module and holder are checked.
+No plugin-format package, installation, version bump or SDK update is required.
+The mm forwarding source is generated/reversed by tests; Apple compilation still
+requires an Apple toolchain and has not been established on this Windows host.
+
+The native suite also connects the linked production AudioDeviceManager to a
+registered synthetic device type, retaining the original/instrumented splitter
+controls. Its steady allocation check follows JUCE's existing scratch-buffer
+warm-up. The stock manager always constructs a MIDI observer; on Linux this
+additional fixture requires /dev/snd/seq. Without it, the fixture explicitly
+reports unavailable and the other processor/splitter gates still run. Do not
+silence assertions or treat that capability skip as Linux manager acceptance.
+Run the same native command on a Linux host with the sequencer to close that gap.

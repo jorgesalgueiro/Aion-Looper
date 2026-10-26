@@ -5368,3 +5368,57 @@ user-logo hashes. No app/plugin build, package, version bump or GUI/DAW/hardware
 Apple timing acceptance is claimed. This is controlled splitter/model validation;
 production enclosing-delivery origin/range capture, drift/xruns and meter
 graph/IPC/renderer wiring remain required before visible-meter acceptance.
+
+Enclosing IO acquisition (26 October 2026): full portable suites pass Windows
+28/28 and Ubuntu 28/28; six focused ASan/UBSan gates pass. Strict scope/packet
+compilation passes. The unchanged audio audit passes 126 cases / 965,826 samples,
+max error 7.394757495227111e-08 at 1e-6. Existing original-JS meter/graph/clock
+oracles and the independent FIFO models retain their previous tolerances.
+The 4000-packet concurrent check now varies every enclosing-delivery field too.
+Owner/range/thread/nesting, invalid/empty clocks, prepare/stop, epoch-before-clock
+ordering, invalidation during holder wait and exact Engine view/PCM pairing pass
+with zero tracked new/delete and bit-identical monitored Engine PCM.
+
+Both native processors and real Standalone wrappers were rebuilt on Windows and
+Linux, including the generated audio_devices module and holder. SDK/processor
+gates pass 2/2 per platform for 144 original/instrumented splitter callbacks,
+captured entry bracketing and exact total/offset/identity, partial/empty/zero-max
+buffers, restart, unchanged raw context, nonzero PCM/state identity and zero
+tracked callback new/delete. Generator tests cover LF/CRLF, duplicate/drift
+rejection, exact manager/cpp/mm reversal and exact generated test-body copies.
+The original SDK checkout and other plugin-format/test-host binaries remain
+unchanged. No Apple compilation, new GUI/DAW/controller or physical timing
+acceptance is inferred from these checks.
+
+An additional linked AudioDeviceManager fixture exercises the actual production
+module's manager-owner handoff with a registered synthetic device type, without
+opening platform audio devices. Windows passes 18 processor blocks at 64/128,
+nonzero PCM/state identity and zero tracked steady callback new/delete after the
+existing JUCE scratch-buffer warm-up. This does not claim the entire existing
+manager/player is allocation- or lock-free, especially its first scratch resize.
+
+On WSL, constructing that real manager registers JUCE's MIDI observer, which
+asserts when /dev/snd/seq is absent. The first extra-manager run fails the existing
+CTest assertion rule; retain build/delivery-manager-linux.txt as evidence. The
+fixture now checks that kernel-device prerequisite before constructing a real
+manager and explicitly reports SKIP/unavailable if absent. The assertion rule
+and JUCE MIDI code remain unchanged; the 144 original/instrumented splitter and
+production-processor cases still run. Final native gates pass 2/2 on each host,
+with the extra 18 real-manager blocks passed only on Windows. Actual Linux
+manager acceptance remains unverified here and must run on a host providing the
+sequencer. This capability limit is not a physical MIDI or audio pass.
+
+Evidence: build/delivery-{windows,ubuntu,asan}.txt,
+build/delivery-native-{windows,linux}.txt,
+build/delivery-manager-{windows,linux}.txt,
+build/delivery-final-native-{windows,linux}.txt and their detail/build logs,
+build/delivery-strict.txt, build/delivery-audio.json and
+build/delivery-final-evidence.json. The final manifest distinguishes the retained
+Linux failure, explicit capability skip, Windows real-manager acceptance and
+unchanged initial full suites from the final fixture-only native rechecks.
+It hashes sources, generated copies, rebuilt Standalone/test artifacts and
+unchanged SDK, original policies, other plugin formats and separate user logo.
+No package/version bump or automatic audible clock, graph/IPC/renderer is enabled.
+Raw acquisition now observes JUCE's enclosing AudioIODevice callback, not an OS
+driver interrupt or DAC timestamp. Drift/xruns, audible selection, visible meters
+and physical acceptance remain unfinished.

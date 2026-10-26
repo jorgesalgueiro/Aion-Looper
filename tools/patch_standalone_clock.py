@@ -10,7 +10,7 @@ ANCHOR = '''    void audioDeviceIOCallbackWithContext (const float* const* input
                                            const AudioIODeviceCallbackContext& context) override
     {
 '''
-INJECTION = '        aion::DeviceCallbackScope aionDeviceClock { &aionDeviceClockBinding, numSamples, aionDeviceClockBinding.epoch(), Time::getMillisecondCounterHiRes() * 0.001 };\n'
+INJECTION = '        aion::DeviceCallbackScope aionDeviceClock { &aionDeviceClockBinding, numSamples, aionDeviceClockBinding.epoch(), Time::getMillisecondCounterHiRes() * 0.001, &deviceManager };\n'
 PLAYER = '    AudioProcessorPlayer player;\n'
 BINDING = '    aion::DeviceCallbackBinding aionDeviceClockBinding;\n'
 INCLUDE = '#include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>'

@@ -1410,3 +1410,34 @@ The tests supply a separate synthetic FIFO timeline to exercise the model.
 Production acquisition of that enclosing origin/range remains pending, as do
 drift/xrun handling and meter graph/renderer integration. No new production
 clock caller, audible conversion, JSON, audio or UI behavior is enabled.
+
+Enclosing IO capture (26 October 2026): the build-local audio_devices module
+now adds an RAII scope at entry to CallbackMaxSizeEnforcer, before its existing
+size guard, channel-pointer adaptation and AudioDeviceManager dispatch. Each
+iteration adds a sub-block scope with the original total length and exact offset.
+The manager instance is the owner key. The generated Standalone holder uses that
+same manager key when taking its existing holder-entry observation. The two
+timestamps remain distinct. DeviceDeliveryObservation carries only counter
+seconds, a thread-local nonzero serial, total frames, offset and availability;
+it is copied within the coherent callback/view/requested-PCM tuple. Pointers and
+private lifecycle tokens never enter telemetry or JSON.
+
+The enforcer warms the JUCE counter in aboutToStart and invalidates its binding
+before start/stop work. Bound processor preparation/stop also advances a shared
+lock-free configuration epoch, before rebuilding the engine. An enclosing scope
+captures device/configuration epochs before sampling time; reads require both
+still current. This conservatively drops enclosing metadata if another bound
+device prepares while a callback waits. It does not change audio or mark a device
+stopped. Holder consumption rechecks the enclosing scope, so changed lifecycle,
+owner/range/thread mismatch, expired scope, invalid clock or missing split cannot
+be relabelled as a new delivery. Existing processor-owner guards remain separate.
+
+DeviceDelivery.cmake replaces only the module translation unit with a generated
+copy, using source-local include paths. Reversing the scope/member/constructor
+edits restores the exact original manager bytes; reversing the module include
+restores the original cpp/mm wrappers. The SDK checkout, manager/player locking,
+channel mapping, mixing, zero-maximum silence and audio flow remain intact.
+This is the AudioIODevice callback edge received by JUCE's manager, not a measured
+DAC timestamp or the operating system driver's interrupt. There is still no
+production audible-time conversion, graph binding, IPC or visible-meter caller;
+device drift/xruns and renderer/physical acceptance remain separate gates.
