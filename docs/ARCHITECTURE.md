@@ -1344,3 +1344,46 @@ before invoking processBlock: processor entry is therefore a separate edge
 from device callback delivery. No automatic CallbackClockCorrelation is formed.
 Output-delivery correlation, drift/xrun behavior, graph lifetime binding and
 renderer/IPC integration still require validation before meters can be enabled.
+
+Standalone IO-dispatch observation (26 October 2026): a generated copy of the
+pinned JUCE holder adds one DeviceCallbackScope at callback entry, before the
+original mute-input and AudioProcessorPlayer body, plus one internal lifecycle
+binding member. The generated Standalone
+wrapper and Processor.cpp both use plugin/StandaloneHolder.h, so every TU sees
+the same holder definition. The SDK checkout remains untouched. Generation
+checks exact replacement counts and preserves all other bytes, including the
+original application/window, callback body, notices and LF/CRLF endings.
+
+The scope captures JUCE counter seconds, nonempty frame count and a nonzero
+thread-local IO serial. A noexcept, constant-initialized thread-local carrier
+holds the current owner and one-use status; nested dispatches restore the prior
+owner's consumption state. The prepared processor accepts only its own holder
+and exactly matching block size, once. Wrong owners cannot steal the observation;
+a matching owner with a mismatched size consumes and rejects it. No scope,
+invalid time, zero blocks, mismatched processor sizes and repeated processing
+remain unavailable. Adaptation before holder entry is not detected by this rule.
+releaseResources clears the owned binding and prepare establishes it again.
+A controlled owner identity, fixed at construction, is a native test seam,
+never IPC. Owner pointers
+never enter telemetry; deviceEntry is copied with the complete callback/view/PCM
+tuple and retains the existing engine-generation and exact-pairing guards.
+An available entry is a historical observation, not a device-running flag.
+
+Each binding has a lock-free atomic lifecycle token. Braced initialization
+snapshots that token before the counter read; take also checks the prepared
+token against the binding's current token. Prepare invalidates the old binding
+before rebuilding the engine and publishes a fresh token only on success;
+release invalidates it again. A scope that began before reprepare cannot be
+relabelled as a new-generation timestamp while waiting in the player. The
+actual-processor regression reproduced this gap before the token fix; retain
+its failure and subsequent passing checks. Tokens stay private and do not
+replace the engine generation or source/analyser guards.
+
+This captures the holder's dispatched callback edge, not the physical driver's
+entry. AudioDeviceManager may perform locking, metering, dispatch or block-size
+adaptation first; AudioProcessorPlayer retains its existing locks and work.
+The hook introduces no lock, allocation, device query or altered audio/MIDI flow,
+but does not establish that the complete JUCE wrapper is lock-free. No automatic
+CallbackClockCorrelation, output timestamp or UI/JSON consumer is enabled.
+Device-manager/driver correlation, xruns/drift and graph/renderer binding remain
+necessary before visible meters can be accepted.

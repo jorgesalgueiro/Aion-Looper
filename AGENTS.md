@@ -1008,3 +1008,35 @@ CallbackClockCorrelation, reinterpret it as an output timestamp, or mix its
 origin with hostTimeNs/performance.now. Actual output-delivery correlation,
 drift/xrun handling and graph/renderer wiring remain unverified. No package or
 visible-meter/physical timing claim from this raw observation increment.
+
+Standalone-dispatch scope (26 October 2026): use only the generated holder via
+plugin/StandaloneHolder.h in all TUs, including the generated Standalone wrapper.
+Never edit the JUCE checkout or include a different holder definition. Keep the
+exact reversible scope/lifecycle-member insertions and wrapper include, LF/CRLF preservation and
+fail-closed upstream-drift tests. The RAII hook surrounds the unchanged original
+callback body, before mute/player work. Keep scoped owner/frame/thread/nesting/
+single-use guards, known-zero/invalid/empty behavior, 64/128/offline/reset,
+4000-packet every-field coherence, monitored PCM identity, native processor
+stop/reprepare/state tests and zero tracked new/delete. Wrong owners cannot
+consume the scope; a matching owner with the wrong frame count consumes and
+rejects it. Native owner pointers stay out of telemetry. IO serials are thread-
+local; exact engine callback/generation/source guards remain independently
+required. releaseResources clears the prepared owner binding. Controlled owner
+injection is an immutable native test seam, never IPC or hardware evidence.
+This is holder dispatch after device-manager work, not a physical driver/DAC
+timestamp. Keep existing manager/player locks and flow unchanged; do not claim
+the whole wrapper is lock-free from the scope test. No automatic audible-time
+conversion or visible meter is enabled. Driver/manager correlation, drift/xruns,
+graph binding and renderer acceptance remain pending; no package yet.
+
+Retain the waiting-callback/reprepare regression: it failed before the lifecycle
+token was added. DeviceCallbackBinding uses a lock-free atomic token; the holder
+hook must use braced initialization with token snapshot BEFORE the clock read.
+Prepare invalidates the old token before engine work and establishes a fresh
+token only after success. Release invalidates and clears the cached binding.
+Take must match owner, prepared epoch, current binding epoch, nonempty frame
+count and one-use state; a stale scope cannot be relabelled after prepare.
+Binding tokens stay private and are independent of engine generations. Treat
+deviceEntry availability as historical capture, never a device-running signal.
+Keep core, sanitizer and actual-processor before/after tests; do not remove the failed
+evidence or claim driver/output calibration from these lifecycle guards.

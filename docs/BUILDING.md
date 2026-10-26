@@ -1227,3 +1227,38 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -Isource -fsyntax-only tests/Cal
 Runnable Standalone/plugin/test-host targets remain unchanged for this raw
 observation increment; do not claim live output timing from processor-entry
 capture alone. Output-delivery correlation and graph/renderer binding remain.
+
+Standalone dispatch checks (26 October 2026): portable CTest now has 28 gates,
+including standalone_clock_generation, which uses LF/CRLF fixtures and requires
+no JUCE checkout. DeviceCallbackScopeTests.cpp joins core_realtime_contract.
+Run the normal portable Windows/Ubuntu commands and add
+standalone_clock_generation to the six focused ASan/UBSan gates above (seven).
+Strict scope/packet compilation:
+
+```sh
+g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -Isource -fsyntax-only tests/DeviceCallbackScopeTests.cpp tests/MeterTransferTests.cpp
+```
+
+Compile the generated real wrapper and processor without packaging:
+
+```sh
+cmake --build build/windows --config Release --target aion_midi_processor_tests AionLooper_Standalone
+ctest --test-dir build/windows -C Release --output-on-failure -R "^(native_midi_processor|standalone_clock_sdk_generation)$"
+cmake --build build/linux --target aion_midi_processor_tests AionLooper_Standalone -j2
+ctest --test-dir build/linux --output-on-failure -R "^(native_midi_processor|standalone_clock_sdk_generation)$"
+```
+
+The SDK-generation gate compares the generated files against the actual pinned
+JUCE sources. StandaloneClock.cmake generates build-local files, leaving .deps
+unchanged. All project holder includes must use plugin/StandaloneHolder.h;
+including the original holder directly would create inconsistent definitions.
+No package or new plugin-format build is needed. Compiling these targets and
+controlled scopes does not establish physical driver/GUI/DAW timing acceptance.
+
+After a scope/lifecycle-only correction, rebuild aion_core_tests in the three
+portable build trees and rerun core_realtime_contract and
+standalone_clock_generation. Keep the initial full-run logs and the native
+failure-before-fix log, then rebuild/retest both native targets using the commands
+above. Do not repeat unaffected JS/PCM gates unless their source or behavior
+changes. The final manifest distinguishes initial full acceptance from these
+changed-gate rechecks.

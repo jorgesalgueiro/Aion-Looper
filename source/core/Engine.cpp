@@ -60,7 +60,7 @@ bool Engine::applyLoop(LoopAction action,std::uint32_t track,double value) noexc
         (track==countInTrack&&(action==LoopAction::finish||action==LoopAction::stop||action==LoopAction::stopImmediate||action==LoopAction::clear)))countIn.cancel();
     return true;
 }
-void Engine::process(float* const* channels, int count, int frames,std::span<const MidiEvent> midiEvents, bool nonRealtime,ProcessorClockObservation processorEntry) noexcept {
+void Engine::process(float* const* channels, int count, int frames,std::span<const MidiEvent> midiEvents, bool nonRealtime,ProcessorClockObservation processorEntry,DeviceCallbackObservation deviceEntry) noexcept {
     if (count < 0 || frames < 0 || (count > 0 && channels == nullptr)) return;
     const auto callbackBegin=frame;
     float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
@@ -139,7 +139,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     auto serial=callbackClock.serial+1;if(!serial)++serial;
     const bool hasHostTime=transport.hostValid&&transport.hasHostTimeNs&&transport.callbackFrame==callbackBegin;
     callbackClock={serial,callbackBegin,frame,hasHostTime?transport.hostTimeNs:0,preparedRate,generation(),hasHostTime,nonRealtime,
-        outputLatency.available?static_cast<std::uint32_t>(outputLatency.samples):0,outputLatency.available,validatedProcessorClock(processorEntry)};
+        outputLatency.available?static_cast<std::uint32_t>(outputLatency.samples):0,outputLatency.available,validatedProcessorClock(processorEntry),validatedDeviceCallback(deviceEntry,frames)};
     (void) meters.push({frame, peak});
     const auto tracks=loops.view();
     meterTransfer->publish(generation(),frame,preparedRate,[&](unsigned id,MeterWindowEvent& event) noexcept {

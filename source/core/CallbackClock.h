@@ -13,6 +13,22 @@ struct ProcessorClockObservation {
 inline ProcessorClockObservation validatedProcessorClock(ProcessorClockObservation value) noexcept {
     return value.available&&std::isfinite(value.seconds)&&value.seconds>=0?value:ProcessorClockObservation{};
 }
+// Standalone holder callback entry, after any device-manager dispatch work.
+// Raw observation only: not a driver/DAC timestamp or calibrated latency edge.
+struct DeviceCallbackObservation {
+    double seconds=0;
+    std::uint64_t serial=0;
+    std::uint32_t frames=0;
+    bool available=false;
+    bool operator==(const DeviceCallbackObservation&) const noexcept = default;
+};
+inline bool validDeviceCallback(DeviceCallbackObservation value) noexcept {
+    return value.available?(std::isfinite(value.seconds)&&value.seconds>=0&&value.serial&&value.frames)
+                          :(value.seconds==0&&value.serial==0&&value.frames==0);
+}
+inline DeviceCallbackObservation validatedDeviceCallback(DeviceCallbackObservation value,int frames) noexcept {
+    return value.available&&validDeviceCallback(value)&&frames>0&&value.frames==static_cast<std::uint32_t>(frames)?value:DeviceCallbackObservation{};
+}
 // Raw callback-start timestamp, not an audible-output or performance.now stamp.
 // Preserve the host's unknown clock origin and full integer nanosecond precision.
 // Local [beginFrame,endFrame) is independent of DAW seeks and includes zero-size
@@ -25,6 +41,7 @@ struct CallbackClockStamp {
     std::uint32_t outputLatencySamples=0;
     bool hasOutputLatency=false; // Prepared device report, not a clock correlation.
     ProcessorClockObservation processorEntry{};
+    DeviceCallbackObservation deviceEntry{}; // Standalone wrapper entry; never inferred from processorEntry.
     bool operator==(const CallbackClockStamp&) const noexcept = default;
 };
 static_assert(std::is_trivially_copyable_v<CallbackClockStamp>);
@@ -33,6 +50,8 @@ inline bool validCallbackClock(const CallbackClockStamp& stamp) noexcept {
         &&std::isfinite(stamp.sampleRate)&&stamp.sampleRate>0
         &&(stamp.hasHostTimeNs||stamp.hostTimeNs==0)
         &&(stamp.hasOutputLatency||stamp.outputLatencySamples==0)
-        &&stamp.processorEntry==validatedProcessorClock(stamp.processorEntry);
+        &&stamp.processorEntry==validatedProcessorClock(stamp.processorEntry)
+        &&validDeviceCallback(stamp.deviceEntry)
+        &&(!stamp.deviceEntry.available||stamp.endFrame-stamp.beginFrame==stamp.deviceEntry.frames);
 }
 }

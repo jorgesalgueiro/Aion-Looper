@@ -14,13 +14,15 @@ void fill(unsigned id,aion::MeterWindowEvent& event) noexcept {
     const bool host=event.endFrame%128==0;
     event.callbackClock={event.endFrame+1,event.endFrame,event.endFrame,host?event.endFrame+123:0,event.sampleRate,event.generation,host,id%2!=0,id%3?0:id+32,id%3==0};
     event.callbackClock.processorEntry={id%2?static_cast<double>(event.endFrame)*.001:0,id%2!=0};
+    if(id%4==1&&event.endFrame>=64){event.callbackClock.beginFrame-=64;event.callbackClock.deviceEntry={static_cast<double>(event.endFrame)*.001,event.endFrame+1,64,true};}
     for(unsigned i=0;i<event.samples.size();++i)
         event.samples[i]=static_cast<float>((event.endFrame%10000)*2048+id*32+i);
 }
 void coherent(const aion::MeterWindowEvent& event){
     check(event.track<20&&event.clearEpoch==event.track+100&&event.waveformId==event.endFrame+1000&&event.sourceRevision==event.endFrame+event.track,"Meter packet identity coherent");
     const bool host=event.endFrame%128==0;
-    const aion::CallbackClockStamp expected{event.endFrame+1,event.endFrame,event.endFrame,host?event.endFrame+123:0,event.sampleRate,event.generation,host,event.track%2!=0,event.track%3?0:event.track+32,event.track%3==0,{event.track%2?static_cast<double>(event.endFrame)*.001:0,event.track%2!=0}};
+    aion::CallbackClockStamp expected{event.endFrame+1,event.endFrame,event.endFrame,host?event.endFrame+123:0,event.sampleRate,event.generation,host,event.track%2!=0,event.track%3?0:event.track+32,event.track%3==0,{event.track%2?static_cast<double>(event.endFrame)*.001:0,event.track%2!=0}};
+    if(event.track%4==1&&event.endFrame>=64){expected.beginFrame-=64;expected.deviceEntry={static_cast<double>(event.endFrame)*.001,event.endFrame+1,64,true};}
     check(aion::validCallbackClock(event.callbackClock)&&event.callbackClock==expected,"Concurrent every-field callback clock tuple coherent, including optional/offline flags");
     for(unsigned i=0;i<event.samples.size();++i)
         check(event.samples[i]==static_cast<float>((event.endFrame%10000)*2048+event.track*32+i),"Meter packet PCM not torn/reused");

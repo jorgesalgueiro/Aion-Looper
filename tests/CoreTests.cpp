@@ -32,6 +32,7 @@ void playbackClockTests();
 void callbackAudibleTimeTests();
 void callbackClockTests();
 void outputLatencyTests();
+void deviceCallbackScopeTests();
 void countInTests();
 void startPhaseTests();
 void stutterTests();
@@ -67,6 +68,7 @@ static void hostTransportTests() {
     std::cout<<"PASS: optional host validation, preroll, meter/cycle, loss/reset and coherent bounded snapshots at 64/128\n";
 }
 int main() {
+    deviceCallbackScopeTests();
     hostTransportTests();
     callbackAudibleTimeTests();
     aion::SpscQueue<unsigned, 8> q; unsigned value=0;

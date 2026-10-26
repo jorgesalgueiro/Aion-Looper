@@ -1,5 +1,6 @@
 #include "plugin/Processor.h"
 #include "plugin/DeviceOutputLatency.h"
+#include "core/DeviceCallbackScope.h"
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <cstdlib>
 #include <iostream>
@@ -35,6 +36,30 @@ public:
 };
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
+ for(int block:{64,128}){
+  aion::DeviceCallbackBinding owner,other;
+  auto p=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},AionProcessor::OutputLatencyReader{},nullptr,&owner);
+  p->setPlayConfigDetails(2,2,48000,block);p->prepareToPlay(48000,block);
+  juce::MemoryBlock saved;p->getStateInformation(saved);
+  juce::AudioBuffer<float> buffer(2,block);juce::MidiBuffer midi;midi.ensureSize(256);
+  const auto run=[&]{buffer.clear();audioWatch=true;p->processBlock(buffer,midi);auto stamp=p->inspectCallbackClockAudioThread();audioWatch=false;return stamp;};
+  check(!run().deviceEntry.available,"Processor without an enclosing IO callback has no device clock");
+  for(unsigned n=0;n<12;++n){
+   const auto now=juce::Time::getMillisecondCounterHiRes()*.001;
+   aion::DeviceCallbackScope scope(&owner,block,owner.epoch(),now);
+   const auto stamp=run();check(stamp.deviceEntry.available&&stamp.deviceEntry.seconds==now&&stamp.deviceEntry.frames==static_cast<unsigned>(block)&&stamp.deviceEntry.serial&&stamp.processorEntry.seconds>=now,"Production processor captures matching device entry before its own counter");
+   check(!run().deviceEntry.available,"Second processor call cannot reuse one IO delivery timestamp");
+  }
+  {aion::DeviceCallbackScope scope(&other,block,other.epoch(),1);check(!run().deviceEntry.available,"Unrelated device owner cannot anchor this processor");}
+  {aion::DeviceCallbackScope scope(&owner,block-1,owner.epoch(),1);check(!run().deviceEntry.available,"Mismatched device/processor frame counts reject instead of inventing a sub-block timestamp");}
+  {aion::DeviceCallbackScope scope(&owner,block,owner.epoch(),std::numeric_limits<double>::quiet_NaN());check(!run().deviceEntry.available,"Invalid device counter clears prior observation");}
+  {aion::DeviceCallbackScope scope(&owner,block,owner.epoch(),1);p->prepareToPlay(48000,block);check(!run().deviceEntry.available,"Reprepare inside waiting IO scope must reject old delivery");}
+  p->releaseResources();{aion::DeviceCallbackScope scope(&owner,block,owner.epoch(),1);check(!run().deviceEntry.available,"Stopped device lifecycle cannot retain callback owner");}
+  p->prepareToPlay(48000,block);check(!p->inspectCallbackClockAudioThread().deviceEntry.available,"Reprepare clears old delivery tuple");
+  {aion::DeviceCallbackScope scope(&owner,block,owner.epoch(),1);check(run().deviceEntry.available,"Reprepare reinstalls current owned device context");}
+  juce::MemoryBlock after;p->getStateInformation(after);check(saved==after,"Raw device clock leaves parameter/MIDI serialization unchanged");
+ }
+ std::cout<<"PASS: production scoped device-entry matching, single use, owner/frame/error/stop/reprepare and state preservation at 64/128\n";
  for(int block:{64,128}){
   clockInAudio=clockOutsideAudio=0;controlledClockSeconds=100;
   auto p=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},AionProcessor::OutputLatencyReader{},&controlledProcessorClock);

@@ -5288,3 +5288,44 @@ DAW/GUI/hardware/Apple acceptance, SDK update or version bump is claimed.
 Processor entry follows host/device wrapper work and is not the output-delivery
 edge; no automatic audible-time correlation, graph binding, IPC or renderer is
 enabled. Those remain necessary before visible-meter acceptance.
+
+Standalone IO-dispatch scope (26 October 2026): initial full portable runs pass
+Windows 28/28 and Ubuntu 28/28; seven focused ASan/UBSan gates pass. They cover
+the new LF/CRLF/fail-closed generator fixture, thread-local scoped ownership,
+one-use/frame/nesting/thread guards, known-zero and invalid time, 64/128/zero/
+offline/reset publication and 4000-packet field/PCM coherence. Monitored Engine
+PCM remains bit-identical and scope/publication retain zero tracked new/delete.
+Strict portable compilation passes. The unchanged original JS clock/graph/meter
+and all other existing gates pass. The audio audit passes 126 cases / 965,826
+samples at unchanged 1e-6 tolerance, maximum error 7.394757495227111e-08.
+
+Review then added an actual native-processor regression: reprepare inside an
+unconsumed IO scope must reject that scope's old timestamp. It failed before
+the lifecycle token (build/device-dispatch-epoch-before.txt). The fix invalidates
+old bindings before prepare, establishes the new token after success and checks
+both captured and current tokens before consumption. Braced hook initialization
+loads the token before sampling time. Core fixtures also reject prepare between
+the token snapshot and the clock read. The updated core/generator gates pass
+2/2 on Windows, Ubuntu and ASan/UBSan. Unchanged JS/PCM gates were not repeated
+after this scope/lifecycle-only correction. The failure and pre-fix sources are
+retained, and the final manifest distinguishes initial full runs from rechecks.
+
+Both actual Standalone wrappers and native processor test targets were rebuilt
+on Windows and Linux. Final SDK-generation/processor gates pass 2/2 per platform,
+including the reproduced lifecycle case, stop/reprepare, owner/frame/single-use,
+unchanged serialized parameters/MIDI and callback allocation checks. Reversing
+the scoped insertion, internal binding declaration and wrapper include restores
+the exact pinned JUCE holder/application bytes. Original SDK sources, original
+clock policies, other plugin-format/test-host binaries and the separate user-
+logo edit retain their recorded hashes. No package, new plugin-format build,
+GUI/DAW/controller/physical-driver or Apple acceptance is claimed.
+
+Evidence: build/device-dispatch-{windows,ubuntu,sanitizers}.txt,
+build/device-dispatch-epoch-core-{windows,ubuntu,asan}.txt,
+build/device-dispatch-epoch-native-{windows,linux}.txt,
+build/device-dispatch-epoch-before.txt, build/device-dispatch-audio.json and
+build/device-dispatch-final-evidence.json. The manifest also hashes rebuilt
+Standalone/processor artifacts and generated source files. This observes holder
+dispatch after device-manager work; it is neither driver entry nor a calibrated
+output timestamp or device-running signal. Physical/manager correlation,
+drift/xruns and graph/IPC/renderer integration still gate visible meters.

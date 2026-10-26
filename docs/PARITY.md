@@ -232,3 +232,27 @@ bracketed by two observations of the same JUCE counter, independently of
 optional/raw host time and seeks. This is processor-entry capture acceptance,
 not a device-delivery or acoustic timing measurement. No audible correlation,
 visible meter, UI/JSON or audio scheduling change is enabled.
+
+Standalone IO dispatch (26 October 2026) adds raw holder-entry capture with a
+single-use owner/block/thread scope. Portable tests exercise wrong owner,
+wrong frame count, known zero, invalid/nonfinite clocks, nesting/restoration,
+cross-thread rejection, duplicate processing, reset and 64/128/zero/offline
+callback/PCM pairing. Actual monitored Engine PCM remains bit-identical with and
+without the observation; 4000 concurrent packets vary the new fields too.
+Actual JUCE processor tests cover the owned scope, one-use rule, missing/error/
+stop/reprepare paths and byte-identical saved parameter/MIDI state. The original
+JS clock/graph/meter policies remain unchanged and separate acceptance gates.
+Generator tests prove that removing the scoped insertion and lifecycle member restores the
+exact pinned holder bytes and reverting one include restores the original
+Standalone application source; unexpected upstream layouts fail closed.
+These tests do not measure physical output latency or validate visible meters.
+The holder edge follows device-manager work and is not automatically fed into
+the audible-time model. No plugin UI, MIDI assignment, JSON or audio scheduling
+behavior changes; no physical controller/driver or DAW timing claim is made.
+
+Lifecycle review added a native regression for reprepare inside an unconsumed
+IO scope. It failed before the binding-token fix. Atomic token validation now
+rejects both a scope waiting across prepare and an epoch snapshot taken before
+prepare but followed by a later clock read. The clock read stays sequenced after
+the token snapshot. Initial full gates are retained; only changed core/generator
+gates and native wrapper/processor checks need rerunning after this correction.

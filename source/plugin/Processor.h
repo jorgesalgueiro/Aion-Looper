@@ -6,15 +6,16 @@
 #include <mutex>
 static_assert(std::atomic<float>::is_always_lock_free, "Audio parameter loads must be lock-free");
 static_assert(std::atomic<bool>::is_always_lock_free, "MIDI input readiness must be lock-free");
+namespace aion {class DeviceCallbackBinding;}
 class AionProcessor final : public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {
 public:
     using ExportDestination = std::function<void(const juce::String&, std::function<void(juce::File)>)>;
     using OutputLatencyReader = std::function<aion::DeviceOutputLatency()>; // Optional controlled prepare-time IO.
     using ProcessorClockReader = double (*)() noexcept; // Immutable native test seam, never IPC.
-    explicit AionProcessor(ExportDestination = {},OutputLatencyReader = {},ProcessorClockReader = nullptr);
+    explicit AionProcessor(ExportDestination = {},OutputLatencyReader = {},ProcessorClockReader = nullptr,aion::DeviceCallbackBinding* controlledDeviceClockOwner = nullptr);
     ~AionProcessor() override;
     void prepareToPlay(double, int) override;
-    void releaseResources() override {}
+    void releaseResources() override;
     using juce::AudioProcessor::processBlock;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     bool isBusesLayoutSupported(const BusesLayout&) const override;
@@ -42,6 +43,10 @@ public:
 private:
     OutputLatencyReader outputLatencyReader; // Never invoked in processBlock or IPC.
     ProcessorClockReader processorClockReader=nullptr;
+    aion::DeviceCallbackBinding* controlledDeviceClockOwner=nullptr; // Immutable controlled IO seam; never IPC.
+    aion::DeviceCallbackBinding* deviceClockOwner=nullptr; // Replaced at prepare; audio lifecycle only.
+    std::uint32_t deviceClockEpoch=0;
+    void invalidateDeviceClock() noexcept;
     std::recursive_mutex midiSettingsMutex; // Non-audio configuration/state serialization only.
     aion::MidiSettings midiSettings;
     std::atomic<bool> vst3ProgramOverflow{false}; // Bounded wrapper input failed; reject its whole next callback.
