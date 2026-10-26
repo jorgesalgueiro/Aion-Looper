@@ -73,7 +73,7 @@ public:
             &&engine.requestLoopMeterWindow(id,generation,receipt.ticket);
     }
     bool observe(const MeterWindowEvent& packet,const EngineView& view,const CallbackClockStamp& clock,CallbackAudibleTime time) noexcept {
-        return observable()&&observeBoundLoopMeterWindow(graph,receipt,packet,view,clock,time);
+        return observable()&&engine.loopMeterGraphCurrent(generation,id,receipt.ticket)&&observeBoundLoopMeterWindow(graph,receipt,packet,view,clock,time);
     }
     // Explicit message-owner observation when the original main-loop gate would
     // not read an analyser. Supplied context/audible clocks only; never infer a

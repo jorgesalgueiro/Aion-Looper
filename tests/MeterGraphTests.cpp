@@ -11,6 +11,62 @@ extern std::atomic<int> allocations;
 namespace {void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}}
 namespace {
 auto readingTuple(const aion::MeterReading& value){return std::array<double,7>{value.rms,value.peak,value.linearPeak,value.peakDb,value.rmsPercent,value.peakPercent,value.clipped?1.0:0.0};}
+void currentWindowTokenTests(){
+    using namespace aion;
+    auto stream=std::make_unique<MeterGraphEvents>();MeterGraphEvent event;
+    watch=true;stream->reset(0xffffffffu);
+    check(!stream->owns(0xffffffffu,19,1)&&!stream->owns(0,0,1)&&!stream->owns(0xffffffffu,20,1)&&!stream->owns(0xffffffffu,0,0),"Empty/invalid freshness queries reject");
+    stream->publish(MeterGraphEventKind::started,19,0xfffffffeu,9007199254740993ull,0xffffffffffffffffull);
+    check(stream->owns(0xffffffffu,19,0xfffffffeu)&&!stream->owns(0xfffffffeu,19,0xfffffffeu),"Freshness token keeps full generation/ticket integer precision");
+    stream->publish(MeterGraphEventKind::cleared,0,0,10,1);check(stream->owns(0xffffffffu,19,0xfffffffeu),"Unrelated clear never invalidates this track");
+    stream->publish(MeterGraphEventKind::started,19,0xffffffffu,11,0);
+    check(!stream->owns(0xffffffffu,19,0xfffffffeu)&&stream->owns(0xffffffffu,19,0xffffffffu),"New actual reset invalidates old ticket before events are consumed");
+    stream->publish(MeterGraphEventKind::cleared,19,0,12,1);check(!stream->owns(0xffffffffu,19,0xffffffffu)&&stream->current(0xffffffffu),"Clear invalidates ticket without poisoning healthy stream");
+    while(stream->pop(event,0xffffffffu)){};stream->reset(1);check(!stream->owns(0xffffffffu,19,0xffffffffu),"Prepare invalidates old full-width generation");watch=false;
+    std::atomic<unsigned> ready{0},ack{0};
+    std::thread producer([&]{watch=true;for(unsigned n=1;n<=2000;++n){const unsigned track=n%20;
+        stream->publish(MeterGraphEventKind::started,track,n,n*2,0);ready.store(n*2-1,std::memory_order_release);while(ack.load(std::memory_order_acquire)!=n*2-1)std::this_thread::yield();
+        stream->publish(MeterGraphEventKind::cleared,track,0,n*2+1,1);ready.store(n*2,std::memory_order_release);while(ack.load(std::memory_order_acquire)!=n*2)std::this_thread::yield();}watch=false;});
+    watch=true;
+    for(unsigned n=1;n<=2000;++n){while(ready.load(std::memory_order_acquire)!=n*2-1)std::this_thread::yield();
+        check(stream->owns(1,n%20,n)&&stream->pop(event,1)&&event.ticket==n&&event.kind==MeterGraphEventKind::started,"Concurrent explicit start publishes coherent current token and event");ack.store(n*2-1,std::memory_order_release);
+        while(ready.load(std::memory_order_acquire)!=n*2)std::this_thread::yield();check(!stream->owns(1,n%20,n)&&stream->pop(event,1)&&event.kind==MeterGraphEventKind::cleared,"Concurrent clear invalidates token before consumer delivery");ack.store(n*2,std::memory_order_release);}
+    watch=false;producer.join();
+    std::cout<<"PASS: current-window tokens preserve full-width identities, reject unconsumed replacement/clear, isolate tracks and 4000 concurrent start/clear events; zero tracked new/delete\n";
+}
+void clearFreshnessOwnerTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u}){
+        auto engine=std::make_unique<Engine>(),control=std::make_unique<Engine>();auto packet=std::make_unique<MeterWindowEvent>();auto view=std::make_unique<EngineView>(),saved=std::make_unique<EngineView>();
+        for(auto* e:{engine.get(),control.get()}){e->prepare(48000,81920,{true,48000,0});e->configureSync({SyncMode::off,120,1,4,4,false});e->setMonitoring(false);e->setTarget(1);e->enqueueLoop({LoopAction::record,19,1,e->generation(),0,0});e->enqueueLoop({LoopAction::finish,19,2,e->generation(),4096,0});}
+        std::array<float,128> l{},r{},cl{},cr{};float* channels[]={l.data(),r.data()},*cc[]={cl.data(),cr.data()};
+        const auto cycle=[&](bool offline=false){for(unsigned i=0;i<block;++i)l[i]=r[i]=1.8f*std::sin((engine->clock()+i)*.037);cl=l;cr=r;engine->process(channels,2,static_cast<int>(block),{},offline);control->process(cc,2,static_cast<int>(block),{},offline);check(l==cl&&r==cr,"Clear freshness preserves bit-identical paired Engine PCM");while(engine->popView(*view)){};};
+        for(unsigned n=0;n<8192/block;++n)cycle(true);
+        LoopMeterLifecycle owner(*engine,19);owner.setBuffer(true);check(owner.start(engine->clock()),"Create owner before normal DEL");
+        watch=true;
+        for(unsigned n=0;n<2048/block;++n){check(owner.request(),"Healthy owner requests actual PCM");cycle();check(engine->popLoopMeterWindow(*packet),"Healthy actual PCM reply");const double t=static_cast<double>(view->frame)/48000;check(owner.observe(*packet,*view,view->callbackClock,{t,t}),"Healthy actual window establishes owner history");}
+        check(owner.value().clipped&&owner.value().peak>=1,"Actual clipped PCM establishes nonzero retained history");*saved=*view;
+        const auto before=readingTuple(owner.value());const double time=static_cast<double>(saved->frame)/48000;
+        MeterGraphEvent event;while(engine->popMeterGraphEvent(event)){};
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::clear,19,10,e->generation(),0,0});cycle();
+        check(engine->meterGraphEventsCurrent(),"Normal DEL has no event loss");
+        check(!owner.observe(*packet,*saved,saved->callbackClock,{time,time})&&readingTuple(owner.value())==before,"Normal DEL must reject retained coherent PCM before its event is consumed");
+        bool cleared=false;while(engine->popMeterGraphEvent(event))if(event.track==19&&event.kind==MeterGraphEventKind::cleared)cleared=true;
+        check(cleared&&engine->meterGraphEventsCurrent()&&!owner.observe(*packet,*saved,saved->callbackClock,{time,time})&&readingTuple(owner.value())==before,"Consuming DEL cannot revive the old graph window");
+        check(owner.clear()&&owner.value().peak==0,"Explicit attached clear resets the original meter state");
+        const auto captureAt=engine->clock();
+        for(auto* e:{engine.get(),control.get()}){e->enqueueLoop({LoopAction::record,19,11,e->generation(),captureAt,0});e->enqueueLoop({LoopAction::finish,19,12,e->generation(),captureAt+4096,0});}
+        for(unsigned n=0;n<8192/block;++n)cycle(true);
+        check(owner.setBuffer(true)&&owner.start(engine->clock())&&owner.binding().ticket==2,"Same-generation fresh clip uses next graph ticket");
+        check(owner.request(),"Fresh graph can request before audio acknowledgement");cycle();check(engine->popLoopMeterWindow(*packet),"Fresh graph PCM arrives");
+        const double fresh=static_cast<double>(view->frame)/48000;check(owner.observe(*packet,*view,view->callbackClock,{fresh,fresh}),"Fresh acknowledged graph recovers after normal clear");
+        *saved=*view;const auto retained=readingTuple(owner.value());
+        for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::clear,0,13,e->generation(),0,0});cycle();
+        check(engine->meterGraphEventsCurrent()&&owner.observe(*packet,*saved,saved->callbackClock,{fresh,fresh})&&readingTuple(owner.value())==retained,"Unrelated track clear preserves this graph identity");
+        watch=false;
+    }
+    std::cout<<"PASS: normal DEL rejects retained coherent PCM before/after event consumption, same-generation new graph recovery and unrelated-track isolation at 64/128 with identical PCM; zero tracked new/delete\n";
+}
 void lostEventOwnerTests(){
     using namespace aion;
     for(unsigned block:{64u,128u}){
@@ -365,6 +421,8 @@ void meterGraphTests(){
         if(block==64)baseline=reading;else check(reading.rms==baseline.rms&&reading.peak==baseline.peak&&reading.rmsPercent==baseline.rmsPercent,"Exact supplied-window graph meter 64/128 invariance");
     }
     boundGraphTests();
+    currentWindowTokenTests();
+    clearFreshnessOwnerTests();
     lostEventOwnerTests();
     unavailableOwnerTests();
     graphEventTests();

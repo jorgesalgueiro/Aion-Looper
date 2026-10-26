@@ -419,3 +419,16 @@ silence fallback through queue drain, preserves explicit cleanup and original
 detached-clear history, and recovers only after prepare plus owner reset. Paired
 Engine stereo PCM remains bit-identical with zero tracked callback new/delete.
 No original JS, parity tolerance, renderer or production audio code changed.
+
+### Normal DEL before event consumption (26 October 2026)
+
+A new actual Engine counterexample rejects an old internally coherent PCM/view/
+callback tuple immediately after a normal DEL, with no stream overflow and before
+the message consumer receives the clear event. Rejection preserves all seven
+follower fields. The same generation then records a fresh clip, advances to ticket
+two, accepts its actual reset acknowledgement and confirms unrelated-track clear
+isolation at 64/128 with bit-identical paired stereo PCM. Transport tests exercise
+full-width generation/tickets, unconsumed replacement/clear invalidation, invalid
+queries, prepare and 4000 concurrent producer/consumer start/clear exchanges.
+Existing raw-window, source/RTRG, loss-latch, original-JS lifecycle and PCM parity
+gates remain required. No original JS, tolerance or UI change is part of this fix.

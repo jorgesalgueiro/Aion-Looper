@@ -1633,3 +1633,34 @@ a telemetry failure. Detached clear still retains the original follower-history
 quirk. This adds no audio-thread work or production caller. Normal event delivery,
 production graph ownership, cleanup scheduling, per-graph overlap PCM and backend
 continuity/live renderer pairing remain separate unfinished gates.
+
+### Current raw-window identity across message-thread delays (26 October 2026)
+
+The loss latch alone does not reject old data after a normally delivered clear.
+The new regression retains actual clipped PCM with its old coherent source view
+and exact callback clock, executes DEL without overflowing the notification queue,
+and tries to observe before consuming its event. The pre-fix owner accepted that
+tuple. No queue failure or hardware timing assumption is needed for this case.
+
+MeterGraphEvents now keeps twenty atomic uint64 words in its construction-time
+heap storage. Each packs Engine generation and current accepted raw-window ticket.
+An accepted reset publishes the ticket at the audio mutation; clear publishes zero
+before event enqueue. Prepare clears the words. Full-width generation/ticket
+values remain integers and are read together, with a compile-time always-lock-free
+assertion. The message query checks stream validity on both sides of the word
+load; Engine generation also brackets the query. No lock, wait or allocation is
+introduced on audio. The [C++ atomic operations contract](https://eel.is/c++draft/atomics.types.operations)
+is the basis for the lock-free assertion and acquire/release publication.
+
+LoopMeterLifecycle bound observation requires this current identity in addition
+to its existing graph, packet/view/source, exact callback and supplied audible-time
+checks. Event consumption cannot revive an old ticket. Normal clear can recover
+under the same generation with the next accepted ticket; an unrelated track clear
+does not invalidate it. Requests remain allowed before the reset is acknowledged,
+so the existing future-start zero-prefix/receipt protocol is retained. Global
+stream loss still invalidates all observations until prepare.
+
+This identity describes raw-window reset/clear only. It does not infer JS graph
+creation from native source revisions, assert fresh device delivery or implement
+the full playback/buffer/stop notification consumer. Cleanup timers, graph-specific
+overlap PCM and live renderer/device-continuity acceptance remain unfinished.

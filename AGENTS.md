@@ -1211,3 +1211,18 @@ generation reset do not recover; fresh prepare plus owner reset does. Preserve t
 pre-fix failure in build/lost-owner-before.txt and actual clipped PCM/lost DEL/UI
 progress/paired stereo 64/128 tests. This loss latch is not a complete production
 notification consumer, normal clear freshness or device-continuity proof.
+
+Current raw-window identity: MeterGraphEvents publishes one always-lock-free uint64
+word per track, packing nonzero Engine generation and the actual accepted graph
+window ticket. Start stores it and clear stores ticket zero at the audio mutation,
+before event enqueue; prepare clears all words. Owner bound observations must
+match this current identity as well as the existing packet/view/callback checks
+and stream loss latch. Event consumption never establishes or revives current
+identity. This is not sourceRevision/analyser inference or a complete graph
+lifecycle producer. Retain normal DEL with no overflow and unconsumed events,
+all-seven-field atomic rejection, same-generation next-ticket recovery, unrelated
+track isolation, full-width identities and 4000 producer/consumer exchanges,
+paired 64/128 stereo PCM and zero tracked new/delete. Keep the pre-fix failure in
+build/clear-owner-before.txt. Requests may precede actual reset acknowledgement;
+only observing requires current accepted ownership. Rebuild existing native
+processor/Standalone targets after these core header changes; no package yet.

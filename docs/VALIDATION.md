@@ -5851,3 +5851,64 @@ supply a production notification consumer, normal clear/view freshness guarantee
 cleanup scheduler, per-graph overlap PCM, backend suspension/continuity evidence
 or live renderer pairing. GUI/DAW/hardware/Apple acceptance remains incomplete.
 No production audio/UI change, package, dependency/version change or remote push.
+
+### Current raw-window identity rejects normal DEL immediately — 26 October 2026
+
+Base: local `74a958d`. Reproduced the no-overflow counterpart of the lost-DEL bug:
+retain an actual clipped PCM packet plus its coherent old EngineView/callback,
+execute normal DEL, and observe before consuming its event. The stream remained
+healthy, so the owner accepted the old tuple. The pre-fix executable failed with
+`Normal DEL must reject retained coherent PCM before its event is consumed` in
+`build/clear-owner-before.txt`.
+
+MeterGraphEvents now publishes one always-lock-free uint64 generation/ticket word
+per track at accepted window reset/clear. Clear sets ticket zero before enqueueing
+its event; prepare clears the words. The owner requires this current accepted
+window identity in addition to existing graph/source/view/callback checks and the
+loss latch. No queue consumption or snapshot diff establishes that identity.
+Requests may still precede actual reset acknowledgement. Other tracks retain
+their identity, and normal DEL can recover in the same generation with the next
+accepted graph ticket.
+
+Current tests retain real clipped audio, reject the old coherent tuple before and
+after clear-event consumption without changes to any of seven follower fields,
+record a fresh same-generation clip/ticket and accept its actual reset receipt,
+and preserve unrelated-track isolation at 64/128 with bit-identical paired stereo
+PCM and zero tracked callback new/delete. Direct token tests preserve full-width
+generation/ticket values, reject invalid/old identities and exercise 4000 explicit
+start/clear events between producer and consumer threads without tracked new/delete.
+Test-harness synchronization is not part of the audio implementation.
+
+Final gates on unchanged final source:
+
+- Windows complete portable suite **28/28**, 354.60s:
+  `build/clear-owner-full-ctest-windows.txt`.
+- Ubuntu complete portable suite **28/28**, 585.19s:
+  `build/clear-owner-full-ctest-linux.txt`.
+- ASan/UBSan realtime/clock/meter **6/6**, 191.15s:
+  `build/clear-owner-ctest-asan.txt`.
+- Rebuilt production processor/Standalone checks **2/2** each on Windows/Ubuntu:
+  `build/clear-owner-native-ctest-{windows,linux}.txt`. Both contain all eighteen
+  linked production AudioDeviceManager synthetic blocks, with no skipped ALSA
+  gate or JUCE assertion. No physical IO evidence is claimed.
+- Committed PCM audit **126 cases / 965,826 samples**, maximum error
+  **7.394757495227111e-8**, unchanged **1e-6** tolerance:
+  `build/clear-owner-audio.json`. Capture/OD/SUB scope excludes playback envelopes,
+  browser resampling, latency compensation and sync.
+- Original UI byte identity, deterministic embedding and tamper rejection:
+  `build/clear-owner-assets.txt`.
+- Original-JS graph oracle and seven-field owner lifecycle comparison remain
+  unchanged, including all 377 supplied lifecycle observations.
+
+`build/WriteClearOwnerEvidence.py` verifies gate totals/new PASS labels, pre-fix
+failure, source/log/binary/PCM/asset hashes, unchanged production processor/editor/
+IPC, core implementation bodies, SDK instrumentation, other-format artifacts and
+separate user-logo hash, producing `build/clear-owner-evidence.json`.
+
+Limits: the atomic word proves current explicit raw-window identity only, not
+source/analyser graph construction, current device delivery or future continuity.
+Production playback/buffer/stop event consumption, cleanup timers, per-graph
+overlap PCM, coherent live clock/renderer pairing and GUI/DAW/hardware/Apple
+acceptance remain unfinished. No original UI or audio sample algorithm change,
+package, dependency/version change or remote push. Only existing native processor
+and Standalone targets were rebuilt; user's logo edit remains separate and unchanged.

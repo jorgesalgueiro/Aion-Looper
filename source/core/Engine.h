@@ -84,6 +84,9 @@ public:
     // Recheck stream validity before using retained receipts.
     bool popMeterGraphEvent(MeterGraphEvent& event) noexcept {return loops.popMeterGraphEvent(event,generation());}
     bool meterGraphEventsCurrent() const noexcept {return loops.meterGraphEventsCurrent(generation());}
+    bool loopMeterGraphCurrent(std::uint32_t requestedGeneration,unsigned track,std::uint32_t ticket) const noexcept {
+        return requestedGeneration==generation()&&loops.meterGraphCurrent(requestedGeneration,track,ticket)&&requestedGeneration==generation();
+    }
     bool popWaveform(WaveformEvent& event) noexcept {return waveforms->pop(event);}
     bool popView(EngineView& view) noexcept { return views->pop(view); }
     std::uint32_t generation() const noexcept { return epoch.load(std::memory_order_acquire); }

@@ -1386,3 +1386,12 @@ required. Rebuild `aion_midi_processor_tests` and `AionLooper_Standalone` after 
 LoopBank layout change, then run `native_midi_processor` and
 `standalone_clock_sdk_generation`. This does not enable the visible meter or
 constitute REAPER, Ardour, physical hardware or Apple acceptance.
+
+### Current window identity checks (26 October 2026)
+
+The normal-DEL freshness fix changes inline core headers and construction-time
+MeterGraphEvents storage. Rebuild the portable targets and the existing native
+`aion_midi_processor_tests` / `AionLooper_Standalone` targets on each test host.
+Use the full portable CTest suite, the six realtime/clock/meter sanitizer gates,
+and native processor/Standalone SDK-generation checks. Keep the existing PCM and
+asset audits. This requires no new dependency, package or version bump.

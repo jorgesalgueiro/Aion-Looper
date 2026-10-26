@@ -40,6 +40,7 @@ class LoopBank {
     static_assert(std::atomic<std::uint32_t>::is_always_lock_free);
 public:
     static constexpr std::uint32_t trackCount = 20, blockFrames = 4096, maxBlocks = 2048;
+    static_assert(trackCount==MeterGraphEvents::trackCount);
     static constexpr std::uint32_t defaultFrames = blockFrames * maxBlocks; // 64 MiB stereo
     LoopBank() = default;
     ~LoopBank();
@@ -79,6 +80,7 @@ public:
     void resetMeterGraphEvents(std::uint32_t generation) noexcept {meterGraphEvents->reset(generation);}
     bool popMeterGraphEvent(MeterGraphEvent& event,std::uint32_t generation) noexcept {return meterGraphEvents->pop(event,generation);}
     bool meterGraphEventsCurrent(std::uint32_t generation) const noexcept {return meterGraphEvents->current(generation);}
+    bool meterGraphCurrent(std::uint32_t generation,unsigned id,std::uint32_t ticket) const noexcept {return meterGraphEvents->owns(generation,id,ticket);}
     std::uint32_t meterGraphTicket(unsigned id) const noexcept {return id<trackCount?meterGraphTickets[id]:0;}
     std::uint64_t meterGraphFrame(unsigned id) const noexcept {return id<trackCount?meterGraphFrames[id]:0;}
     LoopView trackView(std::uint32_t id) const noexcept {if(id>=trackCount)return {};auto v=tracks[id].info;v.clearEpoch=tracks[id].clearEpoch;v.sourceRevision=tracks[id].sourceRevision;v.waveformId=tracks[id].clip?tracks[id].clip->waveformId:0;return v;}
