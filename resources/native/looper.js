@@ -35,7 +35,8 @@
         document.getElementById('startOverlay')?.remove();
         // User-supplied marquee; keep the original reference assets intact.
         const logo = document.querySelector('#header pre .rainbow-text');
-        if (logo) logo.textContent = `\n               ███                                                               ████
+        if (logo) logo.textContent = `\n  
+               ███                                                               ████
               ████                      ██      ███                 █           ██████                ███████                ████████                   ████           ██████████████         █████████████████         █████████
              ██████            █████████      ██████            █████          ██                   ██████████            ██████████████        ███       ████          █████████████████  ███████████████████        ████████████████
            ██  ████           ████████      ███ █████       █████████         ██                   ████   ███           ██████████████████    ██        ███████       ██████          ████        ███                 █████       ███
@@ -51,7 +52,8 @@
 ██                ██       ████                             ███           ███              ███████████████████          █████████████████      ██████████████         ███                ███████████████████        ███
                                                                                                                            ████████████            ██████            ██                      ███                   ███
                                                                                                                                                                  █████                      ███                  ████
-                                                                                                                                                                 ███                                             ███\n`;
+                                                                                                                                                                 ███                                             ███
+                                                                                                                                                                 \n`;
         // Align glyph columns, not each ragged row independently.
         if (logo) logo.style.textAlign = 'left';
         const fitLogo = () => {
