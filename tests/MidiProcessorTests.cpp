@@ -13,6 +13,7 @@ void operator delete(void* p) noexcept {if(audioWatch)++audioAllocations;std::fr
 void* operator new[](std::size_t n){return ::operator new(n);}void operator delete[](void* p) noexcept {::operator delete(p);}
 void operator delete(void* p,std::size_t) noexcept {::operator delete(p);}void operator delete[](void* p,std::size_t) noexcept {::operator delete(p);}
 void deviceSplitTests(bool&,std::atomic<int>&);
+void meterCleanupTimerTests(bool&,std::atomic<int>&);
 class TestPlayHead final : public juce::AudioPlayHead {
 public:
  juce::Optional<PositionInfo> position;
@@ -460,6 +461,7 @@ int main(){
   midi.clear();for(int i=0;i<300;++i)midi.addEvent(juce::MidiMessage::noteOn(1,40,juce::uint8{100}),0);process();state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["overflows"])>0,"Bounded MidiBuffer overflow reported and held actions cancelled");
   for(const auto* request:{R"({"operation":"midiConfig","action":"learn","target":20})",R"({"operation":"midiConfig","action":"mode","mode":7})",R"({"operation":"midiConfig","action":"enable","enabled":1})",R"({"operation":"midiConfig","action":"cancelLearn","target":20})",R"({"operation":"midiConfig","action":"cancelLearn","target":"17"})"})check(!p->request({juce::JSON::parse(request)}).getProperty("ok",false),"Invalid MIDI IPC rejected");
  }
+ meterCleanupTimerTests(audioWatch,audioAllocations);
  check(audioAllocations.load()==0,"Production processBlock MIDI path must perform zero new/delete");
  std::cout<<"PASS: actual juce::MidiBuffer offsets, PC0 learn/consume, state roundtrip/invalid rollback, cancellation/overflow/IPC and zero processBlock new/delete at 64/128\n";
 }

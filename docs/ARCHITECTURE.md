@@ -1690,3 +1690,29 @@ inputs, not hardware timing evidence. Ordinary JUCE Timer callbacks run on the
 [message thread and may be delayed](https://docs.juce.com/master/classjuce_1_1Timer.html),
 so future event dispatch/cleanup must preserve these validity checks rather than
 assuming timer delivery and audio mutation are simultaneous.
+
+### Message-thread meter cleanup deadlines (26 October 2026)
+
+`MeterCleanupDeadline` retains one full serial/generation receipt and an absolute
+monotonic deadline captured by `LoopMeterCleanupTimer::stop` before the owner's
+stop notification. `synchronise` only validates/cancels an already captured
+request; it never discovers a stop later and restarts its delay. Immediate stops
+retain 25ms; scheduled stops retain the supplied audio-time delta plus 50ms.
+Repeated stops replace the deadline. Queued-to-play preserves the original
+receipt/deadline and can detach the replacement graph, matching the original JS;
+stopping-to-play cancels it. Cleanup retains the data identity and follower history.
+
+The JUCE adapter is message-thread-only, owned per Engine/track and outlived by
+its lifecycle owner. It stops its timer on destruction, validates current receipt
+and generation at delivery, and rechecks the absolute deadline before teardown.
+Early callbacks reschedule; late delivery is allowed, as with original browser
+timers. It does not use audio sample progress to discover elapsed wall time.
+Invalid/backwards/unrepresentable policy clocks reject without publishing output.
+Long waits clamp before integer conversion and can be delivered in bounded chunks.
+[JUCE's Timer contract](https://docs.juce.com/master/classjuce_1_1Timer.html)
+requires message-thread callback ownership and permits delayed delivery.
+
+The adapter currently has only a native acceptance-fixture caller. Production
+buffer/play/stop notifications and complete lifecycle dispatch are still required.
+Nothing enables a renderer, changes original assets or establishes physical audio
+clock continuity. Timer scheduling is not audio-thread work.

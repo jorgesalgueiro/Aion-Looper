@@ -5970,3 +5970,55 @@ prove current physical delivery/device continuity or establish coherent live
 renderer pairing. Production playback/buffer/stop wiring, per-graph overlap PCM
 and GUI/DAW/hardware/Apple acceptance remain unfinished. No original UI change,
 package, version/dependency change or remote push.
+
+### Meter cleanup deadline and real JUCE timer (26 October 2026)
+
+Added a one-receipt wall-deadline policy and a message-thread-only JUCE Timer
+adapter around explicit owner stop notifications. Stop captures the wall origin
+before mutating the owner; later synchronisation cannot discover/restart a delay.
+Delivery validates full serial/generation, checks the absolute deadline and only
+then invokes owner teardown. Preserve 25ms immediate / scheduled delta +50ms,
+repeated-stop replacement, stopping-play cancellation and queued-play retention.
+The component is noncopyable and stopped/destroyed on its owning message thread.
+
+Portable cases cover exact deadlines, duplicate arm without postponement,
+replacement/cancellation, full-width identities, invalid/backwards/nonfinite/
+unrepresentable clocks and failure-output preservation with zero tracked
+new/delete. Native cases run the actual desktop MessageManager dispatch loop,
+not an internal synchronous timer helper. They exercise delayed delivery after a
+blocked message thread, frequent synchronisation without starvation, cancellation,
+replacement, the queued-play quirk, prepare-stale delivery/recovery and destruction.
+The owners are seeded with actual recorded Engine PCM at 64/128; paired stereo
+output stays bit-identical and cleanup preserves data/all seven readings while
+audio sample time is frozen. Only Engine callbacks are under the native allocation
+watch; message-thread Timer scheduling may allocate/lock as part of JUCE.
+
+Current portable gates: Windows 6/6 (106.89s), Ubuntu 6/6 (56.34s), ASan/UBSan
+6/6 (180.06s). Committed PCM: 126 cases / 965,826 samples; maximum absolute error
+7.394757495227111e-8 at the unchanged 1e-6 tolerance. Original UI byte identity,
+deterministic embedding and tamper rejection pass. Detailed native results and
+evidence hashes are recorded below after final delivery checks.
+
+The full portable 28/28 suites are inherited 918f909 baseline evidence, not rerun
+for this component. Existing production processor, original UI, SDK hooks,
+Standalone/other-format binaries and user logo are hash-checked separately;
+only native test executables are rebuilt. The adapter still has no production
+playback/buffer/stop notification caller. Complete lifecycle dispatch, per-graph
+overlap PCM ownership, backend continuity and coherent live renderer pairing,
+plus GUI/DAW/hardware/Apple acceptance remain unfinished. No package, dependency/
+version change or remote push. The original meter feature is not yet accepted.
+
+Final native gates: Windows **2/2**, 5.25s; Ubuntu **2/2**, 11.33s. Both include
+actual JUCE message-loop timer delivery and the retained **18 linked production
+AudioDeviceManager blocks**, without skips, JUCE assertions or leak reports.
+The final fixture also checks that a rejected nonfinite stop preserves the old
+owner/deadline. Prepare-stale callback rejection waits for actual delivery rather
+than assuming an upper callback latency; an independent watchdog detects failure
+to deliver. Frequent synchronisation must not postpone pending cleanup.
+
+Logs: `build/cleanup-timer-ctest-{windows,linux,asan}.txt`,
+`build/cleanup-timer-native-{windows,linux}.txt`, `build/cleanup-timer-audio.json`
+and `build/cleanup-timer-assets.txt`. `build/WriteCleanupTimerEvidence.py` verifies
+current gate results, original-JS lifecycle coverage, inherited full-suite logs,
+source/PCM/assets hashes, rebuilt native test executables and unchanged production/
+SDK/other-format/logo hashes, producing `build/cleanup-timer-evidence.json`.

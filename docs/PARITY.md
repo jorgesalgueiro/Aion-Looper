@@ -444,3 +444,17 @@ and decay behavior against an untouched reference trajectory. Additional cases
 reject before calculation, reject failed calculation and accept healthy commit.
 The unchanged original-JS lifecycle oracle remains at 377 supplied observations;
 no new full-field 377-observation owner claim or physical timing claim is made.
+
+### Native cleanup-timer component (26 October 2026)
+
+The fixed deadline policy retains exact 25ms / scheduled delta +50ms semantics,
+duplicate/no-postpone behavior, replacement, cancellation and full-width receipt
+identity. The native fixture runs JUCE's actual desktop message loop at 64/128,
+including a deliberately blocked message thread, stopping-to-play cancellation,
+repeated stops, queued-to-play retaining the old cleanup, prepare-stale callbacks,
+fresh recovery and message-thread destruction. It seeds the owner from actual
+recorded Engine PCM, compares paired stereo output exactly and retains data/all
+seven readings after teardown while the sample clock is frozen. These are
+controlled explicit lifecycle notifications, not automatic production wiring or
+hardware/output-timestamp evidence. The unchanged-JS graph oracle remains the
+377-observation reference; no original JS or numeric tolerance is changed.

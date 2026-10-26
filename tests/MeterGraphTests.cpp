@@ -1,6 +1,7 @@
 #include "core/LoopMeterGraph.h"
 #include "core/LoopMeterObservation.h"
 #include "core/LoopMeterLifecycle.h"
+#include "core/MeterCleanupDeadline.h"
 #include <atomic>
 #include <cstdlib>
 #include <iostream>
@@ -10,6 +11,31 @@ extern thread_local bool watch;
 extern std::atomic<int> allocations;
 namespace {void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}}
 namespace {
+void cleanupDeadlineTests(){
+    using namespace aion;MeterCleanupDeadline timer;MeterCleanupRequest out{99,99,99};double left=99;
+    const MeterCleanupRequest first{0xffffffffffffffffull,0xffffffffu,.025},later{1,1,.13};
+    watch=true;
+    check(!timer.remaining(0,left)&&left==99,"Empty deadline preserves output");
+    check(timer.arm(first,10)&&timer.arm(first,10.02),"Duplicate receipt keeps original deadline");
+    check(!timer.takeDue(first,10.024,out)&&out.serial==99,"Immediate cleanup never delivers before 25ms");
+    check(timer.takeDue(first,10.025,out)&&out==first&&!timer.pending().serial,"Exact 25ms delivers full-width receipt once");
+    check(!timer.takeDue(first,11,out),"Delivered receipt cannot deliver twice");
+    check(timer.arm(first,20)&&timer.arm(later,20),"Repeated stop replaces the old deadline");
+    check(!timer.takeDue(later,20.026,out)&&timer.takeDue(later,20.13,out)&&out==later,"Scheduled stop uses delta plus 50ms");
+    check(timer.arm(first,30),"Arm invalid-clock fixture");left=99;
+    for(double invalid:{-1.0,29.0,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}){
+        check(!timer.remaining(invalid,left)&&left==99&&!timer.takeDue(first,invalid,out)&&timer.pending()==first,"Invalid/backward wall clock cannot mutate or deliver pending cleanup");
+    }
+    for(double invalid:{-1.0,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::max()})
+        check(!timer.arm(later,invalid)&&timer.pending()==first,"Invalid deadline arm preserves old schedule");
+    check(!timer.arm({2,1,std::numeric_limits<double>::infinity()},0)&&!timer.arm({2,1,-1},0)
+        &&!timer.arm({0,1,.025},0)&&!timer.arm({2,0,.025},0),"Invalid receipt rejects atomically");
+    out={99,99,99};check(!timer.takeDue(later,31,out)&&out.serial==99&&!timer.pending().serial,"Superseded receipt cancels without publishing output");
+    check(timer.arm(later,0),"Known-zero wall origin accepted");timer.cancel();
+    check(!timer.takeDue(later,1,out)&&!timer.pending().serial,"Explicit cancellation never delivers");
+    watch=false;
+    std::cout<<"PASS: cleanup deadline origin, duplicate/no-postpone, 25/50ms, replacement, cancellation, full-width identities and invalid clocks; zero tracked new/delete\n";
+}
 auto readingTuple(const aion::MeterReading& value){return std::array<double,7>{value.rms,value.peak,value.linearPeak,value.peakDb,value.rmsPercent,value.peakPercent,value.clipped?1.0:0.0};}
 void currentWindowTokenTests(){
     using namespace aion;
@@ -437,6 +463,7 @@ void meterGraphTests(){
         const auto reading=meter.value();watch=false;
         if(block==64)baseline=reading;else check(reading.rms==baseline.rms&&reading.peak==baseline.peak&&reading.rmsPercent==baseline.rmsPercent,"Exact supplied-window graph meter 64/128 invariance");
     }
+    cleanupDeadlineTests();
     boundGraphTests();
     currentWindowTokenTests();
     clearFreshnessOwnerTests();

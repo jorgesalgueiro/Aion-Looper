@@ -53,8 +53,11 @@ public:
         if(!graph.inspect().analyser)receipt={};
         return true;
     }
+    bool cleanupCurrent(MeterCleanupRequest delivered) const noexcept {
+        return current()&&cleanup.serial&&delivered==cleanup;
+    }
     bool deliverCleanup(MeterCleanupRequest delivered) noexcept {
-        if(!current()||!cleanup.serial||delivered!=cleanup)return false;
+        if(!cleanupCurrent(delivered))return false;
         return teardown();
     }
     bool teardown() noexcept {

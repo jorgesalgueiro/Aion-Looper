@@ -1240,3 +1240,18 @@ future history/hold/decay rollback, precheck/candidate failure and healthy commi
 cases at 64/128 with exact paired PCM/zero tracked new/delete. The fixed-size copy
 is message-thread work, never an audio callback. This is not event dispatch,
 timer scheduling, device continuity or renderer acceptance; no package yet.
+
+Meter cleanup wall deadlines: keep the fixed one-receipt policy and actual JUCE
+message-thread timer adapter per Engine/track; the lifecycle owner outlives it.
+Capture wall time at the explicit stop call, never at a later poll. Synchronise
+only validates/cancels existing captured requests and must not reset a running
+timer. Preserve 25ms, scheduled delta +50ms, replacement and queued-to-play's old
+receipt detaching the replacement graph; stopping-to-play cancels. Validate full
+receipt/generation again in the callback and never deliver before its absolute
+deadline. Stop/destroy on the message thread; no clock/scheduling work on audio.
+Retain real desktop message-loop 64/128 late-delivery, cancellation/replacement,
+queued-play, prepare/destruction/recovery tests with paired actual Engine PCM,
+frozen sample time, retained readings and zero tracked callback new/delete.
+The adapter has no production playback notification caller yet; complete lifecycle
+mapping, overlap PCM ownership, device continuity and renderer acceptance remain
+required. Keep visible meters disabled and do not package on this component gate.
