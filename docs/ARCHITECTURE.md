@@ -1591,3 +1591,22 @@ There is no frontend/IPC enablement or package in this increment.
 Reference: the [Web Audio AnalyserNode specification](https://www.w3.org/TR/webaudio-1.1/#dom-analysernode-getfloattimedomaindata)
 defines each node's most recent downmixed frames. Native source revisions and
 aggregate output alone cannot establish that node-specific ownership.
+
+### Unavailable analyser observations in the lifecycle owner (26 October 2026)
+
+`LoopMeterLifecycle::observeUnavailable` supplies the missing owner entry point
+for original main-loop observations that do not read an analyser. It advances the
+existing MeterFollower with an empty window when the graph is inactive, detached
+or destroyed, or when an explicitly supplied context is suspended/missing. This
+retains audible-history selection, RMS release, held-peak decay and clipping
+expiry after teardown. A running attached active graph still requires bound PCM;
+`stopping` remains active and missing buffer alone does not prove unavailability.
+Invalid clocks and stale Engine generations reject without follower mutation.
+
+Context identity, running state and rendered/audible times remain explicit owner
+inputs. The method queries no device and schedules no timer. It must not be called
+as a fallback for a missing/stale PCM packet or a callback timeout. A frozen
+suspended clock does not invent elapsed decay. This follows the preserved JS
+main-loop/readMeter gate; the [Web Audio suspension specification](https://www.w3.org/TR/webaudio/#dom-audiocontext-suspend)
+also distinguishes suspended context time from wall time and retained analyser
+data. No automatic production caller or visible renderer is introduced.

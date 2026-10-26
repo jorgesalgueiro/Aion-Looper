@@ -394,3 +394,16 @@ check the supplied-event owner, not automatic native graph-lifetime equivalence.
 In particular, raw-window reset events cannot stand in for JS graph creation,
 stop timers, per-graph overlap PCM or a working visible meter. No parity tolerance,
 reference source, renderer or UI was changed.
+
+### Lifecycle-owner unavailable observations (26 October 2026)
+
+The owner now has an explicit no-window observation path for the preserved JS
+main-loop gate. Actual Engine PCM seeds clipped/held peaks at 64/128. Subsequent
+supplied audible silence observations compare all seven fields exactly with the
+existing unchanged-JS-tested LoopMeterGraph and assert hold/decay/expiry behavior.
+Additional cases cover all twelve states, active/stopping rejection, missing
+buffer, frozen suspension, missing context, destroyed graph, invalid clocks and
+stale prepare generation. Paired Engine stereo PCM remains bit-identical with
+zero tracked callback new/delete. The existing 377-observation JS graph oracle
+and seven-field owner lifecycle comparison remain unchanged; this increment does
+not claim 377 full-field owner observations or native backend suspension proof.

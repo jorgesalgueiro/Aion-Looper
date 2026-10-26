@@ -75,6 +75,17 @@ public:
     bool observe(const MeterWindowEvent& packet,const EngineView& view,const CallbackClockStamp& clock,CallbackAudibleTime time) noexcept {
         return current()&&observeBoundLoopMeterWindow(graph,receipt,packet,view,clock,time);
     }
+    // Explicit message-owner observation when the original main-loop gate would
+    // not read an analyser. Supplied context/audible clocks only; never infer a
+    // stopped device from missing PCM or use this to conceal a stale packet.
+    bool observeUnavailable(double now,double playbackTime,std::uint64_t context,bool running) noexcept {
+        if(!current()||!std::isfinite(now)||!std::isfinite(playbackTime))return false;
+        const auto identity=graph.inspect();
+        const bool needsWindow=running&&context&&LoopMeterGraph::activeState(identity.state)
+            &&identity.present&&!identity.destroyed&&identity.analyser&&identity.data;
+        if(needsWindow)return false; // A live attached graph must take the bound PCM path.
+        return graph.observe({},0,now,playbackTime,context,running);
+    }
     LoopMeterGraphView inspect() const noexcept {return graph.inspect();}
     const MeterReading& value() const noexcept {return graph.value();}
     LoopMeterBinding binding() const noexcept {return receipt;}

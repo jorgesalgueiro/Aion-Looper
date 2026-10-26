@@ -1185,3 +1185,16 @@ full-width fields, overflow/UI progress, generation recovery, exact paired stere
 PCM and zero tracked callback new/delete tests. This is not yet a production
 play/stop/buffer lifecycle producer, owner connection, timer scheduler or renderer.
 Keep visible meters disabled and do not package on this gate alone.
+
+Unavailable meter observations: LoopMeterLifecycle::observeUnavailable accepts
+explicit supplied context/running/audible-time observations only when the original
+main-loop gate needs no analyser window. A live attached active graph, including
+stopping, must reject this path without follower mutation, even if its buffer is
+missing. Do not treat missing/stale PCM, a callback timeout or receipt overflow as
+proof of suspension/unavailability. Detached/destroyed/inactive graph observations
+advance the original silence history; suspended contexts preserve the frozen
+supplied clock. Keep actual clipped Engine PCM seeding and paired 64/128 PCM,
+all-seven-field reference-graph equality, audible delay/hold/clip expiry, twelve
+state gates, missing/suspended/destroyed context, nonfinite clock rejection and
+prepare-stale owner tests. Context/time are supplied model inputs, not backend
+suspension/continuity evidence. No production caller or renderer is enabled yet.

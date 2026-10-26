@@ -5745,3 +5745,54 @@ coherent audible-clock/renderer pairing, visible-meter and actual DAW/hardware/
 Apple acceptance remain incomplete. Any lost stream remains invalid until prepare;
 retained receipts require both matching generation and current stream validity.
 No UI enablement, dependency/version change, package or remote push.
+
+### Explicit unavailable observations in the meter owner — 26 October 2026
+
+Base: local `c603735`. LoopMeterLifecycle previously exposed only the active bound
+PCM path. Added `observeUnavailable` for explicit main-loop observations that need
+no analyser window. It delegates silence history to the unchanged MeterFollower;
+no device-clock query, timer, allocation, UI/IPC change or production caller was
+added. A running attached active graph (including stopping) still rejects the
+path atomically; missing buffer alone cannot replace required PCM. Nonfinite
+times and prepare-stale owners also reject without follower mutation.
+
+The actual Engine fixture records loud PCM, obtains accepted graph/window tickets
+and seeds clipping/held peaks through the coherent callback path at 64/128. It
+then checks all seven reading fields against the existing unchanged-JS-tested
+LoopMeterGraph across audible-delay silence history, RMS release, peak hold/decay,
+clip expiry, all twelve attached states, suspension with frozen supplied time,
+missing context, destroyed graphs and fresh prepare recovery. Explicit assertions
+retain the audible tail after teardown and verify expiry. Paired Engine stereo
+PCM is bit-identical, with zero tracked callback new/delete. The 377-observation
+original-JS graph oracle and seven-field lifecycle-owner oracle are unchanged;
+this is not a claim of 377 full-field owner observations.
+
+Current final gates:
+
+- Windows targeted realtime/clock/meter suite **6/6**, 106.98s:
+  `build/unavailable-owner-ctest-windows.txt`.
+- Ubuntu same suite **6/6**, 56.37s:
+  `build/unavailable-owner-ctest-linux.txt`.
+- ASan/UBSan same suite **6/6**, 178.51s:
+  `build/unavailable-owner-ctest-asan.txt`.
+- Committed PCM audit **126 cases / 965,826 samples**, maximum error
+  **7.394757495227111e-8**, unchanged **1e-6** tolerance:
+  `build/unavailable-owner-audio.json`. Scope excludes playback envelopes,
+  browser resampling, latency compensation and sync.
+- Original UI byte identity, deterministic embedding and tamper rejection passed:
+  `build/unavailable-owner-assets.txt`.
+
+Only the owner header and its test changed under source/tests; no production
+translation unit includes this owner yet. The complete Windows/Ubuntu **28/28**
+and native **2/2** per OS remain the `c603735` baseline, not rerun here. Their logs
+and unchanged native/SDK/other-format artifact hashes are checked by
+`build/WriteUnavailableOwnerEvidence.py`; current source/log/PCM/asset hashes and
+the separate unchanged logo hash are recorded in
+`build/unavailable-owner-evidence.json`.
+
+Limits: explicit context/running/time model inputs do not prove backend suspension
+or device continuity. Never use this path merely because PCM is late/stale or a
+callback timed out. Production play/buffer/stop notifications, timer scheduling,
+graph-specific overlap PCM, coherent live clock/renderer pairing and actual
+DAW/hardware/Apple acceptance remain unfinished. No package, push, dependency or
+version change; user's logo edit remains unstaged and unchanged.

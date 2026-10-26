@@ -11,6 +11,54 @@ extern std::atomic<int> allocations;
 namespace {void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}}
 namespace {
 auto readingTuple(const aion::MeterReading& value){return std::array<double,7>{value.rms,value.peak,value.linearPeak,value.peakDb,value.rmsPercent,value.peakPercent,value.clipped?1.0:0.0};}
+void unavailableOwnerTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u}){
+        auto engine=std::make_unique<Engine>(),control=std::make_unique<Engine>();auto packet=std::make_unique<MeterWindowEvent>();auto view=std::make_unique<EngineView>();
+        for(auto* e:{engine.get(),control.get()}){e->prepare(48000,81920,{true,48000,0});e->configureSync({SyncMode::off,120,1,4,4,false});e->setMonitoring(false);e->setTarget(1);e->enqueueLoop({LoopAction::record,19,1,e->generation(),0,0});e->enqueueLoop({LoopAction::finish,19,2,e->generation(),4096,0});}
+        std::array<float,128> left{},right{},cl{},cr{};float* channels[]={left.data(),right.data()},*cc[]={cl.data(),cr.data()};
+        const auto cycle=[&](bool offline=false){for(unsigned i=0;i<block;++i){left[i]=1.8f*std::sin((engine->clock()+i)*.037);right[i]=left[i];}cl=left;cr=right;engine->process(channels,2,static_cast<int>(block),{},offline);control->process(cc,2,static_cast<int>(block),{},offline);check(left==cl&&right==cr,"Unavailable observations never change actual paired Engine PCM");while(engine->popView(*view)){};};
+        for(unsigned n=0;n<8192/block;++n)cycle(true);
+        LoopMeterLifecycle owner(*engine,19);LoopMeterGraph oracle;owner.setBuffer(true);oracle.setBuffer(true);check(owner.start(engine->clock())&&oracle.startGraph(),"Seed same explicit analyser graph");
+        watch=true;
+        const auto capture=[&]{check(owner.request(),"Active owner requests actual PCM");cycle();check(engine->popLoopMeterWindow(*packet),"Active seed has actual native window receipt");const double t=static_cast<double>(view->frame)/48000;check(owner.observe(*packet,*view,view->callbackClock,{t,t})&&oracle.observe(packet->samples,oracle.inspect().data,t,t,engine->generation(),true),"Seed owner and reference graph with actual PCM and coherent callback");check(readingTuple(owner.value())==readingTuple(oracle.value()),"Actual supplied window seeds identical follower history");};
+        for(unsigned n=0;n<2048/block;++n)capture();
+        check(owner.value().clipped&&owner.value().peak>=1,"Real loud captured PCM seeds clipping/peak history");
+        const double gateTime=static_cast<double>(view->frame)/48000;
+        for(unsigned state=0;state<=11;++state){owner.setState(static_cast<MeterLoopState>(state));oracle.setState(static_cast<MeterLoopState>(state));
+            const bool accepted=owner.observeUnavailable(gateTime,gateTime,engine->generation(),true);
+            check(accepted==!LoopMeterGraph::activeState(static_cast<MeterLoopState>(state)),"All twelve attached-graph states retain original active input gate");
+            check(accepted==oracle.observe({},0,gateTime,gateTime,engine->generation(),true)&&readingTuple(owner.value())==readingTuple(oracle.value()),"Inactive state observations match original graph; active states reject atomically");}
+        owner.setState(MeterLoopState::playing);oracle.setState(MeterLoopState::playing);capture();
+        const double start=static_cast<double>(view->frame)/48000;const auto seed=readingTuple(owner.value());
+        check(!owner.observeUnavailable(start+.1,start+.1,engine->generation(),true)&&readingTuple(owner.value())==seed,"Unavailable path cannot replace required live attached PCM or erase history");
+        check(owner.setBuffer(false)&&!owner.observeUnavailable(start+.1,start+.1,engine->generation(),true)&&readingTuple(owner.value())==seed,"Missing buffer alone never certifies analyser unavailability");owner.setBuffer(true);
+        check(owner.stop(start)&&oracle.stop(start),"Explicit stop retains meter during cleanup delay");const auto timer=owner.cleanupRequest();
+        check(!owner.observeUnavailable(start+.02,start+.02,engine->generation(),true)&&readingTuple(owner.value())==seed,"Stopping graph still requires its active analyser window");
+        check(owner.deliverCleanup(timer),"Deliver explicit cleanup before unavailable observations");oracle.teardown();
+        for(unsigned n=0;n<=240;++n){const double now=start+n*.01,playback=start+(n<12?0:(n-12)*.01);
+            check(owner.observeUnavailable(now,playback,engine->generation(),true)&&oracle.observe({},0,now,playback,engine->generation(),true),"Detached graph advances original silence history on supplied audible time");
+            check(readingTuple(owner.value())==readingTuple(oracle.value()),"All seven decay/hold/clipping fields exactly match the unchanged-JS-tested graph");
+            if(n==0)check(owner.value().clipped&&owner.value().peak==seed[1],"Detaching analyser retains audible peak and clipping tail");
+            if(n==110)check(owner.value().peak>0&&owner.value().peak<seed[1],"Peak decays after original hold on audible time");
+        }
+        check(!owner.value().clipped&&owner.value().rms==0&&owner.value().peak<.1,"Silence expires clip hold and releases RMS/held peak");
+        const auto detached=readingTuple(owner.value());check(!owner.observeUnavailable(NAN,start,1,true)&&!owner.observeUnavailable(start,NAN,1,true)&&readingTuple(owner.value())==detached,"Invalid supplied times reject without follower mutation");
+        check(owner.setBuffer(true)&&owner.start(engine->clock())&&oracle.startGraph(),"Fresh graph for suspended/missing-context boundaries");capture();
+        double now=static_cast<double>(view->frame)/48000;
+        check(owner.observeUnavailable(now,now,engine->generation(),false)&&oracle.observe({},0,now,now,engine->generation(),false)&&readingTuple(owner.value())==readingTuple(oracle.value()),"Suspended context follows original running-transition reset");
+        const auto suspended=readingTuple(owner.value());check(owner.observeUnavailable(now,now,engine->generation(),false)&&readingTuple(owner.value())==suspended,"Frozen suspended clock never invents elapsed decay");
+        check(owner.observeUnavailable(0,0,0,false)&&oracle.observe({},0,0,0,0,false)&&readingTuple(owner.value())==readingTuple(oracle.value()),"Missing context uses explicit zero clock and identity");
+        capture();check(owner.destroyGraph(),"Destroyed graph gate");oracle.destroyGraph();
+        check(owner.observeUnavailable(now+.01,now+.01,engine->generation(),true)&&oracle.observe({},0,now+.01,now+.01,engine->generation(),true)&&readingTuple(owner.value())==readingTuple(oracle.value()),"Destroyed graph supplies silence without sampling retained PCM");
+        for(unsigned state=0;state<=11;++state){owner.setState(static_cast<MeterLoopState>(state));oracle.setState(static_cast<MeterLoopState>(state));
+            check(owner.observeUnavailable(now+.02+state*.01,now+.02+state*.01,engine->generation(),true)&&oracle.observe({},0,now+.02+state*.01,now+.02+state*.01,engine->generation(),true)&&readingTuple(owner.value())==readingTuple(oracle.value()),"Destroyed graph stays unavailable across all twelve states");}
+        watch=false;engine->prepare(48000,81920);watch=true;const auto stale=readingTuple(owner.value());
+        check(!owner.observeUnavailable(1,1,engine->generation(),false)&&readingTuple(owner.value())==stale,"Prepare generation rejects old owner's unavailable observations");
+        check(owner.reset()&&owner.observeUnavailable(0,0,0,false)&&owner.value().peak==0,"Explicit owner reset recovers fresh context silence");watch=false;
+    }
+    std::cout<<"PASS: unavailable owner observations, actual clipped PCM seed, exact audible silence release/hold/expiry, suspended/missing/destroyed contexts, required-window and stale/invalid rejection at 64/128; zero tracked new/delete\n";
+}
 void graphEventTests(){
     using namespace aion;
     auto stream=std::make_unique<MeterGraphEvents>();MeterGraphEvent event{};event.ticket=999;
@@ -284,6 +332,7 @@ void meterGraphTests(){
         if(block==64)baseline=reading;else check(reading.rms==baseline.rms&&reading.peak==baseline.peak&&reading.rmsPercent==baseline.rmsPercent,"Exact supplied-window graph meter 64/128 invariance");
     }
     boundGraphTests();
+    unavailableOwnerTests();
     graphEventTests();
     deferredStartTests();
     lifecycleOwnerTests();
