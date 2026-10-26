@@ -6,6 +6,21 @@ root = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location('clock_patch', root / 'tools/patch_standalone_clock.py')
 patch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(patch)
+split_spec = importlib.util.spec_from_file_location('device_splitter', root / 'tools/extract_device_splitter.py')
+splitter = importlib.util.module_from_spec(split_spec)
+split_spec.loader.exec_module(splitter)
+split_fixture = '/* retained license */\n' + splitter.START + '\n{ originalSplitter(); };\n\n' + splitter.END + '\n{};\n'
+for fixture_source in (split_fixture, split_fixture.replace('\n', '\r\n')):
+    extracted = splitter.extract(fixture_source)
+    assert fixture_source[fixture_source.index(splitter.START):fixture_source.index('//=====')] in extracted
+    assert '/* retained license */' in extracted
+for bad in ('', split_fixture + split_fixture, split_fixture.replace(splitter.START, 'changed')):
+    try:
+        splitter.extract(bad)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError('Splitter extraction drift must fail closed')
 
 fixture = '/* retained license */\n' + patch.PLAYER + patch.ANCHOR + '        originalCallback();\n    }\n'
 result = patch.patch_header(fixture)
@@ -30,6 +45,8 @@ for bad in ('', wrapper + wrapper, patch.patch_wrapper(wrapper)):
         raise AssertionError('Wrapper drift/double injection must fail closed')
 if len(sys.argv) > 1:
     module, generated = map(Path, sys.argv[1:])
+    device_source = module.parent / 'juce_audio_devices/audio_io/juce_AudioDeviceManager.cpp'
+    assert (generated / 'aion_device_splitter_test.h').read_bytes() == splitter.extract(device_source.read_bytes().decode('utf-8')).encode('utf-8')
     original = (module / 'Standalone/juce_StandaloneFilterWindow.h').read_bytes().decode('utf-8')
     output = (generated / 'aion_StandaloneFilterWindow.h').read_bytes().decode('utf-8')
     assert output == patch.patch_header(original)

@@ -5329,3 +5329,42 @@ Standalone/processor artifacts and generated source files. This observes holder
 dispatch after device-manager work; it is neither driver entry nor a calibrated
 output timestamp or device-running signal. Physical/manager correlation,
 drift/xruns and graph/IPC/renderer integration still gate visible meters.
+
+Enclosing-buffer split timing (26 October 2026): a new independent FIFO fixture
+reproduced an offset-sized lead when the old pure model received a timestamp for
+an enclosing device buffer. The failing output is retained in build/split-before.txt.
+The model now validates an explicit total/offset and computes from the enclosing
+first frame. The original 19,200 whole-callback observations remain unchanged;
+13,824 additional observations cover four rates, 64/128 splits, one-sample and
+partial tails, startup/long latency, delayed consumers and invalid ranges at
+the unchanged 1e-12 tolerance. Rejections preserve the previous output.
+
+Initial full portable suites pass Windows 28/28 and Ubuntu 28/28. Six focused
+ASan/UBSan gates pass. The unchanged audio audit passes 126 cases / 965,826
+samples, max error 7.394757495227111e-08 at 1e-6. Native SDK/processor gates pass
+2/2 on each platform, including 72 callbacks through an exact test-only copy of
+JUCE's pinned CallbackMaxSizeEnforcer. Production processors compare nonzero
+monitored PCM bit-for-bit and saved parameter/MIDI bytes. Tests retain optional
+raw callback context, exact local block ranges, partial/empty buffers, two
+start/stop cycles and JUCE's zero-maximum silence-without-processing guard.
+All checked callback paths have zero tracked new/delete.
+
+Final review changed a test loop to use a const reference (strict -Werror caught
+the unnecessary copy) and added independent channel-pointer offset assertions
+to the native test. Only the changed core gate was rebuilt/rechecked on Windows,
+Ubuntu and ASan/UBSan, plus the two native gates on each platform. These final
+rechecks pass, as does strict portable compilation. Production model code was
+unchanged after the initial full suites; unaffected JS/PCM checks were retained.
+
+Evidence: build/split-{windows,ubuntu,asan}.txt,
+build/split-native-{windows,linux}.txt,
+build/split-final-core-{windows,ubuntu,asan}.txt,
+build/split-final-native-{windows,linux}.txt and their detail logs,
+build/split-strict-final.txt, build/split-before.txt, build/split-audio.json and
+build/split-final-evidence.json. The manifest hashes tested sources, extracted
+headers and rebuilt native test executables, and verifies unchanged SDK,
+Standalone/plugin/test-host binaries, original clock/graph policy and separate
+user-logo hashes. No app/plugin build, package, version bump or GUI/DAW/hardware/
+Apple timing acceptance is claimed. This is controlled splitter/model validation;
+production enclosing-delivery origin/range capture, drift/xruns and meter
+graph/IPC/renderer wiring remain required before visible-meter acceptance.

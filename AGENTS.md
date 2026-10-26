@@ -1040,3 +1040,18 @@ Binding tokens stay private and are independent of engine generations. Treat
 deviceEntry availability as historical capture, never a device-running signal.
 Keep core, sanitizer and actual-processor before/after tests; do not remove the failed
 evidence or claim driver/output calibration from these lifecycle guards.
+
+Split-buffer model (26 October 2026): preserve the original unsplit FIFO oracle
+and the independent enclosing-buffer timeline. Explicit deliveredFrames/offset
+requires entry at the enclosing delivery, not holder dispatch. Subtract offset
+from beginFrame before latency/elapsed and clamp once. Retain rejection without
+mutation for offset-before-origin, missing total, overrun and overflow-prone
+ranges. Keep the failure-before-fix log (build/split-before.txt). Test extraction
+must preserve the actual pinned JUCE splitter bytes/license in a separate
+namespace without replacing production SDK code. Native checks must retain
+64/128 partial/empty/zero-maximum/restart behavior, original raw context,
+bit-identical nonzero monitored PCM, saved state and zero tracked callback
+new/delete. Do not infer enclosing delivery time from split holder times or
+forwarded hostTimeNs. Production origin/range acquisition, drift/xruns and
+graph/renderer binding are still required; no visible-meter or hardware timing
+acceptance and no package from these controlled tests.

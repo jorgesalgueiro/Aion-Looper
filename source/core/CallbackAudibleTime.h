@@ -12,6 +12,10 @@ struct MonotonicClockPoint {
 struct CallbackClockCorrelation {
     CallbackClockStamp callback;
     MonotonicClockPoint entry;
+    // Explicit enclosing device-buffer range. Zero/zero retains the unsplit
+    // contract. A split requires its original total length and frame offset;
+    // entry still denotes the enclosing delivery, never a later sub-block call.
+    std::uint32_t deliveredFrames=0,frameOffset=0;
 };
 struct CallbackAudibleTime {
     double renderedTime=0,audibleTime=0;
@@ -33,11 +37,21 @@ inline bool callbackAudibleTime(const CallbackClockStamp& callback,
         ||callback!=correlation.callback||!wall.origin||wall.origin!=correlation.entry.origin
         ||!std::isfinite(wall.seconds)||!std::isfinite(correlation.entry.seconds)
         ||correlation.entry.seconds<0||wall.seconds<correlation.entry.seconds)return false;
+    const auto length=callback.endFrame-callback.beginFrame;
+    // Subtract only after validating: unsigned startup underflow would produce
+    // an enormous false clock. Use subtraction for the range bound too, avoiding
+    // uint32 overflow for hostile/inconsistent offset + length values.
+    if(correlation.frameOffset>callback.beginFrame
+        ||(!correlation.deliveredFrames&&correlation.frameOffset)
+        ||(correlation.deliveredFrames
+           &&(correlation.frameOffset>=correlation.deliveredFrames
+              ||length>correlation.deliveredFrames-correlation.frameOffset)))return false;
+    const auto deliveredBegin=callback.beginFrame-correlation.frameOffset;
     const double elapsed=wall.seconds-correlation.entry.seconds;
     const double end=static_cast<double>(callback.endFrame)/callback.sampleRate;
     // Keep the startup offset signed until after adding elapsed time. Clamping
     // begin-latency early would start the visual clock before audio can emerge.
-    const double atEntry=(static_cast<double>(callback.beginFrame)
+    const double atEntry=(static_cast<double>(deliveredBegin)
                           -static_cast<double>(callback.outputLatencySamples))/callback.sampleRate;
     const double audible=atEntry+elapsed;
     if(!std::isfinite(elapsed)||!std::isfinite(end)||!std::isfinite(audible))return false;

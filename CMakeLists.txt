@@ -201,7 +201,7 @@ target_link_libraries(AionLooper PRIVATE aion_core AionUi
 # Production-processor acceptance needs no audio device or browser window.
 # Excluded by default; explicitly build before enabling/running this CTest gate.
 if(BUILD_TESTING AND (WIN32 OR linux_desktop))
-    add_executable(aion_midi_processor_tests EXCLUDE_FROM_ALL tests/MidiProcessorTests.cpp)
+    add_executable(aion_midi_processor_tests EXCLUDE_FROM_ALL tests/MidiProcessorTests.cpp tests/DeviceSplitTests.cpp)
     target_include_directories(aion_midi_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
     target_compile_definitions(aion_midi_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
     target_link_libraries(aion_midi_processor_tests PRIVATE AionLooper)

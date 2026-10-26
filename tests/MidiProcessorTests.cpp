@@ -12,6 +12,7 @@ void* operator new(std::size_t n){if(audioWatch)++audioAllocations;if(auto* p=st
 void operator delete(void* p) noexcept {if(audioWatch)++audioAllocations;std::free(p);}
 void* operator new[](std::size_t n){return ::operator new(n);}void operator delete[](void* p) noexcept {::operator delete(p);}
 void operator delete(void* p,std::size_t) noexcept {::operator delete(p);}void operator delete[](void* p,std::size_t) noexcept {::operator delete(p);}
+void deviceSplitTests(bool&,std::atomic<int>&);
 class TestPlayHead final : public juce::AudioPlayHead {
 public:
  juce::Optional<PositionInfo> position;
@@ -36,6 +37,7 @@ public:
 };
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
+ deviceSplitTests(audioWatch,audioAllocations);
  for(int block:{64,128}){
   aion::DeviceCallbackBinding owner,other;
   auto p=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},AionProcessor::OutputLatencyReader{},nullptr,&owner);

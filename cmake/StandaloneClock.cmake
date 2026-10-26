@@ -21,6 +21,11 @@ if(TARGET AionLooper_Standalone)
     set_property(TARGET juce_audio_plugin_client_Standalone PROPERTY INTERFACE_SOURCES "${aion_standalone_sources}")
 endif()
 if(BUILD_TESTING)
+    set(aion_splitter_source "${juce_SOURCE_DIR}/modules/juce_audio_devices/audio_io/juce_AudioDeviceManager.cpp")
+    execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/extract_device_splitter.py"
+        "${aion_splitter_source}" "${aion_standalone_generated}/aion_device_splitter_test.h" COMMAND_ERROR_IS_FATAL ANY)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${aion_splitter_source}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/extract_device_splitter.py")
     add_test(NAME standalone_clock_sdk_generation COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/StandaloneClockPatchTests.py"
         "${aion_standalone_module}" "${aion_standalone_generated}")

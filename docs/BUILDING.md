@@ -1262,3 +1262,15 @@ failure-before-fix log, then rebuild/retest both native targets using the comman
 above. Do not repeat unaffected JS/PCM gates unless their source or behavior
 changes. The final manifest distinguishes initial full acceptance from these
 changed-gate rechecks.
+
+Split-buffer model and native splitter checks (26 October 2026): use the existing
+portable core_realtime_contract and standalone_clock_generation gates, and the
+same native_midi_processor/standalone_clock_sdk_generation commands above.
+Rebuilding aion_midi_processor_tests now compiles DeviceSplitTests.cpp and a
+build-local test header extracted from the pinned JUCE device manager. No extra
+package, dependency, device, Standalone/plugin rebuild or installation is needed.
+The generated test header retains the exact splitter body and license, uses a
+separate namespace and never replaces SDK code. Existing generator gates check
+LF/CRLF, missing/duplicate anchors and byte-for-byte source correspondence.
+Run the portable core gate under the existing ASan/UBSan configuration too.
+These controlled tests cannot establish physical output or host timing parity.

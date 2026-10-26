@@ -256,3 +256,17 @@ rejects both a scope waiting across prepare and an epoch snapshot taken before
 prepare but followed by a later clock read. The clock read stays sequenced after
 the token snapshot. Initial full gates are retained; only changed core/generator
 gates and native wrapper/processor checks need rerunning after this correction.
+
+Split-buffer timing (26 October 2026): the existing whole-callback FIFO oracle is
+retained. A separate independent timeline covers enclosing device buffers split
+into 64/128-sample blocks with one-sample/short/partial tails, startup, known-zero
+and long latency, delayed consumers and malformed/overflow-prone ranges. The
+offset correction is internal to the pure model and changes no JS behavior.
+Native tests use JUCE's actual extracted splitter with production processors,
+nonzero monitored PCM and saved parameter/MIDI byte comparisons. They cover
+empty buffers, repeated preparation, exact split ranges, original optional raw
+context forwarding, and the zero-maximum guard that silences output without
+calling the processor. Both paths retain zero tracked callback new/delete.
+This is controlled splitter/model acceptance, not physical delivery correlation.
+The holder scope still describes only its own dispatch edge; production meter
+selection, graph binding, IPC and visible-meter acceptance remain unfinished.

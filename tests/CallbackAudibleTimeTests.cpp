@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <utility>
 extern thread_local bool watch;
 extern std::atomic<int> allocations;
 namespace {
@@ -61,7 +62,34 @@ void callbackAudibleTimeTests(){
     auto raw=stamp;raw.hostTimeNs=std::numeric_limits<std::uint64_t>::max();raw.hasHostTimeNs=true;
     CallbackAudibleTime rawResult;
     check(callbackAudibleTime(raw,{raw,correlation.entry},{1,100},7,rawResult)&&rawResult==result,"Raw host nanoseconds are never treated as native monotonic time");
+    std::uint64_t splitObservations=0;
+    for(double rate:{8000.0,44100.0,48000.0,96000.0})for(unsigned block:{64u,128u})
+    for(unsigned latency:{0u,1u,256u,4096u})for(unsigned total:{1u,block-1,block,block+1,3*block+17})
+    for(unsigned index=0;index<12;++index){
+        const std::uint64_t deliveredBegin=static_cast<std::uint64_t>(index)*total;
+        for(unsigned offset=0;offset<total;offset+=block){
+            const auto length=std::min(block,total-offset);
+            const auto begin=deliveredBegin+offset;
+            CallbackClockStamp part{index+1,begin,begin+length,0,rate,3,false,false,latency,true};
+            const CallbackClockCorrelation anchor{part,{19,100+static_cast<double>(deliveredBegin)/rate},total,offset};
+            for(unsigned lag:{0u,1u,block,4*block}){
+                CallbackAudibleTime split;
+                const auto physical=deliveredBegin+lag;
+                const double emitted=physical>latency?static_cast<double>(physical-latency):0;
+                const double expected=std::min(emitted,static_cast<double>(part.endFrame))/rate;
+                check(callbackAudibleTime(part,anchor,{19,100+static_cast<double>(physical)/rate},3,split),"Explicit split delivery range accepted");
+                check(std::abs(split.audibleTime-expected)<1e-12,"Split must subtract its offset before applying whole-device delivery time");
+                ++splitObservations;
+            }
+        }
+    }
+    result=unchanged;
+    for(const auto& range:{std::pair{0u,1u},std::pair{64u,0u},std::pair{128u,1u},std::pair{256u,129u},std::pair{4096u,1025u},std::pair{~0u,~0u}}){
+        auto anchor=correlation;anchor.deliveredFrames=range.first;anchor.frameOffset=range.second;
+        rejected(stamp,anchor,{1,100},7);
+    }
     watch=false;
     check(allocations.load()==0,"Callback audible-time model has zero tracked new/delete");
     std::cout<<"PASS: "<<observations<<" callback-start/FIFO audible-time observations at 64/128; startup, delayed consumer, clock rejection; zero tracked new/delete\n";
+    std::cout<<"PASS: "<<splitObservations<<" split-buffer FIFO observations, partial tails, malformed ranges; zero tracked new/delete\n";
 }

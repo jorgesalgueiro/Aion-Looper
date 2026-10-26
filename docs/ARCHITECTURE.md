@@ -1387,3 +1387,26 @@ but does not establish that the complete JUCE wrapper is lock-free. No automatic
 CallbackClockCorrelation, output timestamp or UI/JSON consumer is enabled.
 Device-manager/driver correlation, xruns/drift and graph/renderer binding remain
 necessary before visible meters can be accepted.
+
+Split-buffer clock model (26 October 2026): CallbackClockCorrelation can now
+describe an enclosing device buffer explicitly with deliveredFrames/frameOffset.
+Zero/zero keeps the existing whole-callback contract. The clock entry must still
+refer to delivery of the enclosing buffer. The model subtracts frameOffset from
+the processor's beginFrame before subtracting reported latency and adding elapsed
+time; clamping still happens only once, after elapsed time. Reject offsets before
+the engine origin, offsets outside the enclosing range, insufficient remaining
+frames and offset-without-total inputs, without changing the previous result.
+Bounds use subtraction to avoid unsigned overflow. This fixes a reproduced
+offset-sized lead in the previous model when given an enclosing-buffer timestamp.
+
+The test-only extractor copies the pinned JUCE CallbackMaxSizeEnforcer verbatim
+into a separate namespace, retaining its license. It does not patch or replace
+the production audio_devices module. Native tests connect that exact splitter
+to the production processor through the existing controlled holder-scope seam.
+Each split gets its own holder dispatch observation; the original raw context
+is forwarded unchanged, including its shared hostTimeNs pointer. Neither that
+pointer nor successive holder times establish an enclosing delivery origin.
+The tests supply a separate synthetic FIFO timeline to exercise the model.
+Production acquisition of that enclosing origin/range remains pending, as do
+drift/xrun handling and meter graph/renderer integration. No new production
+clock caller, audible conversion, JSON, audio or UI behavior is enabled.
