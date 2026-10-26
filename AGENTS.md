@@ -1129,3 +1129,22 @@ sourceRevision directly to analyser identity or infer graph transitions only
 from snapshots; healthy retriggers retain graph history. Explicit native graph
 notifications/zero-prefix windows, device continuity, coherent live clock pairing
 and renderer acceptance remain required before visible meters or packaging.
+
+Explicit graph-window start: use the internal integer-ticket LoopCommand in the
+existing ordered sample queue; never infer it from a request or sourceRevision.
+Tickets strictly increase per track within a prepare generation (zero and reuse
+are rejected, including across clear; no wrap). Keep the audio-owner window ticket
+and actual reset frame separate from request provenance. Clear/prepare invalidate
+ownership; healthy RTRG/NORM keep history. Reset is O(1), with a logical zero
+prefix hiding stale storage until overwritten. Preserve sample-17 starts at both
+64/128 sizes, multiple wraps, full-width tickets, duplicate rejection, exact paired
+Engine stereo PCM, unchanged UI action acknowledgements/rejection flags and zero
+tracked callback new/delete. Bound observations must
+match both tickets and reject a future start frame without follower edits. This
+primitive is not yet connected to production graph notifications, cleanup timers,
+UI/IPC or a renderer; do not enable visible meters or package from this gate alone.
+
+MIDI Stop also drains pending and queued internal graph starts without changing
+UI acknowledgement/rejection fields; the next ordinary UI command must apply
+immediately. Retain the explicit zero-sample Stop regression at 64/128 and the
+pre-fix failure in build/graph-reset-panic-before.txt.

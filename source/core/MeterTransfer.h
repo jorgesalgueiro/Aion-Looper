@@ -13,6 +13,8 @@ struct MeterWindowEvent {
     std::uint64_t endFrame=0,clearEpoch=0,waveformId=0,sourceRevision=0;
     double sampleRate=0;
     std::uint32_t generation=0,track=0,graphTicket=0; // Request provenance, never sourceRevision/analyser identity.
+    std::uint32_t windowGraphTicket=0; // Actual reset, separate from request provenance.
+    std::uint64_t graphStartFrame=0;
     CallbackClockStamp callbackClock{};
 };
 

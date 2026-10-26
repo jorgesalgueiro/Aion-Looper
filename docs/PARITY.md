@@ -329,3 +329,27 @@ Observation tests use actual Engine packets with supplied clock results and 23
 malformed/stale cases; they do not certify new graph window reset timing or a
 physical/native audible clock. Keep all unchanged-JS graph/window/meter/clock
 oracles and their original tolerances. No UI/IPC binding or package is enabled.
+
+### Sample-timed graph window starts (26 October 2026)
+
+The meter prerequisite now includes an explicit ordered audio-owner reset. Tests
+reconstruct the 2048 samples independently from a second Engine's actual rendered
+PCM, with reset 17 samples inside 64/128 callbacks, then compare every sample
+through multiple wraps. A future request cannot trigger the reset early; full
+uint32 tickets survive intact; duplicate starts preserve history. Clear and prepare
+invalidate ownership, and clear cannot reissue an old ticket. Thirty-six additional
+raw-ring prefix/reset/wrap combinations exercise old storage hiding without a
+bulk clear. Paired stereo outputs and existing UI action acknowledgements remain unchanged,
+including after rejected duplicate starts, with tracked callback
+new/delete at zero. Bound graph tests retain healthy RTRG history and extend atomic
+rejection coverage from 23 to 25 fields with missing window ownership/future reset.
+
+These deterministic core tests supplement the unchanged original JS meter/window/
+lifecycle comparisons. They do not establish the correct production notification
+schedule, original wall-timer delivery, physical playback clock continuity, visible
+meter rendering, DAW or Apple acceptance. The meter feature remains incomplete.
+
+MIDI Stop also drains pending and queued internal graph starts without changing
+UI acknowledgement/rejection fields; the next ordinary UI command must apply
+immediately. Retain the explicit zero-sample Stop regression at 64/128 and the
+pre-fix failure in build/graph-reset-panic-before.txt.

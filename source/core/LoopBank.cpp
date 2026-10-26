@@ -297,7 +297,7 @@ void LoopBank::clear(Track& track) noexcept {
     track.blockCount=track.captureLength=0;
     if(track.clip){residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;retire(track.clip);track.clip=nullptr;}
     const auto id=static_cast<std::uint32_t>(&track-tracks.data());
-    (*meterWindows)[id].reset();
+    (*meterWindows)[id].reset();meterGraphTickets[id]=0;meterGraphFrames[id]=0;
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
     const bool muted=track.info.muted;track.info=LoopView{};track.info.muted=muted;
@@ -452,6 +452,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(end<=phase)end=std::min(phase+0.01,duration);
             t.info.stutterStart=phase*rate;t.info.stutterEnd=end*rate;t.info.stuttering=t.info.stutterEnd>t.info.stutterStart;t.info.stutterClock=true;return true;
         }
+        case LoopAction::meterGraphStart:return false; // Requires the dedicated integer-ticket entry point.
         case LoopAction::sourceRestart:
             if(!t.clip||capturing(s)||s==LoopState::finalizing||s==LoopState::armed||s==LoopState::queued||s==LoopState::stopping)return false;
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);return true;

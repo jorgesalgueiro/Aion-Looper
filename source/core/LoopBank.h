@@ -13,7 +13,7 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart }; // sourceRestart is a core-only graph primitive, never exposed by IPC.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart }; // sourceRestart and meterGraphStart are core-only primitives, never exposed by IPC.
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
@@ -66,6 +66,15 @@ public:
         if(id>=trackCount)return false;
         (*meterWindows)[id].copy(output);return true;
     }
+    // Explicit audio-owner notification. Increasing tickets prevent repeats
+    // from erasing healthy history; source revisions never choose this identity.
+    bool startMeterGraph(std::uint32_t id,std::uint32_t ticket) noexcept {
+        if(id>=trackCount||!ticket||ticket<=meterGraphHighWater[id]||!tracks[id].clip)return false;
+        meterGraphHighWater[id]=meterGraphTickets[id]=ticket;meterGraphFrames[id]=frame;
+        (*meterWindows)[id].reset();return true;
+    }
+    std::uint32_t meterGraphTicket(unsigned id) const noexcept {return id<trackCount?meterGraphTickets[id]:0;}
+    std::uint64_t meterGraphFrame(unsigned id) const noexcept {return id<trackCount?meterGraphFrames[id]:0;}
     LoopView trackView(std::uint32_t id) const noexcept {if(id>=trackCount)return {};auto v=tracks[id].info;v.clearEpoch=tracks[id].clearEpoch;v.sourceRevision=tracks[id].sourceRevision;v.waveformId=tracks[id].clip?tracks[id].clip->waveformId:0;return v;}
     std::uint32_t capacity() const noexcept { return totalBlocks * blockFrames; }
     std::uint32_t available() const noexcept;
@@ -73,7 +82,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { for(auto& window:*meterWindows)window.reset();frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
 private:
@@ -172,6 +181,8 @@ private:
     bool hasCapture() const noexcept;
     std::uint32_t growthRoom(const Track&) const noexcept;
     // Construction-time heap storage; never grow the Windows audio stack.
+    std::array<std::uint32_t,trackCount> meterGraphTickets{},meterGraphHighWater{};
+    std::array<std::uint64_t,trackCount> meterGraphFrames{};
     std::unique_ptr<std::array<MeterWindow,trackCount>> meterWindows=std::make_unique<std::array<MeterWindow,trackCount>>();
     std::array<Track, trackCount> tracks{};
     std::array<std::uint16_t, maxBlocks> freeBlocks{};

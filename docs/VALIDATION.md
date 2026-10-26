@@ -5597,3 +5597,50 @@ The manifest hashes changed sources, test logs and rebuilt artifacts, and checks
 unchanged audio/DSP/processor/graph policies, SDK/generated hooks, original JS,
 other-format binaries and separate user logo. No new physical controller, DAW,
 GUI, native graph-notification or Apple acceptance is inferred.
+
+### Explicit sample-timed graph-window starts (26 October 2026)
+
+The audio owner accepts an internal ordered integer-ticket start notification,
+resets its window in O(1) at the actual application frame and publishes separate
+request/window tickets plus reset frame. Healthy retriggers retain history;
+zero/repeated/decreasing tickets cannot reset it. Clear invalidates ownership but
+retains the ticket high-water mark and existing raw diagnostic fade tail. Prepare
+resets ownership under its generation barrier. Bound observations additionally
+reject absent window ownership and future reset frames without follower edits.
+
+Tests independently reconstruct every sample from a second Engine's actual
+stereo output, resetting at sample 17 inside 64/128 callbacks, through multiple
+wraps. They check full uint32 tickets, future requests, duplicates, clear/prepare,
+36 stale-ring/reset/fill combinations and unchanged UI acknowledgements/rejection
+flags. Final review reproduced MIDI Stop incorrectly acknowledging cancelled
+future graph notifications; build/graph-reset-panic-before.txt retains that
+failure. The corrected bounded cancellation drains pending and queued internal
+notifications without acknowledging UI actions; the next ordinary UI command
+applies immediately. The regression includes zero-sample MIDI Stop at 64/128.
+Tracked callback new/delete remain zero; this is not malloc instrumentation.
+
+Full portable regressions passed 28/28 on Windows and Ubuntu before the final
+narrow panic-acknowledgement correction. Final sources then passed focused
+core/meter/clock gates 6/6 per OS, including all core MIDI tests and the new
+cancellation fixture; final ASan/UBSan passed 6/6. Processor and Standalone targets
+were rebuilt after the correction. Native gates passed 2/2 per OS, including all
+18 linked AudioDeviceManager blocks without skips/assertions. The final committed
+capture/OD/SUB PCM audit passed 126 cases/965,826 samples, maximum error
+7.394757495227111e-08 at unchanged 1e-6 tolerance. Playback envelopes, browser
+resampling and latency compensation remain outside that PCM audit's scope.
+
+Evidence: build/graph-reset-ctest-{windows,linux}.txt (full),
+build/graph-reset-final-ctest-{windows,linux}.txt (final focused),
+build/graph-reset-ctest-asan.txt,
+build/graph-reset-native-ctest-{windows,linux}.txt, their build logs,
+build/graph-reset-audio.json and build/graph-reset-evidence.json.
+The checked writer build/WriteGraphResetEvidence.py records final source/log/
+artifact hashes, full-run pre-correction source hashes and the retained failure
+hash. It verifies unchanged original UI, DSP, processor, clock and SDK hooks,
+untouched other-format binaries and the separate user logo. No preserved source
+or comparison tolerance was changed to obtain these results.
+
+This is still a primitive without production graph-notification/cleanup timer
+mapping, device-continuity proof, coherent live renderer pairing or visible
+meters. No new DAW, GUI, physical-controller/DAC or Apple acceptance is claimed.
+No UI/IPC enable, package, version bump or push is included.

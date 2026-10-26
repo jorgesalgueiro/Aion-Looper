@@ -23,6 +23,9 @@ void boundGraphTests(){
         for(unsigned frame=0;frame<8192;frame+=block){left.fill(.8f);right.fill(.6f);engine->process(channels,2,static_cast<int>(block),{},frame<=4096);while(engine->popView(*view)){};}
         LoopMeterGraph graph;graph.setBuffer(true);graph.startGraph();
         LoopMeterBinding binding{engine->generation(),19,1,graph.inspect().analyser,graph.inspect().data};
+        const auto startWindow=[&]{LoopCommand command{LoopAction::meterGraphStart,19,0,engine->generation(),engine->clock(),0};
+            command.meterGraphTicket=binding.ticket;check(engine->enqueueLoop(command),"Explicit graph start queued");};
+        startWindow();
         const auto capture=[&]{
             check(engine->requestLoopMeterWindow(19,engine->generation(),binding.ticket),"Request actual Engine PCM with a graph ticket");
             engine->process(channels,2,static_cast<int>(block));
@@ -31,7 +34,7 @@ void boundGraphTests(){
         const auto timeFor=[&]{const double now=static_cast<double>(view->frame)/view->sampleRate;return CallbackAudibleTime{now,now};};
         capture();check(observeBoundLoopMeterWindow(graph,binding,*packet,*view,view->callbackClock,timeFor())&&graph.value().peak>.01,"Actual bound Engine window reaches the explicit graph with supplied clock");
         const auto accepted=readingTuple(graph.value());
-        for(unsigned field=0;field<23;++field){
+        for(unsigned field=0;field<25;++field){
             auto bad=*packet;auto wrongView=*view;auto receipt=binding;auto clock=view->callbackClock;auto time=timeFor();
             switch(field){
                 case 0:bad.graphTicket=0;break;case 1:++bad.graphTicket;break;case 2:++receipt.ticket;break;
@@ -44,7 +47,7 @@ void boundGraphTests(){
                 case 17:bad.generation=0;break;case 18:wrongView.generation=0;break;
                 case 19:clock.beginFrame=clock.endFrame;bad.callbackClock=wrongView.callbackClock=clock;break;
                 case 20:clock.hasOutputLatency=false;bad.callbackClock=wrongView.callbackClock=clock;break;
-                case 21:time.renderedTime=std::numeric_limits<double>::infinity();break;case 22:receipt.ticket=0;break;
+                case 21:time.renderedTime=std::numeric_limits<double>::infinity();break;case 22:receipt.ticket=0;break;case 23:bad.windowGraphTicket=0;break;case 24:bad.graphStartFrame=bad.endFrame+1;break;
             }
             check(!observeBoundLoopMeterWindow(graph,receipt,bad,wrongView,clock,time)&&readingTuple(graph.value())==accepted,"Every stale/malformed graph/source/callback/time rejection preserves the follower");
         }
@@ -53,7 +56,7 @@ void boundGraphTests(){
         binding={engine->generation(),19,2,graph.inspect().analyser,graph.inspect().data};
         check(sameLoopMeterSource(old,*view)&&sameLoopMeterCallback(old,*view),"Old graph reply can still match all native source/callback fields");
         check(!observeBoundLoopMeterWindow(graph,binding,old,*view,view->callbackClock,timeFor()),"Graph recreation cannot re-label an old queued reply even for the exact same source and callback");
-        capture();check(observeBoundLoopMeterWindow(graph,binding,*packet,*view,view->callbackClock,timeFor()),"New graph request provenance recovers with fresh callback PCM");
+        startWindow();capture();check(observeBoundLoopMeterWindow(graph,binding,*packet,*view,view->callbackClock,timeFor()),"New graph request provenance recovers with fresh callback PCM");
         const auto analyser=binding.analyser,data=binding.data,source=packet->sourceRevision;
         engine->enqueueLoop({LoopAction::retrigger,19,3,engine->generation(),engine->clock(),0});
         unsigned calls=0;
@@ -65,7 +68,7 @@ void boundGraphTests(){
         graph.teardown();check(!observeBoundLoopMeterWindow(graph,binding,*packet,*view,view->callbackClock,timeFor()),"Detached retained data is not an active graph");
         watch=false;
     }
-    std::cout<<"PASS: bound actual Engine meter packets, 23 atomic rejection fields, same-source old-graph rejection, fresh receipts and retained RTRG analyser at 64/128; zero tracked new/delete\n";
+    std::cout<<"PASS: bound actual Engine meter packets, 25 atomic rejection fields, same-source old-graph rejection, fresh receipts and retained RTRG analyser at 64/128; zero tracked new/delete\n";
 }
 }
 void meterGraphTests(){

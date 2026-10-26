@@ -14,13 +14,15 @@ struct LoopMeterBinding {
 // Compose existing graph, PCM/source and exact callback guards. This only
 // observes an active, attached graph. Inactive/silence observations and original
 // timer delivery remain explicit owner operations. A request ticket proves
-// provenance, not native graph creation, analyser-window reset or DAC continuity.
+// provenance. The window ticket additionally requires an explicit audio-owner reset;
+// neither ticket certifies graph timer delivery or DAC continuity.
 inline bool observeBoundLoopMeterWindow(LoopMeterGraph& graph,const LoopMeterBinding& binding,
                                        const MeterWindowEvent& packet,const EngineView& view,
                                        const CallbackClockStamp& clock,CallbackAudibleTime time) noexcept {
     const auto identity=graph.inspect();
     if(!binding.generation||!binding.ticket||!binding.analyser||!binding.data
         ||binding.generation!=view.generation||binding.track!=packet.track
+        ||binding.ticket!=packet.windowGraphTicket||packet.graphStartFrame>packet.endFrame
         ||binding.ticket!=packet.graphTicket||binding.analyser!=identity.analyser||binding.data!=identity.data
         ||!identity.buffer||!identity.present||identity.destroyed||!LoopMeterGraph::activeState(identity.state)
         ||!sameLoopMeterSource(packet,view)||!sameLoopMeterCallback(packet,view)

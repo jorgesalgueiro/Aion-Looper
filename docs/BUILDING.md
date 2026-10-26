@@ -1329,3 +1329,29 @@ is required. The new atomic request word requires always-lock-free uint64_t
 atomics and deliberately has no locking fallback. Graph ticket/receipt tests
 use controlled explicit graph notifications and supplied clock results; they do
 not establish real native graph-start window initialisation or physical timing.
+
+### Graph-window reset verification (26 October 2026)
+
+This internal meter increment adds no package or dependency. Use the existing
+`build/windows-core` and `build/core` configurations for the full CTest suites;
+`core_realtime_contract` includes the sample-17 reset/zero-prefix/wrap/paired-PCM
+cases. Keep `js_native_meter_graph`, `original_meter_source_lifecycle`,
+`js_native_meter_window` and `js_native_meter` unchanged. ASan/UBSan uses the
+existing `build/core-asan` configuration and those gates plus
+`js_native_playback_clock`. Rebuild only `aion_midi_processor_tests` and
+`AionLooper_Standalone` in the existing native build trees; run
+`native_midi_processor` and `standalone_clock_sdk_generation`. Other-format
+binaries are deliberately unchanged and are not validated as this revision.
+
+Evidence is collected as `build/graph-reset-{ctest-windows,ctest-linux,ctest-asan,
+native-ctest-windows,native-ctest-linux}.txt`, `build/graph-reset-audio.json` and
+`build/graph-reset-evidence.json`. The manifest writer
+`build/WriteGraphResetEvidence.py` rejects missing/failed gates and verifies
+source/binary/log hashes and preservation of the separate logo edit. Visible
+meters, physical-device/DAW acceptance and platform packaging remain deferred.
+
+After the narrow panic-cancellation correction, final focused logs are
+build/graph-reset-final-ctest-{windows,linux}.txt; full-run provenance is in
+build/graph-reset-full-source-sha256.json. Keep each build tree's CTest calls
+sequential. The final focused expression is:
+`^(core_realtime_contract|js_native_playback_clock|js_native_meter_graph|original_meter_source_lifecycle|js_native_meter_window|js_native_meter)$`.

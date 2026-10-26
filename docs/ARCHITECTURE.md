@@ -1488,3 +1488,35 @@ creation or zero-prefix initialisation of its native analyser window. Explicit
 native graph notifications/window resets, original cleanup timer delivery,
 device continuity, current view/clock pairing and renderer integration remain
 separate requirements before visible metering can be enabled.
+
+### Explicit audio-owner meter-window reset (26 October 2026)
+
+`meterGraphStart` is an internal command in the existing sample-ordered loop
+queue. Its separate uint32 ticket never passes through the float action value.
+The audio owner records the actual application frame, resets the 2048-sample
+window and rejects zero/repeated/decreasing tickets or an absent committed clip.
+Tickets increase per track until prepare; clear invalidates the active ticket
+while retaining the high-water mark. There is no implicit ticket wrap. Prepare
+resets both under the existing generation barrier. The float action handler and
+frontend IPC allowlist cannot invoke this operation. Internal starts also bypass
+UI request acknowledgement/rejection fields, including on duplicate rejection.
+
+`MeterWindow::reset` now changes only cursor/valid length. Copies produce a zero
+prefix followed by samples collected since reset, hiding old ring storage through
+short fills and wraps. This keeps repeated sample-timed resets constant-time;
+existing bounded on-request copies still supply exactly 2048 samples. Ordinary
+source transitions and healthy retriggers never choose a reset automatically.
+
+Packets carry request `graphTicket` independently of `windowGraphTicket` and
+`graphStartFrame`. The graph observation guard requires both tickets to match the
+explicit binding and rejects future reset frames. Legacy raw diagnostic requests
+remain available; they are not proof that a graph was started. Clear still exposes
+its existing real audio fade tail through that raw tap after invalidating graph
+ownership. This is an audio-owner primitive; production notification/teardown timer
+mapping, device continuity, coherent live pairing and renderer integration remain
+unfinished. No original UI, DSP sound path or plugin format configuration changed.
+
+MIDI Stop also drains pending and queued internal graph starts without changing
+UI acknowledgement/rejection fields; the next ordinary UI command must apply
+immediately. Retain the explicit zero-sample Stop regression at 64/128 and the
+pre-fix failure in build/graph-reset-panic-before.txt.

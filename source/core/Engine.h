@@ -18,6 +18,7 @@ struct LoopCommand {
     std::uint64_t frame = 0;
     double value = 0;
     std::uint32_t stutterRevision = 0;
+    std::uint32_t meterGraphTicket = 0; // Internal only; never rounded through float value.
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct ExportRequest {std::uint32_t track=0,generation=0;std::uint64_t waveformId=0;};
