@@ -1287,3 +1287,13 @@ Conditional event pop must validate active generation before advancing the SPSC
 head. A stale caller must retain newer receipts. Keep the old-header failure in
 build/dispatch-stale-before.txt, raw budgets, zero-work/failure-output and lost-
 generation recovery cases. Leave unconditional SpscQueue::pop behavior unchanged.
+
+Processor readiness must be independent of owned Standalone device clocks.
+Invalidate the prepared-generation guard before prepare-time IO and on release;
+publish only after successful prepare. Snapshot readiness requires that completed
+generation and its current callback view. Retain actual native 64/128 release,
+repeat release, prepare-time snapshot reentry, direct reprepare/stale view and
+fresh callback recovery tests with unchanged serialized state. Device playback
+reads must bracket prepared ownership too. This guard is not device continuity
+or complete meter runtime wiring; do not construct/destroy message-owned timers
+on arbitrary host prepare/release threads or enable a visible meter/package yet.

@@ -1786,3 +1786,21 @@ unfinished. No visible meter or package is enabled.
 The inspected [SooperLooper engine queues](https://github.com/essej/sooperlooper/blob/master/src/engine.hpp)
 also separate realtime and main-thread lifecycle handoffs. Aion retains its own
 fixed value queues and unchanged Ascii-Looper behavior oracle.
+
+### Processor prepare readiness (27 October 2026)
+
+Processor readiness now has its own atomic prepared generation. It is zero
+before the first prepare, throughout prepare-time IO and after releaseResources;
+a completed prepare publishes the Engine generation. Snapshot audioReady also
+requires a callback view from that generation. Retained Engine views cannot keep
+a released processor ready or revive the preceding prepare. This works for plugin
+hosts without a Standalone device-clock owner. The owned device playback reader
+also brackets its result with this prepared generation.
+
+This is a host lifecycle observation, not proof of device continuity or audible
+delivery. It does not permit mutating message-owned meters from prepare/release.
+The existing per-track owner/timer/dispatcher still lacks production lifecycle
+notification wiring. JUCE timers execute on the message thread and stopping one
+from another thread does not wait for an already executing callback; processor
+ownership must account for that before enabling timers in production.
+See [JUCE Timer contract](https://docs.juce.com/master/classjuce_1_1Timer.html).

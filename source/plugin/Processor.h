@@ -56,6 +56,9 @@ private:
     aion::DeviceCallbackBinding* deviceClockOwner=nullptr; // Replaced at prepare; audio lifecycle only.
     std::uint32_t deviceClockEpoch=0;
     std::atomic<std::uint32_t> activeDeviceClockEpoch{0}; // Private lifecycle guard, never telemetry.
+    // A completed host prepare, independent of Standalone/device-clock ownership.
+    // Zero during prepare and after release; never mutate message-owned meters here.
+    std::atomic<std::uint32_t> preparedGeneration{0};
     void invalidateDeviceClock() noexcept;
     std::recursive_mutex midiSettingsMutex; // Non-audio configuration/state serialization only.
     aion::MidiSettings midiSettings;

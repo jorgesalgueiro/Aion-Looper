@@ -159,8 +159,9 @@ void AionProcessor::invalidateDeviceClock() noexcept {
     if(deviceClockOwner)deviceClockOwner->advance();
     deviceClockOwner=nullptr;deviceClockEpoch=0;
 }
-void AionProcessor::releaseResources(){invalidateDeviceClock();}
+void AionProcessor::releaseResources(){preparedGeneration.store(0,std::memory_order_release);invalidateDeviceClock();}
 void AionProcessor::prepareToPlay(double rate, int) {
+    preparedGeneration.store(0,std::memory_order_release);
     invalidateDeviceClock();
     (void)processorClockReader(); // Warm platform counter paths after invalidating old observations.
     auto* nextDeviceClockOwner=controlledDeviceClockOwner;
@@ -175,9 +176,12 @@ void AionProcessor::prepareToPlay(double rate, int) {
     deviceClockOwner=nextDeviceClockOwner;
     deviceClockEpoch=deviceClockOwner?deviceClockOwner->advance():0;
     activeDeviceClockEpoch.store(deviceClockEpoch,std::memory_order_release);
+    preparedGeneration.store(engine.generation(),std::memory_order_release);
 }
 bool AionProcessor::readDevicePlayback(DevicePlaybackObservation& output) noexcept {
     JUCE_ASSERT_MESSAGE_THREAD
+    const auto prepared=preparedGeneration.load(std::memory_order_acquire);
+    if(!prepared)return false;
     const auto session=activeDeviceClockEpoch.load(std::memory_order_acquire);
     if(!session)return false;
     // Bound consumption even if audio publishes while the message owner reads.
@@ -185,7 +189,7 @@ bool AionProcessor::readDevicePlayback(DevicePlaybackObservation& output) noexce
     // engine.clock() or accept another processor's caller-supplied metadata.
     for(unsigned n=0;n<8&&engine.popView(latest);++n){}
     const auto generation=engine.generation();
-    if(!generation||latest.generation!=generation)return false;
+    if(generation!=prepared||latest.generation!=generation)return false;
     DevicePlaybackObservation candidate;
     candidate.callback=latest.callbackClock;
     // This private origin identifies the configured native counter reader,
@@ -194,6 +198,7 @@ bool AionProcessor::readDevicePlayback(DevicePlaybackObservation& output) noexce
     const aion::MonotonicClockPoint wall{counterOrigin,processorClockReader()};
     if(!aion::capturedDeviceAudibleTime(candidate.callback,counterOrigin,wall,generation,candidate.time)
         ||activeDeviceClockEpoch.load(std::memory_order_acquire)!=session
+        ||preparedGeneration.load(std::memory_order_acquire)!=prepared
         ||engine.generation()!=generation)return false;
     output=candidate;
     return true;
@@ -335,7 +340,8 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("inputMonitor", monitor->load() >= 0.5f);
         result->setProperty("autoPlayAfterRecord", autoPlay->load() >= 0.5f);
         result->setProperty("generation", static_cast<int>(latest.generation));
-        result->setProperty("audioReady", latest.generation != 0 && latest.generation == engine.generation());
+        result->setProperty("audioReady", latest.generation != 0 && latest.generation == engine.generation()
+            &&preparedGeneration.load(std::memory_order_acquire)==latest.generation);
         result->setProperty("frame", static_cast<juce::int64>(latest.frame));
         result->setProperty("sampleRate", latest.sampleRate);
         result->setProperty("freeFrames", static_cast<int>(latest.freeFrames));

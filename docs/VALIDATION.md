@@ -6155,3 +6155,45 @@ build/dispatch-assets.txt. build/WriteDispatchEvidence.py verifies current resul
 the old-header failure and unchanged ordinary pop source, source/log hashes,
 rebuilt native/Standalone targets and unchanged SDK/other-format/UI/logo evidence,
 producing build/dispatch-evidence.json.
+
+### Processor prepared-generation readiness (27 October 2026)
+
+Reproduced against 05ed773: a successful callback followed by releaseResources
+left snapshot audioReady=true because the Engine retains its generation. The
+new production-processor regression fails with `Released processor must reject
+its retained generation as ready` in build/readiness-before.txt; the preceding
+processor source is retained in build/readiness-before-Processor.cpp.
+
+The processor now invalidates a separate atomic prepared generation before any
+prepare-time IO and on release, then publishes after completed prepare. Snapshots
+require a current callback view from that completed generation. Device playback
+reads also bracket this ownership. Tests at 64/128 cover unprepared/first-view
+readiness, repeated release, reentrant snapshot during prepare-time latency IO,
+direct reprepare and fresh callback recovery without device ownership, while
+retaining parameter/MIDI serialization. processBlock and all core DSP are unchanged.
+
+Current incremental gates:
+
+- Windows native processor/SDK **2/2**, 5.87s; Ubuntu **2/2**, 13.36s.
+- Selected realtime/clock/meter gates: Windows **6/6**, 87.07s; Ubuntu **6/6**,
+  54.36s. Full portable and sanitizer gates were not rerun for this processor-only
+  change; their preceding 05ed773 results remain above.
+- Both native runs retain **18 linked production AudioDeviceManager blocks**,
+  all-twenty-track dispatcher, real JUCE cleanup timer tests, actual paired PCM
+  and zero tracked callback new/delete, with no skip/assertion/leak failures.
+- Committed PCM audit **126 cases / 965,826 samples**, maximum absolute error
+  **7.394757495227111e-8**, unchanged **1e-6** tolerance. Existing exclusions for
+  playback envelopes/browser resampling/latency compensation/sync still apply.
+- Original UI byte identity, deterministic embedding and tamper rejection pass;
+  the committed native logo remains byte-identical.
+
+Logs are build/readiness-{native,core}-{windows,linux}.txt,
+build/readiness-audio.json and build/readiness-assets.txt. The evidence writer
+build/WriteReadinessEvidence.py verifies these results, the old-code failure,
+unchanged processBlock/core/assets/SDK/other-format artifacts and rebuilt native
+test/Standalone hashes, producing build/readiness-evidence.json.
+
+This fixes readiness reporting; it does not complete meter owner/timer runtime
+notification mapping, overlap PCM ownership, backend continuity or rendering.
+Visible meters remain disabled. No package, version/dependency change or push;
+existing CLAP/VST3/LV2 binaries were not rebuilt or newly validated for this change.

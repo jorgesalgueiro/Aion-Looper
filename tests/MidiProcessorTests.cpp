@@ -38,6 +38,35 @@ public:
 };
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
+ for(int block:{64,128}){
+  AionProcessor* preparing=nullptr;unsigned prepareReads=0;
+  const auto snapshot=[](AionProcessor& processor){return processor.request({juce::JSON::parse(R"({"operation":"snapshot"})")});};
+  auto p=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},[&]{
+   ++prepareReads;
+   if(preparing)check(!static_cast<bool>(snapshot(*preparing)["audioReady"]),"Reprepare must hide the previous ready generation before prepare-time IO");
+   return aion::DeviceOutputLatency{};
+  });
+  preparing=p.get();
+  juce::MemoryBlock saved;p->getStateInformation(saved);
+  check(!static_cast<bool>(snapshot(*p)["audioReady"]),"Unprepared processor cannot advertise ready audio");
+  p->setPlayConfigDetails(2,2,48000,block);p->prepareToPlay(48000,block);
+  check(!static_cast<bool>(snapshot(*p)["audioReady"]),"Prepare alone cannot make an old or absent view ready");
+  juce::AudioBuffer<float> buffer(2,block);juce::MidiBuffer midi;midi.ensureSize(256);
+  const auto run=[&]{buffer.clear();audioWatch=true;p->processBlock(buffer,midi);audioWatch=false;return snapshot(*p);};
+  auto state=run();check(static_cast<bool>(state["audioReady"]),"A prepared plugin without an owned device becomes ready on its current callback view");
+  const auto generation=static_cast<int>(state["generation"]);
+  p->releaseResources();state=snapshot(*p);
+  check(static_cast<int>(state["generation"])==generation&&!static_cast<bool>(state["audioReady"]),"Released processor must reject its retained generation as ready");
+  p->releaseResources();check(!static_cast<bool>(snapshot(*p)["audioReady"]),"Repeated release remains unready");
+  p->prepareToPlay(48000,block);
+  check(!static_cast<bool>(snapshot(*p)["audioReady"]),"Reprepare cannot revive the old callback view");
+  state=run();check(static_cast<bool>(state["audioReady"])&&static_cast<int>(state["generation"])!=generation,"Fresh prepared callback recovers readiness");
+  p->prepareToPlay(48000,block); // Reprepare directly from ready, without release.
+  check(!static_cast<bool>(snapshot(*p)["audioReady"]),"Direct reprepare keeps old views unready");
+  check(static_cast<bool>(run()["audioReady"])&&prepareReads==3,"Direct reprepare recovers only after its fresh callback");
+  juce::MemoryBlock after;p->getStateInformation(after);check(saved==after,"Readiness lifecycle does not alter parameter/MIDI state");
+ }
+ std::cout<<"PASS: processor readiness rejects release, repeated release, prepare-time reentry and stale views; fresh plugin callbacks recover at 64/128 without device ownership or state changes\n";
  deviceSplitTests(audioWatch,audioAllocations);
  for(int block:{64,128}){
   aion::DeviceCallbackBinding owner,other;

@@ -493,3 +493,14 @@ receipt. Conditional dequeue now guards ownership before advancing the head.
 Budget tests retain newer generations and preserve output on zero/failed work,
 including stale/lost discard and SPSC index recovery. This is controlled routing,
 not production processor/renderer or physical-device acceptance.
+
+### Processor readiness lifecycle (27 October 2026)
+
+The native snapshot must report audioReady=false after host release even though
+the Engine retains its generation and latest callback view. A regression against
+the preceding processor reproduced the incorrect true value. At 64/128, the
+native processor fixture checks initial/unobserved prepare, release/repeated
+release, prepare-time snapshot reentry, direct reprepare and fresh callback
+recovery without an owned device. Parameter/MIDI serialization stays unchanged.
+The guard adds no DSP work and does not change the original web assets. It is
+not a browser sound comparison or complete meter lifecycle/renderer acceptance.
