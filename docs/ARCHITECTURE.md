@@ -1946,3 +1946,28 @@ receipt to apply; it does not resurrect a deadline cancelled by an already
 delivered timer callback. Unbound component adapters retain their existing policy.
 This check does not turn prepare and message dispatch into a concurrent atomic
 transaction; the existing host/prepare ownership barriers still apply.
+
+The production Engine now fixes its subscription to acceptedPlayback, extending
+the existing buffer handoff with distinct immediatePlay receipts. Component
+rawWindows and committedBuffers contracts remain available and unchanged.
+Only accepted unsynced PLAY and stopped RTRG call the producer, after successful
+native playback/source setup. The audio owner allocates the next nonzero window
+ticket and resets the analyser window at that sample boundary. It publishes the
+actual immutable clip ID; no source-revision or state polling infers this origin.
+The raw started fact remains a separate component primitive. Exhausted tickets
+latch stream loss rather than wrapping or rejecting audible performance.
+
+The sole message dispatcher routes immediatePlay through the same prepared
+cleanup adapters. The owner validates generation, ordered receipt serial, clip
+identity and increasing ticket, then replaces analyser/data identity, retaining
+follower history and cancelling prior cleanup. It never enqueues another reset.
+Historical receipts can be applied in order even if a newer raw window already
+exists; bound PCM validation independently refuses an obsolete ticket. Buffer
+and clear serial guards also include the latest accepted play serial. Native
+service counters and attached-graph diagnostics are not IPC meter levels.
+
+This completes only the immediate playback handoff. Accepted stop notifications,
+capture/edit auto-play graph origins, the original queued 100ms graph lead,
+overlapping graph PCM, device continuity and renderer acceptance remain pending.
+Visible meters remain disabled. In particular, a grid transition must not reuse
+the immediate-play producer or advance audible playback to simulate graph lead.

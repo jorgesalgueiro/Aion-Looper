@@ -5,11 +5,13 @@ namespace aion {
 struct MeterClearDispatchResult {
     unsigned examined=0,started=0,cleared=0,applied=0,rejected=0;
     unsigned buffers=0,bufferApplied=0;
+    unsigned plays=0,playApplied=0;
     bool current=false;
 };
 // Sole message consumer of Engine's shared raw-window stream. All twenty
 // non-owning routes must exist, match their Engine/track and outlive this object.
-// Buffer/clear receipts are applied; raw starts never imply analyser births.
+// Buffer/clear and explicit immediate play receipts apply through the same route;
+// raw starts never imply analyser births or enqueue a second reset.
 template<class Route> class BasicLoopMeterClearDispatcher {
 public:
     using Routes=std::array<Route*,LoopBank::trackCount>;
@@ -32,6 +34,11 @@ public:
         while(engine.popMeterGraphEvent(event,generation,budget)){
             if(generation!=engine.generation())break;
             if(event.kind==MeterGraphEventKind::started)++result.started;
+            else if(event.kind==MeterGraphEventKind::immediatePlay){
+                ++result.plays;
+                if(event.track<routes.size()&&routes[event.track]->consumeImmediatePlay(event))++result.playApplied;
+                else ++result.rejected;
+            }
             else if(event.kind==MeterGraphEventKind::bufferInstalled){
                 ++result.buffers;
                 if(event.track<routes.size()&&routes[event.track]->consumeBuffer(event))++result.bufferApplied;

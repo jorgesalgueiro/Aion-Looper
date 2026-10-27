@@ -1357,8 +1357,8 @@ twenty-route diagnostics, exact paired PCM/state, zero callback new/delete and
 the unguarded timer failure in build/meter-adapters-unguarded.txt. This does not
 complete play/buffer/stop notifications, overlap/continuity or rendering. No package.
 
-Production Engine uses the fixed committedBuffers subscription in the existing
-sole-consumer stream. Publish installs only after audio-owner worker acceptance
+Production Engine uses the fixed acceptedPlayback subscription (including
+committed buffers) in the existing sole-consumer stream. Publish installs only after audio-owner worker acceptance
 or successful restore; seed retained nonempty clips at completed prepare. Include
 the removed immutable clip ID on clear. Buffer publication must preserve the raw
 window token; buffer notices never imply analyser creation or reset history.
@@ -1381,3 +1381,19 @@ timer mismatch-stop checks at 64/128. Keep the old-code failure in
 build/meter-readiness-negative.txt. This is a message-owner readiness guard;
 it does not establish concurrent prepare/dispatch transaction safety or complete
 graph play/stop/overlap/renderer acceptance. No package yet.
+
+Accepted immediate PLAY and stopped RTRG publish a distinct immediatePlay fact
+only inside their successful audio-owner branches. Raw started facts, capture
+auto-play, healthy RTRG, queued actions and audible grid transitions must never
+be interpreted as graph births. Preserve raw-window and committed-buffer-only
+component subscriptions. Bind fresh full-width tickets to the committed clip and
+the actual sample boundary; ticket exhaustion invalidates telemetry without
+changing audible playback. Consume ordered historical births without accepting
+obsolete PCM, reject duplicate/stale/wrong-clip/lost facts, create fresh analyser
+and data identities while retaining meter history, and cancel obsolete cleanup.
+Use the existing sole dispatcher and prepared adapters; never enqueue a second
+reset from accepted receipt delivery. Retain paired 64/128 PCM, actual processor
+origin/route checks, prepared adapter rejection and timer cancellation, plus the
+missing producer failure in build/immediate-play-negative.txt. Accepted stop,
+capture/edit graph origins, queued 100ms lead, overlap/continuity and renderer
+remain unfinished. Keep visible meters disabled and do not package this feature.

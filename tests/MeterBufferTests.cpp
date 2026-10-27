@@ -17,7 +17,7 @@ struct Fixture {
     std::unique_ptr<aion::EngineView> view=std::make_unique<aion::EngineView>();
     std::unique_ptr<aion::MeterWindowEvent> packet=std::make_unique<aion::MeterWindowEvent>();
     unsigned block,request=0;
-    explicit Fixture(unsigned size):block(size){prepare();}
+    explicit Fixture(unsigned size,aion::MeterEventScope scope=aion::MeterEventScope::committedBuffers):engine(std::make_unique<aion::Engine>(scope)),block(size){prepare();}
     void prepare(){for(auto* e:{engine.get(),control.get()}){e->prepare(48000,81920,{true,48000,0});e->configureSync({aion::SyncMode::off,120,1,4,4,false});e->setMonitoring(false);e->setTarget(1);}}
     void command(aion::LoopAction action,unsigned id=19){++request;for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({action,id,request,e->generation(),0,0}),"Queue paired buffer fixture action");}
     void cycle(bool offline=false){
@@ -33,6 +33,75 @@ struct Fixture {
         aion::MeterGraphEvent event;check(engine->popMeterGraphEvent(event)&&event.kind==kind&&event.track==id,"Actual audio owner emits the expected ordered buffer/window fact");return event;
     }
 };
+}
+void meterPlaybackTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,19);
+        f.record();auto installed=f.next(MeterGraphEventKind::bufferInstalled);
+        check(owner.consumeBuffer(installed)&&!owner.inspect().present,"Auto-play capture remains outside immediate play origin mapping");
+        f.command(LoopAction::stopImmediate);f.command(LoopAction::play);const auto start=f.engine->clock();f.cycle();
+        auto played=f.next(MeterGraphEventKind::immediatePlay);
+        check(played.frame==start&&played.bufferId==installed.bufferId&&played.ticket==1
+            &&f.engine->loopMeterGraphCurrent(played.generation,19,played.ticket),"Accepted immediate play creates its raw window at the audio-owner sample boundary");
+        check(owner.consumeImmediatePlay(played)&&owner.inspect().present&&owner.binding().ticket==played.ticket,
+            "Accepted immediate play binds message graph without a second audio reset command");
+        check(!owner.consumeImmediatePlay(played),"Duplicate accepted play cannot reset analyser history");
+        for(unsigned n=0;n<2048/block;++n){check(owner.request(),"Request accepted immediate graph PCM");f.cycle();
+            check(f.engine->popLoopMeterWindow(*f.packet),"Receive accepted immediate graph PCM");
+            if(n==0)check(std::all_of(f.packet->samples.begin(),f.packet->samples.end()-2*block,[](float sample){return sample==0;})
+                &&std::any_of(f.packet->samples.end()-2*block,f.packet->samples.end(),[](float sample){return sample!=0;}),
+                "Accepted immediate play window zero-prefix excludes PCM from the previous graph");
+            const double t=static_cast<double>(f.view->frame)/48000;
+            check(owner.observe(*f.packet,*f.view,f.view->callbackClock,{t,t}),"Accepted graph observes its actual bound PCM");}
+        const auto identity=owner.inspect();const auto held=reading(owner.value());check(owner.value().peak>0,"Accepted playback seeds nonzero real meter history");
+        f.command(LoopAction::retrigger);for(unsigned n=0;n<512/block;++n)f.cycle();
+        MeterGraphEvent event;
+        check(!f.engine->popMeterGraphEvent(event)&&owner.inspect().analyser==identity.analyser
+            &&f.engine->loopMeterGraphCurrent(played.generation,19,played.ticket),"Healthy RTRG retains graph and raw window identity");
+        f.command(LoopAction::play);f.cycle();check(f.view->rejected&&!f.engine->popMeterGraphEvent(event),"Rejected already-playing PLAY publishes no accepted birth");
+        check(owner.stop(1)&&owner.cleanupRequest().serial,"Arm old graph cleanup before replacement receipt");const auto obsolete=owner.cleanupRequest();
+        f.command(LoopAction::stopImmediate);f.command(LoopAction::play);f.cycle();auto replacement=f.next(MeterGraphEventKind::immediatePlay);
+        auto wrong=replacement;++wrong.bufferId;
+        check(!owner.consumeImmediatePlay(wrong)&&owner.cleanupRequest()==obsolete&&owner.inspect().analyser==identity.analyser,
+            "Wrong-buffer immediate play leaves analyser and pending cleanup unchanged");
+        check(owner.consumeImmediatePlay(replacement)&&owner.inspect().analyser!=identity.analyser&&owner.inspect().data!=identity.data
+            &&reading(owner.value())==held&&!owner.cleanupRequest().serial&&!owner.deliverCleanup(obsolete),
+            "Accepted immediate replacement creates fresh analyser/data, retains history and cancels old cleanup");
+        check(!owner.consumeBuffer(installed),"Older buffer receipt cannot reorder an accepted graph birth");
+        // Two births can be queued before the message service. Their ordering is
+        // still meaningful even though only the final raw window is current.
+        for(unsigned n=0;n<2;++n){f.command(LoopAction::stopImmediate);f.command(LoopAction::play);}f.cycle();
+        auto first=f.next(MeterGraphEventKind::immediatePlay),second=f.next(MeterGraphEventKind::immediatePlay);
+        check(first.ticket+1==second.ticket&&owner.consumeImmediatePlay(first)&&!f.engine->loopMeterGraphCurrent(first.generation,19,first.ticket),
+            "Ordered delayed birth receipt may apply metadata without accepting obsolete PCM");
+        const auto oldData=owner.inspect().data;
+        check(owner.consumeImmediatePlay(second)&&owner.inspect().data!=oldData&&owner.binding().ticket==second.ticket,
+            "Later queued birth owns the final raw window and fresh analyser identity");
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,120,1,4,4,false});
+        f.command(LoopAction::stopImmediate);f.command(LoopAction::retrigger);f.cycle();
+        auto retriggered=f.next(MeterGraphEventKind::immediatePlay);
+        check(f.view->tracks[19].state==LoopState::playing&&owner.consumeImmediatePlay(retriggered),"Stopped RTRG bypasses grid and explicitly creates an immediate graph");
+        f.command(LoopAction::stopImmediate);f.command(LoopAction::play);f.cycle();
+        check(f.view->tracks[19].state==LoopState::queued&&!f.engine->popMeterGraphEvent(event),"Queued PLAY must not use the immediate graph creation path");
+        unsigned cycles=0;while(f.view->tracks[19].state==LoopState::queued&&++cycles<2000)f.cycle();
+        check(f.view->tracks[19].state==LoopState::playing&&!f.engine->popMeterGraphEvent(event),"Audible grid transition is not an inferred graph birth");
+        f.command(LoopAction::clear);f.cycle();event=f.next(MeterGraphEventKind::cleared);
+        check(owner.consumeClear(event)&&!owner.inspect().data&&!owner.committedBuffer(),"Accepted immediate graph clears through existing typed route");
+        check(!owner.consumeImmediatePlay(retriggered),"Clear invalidates older accepted graph births");
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::off,120,1,4,4,false});
+        f.record();installed=f.next(MeterGraphEventKind::bufferInstalled);check(owner.consumeBuffer(installed),"Re-record accepted graph fixture buffer");
+        f.prepare();check(owner.reset(),"Prepare resets accepted playback owner");installed=f.next(MeterGraphEventKind::bufferInstalled);check(owner.consumeBuffer(installed),"Prepare retained buffer ownership");
+        check(!owner.consumeImmediatePlay(second),"Prior-generation accepted birth cannot attach an analyser");
+        // Exhaustion must invalidate telemetry instead of recycling a ticket.
+        LoopCommand exhausted{LoopAction::meterGraphStart,19,0,f.engine->generation(),0,0};exhausted.meterGraphTicket=0xffffffffu;
+        check(f.engine->enqueueLoop(exhausted),"Queue last full-width raw window ticket");f.cycle();(void)f.next(MeterGraphEventKind::started);
+        f.command(LoopAction::stopImmediate);f.command(LoopAction::retrigger);f.cycle();
+        check(!f.engine->meterGraphEventsCurrent()&&!f.engine->popMeterGraphEvent(event)&&f.view->tracks[19].state==LoopState::playing,
+            "Exhausted graph tickets fail closed without rejecting or changing audible playback");
+    }
+    check(allocations.load()==0,"Accepted immediate play callbacks have zero tracked new/delete");
+    std::cout<<"PASS: accepted immediate PLAY/stopped RTRG graph receipts, healthy RTRG retention, exact bound PCM, replacement/old cleanup cancellation, ordered delayed delivery, queued non-inference, clear/prepare and ticket exhaustion at 64/128; zero tracked callback new/delete\n";
 }
 void meterBufferTests(){
     using namespace aion;

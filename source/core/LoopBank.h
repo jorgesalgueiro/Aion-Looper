@@ -100,8 +100,17 @@ public:
 private:
     const MeterEventScope meterScope;
     void publishMeterBuffer(unsigned id) noexcept {
-        if(meterScope==MeterEventScope::committedBuffers&&tracks[id].clip)
+        if(meterScope!=MeterEventScope::rawWindows&&tracks[id].clip)
             meterGraphEvents->publish(MeterGraphEventKind::bufferInstalled,id,0,frame,tracks[id].clearEpoch,tracks[id].clip->waveformId);
+    }
+    // Only successful immediate Loop.play origins call this. A raw-window reset,
+    // buffer install, healthy retrigger or queued grid transition is not a birth.
+    void publishImmediateMeterPlay(unsigned id) noexcept {
+        if(meterScope!=MeterEventScope::acceptedPlayback)return;
+        if(meterGraphHighWater[id]==std::numeric_limits<std::uint32_t>::max()){meterGraphEvents->invalidate();return;}
+        const auto ticket=++meterGraphHighWater[id];
+        meterGraphTickets[id]=ticket;meterGraphFrames[id]=frame;(*meterWindows)[id].reset();
+        meterGraphEvents->publish(MeterGraphEventKind::immediatePlay,id,ticket,frame,tracks[id].clearEpoch,tracks[id].clip->waveformId);
     }
     struct Clip {
         std::atomic<std::uint32_t> leases{1};

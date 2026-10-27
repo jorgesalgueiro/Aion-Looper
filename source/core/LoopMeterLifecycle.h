@@ -26,7 +26,7 @@ public:
     // a newer Engine generation that may still be inside another prepare.
     bool reset(std::uint32_t next) noexcept {
         if(next!=engine.generation()||next==generation)return false;
-        generation=next;ticket=0;lastClearSerial=lastBufferSerial=bufferId=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
+        generation=next;ticket=0;lastClearSerial=lastBufferSerial=lastPlaySerial=bufferId=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
         // Keep timer serials across prepare; old delivered callbacks cannot alias.
         return true;
     }
@@ -84,18 +84,35 @@ public:
     bool consumeBuffer(const MeterGraphEvent& event) noexcept {
         const auto matches=[&]() noexcept {
             return observable()&&event.kind==MeterGraphEventKind::bufferInstalled&&event.generation==generation
-                &&event.track==id&&event.serial>std::max(lastClearSerial,lastBufferSerial)&&event.bufferId
+                &&event.track==id&&event.serial>lastSerial()&&event.bufferId
                 &&!event.ticket&&!event.retiredTicket;
         };
         if(!commitLoopMeterObservation(graph,matches,[](LoopMeterGraph& candidate) noexcept {candidate.setBuffer(true);return true;}))return false;
         bufferId=event.bufferId;lastBufferSerial=event.serial;bufferNoticeSinceStart=true;return true;
+    }
+    // Ordered proof of successful immediate play, separate from raw starts.
+    // Consume historical receipts in order even if a newer audio window exists;
+    // observe() independently rejects PCM until the current binding matches.
+    bool consumeImmediatePlay(const MeterGraphEvent& event) noexcept {
+        const auto matches=[&]() noexcept {
+            return observable()&&event.kind==MeterGraphEventKind::immediatePlay&&event.generation==generation
+                &&event.track==id&&event.serial>lastSerial()&&event.bufferId&&event.bufferId==bufferId
+                &&event.ticket>ticket&&!event.retiredTicket;
+        };
+        if(!commitLoopMeterObservation(graph,matches,[](LoopMeterGraph& candidate) noexcept {
+            // Immediate play from stopped/stopping replaces any previous graph
+            // and cancels its cleanup, retaining the original meter history.
+            candidate.setState(MeterLoopState::stopping);return candidate.startGraph();
+        }))return false;
+        ticket=event.ticket;lastPlaySerial=event.serial;bufferNoticeSinceStart=false;cleanup={};
+        const auto identity=graph.inspect();receipt={generation,id,ticket,identity.analyser,identity.data};return true;
     }
     // Sole message consumer supplies an actual Engine-pop receipt. Never route
     // a raw clear to an unaccepted/pending or replacement graph by track alone.
     bool consumeClear(const MeterGraphEvent& event) noexcept {
         const auto matches=[&]() noexcept {
             return observable()&&event.kind==MeterGraphEventKind::cleared&&event.generation==generation
-                &&event.track==id&&event.serial>std::max(lastClearSerial,lastBufferSerial)&&event.ticket==0
+                &&event.track==id&&event.serial>lastSerial()&&event.ticket==0
                 &&(bufferId?event.bufferId==bufferId:
                     event.retiredTicket&&event.retiredTicket==ticket&&!bufferNoticeSinceStart);
         };
@@ -135,6 +152,7 @@ public:
     bool inGeneration(std::uint32_t completed) const noexcept {return completed&&completed==generation&&current();}
     bool routesTo(const Engine& source,unsigned track) const noexcept {return &engine==&source&&id==track&&current();}
 private:
+    std::uint64_t lastSerial() const noexcept {return std::max({lastClearSerial,lastBufferSerial,lastPlaySerial});}
     bool current() const noexcept {return id<LoopBank::trackCount&&generation&&generation==engine.generation();}
     // Event loss invalidates retained graph/window receipts for this generation.
     // Recheck generation around the stream query; cleanup metadata still uses
@@ -142,7 +160,7 @@ private:
     bool observable() const noexcept {return current()&&engine.meterGraphEventsCurrent()&&current();}
     Engine& engine;
     std::uint32_t id=0,generation=0,ticket=0;
-    std::uint64_t timerSerial=0,lastClearSerial=0,lastBufferSerial=0,bufferId=0;
+    std::uint64_t timerSerial=0,lastClearSerial=0,lastBufferSerial=0,lastPlaySerial=0,bufferId=0;
     bool bufferNoticeSinceStart=true;
     LoopMeterGraph graph;
     LoopMeterBinding receipt{};

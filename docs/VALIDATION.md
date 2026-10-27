@@ -6509,3 +6509,91 @@ are unchanged. The readiness precheck does not establish atomic concurrent
 prepare/message dispatch, accepted graph creation/stop origins, pre-grid lead,
 overlapping graph PCM, continuity or visible rendering. Meter acceptance remains
 unfinished; no package, dependency/version update or push.
+
+### Accepted immediate playback graph handoff (2026-10-27)
+
+Production fixes its Engine subscription to acceptedPlayback, preserving the
+raw-window and committed-buffer-only component contracts. Successful unsynced
+PLAY and stopped RTRG publish an explicit immediatePlay fact with the actual
+sample frame, immutable clip ID, generation and fresh raw-window ticket. A raw
+started fact, buffer installation, capture auto-play, healthy RTRG, queued PLAY
+or audible grid transition does not use this origin. Ticket exhaustion invalidates
+telemetry instead of recycling ownership or rejecting audible playback.
+
+The sole dispatcher applies these facts through prepared JUCE cleanup adapters.
+The owner creates fresh analyser/data identities, retains meter history, cancels
+obsolete cleanup and binds the audio-created window without enqueueing a second
+reset. Increasing receipt serials and tickets reject duplicates/reordering;
+clip/generation/stream health reject stale or foreign ownership. Ordered delayed
+births can update lifetime metadata, while bound PCM validation independently
+requires the current window ticket. Clear and buffer serial guards include the
+last accepted immediate play, retaining the earlier typed-clear fence.
+
+MeterBufferTests' focused --meter-playback mode exercises actual paired Engine
+callbacks at 64/128 with bit-identical stereo output: accepted unsynced PLAY,
+nonzero bound PCM, healthy RTRG identity retention, rejected repeated PLAY,
+fresh replacement/analyser data with held history and old cleanup rejection,
+wrong clip/duplicate/old buffer/stale generation rejection, delayed ordered
+births, stopped synced RTRG bypassing the grid, queued/grid non-inference,
+typed clear, retained prepare and full-width ticket exhaustion. Callback new/delete
+tracking remains enabled. Removing the actual PLAY branch's producer makes the
+focused case fail with `Actual audio owner emits the expected ordered buffer/window fact`;
+the tested mutation and failure are retained in
+build/immediate-play-missing-producer.cpp and build/immediate-play-negative.txt.
+The producer is restored in the final implementation.
+
+Native tests independently route actual accepted receipts through prepared
+adapters, reject released/mismatched delivery, seed nonzero meter history and
+cancel an armed real JUCE timer on accepted replacement. Actual AionProcessor
+RPC -> audio acceptance -> existing message-service dispatcher -> owner attachment
+is checked at both block sizes, including healthy RTRG retention, stopped RTRG
+replacement and typed clear detachment. These use the fixed production
+subscription, with no fabricated playback receipts or direct owner setup seam.
+Native graph counters are diagnostics only and add no IPC levels or serialized
+parameter state. Existing buffer-without-graph, twenty-route service/readiness,
+shutdown and linked AudioDeviceManager regressions remain in the native gate.
+
+Research retained the unchanged Loop.play/retrigger methods as the behavior
+authority; tests execute the original JS lifecycle and scheduling methods.
+The separate RT/non-RT queues in
+[SooperLooper's engine](https://github.com/essej/sooperlooper/blob/master/src/engine.hpp)
+provide an ownership-transfer comparison, not a substitute graph timing policy.
+[JUCE Timer documentation](https://docs.juce.com/master/classjuce_1_1Timer.html)
+also rules out treating message timer callbacks as sample-accurate source starts.
+No third-party source was copied.
+
+Focused reproduction after building the core tests:
+`build/windows-core/Release/aion_core_tests.exe --meter-playback` or
+`build/core/aion_core_tests --meter-playback` on Ubuntu.
+
+- Full portable suites: Windows **28/28**, **320.98s**; Ubuntu **28/28**,
+  **547.75s**, including the new accepted immediate playback cases.
+- Rebuilt native tests and existing Standalone: Windows **2/2**, **6.69s**;
+  Ubuntu **2/2**, **15.05s**. Both retain **18 linked production
+  AudioDeviceManager blocks**, actual buffer/cleanup/readiness/shutdown coverage,
+  no skips/JUCE assertion/leak failures and zero tracked callback new/delete.
+- Ubuntu core sanitizer meter selection: **6/6**, **175.64s**. No native
+  sanitizer acceptance is claimed.
+- The additional first-window zero-prefix assertion passes in focused mode on
+  Windows, Ubuntu and Ubuntu core sanitizers with the final rebuilt test binaries.
+  It excludes old graph PCM while requiring nonzero fresh samples at 64/128.
+- Committed PCM: **126 cases / 965,826 samples**, maximum error
+  **7.394757495227111e-8** at unchanged **1e-6** tolerance. Existing envelope,
+  browser-resampling, latency-compensation and sync exclusions remain.
+- Original UI byte identity, deterministic embedding and tamper rejection pass.
+  Logo, SDK/generated clock wrappers, dependencies/version and other-format
+  binaries remain unchanged. No new REAPER/Ardour, physical hardware or Apple
+  build acceptance is claimed by these gates.
+
+Logs: build/immediate-play-full-{windows,linux}.txt,
+build/immediate-play-native-{windows,linux}.txt, build/immediate-play-asan.txt,
+build/immediate-play-prefix-{windows,linux,asan}.txt,
+build/immediate-play-audio.json and build/immediate-play-assets.txt.
+build/WriteImmediatePlayEvidence.py verifies these gates, the missing producer
+failure, unchanged DSP/processor callback/UI/SDK/other-format artifacts and
+rebuilt binary hashes, writing build/immediate-play-evidence.json.
+
+Acceptance is limited to the immediate playback handoff. Stop notification
+origins, capture/edit auto-play graph lifecycle, queued 100ms lead, overlapping
+graph PCM, envelope parity, device continuity and visible rendering remain
+unfinished. No visible meter, package, dependency/version change or push.

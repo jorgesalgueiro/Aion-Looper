@@ -395,7 +395,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::play:
             if(s!=LoopState::stopped||!t.clip)return false;
             if(sync.settings.mode!=SyncMode::off){s=LoopState::queued;t.startAt=SyncClock::deadline(sync.nextGrid(frame));return true;}
-            s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);return true;
+            s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);publishImmediateMeterPlay(id);return true;
         case LoopAction::overdub:
         case LoopAction::substitute:
             if(s!=LoopState::playing||!t.clip||hasCapture()||t.info.playbackRate!=1||t.rateRemaining)return false;
@@ -443,7 +443,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
                 t.info.startDelay=previous;return false;
             }
             // Original stopped Loop.play(now) bypasses the next-grid queue.
-            s=LoopState::playing;t.tailRemaining=0;restartSource(t);blend(t);return true;
+            s=LoopState::playing;t.tailRemaining=0;restartSource(t);blend(t);publishImmediateMeterPlay(id);return true;
         }
         case LoopAction::stutterStop:t.info.stuttering=false;return true;
         case LoopAction::stutterStart: {

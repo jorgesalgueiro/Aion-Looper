@@ -52,6 +52,11 @@ public:
         if(!owner.consumeBuffer(event))return false;
         synchronise();return true;
     }
+    bool consumeImmediatePlay(const MeterGraphEvent& event) noexcept {
+        assertMessageThread();
+        if(!ready()||!owner.consumeImmediatePlay(event))return false;
+        synchronise();return true;
+    }
     bool pending() const noexcept {assertMessageThread();return deadline.pending().serial!=0;}
     bool routesTo(const Engine& source,unsigned track) const noexcept {assertMessageThread();return ready()&&owner.routesTo(source,track);}
 private:

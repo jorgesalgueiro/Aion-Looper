@@ -110,6 +110,36 @@ void adapterReadinessTests(bool& audioWatch){
             "Matching readiness applies the retained actual clear and cancels cleanup");
     }
 }
+void immediatePlayAdapterTests(bool& audioWatch){
+    using namespace aion;
+    for(unsigned block:{64u,128u}){
+        std::atomic<std::uint32_t> prepared{0};
+        Fixture f(block,audioWatch,MeterEventScope::acceptedPlayback);
+        f.timer=std::make_unique<LoopMeterCleanupTimer>(*f.owner,&prepared);
+        MeterGraphEvent installed;check(f.engine->popMeterGraphEvent(installed)&&installed.kind==MeterGraphEventKind::bufferInstalled,"Actual buffer before native accepted play");
+        prepared.store(f.engine->generation(),std::memory_order_release);check(f.timer->consumeBuffer(installed),"Bind actual immediate-play fixture clip");
+        const auto play=[&]{for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::stopImmediate,19,0,e->generation(),0,0})
+            &&e->enqueueLoop({LoopAction::play,19,0,e->generation(),0,0}),"Queue actual immediate play pair");f.cycle();
+            MeterGraphEvent event;check(f.engine->popMeterGraphEvent(event)&&event.kind==MeterGraphEventKind::immediatePlay,"Actual accepted immediate play receipt");return event;};
+        auto played=play();
+        for(auto invalid:{0u,f.engine->generation()+1}){
+            prepared.store(invalid,std::memory_order_release);
+            check(!f.timer->consumeImmediatePlay(played)&&!f.owner->inspect().present&&!f.owner->binding().ticket,
+                "Released/mismatched adapter cannot attach an accepted immediate graph");
+        }
+        prepared.store(f.engine->generation(),std::memory_order_release);
+        check(f.timer->consumeImmediatePlay(played)&&f.owner->inspect().present,"Prepared adapter attaches the retained accepted graph receipt");
+        for(unsigned n=0;n<2048/block;++n){check(f.owner->request(),"Request native accepted graph PCM");f.cycle();
+            check(f.engine->popLoopMeterWindow(*f.packet),"Receive native accepted graph PCM");const double t=static_cast<double>(f.view->frame)/48000;
+            check(f.owner->observe(*f.packet,*f.view,f.view->callbackClock,{t,t}),"Observe actual accepted native graph PCM");}
+        const auto data=f.owner->inspect().data;const auto history=reading(f.owner->value());check(f.owner->value().peak>0,"Native accepted graph has nonzero history");
+        check(f.timer->stop(1,3601)&&f.timer->pending(),"Arm cleanup before accepted native replacement");const auto old=f.owner->cleanupRequest();played=play();
+        check(f.timer->consumeImmediatePlay(played)&&!f.timer->pending()&&!f.owner->deliverCleanup(old)&&f.owner->inspect().data!=data
+            &&reading(f.owner->value())==history,"Accepted immediate replacement cancels the real JUCE deadline and preserves meter history");
+        f.clearFromAudio();
+    }
+    std::cout<<"PASS: actual immediate play receipts route through prepared JUCE adapters, reject released/mismatched delivery, bind nonzero PCM and cancel obsolete cleanup on replacement at 64/128\n";
+}
 void clearDispatcherTests(bool& audioWatch){
     using namespace aion;
     for(unsigned block:{64u,128u}){
@@ -206,6 +236,14 @@ void processorBufferReceiptTests(bool& audioWatch){
         p->releaseResources();p->prepareToPlay(48000,static_cast<int>(block));cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.generation!=oldGeneration&&s.buffers==1&&s.bufferApplied==1&&!s.started&&s.current,
             "Production reprepare seeds retained committed buffer through the same ordered consumer");
+        command("stopImmediate");command("play");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.plays==1&&s.playApplied==1&&s.attachedGraphs==1&&!s.started&&s.current,"Production accepted immediate PLAY attaches the actual owner graph through the sole dispatcher");
+        command("retrigger");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.plays==1&&s.playApplied==1&&s.attachedGraphs==1,"Production healthy RTRG retains accepted graph identity");
+        command("stopImmediate");command("retrigger");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.plays==2&&s.playApplied==2&&s.attachedGraphs==1,"Production stopped RTRG attaches one replacement graph");
+        command("clear");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(!s.attachedGraphs&&s.applied==1&&!s.rejected,"Production typed clear detaches accepted playback graph");
     }
     std::cout<<"PASS: production committed-buffer subscription consumes actual captured clips, typed clear without graph tickets and retained prepare handoff at 64/128; no inferred graph creation or callback new/delete\n";
 }
@@ -521,6 +559,7 @@ private:
 
 void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     adapterReadinessTests(audioWatch);
+    immediatePlayAdapterTests(audioWatch);
     clearDispatcherTests(audioWatch);
     processorBufferReceiptTests(audioWatch);
     std::mutex mutex;std::condition_variable changed;bool finished=false;

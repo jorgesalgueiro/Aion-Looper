@@ -216,11 +216,13 @@ void AionProcessor::serviceMeters() noexcept {
     meterServiceStatus.examined+=drained.examined;meterServiceStatus.started+=drained.started;
     meterServiceStatus.cleared+=drained.cleared;meterServiceStatus.applied+=drained.applied;meterServiceStatus.rejected+=drained.rejected;
     meterServiceStatus.buffers+=drained.buffers;meterServiceStatus.bufferApplied+=drained.bufferApplied;
+    meterServiceStatus.plays+=drained.plays;meterServiceStatus.playApplied+=drained.playApplied;
     meterServiceStatus.current=drained.current&&meterPrepared()&&engine.generation()==generation;
 }
 MeterServiceStatus AionProcessor::inspectMeterServiceMessageThread() const noexcept {
     JUCE_ASSERT_MESSAGE_THREAD
     auto result=meterServiceStatus;
+    if(meterOwners)for(const auto& owner:*meterOwners)if(owner&&owner->inspect().present)++result.attachedGraphs;
     if(meterTimers)for(const auto& timer:*meterTimers){
         if(timer){++result.cleanupRoutes;if(timer->pending())++result.pendingCleanups;}
     }

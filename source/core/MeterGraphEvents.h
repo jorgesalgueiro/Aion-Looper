@@ -2,11 +2,12 @@
 #include "core/SpscQueue.h"
 #include <limits>
 namespace aion {
-// Ordered audio-owner window/buffer facts, never inferred analyser births.
-enum class MeterGraphEventKind : std::uint8_t { started, cleared, bufferInstalled };
-// Raw-window component owners may omit buffer notifications. Production opts
-// into committed buffers once at construction; never switch consumers at runtime.
-enum class MeterEventScope : std::uint8_t { rawWindows, committedBuffers };
+// Ordered audio-owner facts. Only immediatePlay explicitly proves a new graph;
+// a raw started event or a buffer installation never implies analyser creation.
+enum class MeterGraphEventKind : std::uint8_t { started, cleared, bufferInstalled, immediatePlay };
+// Component scopes retain raw-window/buffer-only contracts. Production adds
+// accepted immediate playback once at construction; never switch at runtime.
+enum class MeterEventScope : std::uint8_t { rawWindows, committedBuffers, acceptedPlayback };
 struct MeterGraphEvent {
     std::uint64_t serial=0,frame=0,clearEpoch=0;
     std::uint32_t generation=0,track=0,ticket=0;
@@ -33,7 +34,7 @@ public:
         const auto previous=windows[track].load(std::memory_order_relaxed); // Same audio publisher.
         const auto retired=kind==MeterGraphEventKind::cleared&&(previous>>32)==generation?
             static_cast<std::uint32_t>(previous):0u;
-        const auto currentTicket=kind==MeterGraphEventKind::started?ticket:0;
+        const auto currentTicket=kind==MeterGraphEventKind::started||kind==MeterGraphEventKind::immediatePlay?ticket:0;
         if(kind!=MeterGraphEventKind::bufferInstalled)
             windows[track].store((static_cast<std::uint64_t>(generation)<<32)|currentTicket,std::memory_order_release);
         if(serial==std::numeric_limits<std::uint64_t>::max()||
@@ -44,6 +45,7 @@ public:
         return generation&&active.load(std::memory_order_acquire)==generation&&
             lost.load(std::memory_order_acquire)==0;
     }
+    void invalidate() noexcept {const auto generation=active.load(std::memory_order_acquire);if(generation)lost.store(generation,std::memory_order_release);}
     // Message owner: freshness of this explicit raw-window identity, independent
     // of event consumption. This does not infer a source/analyser lifecycle.
     bool owns(std::uint32_t generation,unsigned track,std::uint32_t ticket) const noexcept {
