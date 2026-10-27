@@ -132,6 +132,7 @@ public:
     LoopMeterBinding binding() const noexcept {return receipt;}
     MeterCleanupRequest cleanupRequest() const noexcept {return cleanup;}
     std::uint64_t committedBuffer() const noexcept {return bufferId;}
+    bool inGeneration(std::uint32_t completed) const noexcept {return completed&&completed==generation&&current();}
     bool routesTo(const Engine& source,unsigned track) const noexcept {return &engine==&source&&id==track&&current();}
 private:
     bool current() const noexcept {return id<LoopBank::trackCount&&generation&&generation==engine.generation();}

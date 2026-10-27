@@ -1371,3 +1371,13 @@ metadata cases; native production capture/clear/reprepare must exercise the fixe
 subscription. The missing commit-producer negative is retained in
 build/buffer-receipts-missing-producer.txt. Full graph play/stop/overlap/renderer
 mapping remains pending; no package until its acceptance is complete.
+
+Bound cleanup adapter entry points must match the completed prepare to the
+owner's current generation, not merely test nonzero readiness. Reject stop,
+buffer/clear delivery and dispatcher routing before metadata/deadline mutation
+or dequeue when released or mismatched. Retain actual accepted capture and clear
+receipts, twenty bound routes, pending-deadline preservation/recovery and real
+timer mismatch-stop checks at 64/128. Keep the old-code failure in
+build/meter-readiness-negative.txt. This is a message-owner readiness guard;
+it does not establish concurrent prepare/dispatch transaction safety or complete
+graph play/stop/overlap/renderer acceptance. No package yet.

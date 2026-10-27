@@ -1936,3 +1936,13 @@ APVTS state or IPC meter levels. Graph creation (including the original pre-grid
 lead), accepted stop notifications, overlapping graph PCM and renderer/device
 continuity remain unfinished. A committed buffer is never used as evidence that
 an analyser was created.
+
+Adapters bound to processor readiness validate the completed generation against
+their lifecycle owner's current generation at every stop, buffer/clear delivery
+and dispatcher-route entry. Zero readiness and a different nonzero generation
+both reject before touching owner state or an existing cleanup deadline. Invalid
+routes leave the SPSC head untouched. Restoring readiness permits the retained
+receipt to apply; it does not resurrect a deadline cancelled by an already
+delivered timer callback. Unbound component adapters retain their existing policy.
+This check does not turn prepare and message dispatch into a concurrent atomic
+transaction; the existing host/prepare ownership barriers still apply.

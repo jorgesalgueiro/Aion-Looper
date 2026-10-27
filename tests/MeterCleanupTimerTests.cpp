@@ -24,7 +24,7 @@ struct Fixture {
     std::unique_ptr<aion::EngineView> view=std::make_unique<aion::EngineView>();
     std::unique_ptr<aion::MeterWindowEvent> packet=std::make_unique<aion::MeterWindowEvent>();
     unsigned block;bool& watch;
-    Fixture(unsigned size,bool& audioWatch):block(size),watch(audioWatch){prepare();owner=std::make_unique<aion::LoopMeterLifecycle>(*engine,19);owner->setBuffer(true);timer=std::make_unique<aion::LoopMeterCleanupTimer>(*owner);}
+    Fixture(unsigned size,bool& audioWatch,aion::MeterEventScope scope=aion::MeterEventScope::rawWindows):engine(std::make_unique<aion::Engine>(scope)),block(size),watch(audioWatch){prepare();owner=std::make_unique<aion::LoopMeterLifecycle>(*engine,19);owner->setBuffer(true);timer=std::make_unique<aion::LoopMeterCleanupTimer>(*owner);}
     void cycle(bool offline=false){
         std::array<float,128> l{},r{},cl{},cr{};
         for(unsigned i=0;i<block;++i)l[i]=r[i]=1.8f*static_cast<float>(std::sin((engine->clock()+i)*.037));
@@ -63,6 +63,53 @@ struct Fixture {
         check(owner->value().peak>0,"Timer history contains nonzero actual PCM");
     }
 };
+void adapterReadinessTests(bool& audioWatch){
+    using namespace aion;
+    for(unsigned block:{64u,128u}){
+        std::atomic<std::uint32_t> prepared{0}; // Outlives every bound adapter.
+        Fixture f(block,audioWatch,MeterEventScope::committedBuffers);
+        f.timer=std::make_unique<LoopMeterCleanupTimer>(*f.owner,&prepared);
+        MeterGraphEvent installed;check(f.engine->popMeterGraphEvent(installed)&&installed.kind==MeterGraphEventKind::bufferInstalled,
+            "Readiness fixture uses actual accepted capture buffer receipt");
+        check(!f.timer->consumeBuffer(installed)&&!f.owner->committedBuffer(),"Released adapter retains unapplied buffer receipt");
+        prepared.store(f.engine->generation()+1,std::memory_order_release);
+        check(!f.timer->consumeBuffer(installed)&&!f.owner->committedBuffer(),"Mismatched prepared generation cannot install buffer metadata");
+        prepared.store(f.engine->generation(),std::memory_order_release);
+        check(f.timer->consumeBuffer(installed)&&f.owner->committedBuffer()==installed.bufferId,"Matching prepared generation accepts the retained buffer receipt");
+        std::array<std::unique_ptr<LoopMeterLifecycle>,20> owners;
+        std::array<std::unique_ptr<LoopMeterCleanupTimer>,20> timers;
+        LoopMeterClearDispatcher::Routes routes{};
+        for(unsigned id=0;id<20;++id){
+            if(id==19)routes[id]=f.timer.get();
+            else {owners[id]=std::make_unique<LoopMeterLifecycle>(*f.engine,id);
+                timers[id]=std::make_unique<LoopMeterCleanupTimer>(*owners[id],&prepared);routes[id]=timers[id].get();}
+        }
+        LoopMeterClearDispatcher dispatcher(*f.engine,routes);
+        f.play();check(dispatcher.drain().started==1,"Readiness fixture retains actual accepted raw window fact");
+        check(f.timer->stop(1,3601),"Arm distant deadline before readiness rejection");
+        const auto cleanup=f.owner->cleanupRequest();const auto identity=f.owner->inspect();const auto history=reading(f.owner->value());
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::clear,19,0,e->generation(),0,0}),"Queue actual clear before guarded delivery");f.cycle();
+        const auto frame=f.engine->clock();
+        for(auto invalid:{0u,f.engine->generation()+1}){
+            prepared.store(invalid,std::memory_order_release);
+            const auto result=dispatcher.drain();
+            check(!result.current&&!result.examined&&!result.cleared&&!result.applied,"Unready adapter routes prevent the dispatcher from dequeuing actual clear facts");
+            check(!f.timer->stop(2)&&f.owner->cleanupRequest()==cleanup&&f.timer->pending(),"Unready stop preserves an already armed deadline");
+        }
+        MeterGraphEvent cleared;check(f.engine->popMeterGraphEvent(cleared)&&cleared.kind==MeterGraphEventKind::cleared,
+            "Guarded dispatcher leaves the original clear receipt queued");
+        for(auto invalid:{0u,f.engine->generation()+1}){
+            prepared.store(invalid,std::memory_order_release);
+            check(!f.timer->consumeClear(cleared)&&f.owner->committedBuffer()==installed.bufferId
+                &&f.owner->inspect().analyser==identity.analyser&&f.owner->inspect().data==identity.data
+                &&f.owner->cleanupRequest()==cleanup&&f.timer->pending()&&reading(f.owner->value())==history&&f.engine->clock()==frame,
+                "Released or mismatched clear delivery leaves graph, buffer, history and pending timer unchanged");
+        }
+        prepared.store(f.engine->generation(),std::memory_order_release);
+        check(f.timer->consumeClear(cleared)&&!f.timer->pending()&&!f.owner->committedBuffer()&&!f.owner->inspect().data,
+            "Matching readiness applies the retained actual clear and cancels cleanup");
+    }
+}
 void clearDispatcherTests(bool& audioWatch){
     using namespace aion;
     for(unsigned block:{64u,128u}){
@@ -460,6 +507,9 @@ private:
             check(f->owner->inspect().present&&f->owner->inspect().data==data&&f->owner->cleanupRequest()==obsolete
                 &&reading(f->owner->value())==held&&f->engine->clock()==frame,
                 "A different completed generation cannot deliver an old adapter cleanup receipt");
+            check(!f->timer->stop(14)&&f->owner->cleanupRequest()==obsolete&&!f->timer->pending()
+                &&f->owner->inspect().data==data&&reading(f->owner->value())==held,
+                "A mismatched completed generation rejects new stops without owner or deadline mutation");
             cleanupPrepared.store(f->engine->generation(),std::memory_order_release);f->timer->synchronise();
             check(!f->timer->pending()&&f->owner->deliverCleanup(obsolete),"Generation cancellation retains explicit owner metadata without rescheduling");
             if(f->block==64){begin(128);break;}
@@ -470,6 +520,7 @@ private:
 }
 
 void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
+    adapterReadinessTests(audioWatch);
     clearDispatcherTests(audioWatch);
     processorBufferReceiptTests(audioWatch);
     std::mutex mutex;std::condition_variable changed;bool finished=false;

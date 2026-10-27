@@ -6463,3 +6463,49 @@ tests enforce production behavior. No complete JS edit graph-lifetime parity,
 accepted play/stop origins, pre-grid graph creation, overlapping graph PCM,
 device continuity or visible renderer acceptance is claimed. These remain
 unfinished before a meter feature package, alongside platform/DAW/hardware work.
+
+### Meter adapter completed-generation entry guard (2026-10-27)
+
+While tracing accepted play/stop delivery, a readiness regression was reproduced:
+the adapter rejected a zero prepared generation, but a different nonzero
+generation could still mutate the old owner's stop metadata and arm cleanup.
+The added real-message-loop check fails against the old implementation with
+`A mismatched completed generation rejects new stops without owner or deadline mutation`.
+The failing CTest log and original adapter are retained in
+build/meter-readiness-negative.txt and build/meter-readiness-before.h.
+
+Bound adapters now require the completed generation to match their owner's
+current Engine generation before stop, buffer/clear delivery or route validation.
+The actual capture/clear fixture at 64/128 verifies both zero and mismatched
+readiness, twenty bound dispatcher routes leaving the queued clear untouched,
+rejected delivery retaining buffer/analyser/data/history and an already armed
+deadline, and successful application of the retained receipt after readiness
+matches again. Existing timer tests also exercise rejected mismatched stops
+after callback cancellation, alongside release/reprepare and the earlier
+shutdown, worker ownership and production processor regressions.
+
+- Rebuilt native tests and existing Standalone: Windows **2/2**, **6.02s**;
+  Ubuntu **2/2**, **15.17s**. Both retain the **18 linked production
+  AudioDeviceManager blocks**, actual processor buffer/service/shutdown coverage,
+  no skips/JUCE assertion/leak failures and zero tracked callback new/delete.
+- Rebuilt portable meter selection: Windows **6/6**, **88.95s**; Ubuntu **6/6**,
+  **52.97s**, including the unchanged original-JS lifecycle and meter comparisons.
+- Committed PCM: **126 cases / 965,826 samples**, maximum error
+  **7.394757495227111e-8** at unchanged **1e-6** tolerance. Existing envelope,
+  browser-resampling, latency-compensation and sync exclusions remain.
+- Original UI byte identity, deterministic embedding and tamper rejection pass.
+  The committed logo and other-format/SDK/generated-clock artifacts are unchanged.
+  Full portable 28-test and sanitizer suites were not repeated for this repair;
+  the previous results above retain their original scope.
+
+Logs: build/meter-readiness-native-{windows,linux}.txt,
+build/meter-readiness-core-{windows,linux}.txt, build/meter-readiness-audio.json
+and build/meter-readiness-assets.txt. build/WriteMeterReadinessEvidence.py checks
+the gates, old-code failure, unchanged DSP/UI/SDK/other-format artifacts and
+rebuilt native binary hashes, producing build/meter-readiness-evidence.json.
+
+DSP, processor callback, immutable buffer producers, serialized state and UI
+are unchanged. The readiness precheck does not establish atomic concurrent
+prepare/message dispatch, accepted graph creation/stop origins, pre-grid lead,
+overlapping graph PCM, continuity or visible rendering. Meter acceptance remains
+unfinished; no package, dependency/version update or push.
