@@ -6197,3 +6197,64 @@ This fixes readiness reporting; it does not complete meter owner/timer runtime
 notification mapping, overlap PCM ownership, backend continuity or rendering.
 Visible meters remain disabled. No package, version/dependency change or push;
 existing CLAP/VST3/LV2 binaries were not rebuilt or newly validated for this change.
+
+### Production meter ownership and bounded clear service (27 October 2026)
+
+The processor now owns twenty stable graph lifecycle objects in construction-time
+heap storage. Bridge requests and its existing message timer share one raw-event
+consumer with a 32-dequeue budget. Completed host prepare schedules the existing
+Timer; owner generation changes and event consumption remain message-thread work.
+Released processors skip meter work. No editor, enabled MIDI or export is needed
+for autonomous prepared servicing. Start facts are counted without graph-birth
+inference; unbound clears remain rejected.
+
+Pinned reset rejects stale/zero/future prepare generations without changing graph,
+history, bindings or cleanup. New-generation route capture can discard an already
+lossy backlog, but neither capture nor draining repairs loss or applies lost facts.
+
+A new native real-message-loop regression reproduced the idle-stop policy closing
+the scheduler before prepare: build/meter-service-idle-before.txt ends with
+`Unprepared idle service must not stop and race a host prepare wakeup`.
+The pre-fix processor sources are retained in build/meter-service-before-idle-
+Processor.{cpp,h}. The final shared timer stays scheduled once started until
+processor destruction, removing the idle stop/start race and its extra flag.
+
+At 64/128, native fixtures queue 240 actual Clear All receipts, drain exactly 32
+through one request, then let the processor timer finish without an editor.
+Host-thread release freezes owner counts with forty receipts pending; host-thread
+reprepare resets through timer service alone and discards those old facts.
+Overflow retains 255 raw receipts that drain without restoring health; fresh
+prepare then restores all-twenty-track routing. The idle, never-prepared processor
+keeps its scheduler but no meter generation/counts/health. Nonzero stereo PCM is
+compared exactly against a separately driven processor and saved MIDI/parameters
+remain unchanged. Existing actual Engine all-track and cleanup timer tests remain.
+
+Full playback/buffer/stop notifications, cleanup mapping, pending graphs, overlap
+PCM, backend continuity and visible rendering remain unfinished. Arbitrary
+concurrent off-thread processor destruction is not established by these tests.
+There is no package, push, version/dependency change or new plugin-format build.
+
+Final gates for these sources:
+
+- Windows native processor/SDK **2/2**, 5.44s; Ubuntu **2/2**, 14.08s.
+- Selected realtime/clock/unchanged-JS meter gates: Windows **6/6**, 93.08s;
+  Ubuntu **6/6**, 53.61s; ASan/UBSan **6/6**, 169.96s.
+- Both native runs include the new production service fixture, existing actual
+  all-twenty-track dispatcher/cleanup fixtures and **18 linked production
+  AudioDeviceManager blocks**, without skips/assertion/leak failures.
+- Committed PCM: **126 cases / 965,826 samples**, maximum absolute error
+  **7.394757495227111e-8**, unchanged **1e-6** tolerance. Existing exclusions for
+  envelopes, browser resampling, latency compensation and sync still apply.
+- Original UI byte identity, deterministic embedding and tamper rejection pass;
+  native logo bytes, SDK/generated wrappers and other-format artifacts remain
+  unchanged. Existing native test and Standalone binaries were rebuilt only.
+
+Logs: build/meter-service-{native,core}-{windows,linux}.txt,
+build/meter-service-asan.txt, build/meter-service-audio.json and
+build/meter-service-assets.txt. build/WriteMeterServiceEvidence.py checks the
+results, reproduced idle-stop failure, unchanged processBlock/DSP/UI/logo/SDK,
+source hashes and rebuilt native/Standalone hashes, producing
+build/meter-service-evidence.json. Full 28-test portable suites were not rerun
+for this bounded lifecycle integration; their earlier 05ed773 results remain
+above. The final Windows core rebuild required elevated access to protected
+MSBuild .tlog metadata; its retry and all final checks succeeded.

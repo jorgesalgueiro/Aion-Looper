@@ -4,6 +4,7 @@
 #include "core/Engine.h"
 #include "core/CallbackAudibleTime.h"
 #include "plugin/Vst3ProgramRouting.h"
+#include "plugin/LoopMeterClearDispatcher.h"
 #include <mutex>
 static_assert(std::atomic<float>::is_always_lock_free, "Audio parameter loads must be lock-free");
 static_assert(std::atomic<bool>::is_always_lock_free, "MIDI input readiness must be lock-free");
@@ -12,6 +13,12 @@ struct DevicePlaybackObservation {
     aion::CallbackClockStamp callback{};
     aion::CallbackAudibleTime time{};
     bool operator==(const DevicePlaybackObservation&) const noexcept = default;
+};
+// Native diagnostics, never an IPC meter level or proof of audible playback.
+struct MeterServiceStatus {
+    std::uint32_t generation=0;
+    std::uint64_t passes=0,examined=0,started=0,cleared=0,applied=0,rejected=0;
+    bool current=false,timerRunning=false;
 };
 class AionProcessor final : public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {
 public:
@@ -47,6 +54,7 @@ public:
     // Message owner only. Reads this processor's coherent view, never a foreign
     // supplied stamp. Reported-latency estimate; not xrun/DAC calibration or IPC.
     bool readDevicePlayback(DevicePlaybackObservation&) noexcept;
+    MeterServiceStatus inspectMeterServiceMessageThread() const noexcept;
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:
@@ -84,6 +92,12 @@ private:
     std::uint64_t exportSequence=0;
     juce::String exportFilename,exportStatus;
     aion::Engine engine;
+    using MeterOwners=std::array<std::optional<aion::LoopMeterLifecycle>,aion::LoopBank::trackCount>;
+    std::unique_ptr<MeterOwners> meterOwners; // Construction heap; owners outlive the dispatcher.
+    std::optional<aion::LoopMeterOwnerClearDispatcher> meterDispatcher; // Message thread only.
+    MeterServiceStatus meterServiceStatus{};
+    bool meterPrepared() const noexcept;
+    void serviceMeters() noexcept;
     std::atomic<float>* master = nullptr;
     std::atomic<float>* monitor = nullptr;
     std::atomic<float>* autoPlay = nullptr;

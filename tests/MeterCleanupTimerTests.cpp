@@ -1,5 +1,6 @@
 #include "plugin/LoopMeterCleanupTimer.h"
 #include "plugin/LoopMeterClearDispatcher.h"
+#include "plugin/Processor.h"
 #include <array>
 #include <atomic>
 #include <condition_variable>
@@ -117,21 +118,118 @@ void clearDispatcherTests(bool& audioWatch){
         f.cycle();result=dispatcher.drain(5);
         check(!result.current&&result.examined==5&&!result.applied&&!dispatcher.reset(),"Lost stream drains bounded work without applying clear or repairing health");
         result=dispatcher.drain(255);check(!result.current&&result.examined==250&&!result.applied,"Lost queue remainder drains without silent recovery");
+        // First routing may happen after the new generation has already lost
+        // an event. It must still drain bounded raw work without healing loss.
+        f.prepare();for(auto* owner:ownerRoutes)owner->reset();
+        for(unsigned n=0;n<256;++n){
+            for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::clear,0,10+n,e->generation(),0,0}),"Fill before first new-generation route capture");
+            if(n%100==99)f.cycle();
+        }
+        f.cycle();LoopMeterOwnerClearDispatcher late(*f.engine,ownerRoutes);
+        result=late.drain(32);check(!result.current&&result.examined==32&&!result.cleared&&!result.applied,"Late owner dispatcher captures lost generation only to drain it");
+        result=late.drain(255);check(!result.current&&result.examined==223&&!late.reset(),"Late capture cannot repair lost stream health");
     }
     std::cout<<"PASS: sole-consumer dispatcher routes actual 20-track Clear All, bounded stale/lost budgets, missing/duplicate/foreign routes, prepare reset and native timer cancellation at 64/128 with exact paired PCM\n";
 }
+// Drives the production processor without an editor, while the real message
+// loop services its existing Timer. No test calls serviceMeters directly.
+class ProcessorMeterFixture {
+public:
+    ProcessorMeterFixture(unsigned size,bool& watch):block(size),audioWatch(watch){
+        check(static_cast<bool>(idle->request({juce::JSON::parse(R"({"operation":"midiConfig","action":"enable","enabled":false})")})["ok"]),"Start shared service before prepare with idle MIDI");
+        for(auto* processor:{p.get(),control.get()}){
+            processor->setPlayConfigDetails(2,2,48000,static_cast<int>(block));
+        }
+        preparePair();
+        for(auto* processor:{p.get(),control.get()}){
+            processor->parameters.getParameter("masterGain")->setValueNotifyingHost(.5f);
+            processor->parameters.getParameter("inputMonitor")->setValueNotifyingHost(1);
+        }
+        midi.ensureSize(256);otherMidi.ensureSize(256);p->getStateInformation(saved);
+        cycle();queue(12);cycle(); // 240 real clear facts in one callback.
+        snapshot();const auto s=p->inspectMeterServiceMessageThread();
+        check(s.current&&s.examined==32&&s.cleared==32&&s.rejected==32&&!s.applied&&!s.started,"Production request drains exactly 32 raw receipts without graph inference");
+        generation=s.generation;
+    }
+    bool complete() const noexcept {return stage==6;}
+    void poll(){
+        const auto s=p->inspectMeterServiceMessageThread();
+        check(!p->getActiveEditor(),"Meter service must not need an editor");
+        if(stage==0){
+            if(s.examined<240)return;
+            const auto unprepared=idle->inspectMeterServiceMessageThread();
+            check(unprepared.timerRunning&&!unprepared.current&&!unprepared.generation&&!unprepared.passes,
+                "Unprepared idle service must not stop and race a host prepare wakeup");
+            check(s.examined==240&&s.cleared==240&&s.rejected==240&&s.current&&!s.applied&&!s.started,"Autonomous processor timer drains all twenty routes without MIDI/export/editor");
+            queue(2);cycle(); // Leave 40 undelivered old facts across release.
+            std::thread host([&]{p->releaseResources();control->releaseResources();});host.join();snapshot();
+            const auto released=p->inspectMeterServiceMessageThread();
+            check(!released.current&&released.examined==240,"Released processor cannot consume pending meter receipts");
+            releasedPasses=released.passes;started=wall();stage=1;
+        }else if(stage==1){
+            if(wall()-started<.08)return;
+            check(!s.current&&s.examined==240&&s.passes==releasedPasses,"Periodic service leaves released meter ownership untouched");
+            preparePair();
+            cycle();stage=2; // No snapshot/request to wake or reset the owners.
+        }else if(stage==2){
+            if(s.generation==generation||s.examined<40)return;
+            check(s.current&&s.examined==40&&!s.cleared&&!s.applied&&!s.started,"Timer alone resets prepared owners and discards old receipts");
+            generation=s.generation;queue(13);cycle(); // 260 facts overflow the 255-slot stream.
+            check(!p->inspectMeterServiceMessageThread().current,"Production meter loss is visible before any drain");stage=3;
+        }else if(stage==3){
+            if(s.examined<295)return;
+            check(s.generation==generation&&s.examined==295&&!s.current&&!s.cleared&&!s.applied,"Production lost-generation raw drain stays bounded and cannot heal health");
+            snapshot();check(!p->inspectMeterServiceMessageThread().current,"Repeated request cannot heal a lost generation");
+            preparePair();cycle();stage=4;
+        }else if(stage==4){
+            if(s.generation==generation||!s.current)return;
+            check(!s.examined&&!s.cleared&&!s.applied,"Only a fresh prepare recovers the lost production service");
+            queue(1);cycle();stage=5;
+        }else if(stage==5){
+            if(s.examined<20)return;
+            check(s.examined==20&&s.cleared==20&&s.rejected==20&&s.current&&!s.applied,"Fresh prepared service routes all twenty tracks after loss");
+            juce::MemoryBlock after;p->getStateInformation(after);check(saved==after,"Processor meter service leaves serialized parameters/MIDI unchanged");stage=6;
+        }
+    }
+private:
+    unsigned block;bool& audioWatch;unsigned stage=0;std::uint32_t generation=0;
+    std::uint64_t releasedPasses=0,tick=0;double started=0;
+    std::unique_ptr<AionProcessor> p=std::make_unique<AionProcessor>(),control=std::make_unique<AionProcessor>(),idle=std::make_unique<AionProcessor>();
+    juce::AudioBuffer<float> audio{2,128},other{2,128};juce::MidiBuffer midi,otherMidi;juce::MemoryBlock saved;
+    void preparePair(){std::thread host([&]{for(auto* processor:{p.get(),control.get()})processor->prepareToPlay(48000,static_cast<int>(block));});host.join();}
+    void snapshot(){check(static_cast<bool>(p->request({juce::JSON::parse(R"({"operation":"snapshot"})")})["ok"]),"Production meter snapshot");}
+    void queue(unsigned count){
+        for(unsigned n=0;n<count;++n)for(auto* processor:{p.get(),control.get()}){
+            auto* command=new juce::DynamicObject();juce::var request(command);
+            command->setProperty("operation","loop");command->setProperty("action","clearAll");command->setProperty("track",0);
+            command->setProperty("generation",static_cast<int>(processor->inspectCallbackClockAudioThread().generation));
+            command->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis())+4000);
+            check(static_cast<bool>(processor->request({request})["ok"]),"Queue real production Clear All");
+        }
+    }
+    void cycle(){
+        audio.setSize(2,static_cast<int>(block),false,false,true);other.setSize(2,static_cast<int>(block),false,false,true);
+        for(unsigned i=0;i<block;++i){const auto sample=.2f*static_cast<float>(std::sin(static_cast<double>(tick+i)*.037));audio.setSample(0,static_cast<int>(i),sample);audio.setSample(1,static_cast<int>(i),-.5f*sample);}
+        other.makeCopyOf(audio,true);
+        audioWatch=true;p->processBlock(audio,midi);control->processBlock(other,otherMidi);audioWatch=false;tick+=block;
+        bool audible=false;
+        for(int c=0;c<2;++c)for(int i=0;i<static_cast<int>(block);++i){check(audio.getSample(c,i)==other.getSample(c,i),"Processor meter service preserves exact paired stereo PCM");audible|=audio.getSample(c,i)!=0;}
+        check(audible,"Processor meter fixture monitors actual nonzero PCM");
+    }
+};
 class Runner final : private juce::Timer {
 public:
     explicit Runner(bool& watch):audioWatch(watch){begin(64);startTimer(5);}
     ~Runner() override {stopTimer();}
 private:
-    bool& audioWatch;std::unique_ptr<Fixture> f;unsigned stage=0;
+    bool& audioWatch;std::unique_ptr<Fixture> f;std::unique_ptr<ProcessorMeterFixture> processorMeters;unsigned stage=0;
     double started=0,expectedDelay=0;std::uint64_t frame=0,data=0;std::array<double,7> held{};
     aion::MeterCleanupRequest obsolete{};
     void capture(){started=wall();frame=f->engine->clock();data=f->owner->inspect().data;held=reading(f->owner->value());}
     void stopped(){check(!f->owner->inspect().present&&!f->timer->pending()&&f->owner->inspect().data==data
         &&reading(f->owner->value())==held&&f->engine->clock()==frame,"Real timer detaches analyser but retains data/history with frozen audio clock");}
     void begin(unsigned block){
+        processorMeters=std::make_unique<ProcessorMeterFixture>(block,audioWatch);
         f=std::make_unique<Fixture>(block,audioWatch);f->play();capture();
         check(f->timer->stop(1)&&f->owner->cleanupRequest().delay==.025,"Native immediate stop captures 25ms");stage=0;
         const auto receipt=f->owner->cleanupRequest();
@@ -142,6 +240,7 @@ private:
         check(f->owner->inspect().present,"Blocked message thread cannot deliver a timer callback");
     }
     void timerCallback() override {
+        processorMeters->poll();
         switch(stage){
         case 0:
             if(f->owner->inspect().present)return;
@@ -184,6 +283,7 @@ private:
             f->record();f->owner->setBuffer(true);f->play();capture();stage=7;break;
         case 7:
             if(wall()-started<.08)return;
+            if(!processorMeters->complete())return;
             check(f->owner->inspect().present&&f->owner->inspect().data==data&&!f->timer->pending()
                 &&reading(f->owner->value())==held,"Cleared timer cannot detach the same-generation re-recorded graph");
             if(f->block==64){begin(128);break;}
@@ -203,4 +303,5 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     check(allocations.load()==0,"Native timer actual Engine callbacks have zero tracked new/delete");
     std::cout<<"PASS: real JUCE message-loop cleanup at 64/128, 25/50ms, late delivery, cancellation/replacement, queued-play retention, prepare/destruction and exact PCM; zero tracked callback new/delete\n";
     std::cout<<"PASS: actual DEL receipt cancels pending JUCE cleanup and preserves same-generation re-recorded graph at 64/128\n";
+    std::cout<<"PASS: production processor-owned twenty-track meter routing, 32-work request budget, autonomous editor-free timer, host-thread release/prepare, idle wakeup retention, frozen release, loss latch and fresh recovery at 64/128; exact nonzero stereo PCM and unchanged state\n";
 }

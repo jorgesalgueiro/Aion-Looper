@@ -1804,3 +1804,40 @@ notification wiring. JUCE timers execute on the message thread and stopping one
 from another thread does not wait for an already executing callback; processor
 ownership must account for that before enabling timers in production.
 See [JUCE Timer contract](https://docs.juce.com/master/classjuce_1_1Timer.html).
+
+### Processor-owned meter clear service (27 October 2026)
+
+The processor now constructs twenty stable LoopMeterLifecycle owners in one heap
+allocation after its Engine. They are not editor objects. The existing processor
+message timer and bridge requests share one bounded consumer; the dispatcher is
+emplaced on the message thread with all twenty owner routes. Its timer-backed
+route alias remains available for the existing cleanup adapter tests.
+
+Host prepare only publishes its completed generation and schedules the existing
+Timer, which JUCE explicitly permits from any thread. No meter owner is reset or
+otherwise mutated by prepare/release/processBlock. Message service checks the
+prepared guard, pins that completed generation when resetting changed owners,
+resets dispatcher routing and drains at most 32 raw receipts per call, including
+stale/lost work. Start facts
+are counted, not interpreted as analyser births. Unbound clears are rejected.
+
+Once scheduled (by prepare, MIDI configuration or export), the shared service
+remains scheduled across idle MIDI/export, editor close and release. Released
+processors skip all owner mutation and dequeue work; a later prepare resumes
+through the message callback without an editor request. Keeping
+this existing timer scheduled avoids an idle-stop-versus-first-prepare wakeup
+race without a second scheduling flag or lock. Existing JUCE processor/timer
+destruction synchronization requirements still apply; this
+change does not establish arbitrary concurrent off-thread destruction safety.
+
+Pinned owner reset rejects stale, zero and future generations without graph,
+follower, binding or cleanup changes; it cannot adopt a newer generation that
+may still be in prepare. New-generation route capture accepts an already lossy
+stream so first service can discard its backlog. Capture/drain never repairs loss or applies
+retained lossy facts. Health still requires a fresh Engine prepare. Native-only
+fixed diagnostics expose service counts/health, not meter levels or device status.
+
+This is production ownership and raw-clear servicing, not full playback/buffer/
+stop notification mapping. Per-track cleanup adapters are not constructed in the
+processor yet. Pending zero-ticket graphs, overlap PCM, backend continuity,
+renderer and visible-meter acceptance remain unfinished; no package is enabled.

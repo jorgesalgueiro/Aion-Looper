@@ -9,16 +9,18 @@ struct MeterClearDispatchResult {
 // Sole message consumer of Engine's shared raw-window stream. All twenty
 // non-owning routes must exist, match their Engine/track and outlive this object.
 // Only clear is applied here; start facts are counted, never inferred as births.
-class LoopMeterClearDispatcher {
+template<class Route> class BasicLoopMeterClearDispatcher {
 public:
-    using Routes=std::array<LoopMeterCleanupTimer*,LoopBank::trackCount>;
-    LoopMeterClearDispatcher(Engine& audio,Routes destinations) noexcept :engine(audio),routes(destinations){reset();}
-    LoopMeterClearDispatcher(const LoopMeterClearDispatcher&)=delete;
-    LoopMeterClearDispatcher& operator=(const LoopMeterClearDispatcher&)=delete;
+    using Routes=std::array<Route*,LoopBank::trackCount>;
+    BasicLoopMeterClearDispatcher(Engine& audio,Routes destinations) noexcept :engine(audio),routes(destinations){reset();}
+    BasicLoopMeterClearDispatcher(const BasicLoopMeterClearDispatcher&)=delete;
+    BasicLoopMeterClearDispatcher& operator=(const BasicLoopMeterClearDispatcher&)=delete;
     // After the Engine prepare barrier and all owner resets, not per editor.
     bool reset() noexcept {
         assertMessageThread();const auto next=engine.generation();
-        if(!next||next==generation||!validRoutes()||!engine.meterGraphEventsCurrent())return false;
+        // A new generation may already be lossy before first service. Capture
+        // routing so it can drain, without reporting health or applying facts.
+        if(!next||next==generation||!validRoutes())return false;
         generation=next;return true;
     }
     MeterClearDispatchResult drain(unsigned limit=32) noexcept {
@@ -49,4 +51,7 @@ private:
     const Routes routes;
     std::uint32_t generation=0;
 };
+using LoopMeterClearDispatcher=BasicLoopMeterClearDispatcher<LoopMeterCleanupTimer>;
+// Processor-owned graph metadata has no separately scheduled cleanup timer yet.
+using LoopMeterOwnerClearDispatcher=BasicLoopMeterClearDispatcher<LoopMeterLifecycle>;
 }

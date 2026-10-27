@@ -419,7 +419,12 @@ void lifecycleOwnerTests(){
         check(!owner.request()&&!owner.start(0)&&!owner.deliverCleanup(staleTimer)&&bindingFields(owner.binding())==staleBinding,"Changed Engine generation freezes old owner without follower mutation");
         const auto staleTime=static_cast<double>(view->frame)/view->sampleRate;
         check(!owner.observe(*packet,*view,view->callbackClock,{staleTime,staleTime})&&readingTuple(owner.value())==staleReading,"Old coherent packet/clock cannot revive a stale owner after prepare");
-        check(owner.reset()&&owner.binding().ticket==0&&owner.value().peak==0&&!owner.deliverCleanup(staleTimer),"Explicit context reset invalidates graph and old timer");
+        const auto staleGraph=graphFields(owner.inspect());
+        check(!owner.reset(static_cast<std::uint32_t>(staleBinding[0]))&&!owner.reset(0)&&!owner.reset(engine->generation()+1)
+            &&bindingFields(owner.binding())==staleBinding&&readingTuple(owner.value())==staleReading
+            &&graphFields(owner.inspect())==staleGraph&&owner.cleanupRequest()==staleTimer,
+            "Pinned reset rejects stale/zero/future prepare without graph, follower, ticket or timer mutation");
+        check(owner.reset(engine->generation())&&owner.binding().ticket==0&&owner.value().peak==0&&!owner.deliverCleanup(staleTimer),"Explicit completed context reset invalidates graph and old timer");
         for(auto* e:{engine.get(),control.get()})e->enqueueLoop({LoopAction::play,19,1,e->generation(),0,0});
         check(owner.setBuffer(true)&&owner.start(0)&&owner.binding().ticket==1&&capture(),"Prepared owner restarts ticket sequence only under a new Engine generation");
         check(owner.stop(6)&&owner.cleanupRequest().serial>staleTimer.serial,"Timer serials never recycle across prepare");

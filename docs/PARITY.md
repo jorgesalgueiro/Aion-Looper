@@ -504,3 +504,30 @@ release, prepare-time snapshot reentry, direct reprepare and fresh callback
 recovery without an owned device. Parameter/MIDI serialization stays unchanged.
 The guard adds no DSP work and does not change the original web assets. It is
 not a browser sound comparison or complete meter lifecycle/renderer acceptance.
+
+### Processor meter ownership and clear servicing (27 October 2026)
+
+The existing production processor now owns all twenty meter graphs across editor
+lifetimes. Real message-loop tests queue twelve Clear All commands (240 raw
+receipts) in one callback, verify one request consumes only 32, then leave the
+rest to the existing processor timer with MIDI/export disabled and no editor.
+The fixture compares nonzero stereo PCM against a separately driven processor
+at 64/128 and checks unchanged saved parameter/MIDI state.
+
+Host-thread release freezes counts and owner updates despite pending receipts. Reprepare
+recovers using only the timer and discards forty old-generation facts. Thirteen
+Clear All commands overflow the stream; all 255 retained facts drain without
+being applied or restoring health. A separate all-track Engine fixture covers
+first route capture after new-generation loss. Existing timer-backed clear,
+cleanup and unchanged-JS graph tests remain in place.
+
+The fixture also keeps an unprepared, MIDI-disabled processor alive through real
+timer delivery. It must retain the shared scheduler while leaving all meter
+counts/generation/health inactive; the former idle-stop condition fails this
+case. Prepare/release are invoked from a separate host thread. Core owner tests
+reject explicitly pinned stale/zero/future resets without any metadata changes.
+
+These tests establish bounded raw-clear service and stable owner storage. They
+do not establish the missing playback/buffer/stop producer, visible level updates,
+backend continuity, DAW/hardware/Apple behavior or arbitrary concurrent processor
+destruction. The original web interface remains byte-identical.

@@ -1297,3 +1297,22 @@ fresh callback recovery tests with unchanged serialized state. Device playback
 reads must bracket prepared ownership too. This guard is not device continuity
 or complete meter runtime wiring; do not construct/destroy message-owned timers
 on arbitrary host prepare/release threads or enable a visible meter/package yet.
+
+Processor meter owners now live in one construction-time heap bank, outliving
+the message-only owner dispatcher. Share one sole consumer between bridge and
+the existing processor Timer; bound each drain to 32 raw receipts. Schedule that
+existing Timer at completed prepare, not in processBlock, and once scheduled
+keep it alive across idle MIDI/export/editor close/release so an idle stop cannot
+lose the first prepare wakeup. Do not add a competing scheduling flag.
+The released guard must skip owner mutation/dequeues; reset owners only on the
+message thread with the explicitly captured completed generation; stale/zero/
+future reset requests leave graph/follower/binding/cleanup unchanged. Preserve
+real no-editor timer acceptance and idle pre-prepare scheduler retention,
+240-receipt partial request/drain, release freeze, timer-only prepare recovery,
+255 retained lost receipts, exact nonzero processor PCM/state at 64/128 and
+zero callback new/delete. Capture new-generation routes even if already lossy,
+but never apply lost facts or recover health by draining/resetting routing.
+Keep the timer-backed dispatcher tests alongside owner routes. Cleanup adapter
+construction, full playback/buffer/stop mapping, overlap/continuity and renderer
+remain pending; do not claim visible meters or arbitrary concurrent host-thread
+destruction safety from this service gate. No package yet.

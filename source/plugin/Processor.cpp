@@ -49,6 +49,8 @@ AionProcessor::AionProcessor(ExportDestination destination,OutputLatencyReader l
     outputLatencyReader=std::move(latencyReader);
     processorClockReader=clockReader?clockReader:&processorClockSeconds;
     controlledDeviceClockOwner=controlledOwner;
+    meterOwners=std::make_unique<MeterOwners>();
+    for(unsigned id=0;id<meterOwners->size();++id)(*meterOwners)[id].emplace(engine,id);
     // Plugin hosts own hardware MIDI routing. Only our Standalone device manager
     // needs OS hotplug notifications; probing here otherwise requires ALSA on WSL.
    #if JucePlugin_Build_Standalone
@@ -120,9 +122,11 @@ void AionProcessor::cancelExport(){
 }
 void AionProcessor::timerCallback(){
     serviceMidi();
+    serviceMeters();
     const auto written=exportWriteResult->load(std::memory_order_acquire);
     if(written>0){exportWriteResult->store(0);exportBusy=false;exportStatus=written==1?"WAV saved":"WAV export failed: could not write the selected file";}
-    if(!exportBusy){std::lock_guard guard(midiSettingsMutex);if(!midiSettings.enabled)stopTimer();}
+    // This shared service also owns meter generations. Keep it scheduled until
+    // destruction: an idle stop could race the first host prepare wakeup.
     if(!exportEncoding)return;
     aion::WavExport output;if(!engine.popExport(output))return;
     exportEncoding=false;
@@ -177,6 +181,38 @@ void AionProcessor::prepareToPlay(double rate, int) {
     deviceClockEpoch=deviceClockOwner?deviceClockOwner->advance():0;
     activeDeviceClockEpoch.store(deviceClockEpoch,std::memory_order_release);
     preparedGeneration.store(engine.generation(),std::memory_order_release);
+    // JUCE permits scheduling this existing Timer from a host prepare thread.
+    // Only its message callback touches owners; no timer scheduling in processBlock.
+    startTimer(25);
+}
+bool AionProcessor::meterPrepared() const noexcept {
+    const auto prepared=preparedGeneration.load(std::memory_order_acquire);
+    return prepared&&prepared==engine.generation()&&preparedGeneration.load(std::memory_order_acquire)==prepared;
+}
+void AionProcessor::serviceMeters() noexcept {
+    JUCE_ASSERT_MESSAGE_THREAD
+    meterServiceStatus.current=false;
+    const auto generation=preparedGeneration.load(std::memory_order_acquire);
+    if(!generation||engine.generation()!=generation)return;
+    for(auto& owner:*meterOwners)owner->reset(generation);
+    if(preparedGeneration.load(std::memory_order_acquire)!=generation||engine.generation()!=generation)return;
+    if(!meterDispatcher){
+        aion::LoopMeterOwnerClearDispatcher::Routes routes{};
+        for(unsigned id=0;id<routes.size();++id)routes[id]=&*(*meterOwners)[id];
+        meterDispatcher.emplace(engine,routes);
+    }else meterDispatcher->reset();
+    if(meterServiceStatus.generation!=generation){meterServiceStatus={};meterServiceStatus.generation=generation;}
+    const auto drained=meterDispatcher->drain(32); // Raw budget includes stale/lost discards.
+    ++meterServiceStatus.passes;
+    meterServiceStatus.examined+=drained.examined;meterServiceStatus.started+=drained.started;
+    meterServiceStatus.cleared+=drained.cleared;meterServiceStatus.applied+=drained.applied;meterServiceStatus.rejected+=drained.rejected;
+    meterServiceStatus.current=drained.current&&meterPrepared()&&engine.generation()==generation;
+}
+MeterServiceStatus AionProcessor::inspectMeterServiceMessageThread() const noexcept {
+    JUCE_ASSERT_MESSAGE_THREAD
+    auto result=meterServiceStatus;
+    result.current=result.current&&meterPrepared()&&result.generation==engine.generation()&&engine.meterGraphEventsCurrent();
+    result.timerRunning=isTimerRunning();return result;
 }
 bool AionProcessor::readDevicePlayback(DevicePlaybackObservation& output) noexcept {
     JUCE_ASSERT_MESSAGE_THREAD
@@ -278,6 +314,7 @@ void AionProcessor::setStateInformation(const void* data, int size) {
 juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
     serviceMidi();
+    serviceMeters();
     auto* result = new juce::DynamicObject(); juce::var reply(result);
     result->setProperty("protocol", 1); result->setProperty("ok", false);
     const auto fail = [result, &reply](const char* reason) { result->setProperty("error", reason); return reply; };

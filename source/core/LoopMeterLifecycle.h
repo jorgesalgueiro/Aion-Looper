@@ -20,7 +20,12 @@ public:
     LoopMeterLifecycle& operator=(const LoopMeterLifecycle&)=delete;
     // Call only after the Engine prepare barrier; same-generation reset is a no-op.
     bool reset() noexcept {
-        const auto next=engine.generation();if(next==generation)return false;
+        return reset(engine.generation());
+    }
+    // A processor service pins the completed prepare it observed. Never adopt
+    // a newer Engine generation that may still be inside another prepare.
+    bool reset(std::uint32_t next) noexcept {
+        if(next!=engine.generation()||next==generation)return false;
         generation=next;ticket=0;lastClearSerial=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
         // Keep timer serials across prepare; old delivered callbacks cannot alias.
         return true;
