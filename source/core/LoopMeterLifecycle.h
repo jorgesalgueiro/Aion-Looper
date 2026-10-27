@@ -114,6 +114,13 @@ public:
         return std::isfinite(event.stopLeadSeconds)&&event.stopLeadSeconds>0
             &&std::isfinite(event.stopLeadSeconds+.05)&&consumeStop(event,MeterGraphEventKind::scheduledStop,event.stopLeadSeconds);
     }
+    bool consumeStopAll(const MeterGraphEvent& event) noexcept {
+        // LoopManager.stopAll calls Loop.stop(now + .015) for active graphs.
+        // Repeated panic while message state is stopping replaces its timer;
+        // native audio may already be stopped. Detached owners remain no-ops.
+        return graph.inspect().state!=MeterLoopState::queued&&event.stopLeadSeconds==.015
+            &&consumeStop(event,MeterGraphEventKind::stopAll,.015);
+    }
 private:
     bool consumeStop(const MeterGraphEvent& event,MeterGraphEventKind kind,double lead) noexcept {
         const auto matches=[&]() noexcept {

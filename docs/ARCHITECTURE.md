@@ -2016,3 +2016,26 @@ This is a receipt-relative timer contract. Backdating across queued ordered
 clear/play facts requires additional ordering work; wall command alignment is
 unaccepted. STOP ALL, queued graph lead, capture/edit graph origins, envelopes,
 continuity and visible renderer acceptance remain unfinished. No package yet.
+
+## Accepted STOP ALL handoff for established graphs
+
+The same acceptedPlayback stream has a distinct stopAll fact. Global STOP ALL
+publishes one per known immediate-play graph before the existing generic audio
+stop, preserving its immutable clip and raw window. Message state chooses cleanup:
+stopping graphs replace their pending request even if native audio already stopped;
+detached stopped owners accept an ordered no-op. Active graphs use the original
+15ms scheduled stop plus 50ms cleanup, retaining analyser/data/history until the
+message timer runs. Duplicate and malformed receipts reject before mutation.
+
+The fixed origin bank separately records whether panic mapping remains known.
+Accepted queued PLAY clears that knowledge; audible state transitions cannot
+restore it. A new accepted immediate PLAY/stopped RTRG restores it, while clear,
+raw resets and prepare remove it. This deliberately withholds queued panic facts
+until the original message-time 100ms graph lead is mapped. It prevents a queued
+cancel from wrongly replacing a retained old stop timer with 65ms. This is not
+full queued panic acceptance or a new source/analyser inference.
+
+The sole bounded dispatcher routes global batches through the existing twenty
+prepared adapters and native-only stop counters. Existing PCM and audible stop
+behavior are unchanged. Receipt-relative wall timing, queued/capture/edit graph
+origins, envelopes/continuity and visible rendering still need acceptance.

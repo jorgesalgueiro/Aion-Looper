@@ -301,6 +301,7 @@ void LoopBank::clear(Track& track) noexcept {
     if(track.clip){residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;retire(track.clip);track.clip=nullptr;}
     const auto id=static_cast<std::uint32_t>(&track-tracks.data());
     (*meterWindows)[id].reset();meterGraphTickets[id]=meterImmediateTickets[id]=0;meterGraphFrames[id]=0;
+    meterPanicKnown[id]=false;
     meterGraphEvents->publish(MeterGraphEventKind::cleared,id,0,frame,track.clearEpoch,removedBuffer);
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
@@ -309,7 +310,7 @@ void LoopBank::clear(Track& track) noexcept {
     if(freeCount)poolFull=false;
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
-    if(action==LoopAction::stopAll){for(auto& track:tracks)stop(track);return true;}
+    if(action==LoopAction::stopAll){for(unsigned next=0;next<trackCount;++next){publishMeterPanic(next);stop(tracks[next]);}return true;}
     if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks){++track.clearEpoch;clear(track);}return true;}
     if(action==LoopAction::undoGlobal){const int next=nextUndo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),false);}
     if(action==LoopAction::redoGlobal){const int next=nextRedo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),true);}
@@ -398,7 +399,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::clear:++t.clearEpoch;clear(t);return true;
         case LoopAction::play:
             if(s!=LoopState::stopped||!t.clip)return false;
-            if(sync.settings.mode!=SyncMode::off){s=LoopState::queued;t.startAt=SyncClock::deadline(sync.nextGrid(frame));return true;}
+            if(sync.settings.mode!=SyncMode::off){meterPanicKnown[id]=false;s=LoopState::queued;t.startAt=SyncClock::deadline(sync.nextGrid(frame));return true;}
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);publishImmediateMeterPlay(id);return true;
         case LoopAction::overdub:
         case LoopAction::substitute:

@@ -1425,3 +1425,18 @@ malformed/stale facts and native prepared route/timer checks with frozen audio.
 This still starts the deadline at receipt application: end-to-end command timing,
 STOP ALL, queued/capture/edit graph origins, overlap/envelopes and renderer remain
 unfinished. No visible meters or packaging from this narrower scheduled handoff.
+
+STOP ALL has a distinct stopAll receipt for known immediate-play graph origins,
+using the original nominal 15ms scheduled stop plus 50ms cleanup. Publish before
+generic audio stop and preserve clip/window identity; do not suppress repeated
+panic merely because audio is already stopped. The message owner retains history,
+replaces stopping cleanup, accepts detached no-ops and rejects duplicate/stale/
+wrong-identity facts. The sole dispatcher/prepared adapters retain bounded global
+batches and cancel obsolete panic timers on actual PLAY/clear.
+Accepted queued PLAY quarantines this panic origin until a fresh immediate birth;
+neither its native queued state nor audible grid transition proves the original
+100ms graph lead. Never substitute 65ms cleanup for the original queued cancel's
+retained old timer. Full queued panic, command/receipt wall alignment, other graph
+origins/envelopes/continuity and rendering remain pending. Keep the original JS
+panic characterization, actual paired 64/128 PCM, twenty-track bounded routing
+and frozen-clock real JUCE timer tests. No visible meters or package yet.

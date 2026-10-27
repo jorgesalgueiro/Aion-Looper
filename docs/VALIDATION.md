@@ -6745,3 +6745,96 @@ overlap/envelopes/continuity and the visible renderer remain unfinished. JUCE's
 message callbacks; there is no asserted upper callback-latency bound. No new DAW,
 physical IO, Apple or native-sanitizer acceptance, package, version/dependency
 change or push is claimed.
+
+### Accepted STOP ALL receipts for established graphs (2026-10-27)
+
+Continues the unfinished meter lifecycle from 0ccaf9f. The unchanged
+`LoopManager.stopAll` calls `loop.stop(now + 0.015)` for active/stopping/restarting
+graphs, giving a nominal 65ms scheduled cleanup. Its queued branch cancels only
+the queued action and retains any old stop timer; detached stopped loops do not
+start another cleanup. Fourteen added reference cases execute these original
+methods at tracks 0/19, preserving all previous 136 identity/state, 14 dispatcher
+scheduling and 22 resume cases. These timer/node IO stubs do not establish browser
+PCM parity or native queued graph creation.
+
+Implementation review also checked [SooperLooper's engine ownership queues](https://github.com/essej/sooperlooper/blob/master/src/engine.hpp),
+which keep distinct RT/main loop-management queues and instance collections. That
+informed retaining this repository's explicit bounded ownership transfer; the
+unchanged Ascii-Looper methods remain the timing authority, and no external code
+was copied. [JUCE Timer documentation](https://docs.juce.com/master/classjuce_1_1Timer.html)
+requires message-thread delivery and permits late callbacks, so tests assert a
+lower deadline bound without treating timer callbacks as audio sample events.
+
+The native global command now publishes stopAll facts before each generic audio
+stop, but only for a known accepted immediate-play graph origin. It retains clip,
+ticket, serial, frame and raw-window ownership. The owner uses 15ms plus 50ms,
+retains analyser/data/history, replaces pending stopping cleanup despite native
+audio already being stopped, and accepts detached no-ops. Wrong type/delta/clip/
+ticket/generation, stale/duplicate facts and unhealthy streams reject before
+mutation. Existing prepared adapters and the sole bounded dispatcher apply facts;
+PLAY/clear cancel obsolete panic cleanup. Audible PCM and stop behavior are not
+changed, and no new IPC, serialized state or visible controls are added.
+
+An accepted queued PLAY explicitly makes panic graph ownership unknown until a
+fresh accepted immediate PLAY/stopped RTRG. Neither the native queued snapshot
+nor its audible grid transition restores that knowledge. The consumer also
+refuses queued owners. This prevents the narrower handoff from falsely replacing
+the original queued-cancel branch's retained timer. Full queued STOP ALL, its
+100ms graph-creation lead, command/receipt wall alignment and other graph origins
+still require implementation. This gate must not be presented as full panic
+lifecycle or original end-to-end stop latency acceptance.
+
+Actual paired Engine tests at 64/128 on tracks 0/19 seed nonzero meter PCM and
+cover 65ms metadata, repeated/detached stops, same-callback replacement, attached
+clear, prepare, raw-budget loss and origin quarantine/recovery. Actual OD/SUB/MULT
+capture and same-callback NORM followed by panic retain cleanup through subsequent
+worker-buffer acceptance. Live callbacks stay nonblocking; the separate existing
+host-declared offline callback accepts finalization as previously authorized.
+All observed callbacks require bit-identical stereo PCM against an unobserved
+Engine and zero tracked callback new/delete.
+
+Native tests cover actual twenty-track committed-buffer/play/panic batches,
+7/13 partial drains, prepared/released/mismatched routing, retained pending
+requests on rejection, repeated cleanup replacement and Clear All cancellation.
+The production processor is exercised through its existing RPC and sole prepared
+dispatcher. Actual JUCE timers require a 65ms lower wall-time bound with frozen
+audio, repeated rearming, detached no-ops and accepted PLAY cancellation; no upper
+callback-latency bound is assumed.
+
+Two negative controls are retained: build/panic-missing-producer.cpp and
+build/panic-negative.txt omit only panic publication and fail on a missing actual
+receipt; build/panic-unguarded-queue.cpp and build/panic-queue-negative.txt remove
+only queued-origin quarantine and fail because queued panic emits an inferred
+active-graph cleanup. Final source is restored before positive builds.
+
+Evidence files use build/panic-full-{windows,linux}.txt,
+build/panic-native-{windows,linux}.txt, build/panic-asan.txt,
+build/panic-audio.json and build/panic-assets.txt.
+build/WritePanicEvidence.py verifies gates, both negative controls, unchanged DSP/
+processor/UI/SDK/other-format artifacts and rebuilt binary hashes, writing
+build/panic-evidence.json. Focused reproduction uses
+`build/windows-core/Release/aion_core_tests.exe --meter-panic` or
+`build/core/aion_core_tests --meter-panic` on Ubuntu.
+
+Final restored-source results:
+
+| Gate | Result |
+| --- | --- |
+| Windows portable suite | 28/28, 328.02s |
+| Ubuntu portable suite | 28/28, 589.68s |
+| Windows native processor / standalone SDK generation | 2/2, 7.91s |
+| Ubuntu native processor / standalone SDK generation | 2/2, 19.89s |
+| Ubuntu core AddressSanitizer selection | 6/6, 194.34s |
+| Committed PCM audit | 126 cases, 965826 samples, max absolute error 7.394757495227111e-8 at unchanged 1e-6 tolerance |
+| Original resources / embedding / tamper rejection | Pass |
+
+Native runs retain all eighteen linked production AudioDeviceManager blocks;
+there are no skips, JUCE assertions, leak reports or tracked callback new/delete.
+The existing Standalone binaries were rebuilt on both platforms. Other plugin
+formats, SDK and original resources (including the committed logo) are unchanged.
+
+The broader meter feature remains unfinished: receipt-relative deadlines still
+need command/delivery alignment, queued/capture/edit graph origins need full
+mapping, and envelopes/overlap/continuity/visible rendering need acceptance.
+No new DAW, physical IO, Apple or native-sanitizer acceptance, package, version/
+dependency change or push is claimed.

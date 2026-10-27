@@ -40,9 +40,9 @@ public:
                 if(event.track<routes.size()&&routes[event.track]->consumeImmediatePlay(event))++result.playApplied;
                 else ++result.rejected;
             }
-            else if(event.kind==MeterGraphEventKind::immediateStop||event.kind==MeterGraphEventKind::scheduledStop){
+            else if(event.kind==MeterGraphEventKind::immediateStop||event.kind==MeterGraphEventKind::scheduledStop||event.kind==MeterGraphEventKind::stopAll){
                 ++result.stops;
-                if(event.track<routes.size()&&(event.kind==MeterGraphEventKind::scheduledStop?
+                if(event.track<routes.size()&&(event.kind==MeterGraphEventKind::stopAll?routes[event.track]->consumeStopAll(event):event.kind==MeterGraphEventKind::scheduledStop?
                     routes[event.track]->consumeScheduledStop(event):routes[event.track]->consumeImmediateStop(event)))++result.stopApplied;
                 else ++result.rejected;
             }

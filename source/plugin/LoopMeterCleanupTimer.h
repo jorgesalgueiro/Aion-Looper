@@ -59,17 +59,20 @@ public:
         synchronise();return true;
     }
     bool consumeImmediateStop(const MeterGraphEvent& event) noexcept {
-        return consumeStop(event,false);
+        return consumeStop(event,MeterGraphEventKind::immediateStop);
     }
     bool consumeScheduledStop(const MeterGraphEvent& event) noexcept {
-        return consumeStop(event,true);
+        return consumeStop(event,MeterGraphEventKind::scheduledStop);
     }
+    bool consumeStopAll(const MeterGraphEvent& event) noexcept {return consumeStop(event,MeterGraphEventKind::stopAll);}
 private:
-    bool consumeStop(const MeterGraphEvent& event,bool scheduled) noexcept {
+    bool consumeStop(const MeterGraphEvent& event,MeterGraphEventKind kind) noexcept {
         assertMessageThread();if(!ready())return false;
         const double wall=wallTime();
-        if(!MeterCleanupDeadline::canArm(wall,scheduled?event.stopLeadSeconds+.05:.025)
-            ||!(scheduled?owner.consumeScheduledStop(event):owner.consumeImmediateStop(event)))return false;
+        if(!MeterCleanupDeadline::canArm(wall,kind==MeterGraphEventKind::immediateStop?.025:event.stopLeadSeconds+.05))return false;
+        const bool accepted=kind==MeterGraphEventKind::stopAll?owner.consumeStopAll(event):
+            kind==MeterGraphEventKind::scheduledStop?owner.consumeScheduledStop(event):owner.consumeImmediateStop(event);
+        if(!accepted)return false;
         const auto request=owner.cleanupRequest();stopTimer();deadline.cancel();
         if(!request.serial)return true; // Already detached: preserve history without rearming.
         const bool armed=deadline.arm(request,wall);jassert(armed);

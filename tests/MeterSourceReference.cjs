@@ -105,6 +105,26 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   assert(graph&&analyser&&data.length===2048);await loop.play();
   assert.equal(loop.graph,graph);assert.equal(loop.analyser,analyser);assert.equal(loop.analyserData,data);++resumeCases;
  }
- console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,
+ let panicCases=0;
+ for(const id of [0,19]){
+  for(const state of ['playing','overdubbing','substituting','multiplying','stopping','restarting']){
+   timers.clear();audio.state='running';audio.currentTime=1;
+   const loop=ctx.fresh(id,false);await loop.play(1);loop.state=state;
+   const analyser=loop.analyser,data=loop.analyserData;ctx.panic();
+   const first=loop.stopTimeout;assert.equal(loop.state,'stopping');near(timers.get(first).ms,65);
+   assert.equal(loop.analyser,analyser);assert.equal(loop.analyserData,data);
+   ctx.panic();assert(!timers.has(first));assert.notEqual(loop.stopTimeout,first);near(timers.get(loop.stopTimeout).ms,65);
+   timers.get(loop.stopTimeout).fn();assert.equal(loop.analyser,null);assert.equal(loop.analyserData,data);
+   const count=timers.size;ctx.panic();assert.equal(loop.stopTimeout,null);assert.equal(timers.size,count);++panicCases;
+  }
+  // Panic cancels queued PLAY without replacing a retained old stop deadline.
+  timers.clear();audio.currentTime=1;const loop=ctx.fresh(id,false);await loop.play(1);
+  loop.stop();const retained=loop.stopTimeout,analyser=loop.analyser,data=loop.analyserData;
+  loop.state='queued';loop.queueTimeout=ctx.setTimeout(()=>{},100);const queued=loop.queueTimeout;
+  ctx.panic();assert.equal(loop.state,'stopped');assert.equal(loop.queueTimeout,null);assert(!timers.has(queued));
+  assert.equal(loop.stopTimeout,retained);assert.equal(timers.get(retained).ms,25);
+  assert.equal(loop.analyser,analyser);assert.equal(loop.analyserData,data);++panicCases;
+ }
+ console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,
   scope:'Unchanged Loop/AudioGraph methods, actual handleAction scheduling/cancellation and AudioEngine.resume with controlled context/timer IO. Includes pre-grid analyser birth, late source phase, pending-resume invalidation and identity retention. No native producer, browser PCM or renderer acceptance.'},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});

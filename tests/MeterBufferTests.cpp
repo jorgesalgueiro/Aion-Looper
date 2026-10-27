@@ -169,7 +169,8 @@ void meterStopTests(){
         f.command(LoopAction::stopImmediate,id);f.cycle();stopped=f.next(MeterGraphEventKind::immediateStop,id);
         check(owner.consumeImmediateStop(stopped)&&owner.cleanupRequest().delay==.025,"Explicit immediate stop can override a scheduled audio stop");
         f.command(LoopAction::retrigger,id);f.cycle();played=f.next(MeterGraphEventKind::immediatePlay,id);check(owner.consumeImmediatePlay(played),"Restart after immediate stop override");
-        f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(event),"STOP ALL does not reuse the wrong 25ms origin");
+        f.command(LoopAction::stopAll,id);f.cycle();event=f.next(MeterGraphEventKind::stopAll,id);
+        check(owner.consumeStopAll(event)&&owner.cleanupRequest().delay==.015+.05,"STOP ALL uses its distinct 65ms policy");
         LoopCommand raw{LoopAction::meterGraphStart,id,0,f.engine->generation(),0,0};raw.meterGraphTicket=played.ticket+1;
         check(f.engine->enqueueLoop(raw),"Queue explicit raw window replacement");f.cycle();(void)f.next(MeterGraphEventKind::started,id);
         f.command(LoopAction::stopImmediate,id);f.cycle();check(!f.engine->popMeterGraphEvent(event),"Raw component window reset cannot fabricate an accepted playback stop origin");
@@ -218,6 +219,77 @@ void meterStopTests(){
     }
     check(allocations.load()==0,"Scheduled STOP callback paths have zero tracked new/delete");
     std::cout<<"PASS: accepted immediate and scheduled STOP receipts, exact unrounded grid delta plus 50ms, overrides, retained window/clip/history, actual audible completion, malformed/stale rejection and replacement/clear at tracks 0/19, 64/128, 120/137.3/999 BPM; exact paired stereo PCM and zero tracked callback new/delete\n";
+}
+void meterPanicTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,id);
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Panic fixture commits actual clip");
+        // Capture auto-play has no mapped analyser origin.
+        f.command(LoopAction::stopAll,id);f.cycle();MeterGraphEvent event;
+        check(!f.engine->popMeterGraphEvent(event),"Panic cannot fabricate capture auto-play graph ownership");
+        f.command(LoopAction::play,id);f.cycle();auto played=f.next(MeterGraphEventKind::immediatePlay,id);
+        check(owner.consumeImmediatePlay(played),"Panic fixture uses actual immediate-play graph");
+        for(unsigned n=0;n<2048/block;++n){check(owner.request(),"Request panic history PCM");f.cycle();check(f.engine->popLoopMeterWindow(*f.packet),"Receive panic history PCM");
+            const double t=static_cast<double>(f.view->frame)/48000;check(owner.observe(*f.packet,*f.view,f.view->callbackClock,{t,t}),"Seed panic history from actual PCM");}
+        const auto identity=owner.inspect();const auto held=reading(owner.value());check(owner.value().peak>0,"Panic history is nonzero");
+        const auto frame=f.engine->clock();f.command(LoopAction::stopAll,id);f.cycle();event=f.next(MeterGraphEventKind::stopAll,id);
+        check(event.frame==frame&&event.ticket==played.ticket&&event.bufferId==played.bufferId&&event.stopLeadSeconds==.015
+            &&f.engine->loopMeterGraphCurrent(event.generation,id,event.ticket),"Panic fact names actual frame, clip and unchanged raw window");
+        for(double invalid:{0.,.025,-1.,std::numeric_limits<double>::quiet_NaN(),std::numeric_limits<double>::infinity()}){
+            auto wrong=event;wrong.stopLeadSeconds=invalid;check(!owner.consumeStopAll(wrong)&&!owner.cleanupRequest().serial,"Panic wrong delta rejects before mutation");}
+        auto wrong=event;++wrong.ticket;check(!owner.consumeStopAll(wrong),"Panic wrong window rejects");
+        wrong=event;++wrong.bufferId;check(!owner.consumeStopAll(wrong),"Panic wrong clip rejects");
+        wrong=event;++wrong.generation;check(!owner.consumeStopAll(wrong),"Panic wrong generation rejects");
+        check(!owner.consumeImmediateStop(event)&&!owner.consumeScheduledStop(event)&&owner.consumeStopAll(event)
+            &&owner.cleanupRequest().delay==.015+.05&&owner.inspect().analyser==identity.analyser&&reading(owner.value())==held,"Panic retains attached identity/history with 65ms cleanup");
+        const auto first=owner.cleanupRequest();check(!owner.consumeStopAll(event)&&owner.cleanupRequest()==first,"Duplicate panic cannot postpone cleanup");
+        f.command(LoopAction::stopAll,id);f.cycle();event=f.next(MeterGraphEventKind::stopAll,id);
+        check(owner.consumeStopAll(event)&&owner.cleanupRequest().serial!=first.serial&&!owner.deliverCleanup(first),"Repeated panic replaces cleanup even after native audio is stopped");
+        const auto second=owner.cleanupRequest();check(owner.deliverCleanup(second)&&!owner.inspect().present&&owner.inspect().data==identity.data&&reading(owner.value())==held,"Panic teardown retains data/history");
+        f.command(LoopAction::stopAll,id);f.cycle();check(owner.consumeStopAll(f.next(MeterGraphEventKind::stopAll,id))&&!owner.cleanupRequest().serial,"Panic after detached teardown is an ordered no-op");
+        f.command(LoopAction::play,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Replay establishes new panic origin");
+        f.command(LoopAction::stopAll,id);f.command(LoopAction::play,id);f.cycle();check(owner.consumeStopAll(f.next(MeterGraphEventKind::stopAll,id)),"Apply ordered panic before replacement");
+        const auto obsolete=owner.cleanupRequest();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id))&&!owner.deliverCleanup(obsolete)&&!owner.cleanupRequest().serial,"Same-callback PLAY cancels panic cleanup");
+        // After any accepted queued PLAY, audio state cannot prove whether the
+        // original 100ms lead callback has created its new graph. Fail closed.
+        f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Stop before queued-intent quarantine");
+        const auto retained=owner.cleanupRequest();for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,999,1,1,4,false});
+        f.command(LoopAction::play,id);f.cycle();check(f.view->tracks[id].state==LoopState::queued&&!f.engine->popMeterGraphEvent(event),"Queued intent never invents graph ownership");
+        f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(event)&&owner.cleanupRequest()==retained,"Queued panic cannot replace retained old cleanup with an inferred active-graph delay");
+        f.command(LoopAction::play,id);f.cycle();unsigned cycles=0;while(f.view->tracks[id].state==LoopState::queued&&++cycles<1000)f.cycle();
+        check(f.view->tracks[id].state==LoopState::playing,"Reach actual audible queued transition");
+        f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(event),"Audible queued transition cannot recover quarantined panic graph origin");
+        f.command(LoopAction::retrigger,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Actual stopped retrigger restores known panic origin");
+        f.command(LoopAction::stopAll,id);f.cycle();event=f.next(MeterGraphEventKind::stopAll,id);check(owner.consumeStopAll(event),"Panic works after explicit origin recovery");
+        f.command(LoopAction::clear,id);f.cycle();check(owner.consumeClear(f.next(MeterGraphEventKind::cleared,id))&&!owner.inspect().data&&!owner.cleanupRequest().serial&&!owner.consumeStopAll(event),"Attached clear invalidates panic and resets history");
+        f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(event),"Clear removes panic origin");
+        f.prepare();check(owner.reset()&&!owner.consumeStopAll(event),"Prepare rejects retained panic");
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Commit take after panic prepare");
+        f.command(LoopAction::stopImmediate,id);f.command(LoopAction::play,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Establish panic origin before stream loss");
+        f.command(LoopAction::stopAll,id);f.cycle();event=f.next(MeterGraphEventKind::stopAll,id);
+        for(unsigned n=0;n<256;++n){f.command(LoopAction::stopAll,id);f.cycle();}
+        check(!f.engine->meterGraphEventsCurrent()&&!owner.consumeStopAll(event),"Panic stream loss rejects retained receipts");
+        unsigned budget=255;check(!f.engine->popMeterGraphEvent(event,f.engine->generation(),budget)&&!budget,"Lost panic batch drains within raw budget");
+        f.prepare();check(owner.reset()&&owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Prepare restores healthy retained buffer without a graph origin");
+        f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(event),"Retained clip after prepare cannot recover prior panic graph origin");
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(auto action:{LoopAction::overdub,LoopAction::substitute,LoopAction::multiply,LoopAction::normalize}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,id);
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Commit panic edit fixture");
+        f.command(LoopAction::stopImmediate,id);f.command(LoopAction::play,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Establish edit graph before panic");
+        const auto data=owner.inspect().data;
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({action,id,0,e->generation(),0,action==LoopAction::multiply?1.:0.}),"Queue actual capture/edit before panic");
+        if(action!=LoopAction::normalize)for(unsigned n=0;n<256/block;++n)f.cycle(); // MULT requires at least 128 captured frames; NORM shares the panic batch.
+        f.command(LoopAction::stopAll,id);f.cycle();
+        check(owner.consumeStopAll(f.next(MeterGraphEventKind::stopAll,id))&&owner.cleanupRequest().delay==.015+.05,"Panic retains known graph through actual capture/edit/finalizing state");
+        const auto pending=owner.cleanupRequest();
+        f.cycle(true); // Host-declared offline completion accepts the worker result on the next callback.
+        check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id))&&owner.cleanupRequest()==pending&&owner.inspect().data==data,
+            "Worker-accepted buffer after panic preserves pending cleanup and analyser data");
+    }
+    check(allocations.load()==0,"Panic callbacks have zero tracked new/delete");
+    std::cout<<"PASS: accepted STOP ALL receipts, 65ms cleanup, repeated/detached panic, capture/edit ordering, replacement/clear/prepare/loss, malformed identity rejection and queued-origin quarantine at tracks 0/19, 64/128; exact paired stereo PCM and zero tracked callback new/delete\n";
 }
 void meterBufferTests(){
     using namespace aion;

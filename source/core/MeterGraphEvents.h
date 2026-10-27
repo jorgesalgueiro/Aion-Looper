@@ -4,7 +4,7 @@
 namespace aion {
 // Ordered audio-owner facts. Only immediatePlay explicitly proves a new graph;
 // a raw started event or a buffer installation never implies analyser creation.
-enum class MeterGraphEventKind : std::uint8_t { started, cleared, bufferInstalled, immediatePlay, immediateStop, scheduledStop };
+enum class MeterGraphEventKind : std::uint8_t { started, cleared, bufferInstalled, immediatePlay, immediateStop, scheduledStop, stopAll };
 // Component scopes retain raw-window/buffer-only contracts. Production adds
 // accepted immediate playback once at construction; never switch at runtime.
 enum class MeterEventScope : std::uint8_t { rawWindows, committedBuffers, acceptedPlayback };

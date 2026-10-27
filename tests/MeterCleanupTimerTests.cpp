@@ -254,10 +254,56 @@ void processorBufferReceiptTests(bool& audioWatch){
         check(s.stops==3&&s.stopApplied==3&&s.attachedGraphs==1&&s.pendingCleanups==1&&!s.rejected,"Production scheduled STOP reaches the prepared cleanup adapter through sole dispatcher");
         command("stop");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.stops==4&&s.stopApplied==4&&s.pendingCleanups==1&&!s.rejected,"Production second STOP overrides pending scheduled cleanup");
+        command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.stops==5&&s.stopApplied==5&&s.pendingCleanups==1&&!s.rejected,"Production STOP ALL replaces stopping graph cleanup through prepared route");
+        command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.stops==6&&s.stopApplied==6&&s.pendingCleanups==1&&!s.rejected,"Production repeated STOP ALL retains the message-owned stopping graph origin");
         command("clear");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(!s.attachedGraphs&&s.applied==1&&!s.rejected,"Production typed clear detaches accepted playback graph");
     }
     std::cout<<"PASS: production committed-buffer subscription consumes actual captured clips, typed clear without graph tickets and retained prepare handoff at 64/128; no inferred graph creation or callback new/delete\n";
+}
+void panicDispatcherTests(bool& audioWatch){
+    using namespace aion;
+    for(unsigned block:{64u,128u}){
+        std::atomic<std::uint32_t> prepared{0};
+        Fixture f(block,audioWatch,MeterEventScope::acceptedPlayback);prepared.store(f.engine->generation(),std::memory_order_release);
+        f.timer=std::make_unique<LoopMeterCleanupTimer>(*f.owner,&prepared);
+        std::array<std::unique_ptr<LoopMeterLifecycle>,20> owners;
+        std::array<std::unique_ptr<LoopMeterCleanupTimer>,20> timers;
+        std::array<LoopMeterLifecycle*,20> ownerRoutes{};LoopMeterClearDispatcher::Routes routes{};
+        for(unsigned id=0;id<20;++id){
+            if(id==19){ownerRoutes[id]=f.owner.get();routes[id]=f.timer.get();}
+            else {owners[id]=std::make_unique<LoopMeterLifecycle>(*f.engine,id);ownerRoutes[id]=owners[id].get();
+                timers[id]=std::make_unique<LoopMeterCleanupTimer>(*owners[id],&prepared);routes[id]=timers[id].get();f.record(id);}
+        }
+        LoopMeterClearDispatcher dispatcher(*f.engine,routes);
+        auto result=dispatcher.drain(7);check(result.examined==7&&result.bufferApplied==7,"Panic bank consumes seven actual committed clips");
+        result=dispatcher.drain(32);check(result.examined==13&&result.bufferApplied==13&&!result.rejected,"Panic bank consumes remaining actual committed clips");
+        for(unsigned id=0;id<20;++id)for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::stopImmediate,id,0,e->generation(),0,0})
+            &&e->enqueueLoop({LoopAction::play,id,0,e->generation(),0,0}),"Queue twenty actual immediate graph origins");f.cycle();
+        result=dispatcher.drain(32);check(result.playApplied==20&&!result.rejected,"Panic dispatcher binds all twenty actual immediate origins");
+        for(unsigned n=0;n<40;++n){for(auto* owner:ownerRoutes)check(owner->request(),"Request all twenty panic windows");f.cycle();
+            while(f.engine->popLoopMeterWindow(*f.packet)){const double t=static_cast<double>(f.view->frame)/48000;
+                check(ownerRoutes[f.packet->track]->observe(*f.packet,*f.view,f.view->callbackClock,{t,t}),"Observe all twenty actual panic windows");}}
+        std::array<MeterCleanupRequest,20> old{};
+        for(auto* owner:ownerRoutes)check(owner->value().peak>0,"Every panic route has nonzero actual history");
+        const auto panic=[&]{for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::stopAll,0,0,e->generation(),0,0}),"Queue one actual global panic");f.cycle();};
+        panic();result=dispatcher.drain(7);check(result.examined==7&&result.stops==7&&result.stopApplied==7&&!result.rejected,"One panic routes exactly seven facts under partial budget");
+        for(unsigned id=0;id<20;++id)check(routes[id]->pending()==(id<7),"Partial panic dispatch preserves undelivered owners");
+        result=dispatcher.drain(32);check(result.examined==13&&result.stopApplied==13,"Panic remainder routes thirteen facts");
+        for(unsigned id=0;id<20;++id){old[id]=ownerRoutes[id]->cleanupRequest();check(old[id].delay==.015+.05,"All panic routes retain 65ms policy");}
+        panic();for(auto invalid:{0u,f.engine->generation()+1}){prepared.store(invalid,std::memory_order_release);
+            check(!dispatcher.drain(32).examined,"Released/mismatched panic routes leave entire global batch queued");
+            for(unsigned id=0;id<20;++id)check(ownerRoutes[id]->cleanupRequest()==old[id],"Rejected panic routes retain all pending cleanup requests");}
+        prepared.store(f.engine->generation(),std::memory_order_release);result=dispatcher.drain(32);
+        check(result.examined==20&&result.stopApplied==20&&!result.rejected,"Prepared recovery consumes the retained twenty-track panic batch");
+        for(unsigned id=0;id<20;++id)check(ownerRoutes[id]->cleanupRequest().serial!=old[id].serial&&!ownerRoutes[id]->deliverCleanup(old[id]),"Repeated global panic replaces every obsolete cleanup");
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::clearAll,0,0,e->generation(),0,0}),"Clear all armed panic graphs");f.cycle();
+        result=dispatcher.drain(32);check(result.applied==20&&!result.rejected,"Clear All routes after twenty panic facts");
+        for(unsigned id=0;id<20;++id)check(!routes[id]->pending()&&!ownerRoutes[id]->inspect().data,"Clear All cancels every panic timer and attached history");
+    }
+    std::cout<<"PASS: actual twenty-track STOP ALL receipts route through prepared adapters with bounded 7/13 drains, nonzero PCM, readiness batch preservation, repeated replacement and Clear All cancellation at 64/128; exact paired stereo PCM\n";
 }
 class ProcessorMeterFixture {
 public:
@@ -470,9 +516,10 @@ private:
             check(f->engine->popLoopMeterWindow(*f->packet),"Receive accepted stop timer PCM");const double t=static_cast<double>(f->view->frame)/48000;
             check(f->owner->observe(*f->packet,*f->view,f->view->callbackClock,{t,t}),"Seed accepted stop timer history");}
     }
-    aion::MeterGraphEvent acceptedStop(){
-        for(auto* e:{f->engine.get(),f->control.get()})check(e->enqueueLoop({aion::LoopAction::stopImmediate,19,0,e->generation(),0,0}),"Queue actual stop for native Timer");f->cycle();
-        aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&event.kind==aion::MeterGraphEventKind::immediateStop,"Actual accepted native stop receipt");return event;
+    aion::MeterGraphEvent acceptedStop(aion::LoopAction action=aion::LoopAction::stopImmediate){
+        for(auto* e:{f->engine.get(),f->control.get()})check(e->enqueueLoop({action,19,0,e->generation(),0,0}),"Queue actual stop for native Timer");f->cycle();
+        const auto kind=action==aion::LoopAction::stopAll?aion::MeterGraphEventKind::stopAll:aion::MeterGraphEventKind::immediateStop;
+        aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&event.kind==kind,"Actual accepted native stop receipt");return event;
     }
     void beginAcceptedStops(){
         const auto block=f->block;f=std::make_unique<Fixture>(block,audioWatch,aion::MeterEventScope::acceptedPlayback);
@@ -639,6 +686,30 @@ private:
         case 16:
             if(f->owner->inspect().present){check(f->timer->pending(),"Scheduled cleanup remains pending until actual timer delivery");return;}
             check(wall()-started>=expectedDelay,"Scheduled actual timer cannot teardown before grid delta plus 50ms");stopped();
+            for(auto* e:{f->engine.get(),f->control.get()})e->configureSync({aion::SyncMode::off,120,1,4,4,false});acceptedPlay();
+            {const auto event=acceptedStop(aion::LoopAction::stopAll);
+                for(auto invalid:{0u,f->engine->generation()+1}){cleanupPrepared.store(invalid,std::memory_order_release);
+                    check(!f->timer->consumeStopAll(event)&&!f->timer->pending()&&!f->owner->cleanupRequest().serial,"Released/mismatched panic cannot mutate attached graph");}
+                cleanupPrepared.store(f->engine->generation(),std::memory_order_release);capture();
+                check(f->timer->consumeStopAll(event)&&f->owner->cleanupRequest().delay==.015+.05,"Actual panic arms 65ms JUCE cleanup");
+                obsolete=f->owner->cleanupRequest();check(!f->timer->consumeStopAll(event)&&f->owner->cleanupRequest()==obsolete,"Duplicate panic cannot postpone native timer");}
+            stage=17;break;
+        case 17:
+            if(f->owner->inspect().present)return;
+            check(wall()-started>=.015+.05,"Actual panic cannot detach before 65ms wall time");stopped();
+            check(f->timer->consumeStopAll(acceptedStop(aion::LoopAction::stopAll))&&!f->timer->pending(),"Detached panic is a native ordered no-op");
+            acceptedPlay();check(f->timer->consumeStopAll(acceptedStop(aion::LoopAction::stopAll)),"First actual repeated panic");obsolete=f->owner->cleanupRequest();
+            {const auto event=acceptedStop(aion::LoopAction::stopAll);capture();check(f->timer->consumeStopAll(event)
+                &&f->owner->cleanupRequest().serial!=obsolete.serial&&!f->owner->deliverCleanup(obsolete),"Repeated panic replaces native cleanup while audio already stopped");}
+            stage=18;break;
+        case 18:
+            if(f->owner->inspect().present)return;
+            check(wall()-started>=.015+.05,"Repeated panic retains fresh 65ms wall minimum");stopped();
+            acceptedPlay();check(f->timer->consumeStopAll(acceptedStop(aion::LoopAction::stopAll)),"Arm panic before replacement");obsolete=f->owner->cleanupRequest();acceptedPlay(false);
+            check(!f->timer->pending()&&!f->owner->deliverCleanup(obsolete),"Actual PLAY cancels native panic timer");capture();stage=19;break;
+        case 19:
+            if(wall()-started<.09)return;
+            check(f->owner->inspect().present&&!f->timer->pending()&&f->owner->inspect().data==data&&reading(f->owner->value())==held&&f->engine->clock()==frame,"Cancelled panic cannot detach replacement graph with frozen audio clock");
             if(f->block==64){begin(128);break;}
             stopTimer();juce::MessageManager::getInstance()->stopDispatchLoop();break;
         }
@@ -651,6 +722,7 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     immediatePlayAdapterTests(audioWatch);
     clearDispatcherTests(audioWatch);
     processorBufferReceiptTests(audioWatch);
+    panicDispatcherTests(audioWatch);
     std::mutex mutex;std::condition_variable changed;bool finished=false;
     std::thread watchdog([&]{std::unique_lock lock(mutex);if(!changed.wait_for(lock,std::chrono::seconds(30),[&]{return finished;})){
         std::cerr<<"Native cleanup timer message-loop watchdog expired"<<std::endl;std::_Exit(1);}});
@@ -665,4 +737,5 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     std::cout<<"PASS: prepared-generation cleanup guard cancels released/mismatched callbacks without owner or PCM-history mutation, rejects released stops, never resurrects cancelled deadlines and recovers on fresh 25ms stops at 64/128\n";
     std::cout<<"PASS: actual accepted stop receipts drive 25ms JUCE teardown with frozen audio clocks, repeated stop replacement, prepared rejection, detached clear history and real accepted PLAY cancellation at 64/128; exact paired PCM and zero tracked callback new/delete\n";
     std::cout<<"PASS: actual scheduled STOP receipts route through production prepared adapters; real JUCE timers retain delta plus 50ms with frozen audio clocks, duplicate/readiness rejection and second STOP override at 64/128\n";
+    std::cout<<"PASS: actual STOP ALL receipts drive 65ms JUCE teardown with frozen audio, repeated replacement, detached no-op, readiness/duplicate rejection and accepted PLAY cancellation at 64/128; zero tracked callback new/delete\n";
 }
