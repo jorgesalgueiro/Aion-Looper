@@ -552,3 +552,27 @@ This establishes the tested running-dispatch shutdown boundary. It does not prov
 arbitrary destruction concurrent with audio, reentrant destruction or teardown
 after global message shutdown. Full meter playback/buffer/stop mapping, overlap
 PCM, backend continuity and rendering remain unfinished; no package is enabled.
+### Processor cleanup route integration (27 October 2026)
+
+Twenty retained native cleanup adapters now sit between the processor's sole
+bounded clear dispatcher and its message-owned loop meter lifecycle objects.
+They are constructed by message service after completed host prepare, not on
+the host construction/prepare thread or audio callback. Clear receipt ownership,
+the raw 32-work drain budget, stream-loss latch and original absolute stop wall
+deadlines are unchanged. No new UI or original-JS asset change is involved.
+
+The adapter can bind processor prepared-generation readiness. Release or a
+generation mismatch cancels its pending wall deadline without mutating the
+surviving owner/history. Readiness recovery does not resurrect that deadline;
+a fresh explicit stop is required. Host-held MessageManager ownership permits
+adapter destruction while preserving its still-live owner, with audio already
+stopped and a running dispatcher. The retained native fixture checks these
+contracts alongside exact paired 64/128 stereo PCM and serialized state.
+
+This is cleanup ownership/service integration only. Production playback/buffer/
+stop notification origins, queued pre-grid graph creation, overlapping graph PCM,
+device continuity and visible meter rendering remain unaccepted. Production
+tests observe twenty constructed but unarmed routes; active stop/release cases
+exercise the same adapter with an explicit controlled completed-generation
+atomic. They do not claim that production play/stop notifications are connected.
+No new DAW/physical-device/Apple or native sanitizer acceptance, package or push.

@@ -1,20 +1,28 @@
 #pragma once
 #include "core/MeterCleanupDeadline.h"
 #include <juce_events/juce_events.h>
+#include <atomic>
 #include <limits>
 
 namespace aion {
 // One per Engine/track, on the message thread, outlived by its lifecycle owner.
 // Explicit stop calls capture the deadline; synchronise only validates/cancels it.
-// This component is not yet connected to production playback notifications.
+// Processor service owns these routes; playback stop notification callers are pending.
 class LoopMeterCleanupTimer final : private juce::Timer {
 public:
-    explicit LoopMeterCleanupTimer(LoopMeterLifecycle& lifecycle) noexcept :owner(lifecycle){assertMessageThread();}
+    explicit LoopMeterCleanupTimer(LoopMeterLifecycle& lifecycle,const std::atomic<std::uint32_t>* prepared=nullptr) noexcept
+        :owner(lifecycle),preparedGeneration(prepared){assertMessageThread();}
     LoopMeterCleanupTimer(const LoopMeterCleanupTimer&)=delete;
     LoopMeterCleanupTimer& operator=(const LoopMeterCleanupTimer&)=delete;
-    ~LoopMeterCleanupTimer() override {assertMessageThread();stopTimer();}
+    ~LoopMeterCleanupTimer() override {
+        // A host may destroy the processor on its own thread while retaining
+        // MessageManager ownership. No callback may run against this destructor.
+        JUCE_ASSERT_MESSAGE_MANAGER_IS_LOCKED
+        stopTimer();
+    }
     bool stop(double audioNow,double scheduled=0,bool hasVolume=true) noexcept {
         assertMessageThread();
+        if(preparedGeneration&&!preparedGeneration->load(std::memory_order_acquire))return false;
         const double wall=wallTime();
         const double delay=scheduled>audioNow?scheduled-audioNow+.05:.025;
         // Validate before mutating the owner, including overflow/clock precision.
@@ -29,7 +37,7 @@ public:
     }
     void synchronise() noexcept {
         assertMessageThread();
-        if(!owner.cleanupCurrent(deadline.pending())){stopTimer();deadline.cancel();}
+        if(!preparedFor(deadline.pending())||!owner.cleanupCurrent(deadline.pending())){stopTimer();deadline.cancel();}
         else if(!isTimerRunning())schedule(wallTime());
     }
     bool consumeClear(const MeterGraphEvent& event) noexcept {
@@ -42,6 +50,9 @@ public:
 private:
     static void assertMessageThread() noexcept {jassert(juce::MessageManager::existsAndIsCurrentThread());}
     static double wallTime() noexcept {return juce::Time::getMillisecondCounterHiRes()*.001;}
+    bool preparedFor(MeterCleanupRequest request) const noexcept {
+        return !preparedGeneration||(request.generation&&preparedGeneration->load(std::memory_order_acquire)==request.generation);
+    }
     void schedule(double wall) noexcept {
         double remaining=0;if(!deadline.remaining(wall,remaining))return;
         // Clamp before converting: very distant scheduled stops remain safe.
@@ -52,12 +63,13 @@ private:
     void timerCallback() override {
         assertMessageThread();stopTimer();
         const auto request=deadline.pending();
-        if(!owner.cleanupCurrent(request)){deadline.cancel();return;}
+        if(!preparedFor(request)||!owner.cleanupCurrent(request)){deadline.cancel();return;}
         const double wall=wallTime();MeterCleanupRequest due;
         if(deadline.takeDue(request,wall,due))owner.deliverCleanup(due);
         else schedule(wall); // Early callbacks cannot deliver before the deadline.
     }
     LoopMeterLifecycle& owner;
+    const std::atomic<std::uint32_t>* preparedGeneration=nullptr; // Optional processor lifetime, outlives this adapter.
     MeterCleanupDeadline deadline;
 };
 }

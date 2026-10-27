@@ -6346,3 +6346,60 @@ portable-suite run was needed or claimed for this JS test/documentation change.
 Existing native and platform evidence retains its prior scope. No package,
 dependency/version change or push. Full meter producer/overlap/device continuity
 and renderer acceptance remain unfinished.
+
+### Processor-owned cleanup adapters and release guard (27 October 2026)
+
+The processor now routes its sole bounded raw-clear consumer through twenty
+retained LoopMeterCleanupTimer adapters, rather than directly to lifecycle
+owners. Storage is allocated during construction; actual JUCE timer objects are
+emplaced on the message thread after completed prepare. Host construction and
+prepare do not construct them. The dispatcher is destroyed before adapters,
+adapters before owners, with the existing last-destroyed message ownership guard
+covering host worker destruction. Construction/operations remain message-only;
+destruction also permits host-held MessageManager ownership.
+
+The newly bound completed-generation guard cancels an armed callback after
+release or generation mismatch without mutating the surviving owner/history.
+New released stops reject, cancelled deadlines stay cancelled after readiness
+recovery, and a fresh explicit stop recovers with the original 25ms delay.
+The unguarded adapter was compiled and run against this expanded native test;
+it fails with `Released generation must prevent armed cleanup callback from
+changing owner`. That source snapshot and failure remain in
+build/meter-adapters-unguarded-LoopMeterCleanupTimer.h and
+build/meter-adapters-unguarded.txt. The final guarded code passes.
+
+- Windows native **2/2**, **5.79s**; Ubuntu native **2/2**, **15.37s**.
+- Selected realtime/unchanged-JS meter/clock gates: Windows **6/6**, **87.69s**;
+  Ubuntu **6/6**, **54.01s**. All retained pre-grid/resume reference cases pass.
+- Each native run retains **18 linked production AudioDeviceManager blocks**,
+  the existing twenty-track dispatcher, autonomous service and supported
+  prepared/released/unprepared/nested/direct host shutdown cases at 64/128.
+  Added checks cover host construction, zero pre-service adapters, twenty
+  persistent service routes, no invented pending stops, armed host-owned adapter
+  destruction, release/mismatched-generation cancellation and fresh recovery.
+  No skips, JUCE assertion/leak failures or tracked callback new/delete.
+- Exact paired nonzero stereo PCM and serialized processor state remain checked.
+  The committed PCM audit passes **126 cases / 965,826 samples**, maximum error
+  **7.394757495227111e-8** at unchanged **1e-6** tolerance; existing envelope,
+  browser resampling, latency compensation and sync exclusions remain.
+- Original UI byte identity/deterministic embedding/tamper rejection pass. The
+  committed logo, core sources, SDK/generated wrappers and other-format binaries
+  remain unchanged. Existing native test and Standalone targets were rebuilt on
+  Windows and Ubuntu. No new format, dependency/version, package or push.
+
+Logs: build/meter-adapters-native-{windows,linux}.txt,
+build/meter-adapters-core-{windows,linux}.txt, build/meter-adapters-audio.json,
+build/meter-adapters-assets.txt and final build logs. The evidence writer
+build/WriteMeterAdapterEvidence.py verifies gates, the unguarded failure,
+unchanged callback/prepare/release/bridge/core/UI/logo/SDK and rebuilt binary
+hashes in build/meter-adapters-evidence.json. No full portable-suite or native
+sanitizer run is claimed for these plugin/message-service changes.
+
+Production adapters are constructed and routed but remain unarmed: complete
+play/buffer/stop notifications are still missing. Active release/generation
+checks exercise the same adapter with a controlled completed-generation atomic;
+they do not claim production stop notification acceptance. Overlap PCM ownership,
+device continuity, visible meter rendering and new DAW/hardware/Apple validation
+remain unfinished. Supported worker destruction still requires stopped audio,
+running message dispatch and no message-thread join while a worker awaits it;
+arbitrary concurrent/reentrant/post-quit destruction remains outside this scope.

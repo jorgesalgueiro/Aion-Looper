@@ -19,6 +19,7 @@ struct DevicePlaybackObservation {
 struct MeterServiceStatus {
     std::uint32_t generation=0;
     std::uint64_t passes=0,examined=0,started=0,cleared=0,applied=0,rejected=0;
+    unsigned cleanupRoutes=0,pendingCleanups=0; // Native ownership diagnostics only.
     bool current=false,timerRunning=false;
 };
 class AionProcessor final : private aion::ProcessorMessageLifetime, public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {
@@ -94,8 +95,10 @@ private:
     juce::String exportFilename,exportStatus;
     aion::Engine engine;
     using MeterOwners=std::array<std::optional<aion::LoopMeterLifecycle>,aion::LoopBank::trackCount>;
-    std::unique_ptr<MeterOwners> meterOwners; // Construction heap; owners outlive the dispatcher.
-    std::optional<aion::LoopMeterOwnerClearDispatcher> meterDispatcher; // Message thread only.
+    std::unique_ptr<MeterOwners> meterOwners; // Construction heap; owners outlive timers and dispatcher.
+    using MeterTimers=std::array<std::optional<aion::LoopMeterCleanupTimer>,aion::LoopBank::trackCount>;
+    std::unique_ptr<MeterTimers> meterTimers; // Construction heap; timer objects emplaced by message service.
+    std::optional<aion::LoopMeterClearDispatcher> meterDispatcher; // Destroyed before its timer routes.
     MeterServiceStatus meterServiceStatus{};
     bool meterPrepared() const noexcept;
     void serviceMeters() noexcept;

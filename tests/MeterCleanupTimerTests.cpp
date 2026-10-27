@@ -136,11 +136,17 @@ void clearDispatcherTests(bool& audioWatch){
 class ProcessorMeterFixture {
 public:
     ProcessorMeterFixture(unsigned size,bool& watch):block(size),audioWatch(watch){
+        // Hosts may construct/prepare processors off the message thread. The
+        // first message service, not either host call, must create timer routes.
+        std::thread constructor([&]{p=std::make_unique<AionProcessor>();control=std::make_unique<AionProcessor>();});constructor.join();
+        check(!p->inspectMeterServiceMessageThread().cleanupRoutes&&!control->inspectMeterServiceMessageThread().cleanupRoutes,
+            "Host construction cannot create message-owned cleanup adapters");
         check(static_cast<bool>(idle->request({juce::JSON::parse(R"({"operation":"midiConfig","action":"enable","enabled":false})")})["ok"]),"Start shared service before prepare with idle MIDI");
         for(auto* processor:{p.get(),control.get()}){
             processor->setPlayConfigDetails(2,2,48000,static_cast<int>(block));
         }
         preparePair();
+        check(!p->inspectMeterServiceMessageThread().cleanupRoutes,"Host prepare cannot create message-owned cleanup adapters");
         for(auto* processor:{p.get(),control.get()}){
             processor->parameters.getParameter("masterGain")->setValueNotifyingHost(.5f);
             processor->parameters.getParameter("inputMonitor")->setValueNotifyingHost(1);
@@ -148,17 +154,19 @@ public:
         midi.ensureSize(256);otherMidi.ensureSize(256);p->getStateInformation(saved);
         cycle();queue(12);cycle(); // 240 real clear facts in one callback.
         snapshot();const auto s=p->inspectMeterServiceMessageThread();
+        check(s.cleanupRoutes==20&&!s.pendingCleanups,"Production clear dispatcher must own all twenty cleanup adapter routes without inventing stops");
         check(s.current&&s.examined==32&&s.cleared==32&&s.rejected==32&&!s.applied&&!s.started,"Production request drains exactly 32 raw receipts without graph inference");
         generation=s.generation;
     }
     bool complete() const noexcept {return stage==6;}
     void poll(){
         const auto s=p->inspectMeterServiceMessageThread();
+        check(s.cleanupRoutes==20&&!s.pendingCleanups,"Production cleanup adapter routes persist through service/release/prepare/loss");
         check(!p->getActiveEditor(),"Meter service must not need an editor");
         if(stage==0){
             if(s.examined<240)return;
             const auto unprepared=idle->inspectMeterServiceMessageThread();
-            check(unprepared.timerRunning&&!unprepared.current&&!unprepared.generation&&!unprepared.passes,
+            check(unprepared.timerRunning&&!unprepared.current&&!unprepared.generation&&!unprepared.passes&&!unprepared.cleanupRoutes,
                 "Unprepared idle service must not stop and race a host prepare wakeup");
             check(s.examined==240&&s.cleared==240&&s.rejected==240&&s.current&&!s.applied&&!s.started,"Autonomous processor timer drains all twenty routes without MIDI/export/editor");
             queue(2);cycle(); // Leave 40 undelivered old facts across release.
@@ -194,7 +202,7 @@ public:
 private:
     unsigned block;bool& audioWatch;unsigned stage=0;std::uint32_t generation=0;
     std::uint64_t releasedPasses=0,tick=0;double started=0;
-    std::unique_ptr<AionProcessor> p=std::make_unique<AionProcessor>(),control=std::make_unique<AionProcessor>(),idle=std::make_unique<AionProcessor>();
+    std::unique_ptr<AionProcessor> p,control,idle=std::make_unique<AionProcessor>();
     juce::AudioBuffer<float> audio{2,128},other{2,128};juce::MidiBuffer midi,otherMidi;juce::MemoryBlock saved;
     void preparePair(){std::thread host([&]{for(auto* processor:{p.get(),control.get()})processor->prepareToPlay(48000,static_cast<int>(block));});host.join();}
     void snapshot(){check(static_cast<bool>(p->request({juce::JSON::parse(R"({"operation":"snapshot"})")})["ok"]),"Production meter snapshot");}
@@ -304,19 +312,22 @@ private:
         audioWatch=true;processor->processBlock(audio,midi);audioWatch=false;
         check(audio.getMagnitude(0,static_cast<int>(block))>0,"Shutdown fixture renders actual nonzero PCM before stopping audio calls");
         processor->request({juce::JSON::parse(R"({"operation":"snapshot"})")});
-        const auto status=processor->inspectMeterServiceMessageThread();check(status.current&&status.timerRunning,"Shutdown begins with live processor service");
+        const auto status=processor->inspectMeterServiceMessageThread();check(status.current&&status.timerRunning&&status.cleanupRoutes==20,"Shutdown begins with live processor service and all cleanup adapters");
         initialPasses=status.passes;
     }
 };
 class Runner final : private juce::Timer {
 public:
     explicit Runner(bool& watch):audioWatch(watch){begin(64);startTimer(5);}
-    ~Runner() override {stopTimer();}
+    ~Runner() override {stopTimer();check(!cleanupWorker.joinable(),"Cleanup worker must finish before owner destruction");}
 private:
     bool& audioWatch;std::unique_ptr<Fixture> f;std::unique_ptr<ProcessorMeterFixture> processorMeters;
     std::unique_ptr<ProcessorShutdownFixture> shutdown;unsigned stage=0;
     double started=0,expectedDelay=0;std::uint64_t frame=0,data=0;std::array<double,7> held{};
     aion::MeterCleanupRequest obsolete{};
+    std::thread cleanupWorker;
+    std::atomic<bool> cleanupDestroyed{false};
+    std::atomic<std::uint32_t> cleanupPrepared{0};
     void capture(){started=wall();frame=f->engine->clock();data=f->owner->inspect().data;held=reading(f->owner->value());}
     void stopped(){check(!f->owner->inspect().present&&!f->timer->pending()&&f->owner->inspect().data==data
         &&reading(f->owner->value())==held&&f->engine->clock()==frame,"Real timer detaches analyser but retains data/history with frozen audio clock");}
@@ -381,6 +392,47 @@ private:
             if(!shutdown->complete())return;
             check(f->owner->inspect().present&&f->owner->inspect().data==data&&!f->timer->pending()
                 &&reading(f->owner->value())==held,"Cleared timer cannot detach the same-generation re-recorded graph");
+            check(f->timer->stop(9,3609),"Arm distant cleanup before host-owned adapter destruction");
+            obsolete=f->owner->cleanupRequest();capture();cleanupDestroyed.store(false,std::memory_order_release);
+            cleanupWorker=std::thread([this,timer=std::move(f->timer)]() mutable {
+                const juce::MessageManagerLock ownership;
+                check(ownership.lockWasGained(),"Host cleanup destruction must retain message ownership");
+                timer.reset();cleanupDestroyed.store(true,std::memory_order_release);
+            });stage=8;break;
+        case 8:
+            // Never join a worker awaiting the message manager from this callback.
+            if(!cleanupDestroyed.load(std::memory_order_acquire))return;
+            cleanupWorker.join();
+            check(f->owner->inspect().present&&f->owner->inspect().data==data&&f->owner->cleanupRequest()==obsolete
+                &&reading(f->owner->value())==held&&f->engine->clock()==frame,
+                "Host-owned armed timer destruction cancels callbacks without editing the surviving owner or PCM history");
+            check(f->owner->deliverCleanup(obsolete),"Surviving owner still recognizes its explicit cleanup receipt");
+            cleanupPrepared.store(f->engine->generation(),std::memory_order_release);
+            f->timer=std::make_unique<aion::LoopMeterCleanupTimer>(*f->owner,&cleanupPrepared);f->play();capture();
+            check(f->timer->stop(10),"Arm cleanup before host release invalidation");obsolete=f->owner->cleanupRequest();
+            cleanupPrepared.store(0,std::memory_order_release);stage=9;break;
+        case 9:
+            if(wall()-started<.08||f->timer->pending())return;
+            check(f->owner->inspect().present&&f->owner->inspect().data==data&&f->owner->cleanupRequest()==obsolete
+                &&reading(f->owner->value())==held&&f->engine->clock()==frame,
+                "Released generation must prevent armed cleanup callback from changing owner");
+            check(!f->timer->stop(11)&&f->owner->cleanupRequest()==obsolete&&!f->timer->pending(),
+                "Released adapter rejects a new stop without changing owner or scheduling cleanup");
+            cleanupPrepared.store(f->engine->generation(),std::memory_order_release);f->timer->synchronise();
+            check(!f->timer->pending()&&f->owner->inspect().present,"Readiness recovery cannot resurrect a cancelled wall deadline");
+            check(f->timer->stop(12),"Fresh prepared stop can recover after released callback cancellation");capture();stage=10;break;
+        case 10:
+            if(f->owner->inspect().present)return;
+            check(wall()-started>=.025,"Readiness recovery keeps original 25ms wall delay");stopped();
+            f->play();capture();check(f->timer->stop(13),"Arm cleanup before completed-generation mismatch");obsolete=f->owner->cleanupRequest();
+            cleanupPrepared.store(f->engine->generation()+1,std::memory_order_release);stage=11;break;
+        case 11:
+            if(wall()-started<.08||f->timer->pending())return;
+            check(f->owner->inspect().present&&f->owner->inspect().data==data&&f->owner->cleanupRequest()==obsolete
+                &&reading(f->owner->value())==held&&f->engine->clock()==frame,
+                "A different completed generation cannot deliver an old adapter cleanup receipt");
+            cleanupPrepared.store(f->engine->generation(),std::memory_order_release);f->timer->synchronise();
+            check(!f->timer->pending()&&f->owner->deliverCleanup(obsolete),"Generation cancellation retains explicit owner metadata without rescheduling");
             if(f->block==64){begin(128);break;}
             stopTimer();juce::MessageManager::getInstance()->stopDispatchLoop();break;
         }
@@ -400,4 +452,6 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     std::cout<<"PASS: actual DEL receipt cancels pending JUCE cleanup and preserves same-generation re-recorded graph at 64/128\n";
     std::cout<<"PASS: production processor-owned twenty-track meter routing, 32-work request budget, autonomous editor-free timer, host-thread release/prepare, idle wakeup retention, frozen release, loss latch and fresh recovery at 64/128; exact nonzero stereo PCM and unchanged state\n";
     std::cout<<"PASS: prepared/released/unprepared host shutdown, nested message ownership and direct message-thread destruction at 64/128; actual native member and AudioProcessor base parameter destructors retain message ownership, after nonzero PCM and real service callbacks\n";
+    std::cout<<"PASS: production twenty-track cleanup adapters are created by message service after host construction/prepare, retained across release/loss/reprepare, routed through the sole clear dispatcher and destroyed under host-held message ownership; armed adapter destruction preserves its surviving owner at 64/128\n";
+    std::cout<<"PASS: prepared-generation cleanup guard cancels released/mismatched callbacks without owner or PCM-history mutation, rejects released stops, never resurrects cancelled deadlines and recovers on fresh 25ms stops at 64/128\n";
 }

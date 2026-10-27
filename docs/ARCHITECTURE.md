@@ -1870,3 +1870,37 @@ parameters against a running message callback.
 This follows the documented [JUCE Timer stop contract](https://docs.juce.com/master/classjuce_1_1Timer.html)
 and [MessageManagerLock ownership contract](https://docs.juce.com/master/classjuce_1_1MessageManagerLock.html).
 No external looper implementation or SDK source was imported or modified.
+
+### Processor cleanup adapter routes
+
+The processor allocates storage for twenty optional cleanup adapters during
+construction, alongside its stable lifecycle owners. Those slots contain no
+JUCE Timer objects until the message service observes a completed prepare and
+resets the owners to that generation. Host construction, prepare and release
+do not construct, destroy or schedule these per-track adapters. Their timer
+objects are emplaced once on the message thread and retained across reprepare.
+
+The sole raw-clear consumer routes through these adapters, so an accepted clear
+also synchronises/cancels any corresponding cleanup deadline. Service validates
+existing receipts without restarting their absolute wall deadlines. Ownership
+order is Engine, lifecycle owners, adapters, dispatcher; destruction reverses
+that order. Adapter destruction permits message-manager ownership held by a host
+worker under the processor's existing lifetime guard. Operational methods and
+construction still require the actual message thread. This does not authorize
+concurrent audio/reentrant/post-quit destruction.
+
+The native-only inspection reports the number of constructed cleanup routes and
+pending deadlines. These counts are not UI levels, device continuity or proof of
+playback. Production play/buffer/stop notifications, pre-grid graph creation,
+overlap PCM ownership and renderer acceptance remain separate unfinished work;
+the new routes do not infer graph births from raw-window starts or state views.
+
+Processor adapters bind the completed-prepare atomic, whose lifetime exceeds the
+adapter bank. A timer callback must match its captured cleanup generation to
+that completed generation as well as the owner's current receipt. Release (zero)
+or a different completed generation cancels the adapter's wall deadline without
+tearing down or editing the surviving lifecycle owner. Released stop calls are
+rejected. Restoring readiness does not recreate a cancelled deadline; only a new
+explicit stop arms another one. The unbound adapter remains available for the
+existing explicit Engine-owner component fixtures. No readiness checks, deadline
+calculation or timer creation are added to processBlock.

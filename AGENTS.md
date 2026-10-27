@@ -1342,3 +1342,17 @@ slot rejection, successful identity retention and prior 136 checks. The added
 14 scheduling and 22 resume cases are reference characterization only; native
 producer/overlap/continuity/renderer acceptance remains pending. Retain the three
 failing isolated mutations in build/meter-scheduling-mutations; no package yet.
+
+Processor cleanup storage is construction-time heap; emplace all twenty JUCE
+adapters only on the first completed-prepare message service. Retain the bank
+across release/reprepare and route the sole bounded clear dispatcher through it.
+Owners outlive adapters, adapters outlive dispatcher; host worker destruction
+must retain MessageManager ownership through their destructors. Construction/
+operations remain actual-message-thread only. Bind completed-prepare readiness:
+released/mismatched cleanup callbacks cancel wall deadlines without owner/history
+mutation, released stops reject, and readiness recovery cannot resurrect a
+cancelled deadline. Keep actual native host-construction/prepare/service/shutdown,
+armed adapter worker destruction and release/generation/recovery checks at 64/128,
+twenty-route diagnostics, exact paired PCM/state, zero callback new/delete and
+the unguarded timer failure in build/meter-adapters-unguarded.txt. This does not
+complete play/buffer/stop notifications, overlap/continuity or rendering. No package.

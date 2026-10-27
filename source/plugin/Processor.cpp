@@ -51,6 +51,7 @@ AionProcessor::AionProcessor(ExportDestination destination,OutputLatencyReader l
     controlledDeviceClockOwner=controlledOwner;
     meterOwners=std::make_unique<MeterOwners>();
     for(unsigned id=0;id<meterOwners->size();++id)(*meterOwners)[id].emplace(engine,id);
+    meterTimers=std::make_unique<MeterTimers>(); // Empty slots; no host-thread JUCE timer construction.
     // Plugin hosts own hardware MIDI routing. Only our Standalone device manager
     // needs OS hotplug notifications; probing here otherwise requires ALSA on WSL.
    #if JucePlugin_Build_Standalone
@@ -200,9 +201,13 @@ void AionProcessor::serviceMeters() noexcept {
     if(!generation||engine.generation()!=generation)return;
     for(auto& owner:*meterOwners)owner->reset(generation);
     if(preparedGeneration.load(std::memory_order_acquire)!=generation||engine.generation()!=generation)return;
+    if(!(*meterTimers)[0]){
+        for(unsigned id=0;id<meterTimers->size();++id)(*meterTimers)[id].emplace(*(*meterOwners)[id],&preparedGeneration);
+    }
+    for(auto& timer:*meterTimers)timer->synchronise(); // Cancel obsolete prepare receipts without rearming deadlines.
     if(!meterDispatcher){
-        aion::LoopMeterOwnerClearDispatcher::Routes routes{};
-        for(unsigned id=0;id<routes.size();++id)routes[id]=&*(*meterOwners)[id];
+        aion::LoopMeterClearDispatcher::Routes routes{};
+        for(unsigned id=0;id<routes.size();++id)routes[id]=&*(*meterTimers)[id];
         meterDispatcher.emplace(engine,routes);
     }else meterDispatcher->reset();
     if(meterServiceStatus.generation!=generation){meterServiceStatus={};meterServiceStatus.generation=generation;}
@@ -215,6 +220,9 @@ void AionProcessor::serviceMeters() noexcept {
 MeterServiceStatus AionProcessor::inspectMeterServiceMessageThread() const noexcept {
     JUCE_ASSERT_MESSAGE_THREAD
     auto result=meterServiceStatus;
+    if(meterTimers)for(const auto& timer:*meterTimers){
+        if(timer){++result.cleanupRoutes;if(timer->pending())++result.pendingCleanups;}
+    }
     result.current=result.current&&meterPrepared()&&result.generation==engine.generation()&&engine.meterGraphEventsCurrent();
     result.timerRunning=isTimerRunning();return result;
 }
