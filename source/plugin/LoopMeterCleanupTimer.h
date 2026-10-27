@@ -65,12 +65,21 @@ public:
         return consumeStop(event,MeterGraphEventKind::scheduledStop);
     }
     bool consumeStopAll(const MeterGraphEvent& event) noexcept {return consumeStop(event,MeterGraphEventKind::stopAll);}
+    bool consumeQueuedPlay(const MeterGraphEvent& event) noexcept {
+        assertMessageThread();if(!ready()||!owner.consumeQueuedPlay(event))return false;
+        synchronise();return true;
+    }
+    bool consumeQueuedCancel(const MeterGraphEvent& event) noexcept {
+        assertMessageThread();if(!ready()||!owner.consumeQueuedCancel(event))return false;
+        synchronise();return true;
+    }
+    bool consumeQueuedStop(const MeterGraphEvent& event) noexcept {return consumeStop(event,MeterGraphEventKind::queuedStop);}
 private:
     bool consumeStop(const MeterGraphEvent& event,MeterGraphEventKind kind) noexcept {
         assertMessageThread();if(!ready())return false;
         const double wall=wallTime();
-        if(!MeterCleanupDeadline::canArm(wall,kind==MeterGraphEventKind::immediateStop?.025:event.stopLeadSeconds+.05))return false;
-        const bool accepted=kind==MeterGraphEventKind::stopAll?owner.consumeStopAll(event):
+        if(!MeterCleanupDeadline::canArm(wall,kind==MeterGraphEventKind::immediateStop||kind==MeterGraphEventKind::queuedStop?.025:event.stopLeadSeconds+.05))return false;
+        const bool accepted=kind==MeterGraphEventKind::queuedStop?owner.consumeQueuedStop(event):kind==MeterGraphEventKind::stopAll?owner.consumeStopAll(event):
             kind==MeterGraphEventKind::scheduledStop?owner.consumeScheduledStop(event):owner.consumeImmediateStop(event);
         if(!accepted)return false;
         const auto request=owner.cleanupRequest();stopTimer();deadline.cancel();

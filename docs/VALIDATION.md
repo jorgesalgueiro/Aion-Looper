@@ -6838,3 +6838,87 @@ need command/delivery alignment, queued/capture/edit graph origins need full
 mapping, and envelopes/overlap/continuity/visible rendering need acceptance.
 No new DAW, physical IO, Apple or native-sanitizer acceptance, package, version/
 dependency change or push is claimed.
+
+### Accepted queued intent/cancel ownership (2026-10-27)
+
+Continues the unfinished meter lifecycle from a171579. Actual synced PLAY now
+publishes queuedPlay with an independent full-width queue ID, current committed
+clip and existing raw-window ticket. It sets queued metadata without resetting
+PCM, creating an analyser or arming a wall timer. Queue IDs are not graph tickets;
+their high-water survives clear and resets only with a new prepared generation.
+
+STOP ALL while the accepted audio intent remains queued publishes queuedCancel,
+which changes queued metadata to stopped while retaining the old cleanup,
+analyser/data and meter history. Explicit STOP/stopImmediate publishes queuedStop:
+an attached volume graph receives a new 25ms request, while a graphless loop tears
+down without a timer. Matching generation, serial, committed clip, raw identity
+and exact queue ID are required before mutation. A zero raw ticket is allowed
+only without an attached/pending binding; it must not equal a retired graph's
+high-water. This fixes a reproduced queue-after-clear rejection without resetting
+graph ticket history. Typed clear, replacement and prepare invalidate old intents.
+
+The sole bounded dispatcher and twenty prepared adapters route these facts.
+Native-only queued/queueApplied diagnostics do not add IPC meter levels, UI
+controls or serialized state. Queued notices synchronise existing cleanup without
+rearming it. Direct released/mismatched adapter calls and invalid route banks
+reject before mutation/dequeue and can recover the exact retained receipt.
+
+Original-method characterization retains all previous 136 graph/state cases,
+14 dispatcher scheduling cases, 22 resume cases and 14 panic cases. Four new
+queued STOP cases execute unchanged Loop.stop with and without an attached graph:
+the former replaces an old timer with 25ms, while the latter has no timer.
+The original 100ms scheduling callbacks remain characterized, not implemented by
+these native intent facts. [JUCE Timer's message-thread contract](https://docs.juce.com/master/classjuce_1_1Timer.html)
+permits late callbacks; native tests do not assume an upper callback-latency bound.
+
+Actual paired Engine tests at 64/128 on tracks 0/19 cover first graphless queue,
+full-width IDs, stale/wrong-identity delivery, retained versus replaced cleanup,
+zero-ticket recovery after clear, old teardown, prepare and bounded loss drains.
+Every observed callback requires exact stereo PCM against the unobserved control
+and zero tracked new/delete. Prior immediate/scheduled STOP, panic, play and
+buffer acceptance cases remain. Native tests exercise production RPC/dispatcher
+queue counters, twenty-route 7/13 partial batches, prepared readiness/recovery,
+queued panic retaining all old stop requests and Clear All cancellation. Actual
+queued PLAY/cancel keeps a real old JUCE stop timer until frozen-clock teardown.
+
+Negative evidence: build/queued-intent-missing-producer.cpp and
+build/queued-intent-negative.txt omit only accepted queue publication and fail on
+a missing actual receipt. build/queued-intent-before-zero-ticket.h and
+build/queued-intent-zero-ticket-negative.txt retain the reproduced pre-fix
+queue-after-clear rejection. Final source is restored before positive gates.
+
+Evidence files use build/queued-intent-full-{windows,linux}.txt,
+build/queued-intent-native-{windows,linux}.txt, build/queued-intent-asan.txt,
+build/queued-intent-audio.json and build/queued-intent-assets.txt.
+build/WriteQueuedIntentEvidence.py checks gates, negatives, unchanged DSP/callback/
+UI/SDK/other-format artifacts and rebuilt binary hashes, writing
+build/queued-intent-evidence.json. Focused reproduction uses
+`build/windows-core/Release/aion_core_tests.exe --meter-queued` or
+`build/core/aion_core_tests --meter-queued` on Ubuntu.
+
+Final restored-source results:
+
+| Gate | Result |
+| --- | --- |
+| Windows portable suite | 28/28, 329.63s |
+| Ubuntu portable suite | 28/28, 589.15s |
+| Windows native processor / standalone SDK generation | 2/2, 8.07s |
+| Ubuntu native processor / standalone SDK generation | 2/2, 20.14s |
+| Ubuntu core AddressSanitizer selection | 6/6, 196.75s |
+| Committed PCM audit | 126 cases, 965826 samples, max absolute error 7.394757495227111e-8 at unchanged 1e-6 tolerance |
+| Original resources / embedding / tamper rejection | Pass |
+
+Native runs retain all eighteen linked production AudioDeviceManager blocks;
+there are no skips, JUCE assertions, leak reports or tracked callback new/delete.
+Existing Standalone binaries were rebuilt on both platforms. Other plugin
+formats, SDK and original resources (including the committed logo) are unchanged.
+
+This is the pre-graph intent/cancel stage. It does not implement the original
+100ms lead timer, graph birth at that callback, late creation/source phase or
+command/receipt wall deadline alignment. Audible queued-to-playing transitions
+still do not prove analyser birth. An old teardown can change state out of queued
+without cancelling the separate original queue timer: the intent ID is retained,
+and later queuedCancel fails closed after that state change pending the remaining
+mapping. Full queued panic/STOP lifecycle, capture/edit origins, overlaps,
+envelopes/continuity and visible rendering remain unfinished. No new DAW, hardware,
+Apple or native-sanitizer acceptance, package, version/dependency change or push.

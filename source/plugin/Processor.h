@@ -23,6 +23,7 @@ struct MeterServiceStatus {
     std::uint64_t buffers=0,bufferApplied=0;
     std::uint64_t plays=0,playApplied=0;
     std::uint64_t stops=0,stopApplied=0;
+    std::uint64_t queued=0,queueApplied=0;
     bool current=false,timerRunning=false;
 };
 class AionProcessor final : private aion::ProcessorMessageLifetime, public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {

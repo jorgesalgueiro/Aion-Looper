@@ -125,6 +125,19 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   assert.equal(loop.stopTimeout,retained);assert.equal(timers.get(retained).ms,25);
   assert.equal(loop.analyser,analyser);assert.equal(loop.analyserData,data);++panicCases;
  }
- console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,
+ let queuedStopCases=0;
+ for(const id of [0,19])for(const attached of [false,true]){
+  timers.clear();audio.state='running';audio.currentTime=1;const loop=ctx.fresh(id,true);
+  if(attached){await loop.play(1);loop.stop();}
+  else await ctx.action(id);
+  loop.state='queued';if(!loop.queueTimeout)loop.queueTimeout=ctx.setTimeout(()=>{},100);
+  const queued=loop.queueTimeout,old=loop.stopTimeout,analyser=loop.analyser,data=loop.analyserData;
+  loop.stop();assert.equal(loop.queueTimeout,null);assert(!timers.has(queued));
+  if(attached){assert.equal(loop.state,'stopping');assert(!timers.has(old));assert.notEqual(loop.stopTimeout,old);assert.equal(timers.get(loop.stopTimeout).ms,25);
+   assert.equal(loop.analyser,analyser);assert.equal(loop.analyserData,data);}
+  else{assert.equal(loop.state,'stopped');assert.equal(loop.stopTimeout,null);noGraph(loop);}
+  ++queuedStopCases;
+ }
+ console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,
   scope:'Unchanged Loop/AudioGraph methods, actual handleAction scheduling/cancellation and AudioEngine.resume with controlled context/timer IO. Includes pre-grid analyser birth, late source phase, pending-resume invalidation and identity retention. No native producer, browser PCM or renderer acceptance.'},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});

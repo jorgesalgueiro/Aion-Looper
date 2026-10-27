@@ -302,6 +302,7 @@ void LoopBank::clear(Track& track) noexcept {
     const auto id=static_cast<std::uint32_t>(&track-tracks.data());
     (*meterWindows)[id].reset();meterGraphTickets[id]=meterImmediateTickets[id]=0;meterGraphFrames[id]=0;
     meterPanicKnown[id]=false;
+    meterQueuedIds[id]=0;
     meterGraphEvents->publish(MeterGraphEventKind::cleared,id,0,frame,track.clearEpoch,removedBuffer);
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
@@ -310,7 +311,10 @@ void LoopBank::clear(Track& track) noexcept {
     if(freeCount)poolFull=false;
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
-    if(action==LoopAction::stopAll){for(unsigned next=0;next<trackCount;++next){publishMeterPanic(next);stop(tracks[next]);}return true;}
+    if(action==LoopAction::stopAll){for(unsigned next=0;next<trackCount;++next){
+        if(tracks[next].info.state==LoopState::queued)publishMeterQueueEnd(next,MeterGraphEventKind::queuedCancel);
+        else publishMeterPanic(next);
+        stop(tracks[next]);}return true;}
     if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks){++track.clearEpoch;clear(track);}return true;}
     if(action==LoopAction::undoGlobal){const int next=nextUndo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),false);}
     if(action==LoopAction::redoGlobal){const int next=nextRedo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),true);}
@@ -388,18 +392,21 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
                 if(end-frame>rate*0.05){t.endAt=SyncClock::deadline(end);t.info.stopPending=true;return true;}
             }
             return finish(t);
-        case LoopAction::stopImmediate:publishImmediateMeterStop(id);stop(t);return true;
+        case LoopAction::stopImmediate:
+            if(s==LoopState::queued)publishMeterQueueEnd(id,MeterGraphEventKind::queuedStop);else publishImmediateMeterStop(id);
+            stop(t);return true;
         case LoopAction::stop:
             if(s==LoopState::playing&&sync.settings.mode!=SyncMode::off){
                 const double target=sync.nextGridSeconds(frame);
                 ++t.phaseEpoch;t.info.phaseApplyFrame=0;s=LoopState::stopping;t.endAt=SyncClock::deadline(target*rate);
                 publishMeterStop(id,MeterGraphEventKind::scheduledStop,target-static_cast<double>(frame)/rate);return true;
             }
-            publishImmediateMeterStop(id);stop(t);return true;
+            if(s==LoopState::queued)publishMeterQueueEnd(id,MeterGraphEventKind::queuedStop);else publishImmediateMeterStop(id);
+            stop(t);return true;
         case LoopAction::clear:++t.clearEpoch;clear(t);return true;
         case LoopAction::play:
             if(s!=LoopState::stopped||!t.clip)return false;
-            if(sync.settings.mode!=SyncMode::off){meterPanicKnown[id]=false;s=LoopState::queued;t.startAt=SyncClock::deadline(sync.nextGrid(frame));return true;}
+            if(sync.settings.mode!=SyncMode::off){meterPanicKnown[id]=false;s=LoopState::queued;t.startAt=SyncClock::deadline(sync.nextGrid(frame));publishMeterQueue(id);return true;}
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);publishImmediateMeterPlay(id);return true;
         case LoopAction::overdub:
         case LoopAction::substitute:

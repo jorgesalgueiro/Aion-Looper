@@ -1440,3 +1440,17 @@ retained old timer. Full queued panic, command/receipt wall alignment, other gra
 origins/envelopes/continuity and rendering remain pending. Keep the original JS
 panic characterization, actual paired 64/128 PCM, twenty-track bounded routing
 and frozen-clock real JUCE timer tests. No visible meters or package yet.
+
+Queued PLAY now publishes an accepted intent, not a graph birth. Independent
+full-width queue IDs survive clear without reuse and reset only across prepare.
+Queued panic emits queuedCancel and preserves the old stop request/analyser/data/
+history; explicit queued STOP emits queuedStop, tearing down without a graph or
+replacing an attached graph's cleanup with 25ms. Keep generation/serial/clip/raw
+identity and exact queue-ID guards, released/mismatched adapter rejection, bounded
+twenty-track routing and actual paired 64/128 PCM without callback allocation.
+Queue notices never reset raw PCM or create analysers. Old teardown does not infer
+queue cancellation; if it has changed message state out of queued, cancellation
+fails closed. The original 100ms graph callback, late creation/source phase,
+command/wall deadline alignment and post-callback queue mapping remain unaccepted.
+Do not infer them from the audible native grid transition or enable rendering/
+packages from this intent/cancel stage alone.

@@ -90,7 +90,7 @@ void meterPlaybackTests(){
         check(f.view->tracks[19].state==LoopState::playing&&owner.consumeImmediatePlay(retriggered),"Stopped RTRG bypasses grid and explicitly creates an immediate graph");
         f.command(LoopAction::stopImmediate);f.command(LoopAction::play);f.cycle();
         check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop)),"Consume explicit stop before queued PLAY");
-        check(f.view->tracks[19].state==LoopState::queued&&!f.engine->popMeterGraphEvent(event),"Queued PLAY must not use the immediate graph creation path");
+        check(f.view->tracks[19].state==LoopState::queued&&owner.consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay))&&!f.engine->popMeterGraphEvent(event),"Queued PLAY carries intent without using the immediate graph creation path");
         unsigned cycles=0;while(f.view->tracks[19].state==LoopState::queued&&++cycles<2000)f.cycle();
         check(f.view->tracks[19].state==LoopState::playing&&!f.engine->popMeterGraphEvent(event),"Audible grid transition is not an inferred graph birth");
         f.command(LoopAction::clear);f.cycle();event=f.next(MeterGraphEventKind::cleared);
@@ -255,9 +255,9 @@ void meterPanicTests(){
         // original 100ms lead callback has created its new graph. Fail closed.
         f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Stop before queued-intent quarantine");
         const auto retained=owner.cleanupRequest();for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,999,1,1,4,false});
-        f.command(LoopAction::play,id);f.cycle();check(f.view->tracks[id].state==LoopState::queued&&!f.engine->popMeterGraphEvent(event),"Queued intent never invents graph ownership");
-        f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(event)&&owner.cleanupRequest()==retained,"Queued panic cannot replace retained old cleanup with an inferred active-graph delay");
-        f.command(LoopAction::play,id);f.cycle();unsigned cycles=0;while(f.view->tracks[id].state==LoopState::queued&&++cycles<1000)f.cycle();
+        f.command(LoopAction::play,id);f.cycle();check(f.view->tracks[id].state==LoopState::queued&&owner.consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay,id))&&!f.engine->popMeterGraphEvent(event),"Queued intent never invents graph ownership");
+        f.command(LoopAction::stopAll,id);f.cycle();check(owner.consumeQueuedCancel(f.next(MeterGraphEventKind::queuedCancel,id))&&!f.engine->popMeterGraphEvent(event)&&owner.cleanupRequest()==retained,"Queued panic cannot replace retained old cleanup with an inferred active-graph delay");
+        f.command(LoopAction::play,id);f.cycle();check(owner.consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay,id)),"Consume second actual queued intent");unsigned cycles=0;while(f.view->tracks[id].state==LoopState::queued&&++cycles<1000)f.cycle();
         check(f.view->tracks[id].state==LoopState::playing,"Reach actual audible queued transition");
         f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(event),"Audible queued transition cannot recover quarantined panic graph origin");
         f.command(LoopAction::retrigger,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Actual stopped retrigger restores known panic origin");
@@ -290,6 +290,60 @@ void meterPanicTests(){
     }
     check(allocations.load()==0,"Panic callbacks have zero tracked new/delete");
     std::cout<<"PASS: accepted STOP ALL receipts, 65ms cleanup, repeated/detached panic, capture/edit ordering, replacement/clear/prepare/loss, malformed identity rejection and queued-origin quarantine at tracks 0/19, 64/128; exact paired stereo PCM and zero tracked callback new/delete\n";
+}
+void meterQueuedTests(){
+    using namespace aion;
+    auto stream=std::make_unique<MeterGraphEvents>();stream->reset(3);
+    stream->publish(MeterGraphEventKind::queuedPlay,19,0,42,7,9007199254740993ull,0,0xffffffffffffffffull);
+    MeterGraphEvent wide;check(stream->pop(wide,3)&&wide.queueId==0xffffffffffffffffull&&wide.bufferId==9007199254740993ull&&wide.frame==42,"Queued identity remains full-width in the actual bounded stream");
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,id);
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Queue fixture commits actual clip");
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        const auto sync=[&](SyncMode mode){for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({mode,120,1,4,4,false});};
+        sync(SyncMode::fixed);
+        const auto queue=[&]{const auto frame=f.engine->clock();f.command(LoopAction::play,id);f.cycle();auto event=f.next(MeterGraphEventKind::queuedPlay,id);
+            check(event.frame==frame&&event.queueId&&event.bufferId==owner.committedBuffer()&&f.view->tracks[id].state==LoopState::queued,"Actual accepted queued PLAY supplies exact frame, queue identity and committed clip");return event;};
+        auto queued=queue();const auto first=queued;
+        auto wrong=queued;wrong.queueId=0;check(!owner.consumeQueuedPlay(wrong)&&!owner.queuedIntentId(),"Zero queued identity cannot mutate owner");
+        wrong=queued;++wrong.ticket;check(!owner.consumeQueuedPlay(wrong),"Queue wrong raw identity rejects");
+        wrong=queued;++wrong.bufferId;check(!owner.consumeQueuedPlay(wrong),"Queue wrong clip rejects");
+        wrong=queued;++wrong.generation;check(!owner.consumeQueuedPlay(wrong),"Queue wrong generation rejects");
+        check(owner.consumeQueuedPlay(queued)&&owner.queuedIntentId()==queued.queueId&&owner.inspect().state==MeterLoopState::queued&&!owner.inspect().present&&!owner.inspect().data&&!owner.cleanupRequest().serial&&!owner.request(),"Accepted first queue creates no analyser, data or cleanup");
+        check(!owner.consumeQueuedPlay(queued)&&!owner.consumeImmediatePlay(queued),"Duplicate queue and wrong birth route reject");
+        f.command(LoopAction::stopAll,id);f.cycle();auto cancel=f.next(MeterGraphEventKind::queuedCancel,id);
+        check(cancel.queueId==queued.queueId&&!cancel.ticket&&owner.consumeQueuedCancel(cancel)&&!owner.queuedIntentId()&&owner.inspect().state==MeterLoopState::stopped&&!owner.cleanupRequest().serial&&!owner.consumeQueuedCancel(cancel),"Actual queued panic cancels first intent without creating cleanup");
+        for(auto action:{LoopAction::stop,LoopAction::stopImmediate}){
+            queued=queue();check(queued.queueId>first.queueId&&owner.consumeQueuedPlay(queued),"New queued intent does not reuse cleared identity");
+            wrong=cancel;wrong.serial=queued.serial+1;check(!owner.consumeQueuedCancel(wrong)&&owner.queuedIntentId()==queued.queueId,"Old cancellation cannot cancel newer queue even with a fresh serial");
+            f.command(action,id);f.cycle();auto stopped=f.next(MeterGraphEventKind::queuedStop,id);
+            check(stopped.queueId==queued.queueId&&owner.consumeQueuedStop(stopped)&&!owner.queuedIntentId()&&!owner.inspect().present&&!owner.cleanupRequest().serial,"Actual queued STOP without a volume graph tears down without a timer");
+        }
+        sync(SyncMode::off);f.command(LoopAction::play,id);f.cycle();auto played=f.next(MeterGraphEventKind::immediatePlay,id);check(owner.consumeImmediatePlay(played),"Actual graph before queued history checks");
+        for(unsigned n=0;n<2048/block;++n){check(owner.request(),"Request queued-history PCM");f.cycle();check(f.engine->popLoopMeterWindow(*f.packet),"Receive queued-history PCM");
+            const double t=static_cast<double>(f.view->frame)/48000;check(owner.observe(*f.packet,*f.view,f.view->callbackClock,{t,t}),"Seed queued history from actual PCM");}
+        const auto identity=owner.inspect();const auto held=reading(owner.value());check(owner.value().peak>0,"Queued history is nonzero");
+        f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Arm old graph timer before queue");
+        const auto old=owner.cleanupRequest();sync(SyncMode::fixed);queued=queue();check(owner.consumeQueuedPlay(queued)&&owner.cleanupRequest()==old&&owner.inspect().analyser==identity.analyser&&reading(owner.value())==held,"Queue retains older stop timer and analyser/history without a birth");
+        f.command(LoopAction::stopAll,id);f.cycle();cancel=f.next(MeterGraphEventKind::queuedCancel,id);
+        check(owner.consumeQueuedCancel(cancel)&&owner.cleanupRequest()==old&&owner.inspect().state==MeterLoopState::stopped&&owner.inspect().data==identity.data&&reading(owner.value())==held,"Queued panic retains the original old cleanup and held history");
+        queued=queue();check(owner.consumeQueuedPlay(queued),"Queue again before explicit stop");
+        f.command(LoopAction::stop,id);f.cycle();auto stopped=f.next(MeterGraphEventKind::queuedStop,id);
+        check(owner.consumeQueuedStop(stopped)&&owner.cleanupRequest().serial!=old.serial&&owner.cleanupRequest().delay==.025&&!owner.deliverCleanup(old)&&owner.inspect().analyser==identity.analyser,"Queued explicit STOP replaces an attached old timer with fresh 25ms policy");
+        const auto current=owner.cleanupRequest();queued=queue();check(owner.consumeQueuedPlay(queued)&&owner.deliverCleanup(current)&&owner.queuedIntentId()==queued.queueId&&!owner.inspect().present&&owner.inspect().data==identity.data,"Old cleanup does not infer cancellation of the separate queued intent");
+        f.command(LoopAction::stopAll,id);f.cycle();cancel=f.next(MeterGraphEventKind::queuedCancel,id);
+        check(!owner.consumeQueuedCancel(cancel)&&owner.queuedIntentId()==queued.queueId&&!owner.cleanupRequest().serial,"After old teardown changed state, queued-cancel mapping fails closed until graph-lead lifecycle is implemented");
+        f.command(LoopAction::clear,id);f.cycle();check(owner.consumeClear(f.next(MeterGraphEventKind::cleared,id))&&!owner.queuedIntentId()&&owner.inspect().data==identity.data&&!owner.consumeQueuedPlay(queued),"Clear invalidates queue while retaining detached original history");
+        sync(SyncMode::off);f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Commit fresh queue clip");f.command(LoopAction::stopImmediate,id);f.cycle();sync(SyncMode::fixed);
+        queued=queue();check(owner.consumeQueuedPlay(queued)&&queued.queueId>first.queueId,"Clear preserves queued identity high-water");
+        for(unsigned n=0;n<128;++n){f.command(LoopAction::stopAll,id);f.command(LoopAction::play,id);f.cycle();}
+        check(!f.engine->meterGraphEventsCurrent()&&!owner.consumeQueuedCancel(cancel)&&!owner.consumeQueuedPlay(queued),"Lost queue stream rejects retained lifecycle facts");
+        MeterGraphEvent event;unsigned budget=255;check(!f.engine->popMeterGraphEvent(event,f.engine->generation(),budget)&&!budget,"Lost queue stream retains bounded raw drain");
+        f.prepare();check(owner.reset()&&!owner.queuedIntentId()&&!owner.consumeQueuedPlay(queued)&&owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Prepare removes old queued state and permits fresh committed-buffer ownership");
+        sync(SyncMode::fixed);queued=queue();check(queued.queueId==1&&owner.consumeQueuedPlay(queued),"Fresh generation may restart queued identity without aliasing old receipts");
+    }
+    check(allocations.load()==0,"Queued intent/cancel callbacks have zero tracked new/delete");
+    std::cout<<"PASS: actual queued PLAY/cancel/STOP receipts, independent full-width identities, no analyser birth, retained versus replaced cleanup, detached boundary rejection, clear/prepare/loss and stale guards at tracks 0/19, 64/128; exact paired stereo PCM and zero tracked callback new/delete\n";
 }
 void meterBufferTests(){
     using namespace aion;

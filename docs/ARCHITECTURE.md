@@ -2039,3 +2039,27 @@ The sole bounded dispatcher routes global batches through the existing twenty
 prepared adapters and native-only stop counters. Existing PCM and audible stop
 behavior are unchanged. Receipt-relative wall timing, queued/capture/edit graph
 origins, envelopes/continuity and visible rendering still need acceptance.
+
+## Accepted queued intent and cancellation
+
+Successful synced PLAY now publishes queuedPlay without a raw reset or analyser
+birth. It carries a distinct full-width queue ID, current committed clip and the
+existing immediate-origin window ticket (zero for a first graphless queue). Queue
+IDs advance independently of graph tickets and persist across clear until the
+next prepared generation. The message owner sets queued state and retains any
+old cleanup, analyser/data and meter holds. No wall timer is created by the intent.
+
+While audio still has the accepted queued intent, STOP ALL publishes queuedCancel;
+the owner changes queued to stopped and retains its old timer. Explicit STOP/
+stopImmediate publishes queuedStop instead: an attached volume graph receives a
+fresh 25ms cleanup, while a graphless queued loop tears down without a timer.
+All facts require exact ordered generation, clip, raw identity and queue ID;
+prepared adapters and the sole bounded dispatcher serve the existing twenty owners.
+Native-only queued counters do not add UI/IPC meter levels or serialized state.
+
+This stage does not implement the original max(0, grid delta minus 100ms) message
+callback or its graph birth. Native audible grid transition remains insufficient
+proof. An old stop teardown can change queued state while its original queue timer
+remains: the owner retains the intent ID and refuses a later queuedCancel after
+that state change until the remaining lifecycle is mapped. Full timing, late
+source/graph alignment and visible-meter acceptance remain pending.

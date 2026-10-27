@@ -26,7 +26,7 @@ public:
     // a newer Engine generation that may still be inside another prepare.
     bool reset(std::uint32_t next) noexcept {
         if(next!=engine.generation()||next==generation)return false;
-        generation=next;ticket=0;lastClearSerial=lastBufferSerial=lastPlaySerial=lastStopSerial=bufferId=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
+        generation=next;ticket=0;lastClearSerial=lastBufferSerial=lastPlaySerial=lastStopSerial=lastQueueSerial=bufferId=queuedId=queueHighWater=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
         // Keep timer serials across prepare; old delivered callbacks cannot alias.
         return true;
     }
@@ -48,7 +48,7 @@ public:
         LoopCommand command{LoopAction::meterGraphStart,id,0,generation,frame,0};
         command.meterGraphTicket=ticket+1;
         if(!engine.enqueueLoop(command))return false; // No graph/timer/follower mutation on saturation.
-        graph=candidate;++ticket;bufferNoticeSinceStart=false;
+        graph=candidate;++ticket;queuedId=0;bufferNoticeSinceStart=false;
         const auto identity=graph.inspect();receipt={generation,id,ticket,identity.analyser,identity.data};
         if(identity.teardownDelay<0)cleanup={};
         // Original queued->play retains the old stop timer; stopping->play cancels it.
@@ -60,7 +60,7 @@ public:
         if(!candidate.stop(now,scheduled,hasVolume))return false;
         const auto delay=candidate.inspect().teardownDelay;
         if(!std::isfinite(delay)||(delay>=0&&timerSerial==std::numeric_limits<std::uint64_t>::max()))return false;
-        graph=candidate;cleanup=delay>=0?MeterCleanupRequest{++timerSerial,generation,delay}:MeterCleanupRequest{};
+        graph=candidate;queuedId=0;cleanup=delay>=0?MeterCleanupRequest{++timerSerial,generation,delay}:MeterCleanupRequest{};
         if(!graph.inspect().analyser)receipt={};
         return true;
     }
@@ -77,7 +77,7 @@ public:
     }
     bool clear() noexcept {
         if(!current())return false;
-        graph.clear();bufferId=0;receipt={};cleanup={};return true; // Ticket high-water survives clear.
+        graph.clear();bufferId=queuedId=0;receipt={};cleanup={};return true; // Ticket high-water survives clear.
     }
     // Sole stream consumer supplies the actual installed immutable clip receipt.
     // A buffer change does not create/reset/detach an analyser or stop timer.
@@ -104,7 +104,7 @@ public:
             // and cancels its cleanup, retaining the original meter history.
             candidate.setState(MeterLoopState::stopping);return candidate.startGraph();
         }))return false;
-        ticket=event.ticket;lastPlaySerial=event.serial;bufferNoticeSinceStart=false;cleanup={};
+        ticket=event.ticket;lastPlaySerial=event.serial;queuedId=0;bufferNoticeSinceStart=false;cleanup={};
         const auto identity=graph.inspect();receipt={generation,id,ticket,identity.analyser,identity.data};return true;
     }
     bool consumeImmediateStop(const MeterGraphEvent& event) noexcept {
@@ -121,7 +121,35 @@ public:
         return graph.inspect().state!=MeterLoopState::queued&&event.stopLeadSeconds==.015
             &&consumeStop(event,MeterGraphEventKind::stopAll,.015);
     }
+    bool consumeQueuedPlay(const MeterGraphEvent& event) noexcept {
+        const auto matches=[&]() noexcept {return queueMatches(event,MeterGraphEventKind::queuedPlay)&&event.queueId>queueHighWater;};
+        if(!commitLoopMeterObservation(graph,matches,[](LoopMeterGraph& candidate) noexcept {candidate.setState(MeterLoopState::queued);return true;}))return false;
+        queuedId=queueHighWater=event.queueId;lastQueueSerial=event.serial;return true;
+    }
+    bool consumeQueuedCancel(const MeterGraphEvent& event) noexcept {
+        const auto matches=[&]() noexcept {return queueMatches(event,MeterGraphEventKind::queuedCancel)&&event.queueId==queuedId&&graph.inspect().state==MeterLoopState::queued;};
+        if(!commitLoopMeterObservation(graph,matches,[](LoopMeterGraph& candidate) noexcept {candidate.setState(MeterLoopState::stopped);return true;}))return false;
+        queuedId=0;lastQueueSerial=event.serial;return true; // Retain old cleanup, analyser/data and history.
+    }
+    bool consumeQueuedStop(const MeterGraphEvent& event) noexcept {
+        const auto matches=[&]() noexcept {return queueMatches(event,MeterGraphEventKind::queuedStop)&&event.queueId==queuedId&&graph.inspect().state==MeterLoopState::queued;};
+        bool arm=false;
+        if(!commitLoopMeterObservation(graph,matches,[&](LoopMeterGraph& candidate) noexcept {
+            if(!candidate.stop(0))return false;
+            arm=candidate.inspect().teardownDelay>=0;
+            return !arm||timerSerial!=std::numeric_limits<std::uint64_t>::max();
+        }))return false;
+        queuedId=0;lastQueueSerial=event.serial;
+        cleanup=arm?MeterCleanupRequest{++timerSerial,generation,graph.inspect().teardownDelay}:MeterCleanupRequest{};
+        if(!graph.inspect().analyser)receipt={};return true;
+    }
 private:
+    bool queueMatches(const MeterGraphEvent& event,MeterGraphEventKind kind) const noexcept {
+        return observable()&&event.kind==kind&&event.generation==generation&&event.track==id
+            &&event.serial>lastSerial()&&event.bufferId&&event.bufferId==bufferId
+            &&(event.ticket?event.ticket==ticket:!graph.inspect().present&&!receipt.ticket)
+            &&!event.retiredTicket&&event.stopLeadSeconds==0&&event.queueId;
+    }
     bool consumeStop(const MeterGraphEvent& event,MeterGraphEventKind kind,double lead) noexcept {
         const auto matches=[&]() noexcept {
             return observable()&&event.kind==kind&&event.generation==generation
@@ -134,7 +162,7 @@ private:
             arm=candidate.inspect().teardownDelay>=0;
             return !arm||timerSerial!=std::numeric_limits<std::uint64_t>::max();
         }))return false;
-        lastStopSerial=event.serial;
+        lastStopSerial=event.serial;queuedId=0;
         cleanup=arm?MeterCleanupRequest{++timerSerial,generation,graph.inspect().teardownDelay}:MeterCleanupRequest{};
         if(!graph.inspect().analyser)receipt={};
         return true;
@@ -150,7 +178,7 @@ public:
                     event.retiredTicket&&event.retiredTicket==ticket&&!bufferNoticeSinceStart);
         };
         if(!commitLoopMeterObservation(graph,matches,[](LoopMeterGraph& candidate) noexcept {candidate.clear();return true;}))return false;
-        lastClearSerial=event.serial;bufferId=0;receipt={};cleanup={};return true;
+        lastClearSerial=event.serial;bufferId=queuedId=0;receipt={};cleanup={};return true;
     }
     bool destroyGraph() noexcept {if(!current())return false;graph.destroyGraph();return true;}
     bool request() noexcept {
@@ -182,10 +210,11 @@ public:
     LoopMeterBinding binding() const noexcept {return receipt;}
     MeterCleanupRequest cleanupRequest() const noexcept {return cleanup;}
     std::uint64_t committedBuffer() const noexcept {return bufferId;}
+    std::uint64_t queuedIntentId() const noexcept {return queuedId;}
     bool inGeneration(std::uint32_t completed) const noexcept {return completed&&completed==generation&&current();}
     bool routesTo(const Engine& source,unsigned track) const noexcept {return &engine==&source&&id==track&&current();}
 private:
-    std::uint64_t lastSerial() const noexcept {return std::max({lastClearSerial,lastBufferSerial,lastPlaySerial,lastStopSerial});}
+    std::uint64_t lastSerial() const noexcept {return std::max({lastClearSerial,lastBufferSerial,lastPlaySerial,lastStopSerial,lastQueueSerial});}
     bool current() const noexcept {return id<LoopBank::trackCount&&generation&&generation==engine.generation();}
     // Event loss invalidates retained graph/window receipts for this generation.
     // Recheck generation around the stream query; cleanup metadata still uses
@@ -194,6 +223,7 @@ private:
     Engine& engine;
     std::uint32_t id=0,generation=0,ticket=0;
     std::uint64_t timerSerial=0,lastClearSerial=0,lastBufferSerial=0,lastPlaySerial=0,lastStopSerial=0,bufferId=0;
+    std::uint64_t lastQueueSerial=0,queuedId=0,queueHighWater=0;
     bool bufferNoticeSinceStart=true;
     LoopMeterGraph graph;
     LoopMeterBinding receipt{};

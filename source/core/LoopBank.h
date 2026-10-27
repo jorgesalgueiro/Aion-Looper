@@ -75,6 +75,7 @@ public:
         meterGraphHighWater[id]=meterGraphTickets[id]=ticket;meterGraphFrames[id]=frame;
         meterImmediateTickets[id]=0; // A raw component reset does not prove a playback graph.
         meterPanicKnown[id]=false;
+        meterQueuedIds[id]=0;
         (*meterWindows)[id].reset();
         meterGraphEvents->publish(MeterGraphEventKind::started,id,ticket,frame,tracks[id].clearEpoch);return true;
     }
@@ -96,7 +97,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
 private:
@@ -113,6 +114,7 @@ private:
         const auto ticket=++meterGraphHighWater[id];
         meterImmediateTickets[id]=ticket;
         meterPanicKnown[id]=true;
+        meterQueuedIds[id]=0;
         meterGraphTickets[id]=ticket;meterGraphFrames[id]=frame;(*meterWindows)[id].reset();
         meterGraphEvents->publish(MeterGraphEventKind::immediatePlay,id,ticket,frame,tracks[id].clearEpoch,tracks[id].clip->waveformId);
     }
@@ -134,6 +136,20 @@ private:
         // Until its 100ms lead is mapped, never infer panic policy from the
         // audible queued/playing snapshot or revive its old immediate origin.
         if(meterPanicKnown[id])publishMeterStop(id,MeterGraphEventKind::stopAll,.015);
+    }
+    void publishMeterQueue(unsigned id) noexcept {
+        if(meterScope!=MeterEventScope::acceptedPlayback)return;
+        if(meterQueueHighWater==std::numeric_limits<std::uint64_t>::max()){meterGraphEvents->invalidate();return;}
+        meterQueuedIds[id]=++meterQueueHighWater;
+        publishMeterQueueFact(id,MeterGraphEventKind::queuedPlay);
+    }
+    void publishMeterQueueEnd(unsigned id,MeterGraphEventKind kind) noexcept {
+        if(meterScope!=MeterEventScope::acceptedPlayback||!meterQueuedIds[id])return;
+        publishMeterQueueFact(id,kind);meterQueuedIds[id]=0;
+    }
+    void publishMeterQueueFact(unsigned id,MeterGraphEventKind kind) noexcept {
+        const auto ticket=meterImmediateTickets[id]==meterGraphTickets[id]?meterImmediateTickets[id]:0u;
+        meterGraphEvents->publish(kind,id,ticket,frame,tracks[id].clearEpoch,tracks[id].clip?tracks[id].clip->waveformId:0,0,meterQueuedIds[id]);
     }
     struct Clip {
         std::atomic<std::uint32_t> leases{1};
@@ -232,6 +248,8 @@ private:
     // Construction-time heap storage; never grow the Windows audio stack.
     std::array<std::uint32_t,trackCount> meterGraphTickets{},meterGraphHighWater{},meterImmediateTickets{};
     std::array<bool,trackCount> meterPanicKnown{};
+    std::array<std::uint64_t,trackCount> meterQueuedIds{};
+    std::uint64_t meterQueueHighWater=0;
     std::array<std::uint64_t,trackCount> meterGraphFrames{};
     std::unique_ptr<MeterGraphEvents> meterGraphEvents=std::make_unique<MeterGraphEvents>();
     std::unique_ptr<std::array<MeterWindow,trackCount>> meterWindows=std::make_unique<std::array<MeterWindow,trackCount>>();
