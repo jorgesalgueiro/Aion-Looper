@@ -6306,3 +6306,43 @@ stopped. After global dispatch shutdown the caller must already have quiesced
 callbacks; no new lock is requested then. Concurrent audio, reentrant or arbitrary
 post-quit destruction and DAW/Apple/hardware acceptance are not established.
 Full meter playback/buffer/stop notification mapping and rendering remain pending.
+
+### Queued meter creation and pending audio resume (27 October 2026)
+
+Expanded the existing original_meter_source_lifecycle gate without changing the
+preserved JS, product UI, C++ engine, processor, SDK or plugin formats. The gate
+retains its 136 original source/graph/input-gate checks and adds 14 actual
+handleAction scheduling/cancellation cases and 22 actual AudioEngine.resume/play
+cases across tracks 0 and 19. Context resume and timer IO are controlled stubs;
+the original methods execute unchanged. This is reference characterization, not
+acceptance of a native notification producer or complete meter feature.
+
+The original creates an analyser on the queued timeout up to 100ms before the
+grid, then starts its source at max(grid,currentTime). Tests also retain near-grid
+zero-delay scheduling, late-start phase, queued short-action/stop/DEL/STOP ALL
+cancellation, rejected resume, stale play/transport/slot invalidation, successful
+resume and same-graph repeated play. Native audible starts must not move early
+to imitate the separate graph creation point. See REFERENCE_AUDIT.md for the
+mapping requirements this identifies.
+
+- Windows selected realtime/meter/clock gates: **6/6**, **86.65s**.
+- Ubuntu selected realtime/meter/clock gates: **6/6**, **57.45s**.
+- Three deliberately broken isolated source copies fail: removing the 100ms lead,
+  accepting a stale play request, and accepting a stale transport generation.
+  Only build-directory copies were mutated; no preserved source was edited.
+- Committed PCM: **126 cases / 965,826 samples**, maximum error
+  **7.394757495227111e-8** at unchanged **1e-6** tolerance. Existing envelope,
+  browser resampling, latency compensation and sync exclusions remain.
+- Original UI byte identity, deterministic embedding and tamper rejection pass.
+  The committed logo SHA256 remains
+  b3f528936976cd892863965e86204914e2c2c39193c7bb432c04ee4c8f35ef0c.
+
+Logs: build/meter-scheduling-{windows,linux,assets}.txt,
+build/meter-scheduling-audio.json and build/meter-scheduling-mutations.json.
+build/CheckMeterSchedulingMutations.py retains each broken copy and assertion log;
+build/WriteMeterSchedulingEvidence.py records the checks in
+build/meter-scheduling-evidence.json. No binary rebuild/native host/sanitizer/full
+portable-suite run was needed or claimed for this JS test/documentation change.
+Existing native and platform evidence retains its prior scope. No package,
+dependency/version change or push. Full meter producer/overlap/device continuity
+and renderer acceptance remain unfinished.

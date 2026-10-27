@@ -1330,3 +1330,15 @@ direct message destruction. Keep the gated old-code failure in
 build/shutdown-before.txt, nonzero PCM/real-service setup and zero callback
 new/delete. This does not establish arbitrary concurrent/reentrant/post-quit
 destruction, full meter lifecycle mapping or renderer acceptance. No package yet.
+
+Queued meter creation must retain the unchanged dispatcher's 100ms graph lead:
+handleAction queues without a graph, then its max(0, grid delta minus 100ms)
+timeout calls play(gridTime). Graph/analyser creation occurs on that callback;
+source start remains max(gridTime,currentTime), with late-start phase preserved.
+Never shift audible playback early or infer analyser birth from LoopState/source
+revision/raw reset. Keep MeterSourceReference's actual dispatcher/resume cases,
+queued action/stop/clear/panic cancellation, stale pending resume request/transport/
+slot rejection, successful identity retention and prior 136 checks. The added
+14 scheduling and 22 resume cases are reference characterization only; native
+producer/overlap/continuity/renderer acceptance remains pending. Retain the three
+failing isolated mutations in build/meter-scheduling-mutations; no package yet.

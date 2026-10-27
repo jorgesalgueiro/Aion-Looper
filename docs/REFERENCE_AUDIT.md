@@ -766,3 +766,45 @@ gates. Final 126-case committed capture/OD/SUB center-pan sound audit remains at
 maximum 7.394757495227111e-8 under 1e-6. Real REAPER full-speed and retained 1x
 Note/CC/PC silence/recovery/phase/reopen matrices pass; none of those claims
 extends to full browser envelopes, physical timing, other hosts or Apple builds.
+
+### Meter graph creation precedes queued source playback (27 October 2026)
+
+`tests/MeterSourceReference.cjs` now executes the unchanged `LoopManager.handleAction`
+and `AudioEngine.resume`, in addition to its retained 136 Loop/AudioGraph/input-gate
+checks. Fourteen scheduling/cancellation cases and twenty-two resume cases cover
+tracks 0 and 19 with controlled timer/context IO. This characterizes the reference;
+it does not validate a native lifecycle producer or browser PCM.
+
+For a stopped loop with sync enabled, the dispatcher first sets `queued` without
+creating a graph. Its timeout is `max(0, (gridTime-currentTime)*1000-100)`.
+When that callback runs, `play(gridTime)` builds a fresh graph/analyser immediately,
+sets `playing`, and schedules the source at `max(gridTime,currentTime)`. Therefore
+graph creation may precede audible source playback by 100ms. A near grid schedules
+a zero-delay callback; a late callback starts at the current context time and
+computes the corresponding phase. The tests exercise all three paths, including
+the actual source start time/offset and main-loop analyser input gate.
+
+A second queued short press, explicit stop, clear or STOP ALL cancels the queued
+timer before graph creation. Immediate play waits for the original context resume
+method. Failed resume, changed play request, changed transport generation, or a
+removed buffer must not create a graph after that await. The dispatcher additionally
+rejects a replaced loop slot after resume. Successful play followed by another
+play while playing retains the same graph/analyser/data objects.
+
+Native mapping must represent graph creation and scheduled source start as distinct
+facts. Do not create an analyser from a `LoopView::state` transition, sourceRevision,
+clip replacement, or the raw-window reset receipt alone. In particular, moving
+audible playback 100ms earlier is not a fix. Cancellation, accepted buffer ownership,
+queued graph lead, delayed stop cleanup and retained healthy retrigger identity
+must be handled together before exposing meter readings. Current production meter
+owners still lack that complete producer; the renderer remains disabled.
+
+The external comparison inspected
+[SooperLooper's engine declarations](https://github.com/essej/sooperlooper/blob/master/src/engine.hpp),
+which separate RT event, non-RT update, and loop-management queues, and the
+[Freewheeling repository](https://github.com/free-wheeling/freewheeling).
+The useful architectural precedent is explicit owner-to-owner event transfer;
+it cannot determine this application's JS analyser lifetime. No third-party source
+was copied and no dependency changed. Three isolated build-directory mutations
+(grid-only birth, missing play-request guard, missing transport guard) each fail
+the expanded reference gate. Their logs are under build/meter-scheduling-mutations.
