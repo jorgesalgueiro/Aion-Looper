@@ -108,14 +108,22 @@ public:
         const auto identity=graph.inspect();receipt={generation,id,ticket,identity.analyser,identity.data};return true;
     }
     bool consumeImmediateStop(const MeterGraphEvent& event) noexcept {
+        return event.stopLeadSeconds==0&&consumeStop(event,MeterGraphEventKind::immediateStop,0);
+    }
+    bool consumeScheduledStop(const MeterGraphEvent& event) noexcept {
+        return std::isfinite(event.stopLeadSeconds)&&event.stopLeadSeconds>0
+            &&std::isfinite(event.stopLeadSeconds+.05)&&consumeStop(event,MeterGraphEventKind::scheduledStop,event.stopLeadSeconds);
+    }
+private:
+    bool consumeStop(const MeterGraphEvent& event,MeterGraphEventKind kind,double lead) noexcept {
         const auto matches=[&]() noexcept {
-            return observable()&&event.kind==MeterGraphEventKind::immediateStop&&event.generation==generation
+            return observable()&&event.kind==kind&&event.generation==generation
                 &&event.track==id&&event.serial>lastSerial()&&event.bufferId&&event.bufferId==bufferId
                 &&event.ticket&&event.ticket==ticket&&!event.retiredTicket;
         };
         bool arm=false;
         if(!commitLoopMeterObservation(graph,matches,[&](LoopMeterGraph& candidate) noexcept {
-            if(!candidate.stop(0))return !candidate.inspect().present&&candidate.inspect().state==MeterLoopState::stopped;
+            if(!candidate.stop(0,lead))return !candidate.inspect().present&&candidate.inspect().state==MeterLoopState::stopped;
             arm=candidate.inspect().teardownDelay>=0;
             return !arm||timerSerial!=std::numeric_limits<std::uint64_t>::max();
         }))return false;
@@ -124,6 +132,7 @@ public:
         if(!graph.inspect().analyser)receipt={};
         return true;
     }
+public:
     // Sole message consumer supplies an actual Engine-pop receipt. Never route
     // a raw clear to an unaccepted/pending or replacement graph by track alone.
     bool consumeClear(const MeterGraphEvent& event) noexcept {

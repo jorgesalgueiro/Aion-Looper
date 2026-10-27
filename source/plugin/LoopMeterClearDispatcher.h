@@ -40,9 +40,10 @@ public:
                 if(event.track<routes.size()&&routes[event.track]->consumeImmediatePlay(event))++result.playApplied;
                 else ++result.rejected;
             }
-            else if(event.kind==MeterGraphEventKind::immediateStop){
+            else if(event.kind==MeterGraphEventKind::immediateStop||event.kind==MeterGraphEventKind::scheduledStop){
                 ++result.stops;
-                if(event.track<routes.size()&&routes[event.track]->consumeImmediateStop(event))++result.stopApplied;
+                if(event.track<routes.size()&&(event.kind==MeterGraphEventKind::scheduledStop?
+                    routes[event.track]->consumeScheduledStop(event):routes[event.track]->consumeImmediateStop(event)))++result.stopApplied;
                 else ++result.rejected;
             }
             else if(event.kind==MeterGraphEventKind::bufferInstalled){

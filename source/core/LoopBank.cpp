@@ -389,7 +389,11 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             return finish(t);
         case LoopAction::stopImmediate:publishImmediateMeterStop(id);stop(t);return true;
         case LoopAction::stop:
-            if(s==LoopState::playing&&sync.settings.mode!=SyncMode::off){++t.phaseEpoch;t.info.phaseApplyFrame=0;s=LoopState::stopping;t.endAt=SyncClock::deadline(sync.nextGrid(frame));return true;}
+            if(s==LoopState::playing&&sync.settings.mode!=SyncMode::off){
+                const double target=sync.nextGridSeconds(frame);
+                ++t.phaseEpoch;t.info.phaseApplyFrame=0;s=LoopState::stopping;t.endAt=SyncClock::deadline(target*rate);
+                publishMeterStop(id,MeterGraphEventKind::scheduledStop,target-static_cast<double>(frame)/rate);return true;
+            }
             publishImmediateMeterStop(id);stop(t);return true;
         case LoopAction::clear:++t.clearEpoch;clear(t);return true;
         case LoopAction::play:

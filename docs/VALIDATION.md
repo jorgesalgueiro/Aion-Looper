@@ -6675,3 +6675,73 @@ across command/receipt delivery latency, scheduled STOP/STOP ALL, queued/capture
 edit graph origins, overlap/envelope/continuity and rendering remain unaccepted.
 No full original end-to-end stop timing, physical IO, DAW or Apple acceptance is
 claimed. Keep visible meters disabled; no package/version/dependency change or push.
+
+### Accepted scheduled STOP receipts (2026-10-27)
+
+Continues the unfinished meter feature from bffc355. The unchanged original
+`Loop.stop(scheduledTime)` keeps its graph until the requested future audio time
+plus 50ms, whereas the immediate volume-node branch uses 25ms. The native synced
+playing STOP branch now publishes its own scheduledStop fact, restricted to a
+known accepted immediate-play graph origin. It carries the unrounded grid delta
+in seconds and retains the immutable clip, raw window ticket and ordered serial.
+It does not infer graph creation from native state or the audible stop boundary.
+
+The message owner rejects wrong kind/generation/ticket/clip/serial, stream loss
+and invalid deltas before mutation. Its existing prepared cleanup adapter uses
+delta plus 50ms; duplicate receipts cannot postpone cleanup. A second STOP takes
+the existing immediate branch and replaces that request with 25ms. Actual PLAY
+or attached clear cancels obsolete cleanup; teardown preserves detached data and
+history. The sole 32-work dispatcher and native-only stop counters serve both
+receipt types. No new bridge fields, UI controls or serialized state were added.
+
+Coverage adds actual paired Engines on tracks 0/19, 64/128 buffers and
+120/137.3/999 BPM, requiring exact callback stereo PCM against the unobserved
+control and zero tracked callback new/delete. Tests seed nonzero bound meter PCM,
+check the exact pre-rounding grid delta and identity, reject malformed/stale
+facts, advance through actual audible scheduled completion without message
+teardown, override with a second STOP, replace playback and clear attached graphs.
+All previous immediate-stop/buffer/play cases remain. The native test drives the
+production processor through its existing RPC and prepared dispatcher, then
+actual JUCE timers with frozen audio clocks, readiness and duplicate rejection.
+
+The missing-producer negative removes only the scheduled publication hook. The
+focused test must fail with `Actual audio owner emits the expected ordered
+buffer/window fact`; retained source/logs are
+build/scheduled-stop-missing-producer.cpp and build/scheduled-stop-negative.txt.
+The final source is restored before positive gates and binary builds.
+
+Evidence files use build/scheduled-stop-full-{windows,linux}.txt,
+build/scheduled-stop-native-{windows,linux}.txt, build/scheduled-stop-asan.txt,
+build/scheduled-stop-audio.json and build/scheduled-stop-assets.txt.
+build/WriteScheduledStopEvidence.py verifies test results, the negative,
+unchanged processor/DSP/UI/SDK/other-format artifacts and rebuilt binary hashes,
+writing build/scheduled-stop-evidence.json. Focused reproduction remains
+`build/windows-core/Release/aion_core_tests.exe --meter-stops` or
+`build/core/aion_core_tests --meter-stops` on Ubuntu.
+
+Final restored-source results:
+
+| Gate | Result |
+| --- | --- |
+| Windows portable suite | 28/28, 325.62s |
+| Ubuntu portable suite | 28/28, 589.93s |
+| Windows native processor / standalone SDK generation | 2/2, 6.94s |
+| Ubuntu native processor / standalone SDK generation | 2/2, 17.09s |
+| Ubuntu core AddressSanitizer selection | 6/6, 191.01s |
+| Committed PCM audit | 126 cases, 965826 samples, max absolute error 7.394757495227111e-8 at unchanged 1e-6 tolerance |
+| Original resources / embedding / tamper rejection | Pass |
+
+Native runs retain all eighteen linked production AudioDeviceManager blocks;
+there are no skips, JUCE assertions, leak reports or tracked callback new/delete.
+The existing Standalone binaries were rebuilt on both platforms. Other plugin
+formats, SDK and original resources (including the committed logo) are unchanged.
+
+The timer deadline still begins at receipt application on the message thread.
+This gate does not establish wall command/delivery alignment or full original
+stop latency. Backdating without ordered queued clear/play handling is unsafe.
+STOP ALL's distinct cleanup, queued 100ms graph lead, capture/edit graph origins,
+overlap/envelopes/continuity and the visible renderer remain unfinished. JUCE's
+[Timer contract](https://docs.juce.com/master/classjuce_1_1Timer.html) permits late
+message callbacks; there is no asserted upper callback-latency bound. No new DAW,
+physical IO, Apple or native-sanitizer acceptance, package, version/dependency
+change or push is claimed.

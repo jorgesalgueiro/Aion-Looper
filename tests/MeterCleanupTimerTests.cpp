@@ -249,6 +249,11 @@ void processorBufferReceiptTests(bool& audioWatch){
         check(s.stops==2&&s.stopApplied==2&&s.attachedGraphs==1&&s.pendingCleanups==1,"Production unsynced STOP arms the existing owner cleanup without inferring audio-clock teardown");
         command("play");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.plays==3&&s.playApplied==3&&s.attachedGraphs==1&&!s.pendingCleanups,"Production accepted PLAY cancels pending stop through the sole dispatcher");
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":1})");cycle();
+        command("stop");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.stops==3&&s.stopApplied==3&&s.attachedGraphs==1&&s.pendingCleanups==1&&!s.rejected,"Production scheduled STOP reaches the prepared cleanup adapter through sole dispatcher");
+        command("stop");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.stops==4&&s.stopApplied==4&&s.pendingCleanups==1&&!s.rejected,"Production second STOP overrides pending scheduled cleanup");
         command("clear");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(!s.attachedGraphs&&s.applied==1&&!s.rejected,"Production typed clear detaches accepted playback graph");
     }
@@ -621,6 +626,19 @@ private:
         case 15:
             if(wall()-started<.08)return;
             check(f->owner->inspect().present&&!f->timer->pending()&&f->owner->inspect().data==data&&reading(f->owner->value())==held&&f->engine->clock()==frame,"Cancelled accepted stop cannot later detach replacement graph with frozen audio clock");
+            for(auto* e:{f->engine.get(),f->control.get()}){e->configureSync({aion::SyncMode::fixed,999,1,1,4,false});
+                check(e->enqueueLoop({aion::LoopAction::stop,19,0,e->generation(),0,0}),"Queue actual scheduled native stop");}f->cycle();
+            {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&event.kind==aion::MeterGraphEventKind::scheduledStop,"Actual native scheduled stop receipt");
+                expectedDelay=event.stopLeadSeconds+.05;
+                for(auto invalid:{0u,f->engine->generation()+1}){cleanupPrepared.store(invalid,std::memory_order_release);
+                    check(!f->timer->consumeScheduledStop(event)&&!f->timer->pending()&&!f->owner->cleanupRequest().serial,"Scheduled adapter readiness rejects before mutation");}
+                cleanupPrepared.store(f->engine->generation(),std::memory_order_release);
+                check(f->timer->consumeScheduledStop(event)&&f->owner->cleanupRequest().delay==expectedDelay,"Actual scheduled receipt arms original delta plus 50ms");
+                obsolete=f->owner->cleanupRequest();check(!f->timer->consumeScheduledStop(event)&&f->owner->cleanupRequest()==obsolete,"Duplicate scheduled receipt cannot postpone JUCE cleanup");}
+            capture();stage=16;break;
+        case 16:
+            if(f->owner->inspect().present){check(f->timer->pending(),"Scheduled cleanup remains pending until actual timer delivery");return;}
+            check(wall()-started>=expectedDelay,"Scheduled actual timer cannot teardown before grid delta plus 50ms");stopped();
             if(f->block==64){begin(128);break;}
             stopTimer();juce::MessageManager::getInstance()->stopDispatchLoop();break;
         }
@@ -646,4 +664,5 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     std::cout<<"PASS: production twenty-track cleanup adapters are created by message service after host construction/prepare, retained across release/loss/reprepare, routed through the sole clear dispatcher and destroyed under host-held message ownership; armed adapter destruction preserves its surviving owner at 64/128\n";
     std::cout<<"PASS: prepared-generation cleanup guard cancels released/mismatched callbacks without owner or PCM-history mutation, rejects released stops, never resurrects cancelled deadlines and recovers on fresh 25ms stops at 64/128\n";
     std::cout<<"PASS: actual accepted stop receipts drive 25ms JUCE teardown with frozen audio clocks, repeated stop replacement, prepared rejection, detached clear history and real accepted PLAY cancellation at 64/128; exact paired PCM and zero tracked callback new/delete\n";
+    std::cout<<"PASS: actual scheduled STOP receipts route through production prepared adapters; real JUCE timers retain delta plus 50ms with frozen audio clocks, duplicate/readiness rejection and second STOP override at 64/128\n";
 }

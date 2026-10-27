@@ -118,11 +118,14 @@ private:
     // audio stops so repeated taps can replace a still-pending message timer.
     // A detached message owner accepts later taps as no-ops, never new teardown.
     void publishImmediateMeterStop(unsigned id) noexcept {
+        publishMeterStop(id,MeterGraphEventKind::immediateStop,0);
+    }
+    void publishMeterStop(unsigned id,MeterGraphEventKind kind,double lead) noexcept {
         if(meterScope!=MeterEventScope::acceptedPlayback||!tracks[id].clip||!meterImmediateTickets[id]
             ||meterImmediateTickets[id]!=meterGraphTickets[id])return;
         // Native worker/finalizing state cannot decide whether the JS-style
         // graph remains attached. Its explicit origin and message owner do.
-        meterGraphEvents->publish(MeterGraphEventKind::immediateStop,id,meterImmediateTickets[id],frame,tracks[id].clearEpoch,tracks[id].clip->waveformId);
+        meterGraphEvents->publish(kind,id,meterImmediateTickets[id],frame,tracks[id].clearEpoch,tracks[id].clip->waveformId,lead);
     }
     struct Clip {
         std::atomic<std::uint32_t> leases{1};

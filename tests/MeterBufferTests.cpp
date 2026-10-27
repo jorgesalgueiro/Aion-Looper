@@ -162,8 +162,10 @@ void meterStopTests(){
         f.command(LoopAction::play,id);f.cycle();played=f.next(MeterGraphEventKind::immediatePlay,id);
         check(owner.consumeImmediatePlay(played)&&!owner.cleanupRequest().serial,"Accepted restart after stopped worker completion cancels cleanup");
         for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,120,1,4,4,false});
-        f.command(LoopAction::stop,id);f.cycle();check(f.view->tracks[id].state==LoopState::stopping&&!f.engine->popMeterGraphEvent(event),
-            "Scheduled STOP is not incorrectly published as immediate cleanup");
+        f.command(LoopAction::stop,id);f.cycle();auto scheduled=f.next(MeterGraphEventKind::scheduledStop,id);
+        check(f.view->tracks[id].state==LoopState::stopping&&!owner.consumeImmediateStop(scheduled)
+            &&owner.consumeScheduledStop(scheduled)&&owner.cleanupRequest().delay==scheduled.stopLeadSeconds+.05,
+            "Scheduled STOP uses its distinct delta plus 50ms policy, never immediate cleanup");
         f.command(LoopAction::stopImmediate,id);f.cycle();stopped=f.next(MeterGraphEventKind::immediateStop,id);
         check(owner.consumeImmediateStop(stopped)&&owner.cleanupRequest().delay==.025,"Explicit immediate stop can override a scheduled audio stop");
         f.command(LoopAction::retrigger,id);f.cycle();played=f.next(MeterGraphEventKind::immediatePlay,id);check(owner.consumeImmediatePlay(played),"Restart after immediate stop override");
@@ -177,7 +179,45 @@ void meterStopTests(){
         f.prepare();check(owner.reset()&&!owner.consumeImmediateStop(stopped)&&!owner.inspect().present&&!owner.cleanupRequest().serial,"Prepare cancels old stop and graph lifetime");
     }
     check(allocations.load()==0,"Accepted stop callback paths have zero tracked new/delete");
-    std::cout<<"PASS: accepted immediate STOP/stopImmediate receipts, retained window/clip identity, repeated stops, explicit 25ms cleanup metadata, detached no-op/history, replacement/clear/raw-reset/prepare/loss and scheduled/panic non-inference at tracks 0/19, 64/128; exact paired stereo PCM and zero tracked callback new/delete\n";
+    // Fractional grids must retain the unrounded seconds delta, not derive it
+    // from the integer audible deadline or treat that deadline as wall time.
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(double bpm:{120.,137.3,999.}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,id);
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Scheduled fixture commits actual clip");
+        f.command(LoopAction::stopImmediate,id);f.command(LoopAction::play,id);f.cycle();
+        auto played=f.next(MeterGraphEventKind::immediatePlay,id);check(owner.consumeImmediatePlay(played),"Scheduled fixture uses actual immediate origin");
+        for(unsigned n=0;n<2048/block;++n){check(owner.request(),"Scheduled history request");f.cycle();check(f.engine->popLoopMeterWindow(*f.packet),"Scheduled history PCM");
+            const double t=static_cast<double>(f.view->frame)/48000;check(owner.observe(*f.packet,*f.view,f.view->callbackClock,{t,t}),"Scheduled history observation");}
+        const auto identity=owner.inspect();const auto held=reading(owner.value());check(owner.value().peak>0,"Scheduled history must be nonzero");
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,bpm,1,1,4,false});
+        SyncClock grid;grid.reset(48000);grid.configure({SyncMode::fixed,bpm,1,1,4,false},f.engine->clock());
+        const auto frame=f.engine->clock();const double lead=grid.nextGridSeconds(frame)-static_cast<double>(frame)/48000;
+        f.command(LoopAction::stop,id);f.cycle();auto event=f.next(MeterGraphEventKind::scheduledStop,id);
+        check(event.frame==frame&&event.stopLeadSeconds==lead&&event.ticket==played.ticket&&event.bufferId==played.bufferId
+            &&f.engine->loopMeterGraphCurrent(event.generation,id,event.ticket),"Scheduled fact preserves exact grid delta, clip and raw token at acceptance");
+        for(double invalid:{0.,-1.,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}){
+            auto wrong=event;wrong.stopLeadSeconds=invalid;check(!owner.consumeScheduledStop(wrong)&&!owner.cleanupRequest().serial,"Invalid scheduled delta cannot mutate graph or cleanup");}
+        auto wrong=event;++wrong.ticket;check(!owner.consumeScheduledStop(wrong),"Scheduled wrong ticket rejected");
+        wrong=event;++wrong.bufferId;check(!owner.consumeScheduledStop(wrong),"Scheduled wrong clip rejected");
+        wrong=event;++wrong.generation;check(!owner.consumeScheduledStop(wrong),"Scheduled wrong generation rejected");
+        check(!owner.consumeImmediateStop(event)&&owner.consumeScheduledStop(event)&&owner.cleanupRequest().delay==lead+.05
+            &&owner.inspect().analyser==identity.analyser&&reading(owner.value())==held,"Scheduled stop retains analyser/history with exact cleanup interval");
+        const auto pending=owner.cleanupRequest();check(!owner.consumeScheduledStop(event)&&owner.cleanupRequest()==pending,"Scheduled duplicate never postpones cleanup");
+        unsigned cycles=0;while(f.view->tracks[id].state==LoopState::stopping&&++cycles<1000)f.cycle();
+        MeterGraphEvent extra;check(f.view->tracks[id].state==LoopState::stopped&&!f.engine->popMeterGraphEvent(extra)
+            &&owner.inspect().present&&owner.cleanupRequest()==pending,"Audible scheduled completion neither republishes stop nor detaches message graph");
+        check(owner.deliverCleanup(pending)&&!owner.inspect().present&&owner.inspect().data==identity.data&&reading(owner.value())==held,"Scheduled cleanup retains detached history");
+        check(!owner.consumeScheduledStop(event),"Retained scheduled duplicate rejected after teardown");
+        f.command(LoopAction::retrigger,id);f.cycle();played=f.next(MeterGraphEventKind::immediatePlay,id);check(owner.consumeImmediatePlay(played),"Stopped retrigger establishes replacement origin");
+        f.command(LoopAction::stop,id);f.cycle();event=f.next(MeterGraphEventKind::scheduledStop,id);check(owner.consumeScheduledStop(event),"Arm second scheduled stop");
+        const auto second=owner.cleanupRequest();f.command(LoopAction::stop,id);f.cycle();
+        check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id))&&owner.cleanupRequest().delay==.025&&!owner.deliverCleanup(second),"Second STOP overrides scheduled cleanup with immediate policy");
+        f.command(LoopAction::retrigger,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id))&&!owner.cleanupRequest().serial,"Replacement cancels overridden cleanup");
+        f.command(LoopAction::stop,id);f.cycle();event=f.next(MeterGraphEventKind::scheduledStop,id);check(owner.consumeScheduledStop(event),"Arm before typed clear");
+        f.command(LoopAction::clear,id);f.cycle();check(owner.consumeClear(f.next(MeterGraphEventKind::cleared,id))&&!owner.inspect().data&&!owner.cleanupRequest().serial&&!owner.consumeScheduledStop(event),"Attached clear cancels scheduled cleanup and resets history");
+    }
+    check(allocations.load()==0,"Scheduled STOP callback paths have zero tracked new/delete");
+    std::cout<<"PASS: accepted immediate and scheduled STOP receipts, exact unrounded grid delta plus 50ms, overrides, retained window/clip/history, actual audible completion, malformed/stale rejection and replacement/clear at tracks 0/19, 64/128, 120/137.3/999 BPM; exact paired stereo PCM and zero tracked callback new/delete\n";
 }
 void meterBufferTests(){
     using namespace aion;

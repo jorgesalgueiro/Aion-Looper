@@ -1996,3 +1996,23 @@ not established here. Scheduled STOP and STOP ALL use different original delays
 and remain separate pending work; queued/capture/edit graph origins, overlap,
 envelope/continuity and renderer acceptance are also unfinished. No visible meter
 or feature package is enabled by this handoff.
+## Accepted scheduled STOP handoff
+
+The fixed acceptedPlayback subscription publishes a distinct scheduledStop fact
+only from STOP's successful synced-playing branch and only for a known accepted
+immediate-play origin. The immutable event names that clip and raw window and
+carries `nextGridSeconds(frame) - frame / sampleRate` before integer sample
+deadline rounding. This metadata leaves the audible grid calculation unchanged.
+The fact neither creates a graph nor resets its raw PCM window.
+
+The sole bounded dispatcher routes it through the same completed-prepare adapter
+bank. Lifecycle ownership checks generation, health, serial, clip and ticket;
+invalid/nonpositive/nonfinite deltas reject before mutation. Accepted cleanup uses
+the original scheduled delta plus 50ms. Duplicate facts cannot postpone timers;
+an immediate second STOP replaces the pending request, and PLAY or attached clear
+cancels it. Audible scheduled completion does not drive message-owned teardown.
+
+This is a receipt-relative timer contract. Backdating across queued ordered
+clear/play facts requires additional ordering work; wall command alignment is
+unaccepted. STOP ALL, queued graph lead, capture/edit graph origins, envelopes,
+continuity and visible renderer acceptance remain unfinished. No package yet.

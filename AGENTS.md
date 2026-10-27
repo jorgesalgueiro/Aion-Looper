@@ -1414,3 +1414,14 @@ command/receipt deadline alignment remains unaccepted, alongside scheduled STOP,
 STOP ALL, queued/capture/edit graph origins, overlap/envelopes and renderer work.
 Never reuse immediateStop for the different scheduled/panic cleanup delays.
 No visible meters or package until full lifecycle/timing acceptance is complete.
+
+Scheduled STOP now has its own accepted scheduledStop fact for known immediate
+play origins. Preserve the unrounded grid delta in seconds, clip/ticket/serial
+guards and raw window; message cleanup uses delta plus 50ms, never immediate
+25ms. Audible grid completion must not publish a second stop or detach metadata.
+Second STOP's immediate branch overrides the scheduled cleanup; replacement and
+attached clear cancel it. Retain fractional-tempo tracks 0/19 paired PCM at 64/128,
+malformed/stale facts and native prepared route/timer checks with frozen audio.
+This still starts the deadline at receipt application: end-to-end command timing,
+STOP ALL, queued/capture/edit graph origins, overlap/envelopes and renderer remain
+unfinished. No visible meters or packaging from this narrower scheduled handoff.
