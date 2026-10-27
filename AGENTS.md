@@ -1454,3 +1454,21 @@ fails closed. The original 100ms graph callback, late creation/source phase,
 command/wall deadline alignment and post-callback queue mapping remain unaccepted.
 Do not infer them from the audible native grid transition or enable rendering/
 packages from this intent/cancel stage alone.
+
+Queued callback raw resets use the internal meterQueuedWindowStart command with
+separate integer ticket, full-width queue and immutable clip identities. Accept
+only frame zero and revalidate on the audio owner against current generation,
+healthy stream, accepted-playback scope, live queue/clip, increasing ticket and
+queued/playing state. One queue may reset its window only once, including when a
+duplicate carries a newer ticket. Rejection must retain PCM history and user
+acknowledgements. Publish accepted raw started receipts with queue/clip and exact
+sample frame, retaining the pending queue and quarantined playback origin.
+Never treat that receipt as message analyser birth or wire an unconditional raw
+reset into the 100ms timer. Keep full-width stale identity, before/after-grid
+STOP/STOP NOW/panic/clear, replacement, prepare, FIFO saturation and exact paired
+64/128 PCM checks. The unconditional-reset negative is retained in
+build/queued-window-negative.txt. Message callback/binding recovery, post-callback
+queue lifecycle and visible rendering remain unfinished; no package yet.
+After isolated negative mutations, explicitly rebuild the restored object before
+positive gates: restoring a saved file can retain an older timestamp and leave
+the deliberately broken object cached. Confirm the focused positive gate first.

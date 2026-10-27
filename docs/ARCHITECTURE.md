@@ -2063,3 +2063,26 @@ proof. An old stop teardown can change queued state while its original queue tim
 remains: the owner retains the intent ID and refuses a later queuedCancel after
 that state change until the remaining lifecycle is mapped. Full timing, late
 source/graph alignment and visible-meter acceptance remain pending.
+
+## Conditional queued raw-window handoff
+
+The internal `meterQueuedWindowStart` command is the guarded raw-reset primitive
+for a future message-thread queue callback. It carries integer graph ticket,
+full-width queued-intent ID and immutable clip ID through the existing bounded
+command FIFO. Only frame zero is accepted: the callback must already have fired;
+this primitive does not estimate a message deadline from an audio-frame snapshot.
+
+The audio owner revalidates the prepared generation, healthy receipt stream,
+accepted-playback subscription, current queue, current clip, increasing window
+ticket and queued/playing source state. It accepts each queue at most once, even
+if a duplicate has a higher ticket. Rejected requests preserve raw history and
+performance acknowledgements. Accepted requests reset the 2048-sample raw window
+in constant time and publish an ordered `started` receipt containing the queue,
+clip, ticket and actual acceptance frame. Queue identity remains pending; this
+receipt is not an analyser birth or an accepted immediate-play origin.
+
+There is deliberately no production message-timer call site yet. The existing
+dispatcher counts this receipt as a raw start without creating a graph, cancelling
+an old cleanup or binding PCM to an analyser. The 100ms callback, message graph
+transaction/acceptance recovery, post-callback cancellation and late source phase
+still need integration and acceptance before visible metering can be enabled.

@@ -33,7 +33,9 @@ bool Engine::enqueue(GainCommand command) noexcept {
 bool Engine::enqueueLoop(LoopCommand command) noexcept {
     if (command.generation == 0 || command.generation != generation() || command.track >= LoopBank::trackCount
         || !std::isfinite(command.value)) return false;
-    if(command.action==LoopAction::meterGraphStart&&!command.meterGraphTicket)return false;
+    if(isMeterCommand(command.action)&&!command.meterGraphTicket)return false;
+    if(command.action==LoopAction::meterQueuedWindowStart
+        &&(command.frame||!command.meterQueueId||!command.meterBufferId))return false;
     if(command.action==LoopAction::stutterStart)command.stutterRevision=stutterRevisions[command.track].load(std::memory_order_acquire);
     return loopCommands.push(command);
 }
@@ -41,7 +43,7 @@ bool Engine::applyMidi(LoopAction action,std::uint32_t track,double value) noexc
     if(action==LoopAction::record&&!midiInputAvailable)return false;
     if(action==LoopAction::stopAll){
         const auto discardedUiCommand=[&](const LoopCommand& command) noexcept {
-            if(command.action!=LoopAction::meterGraphStart){lastRequestId=std::max(lastRequestId,command.requestId);rejected=true;}
+            if(!isMeterCommand(command.action)){lastRequestId=std::max(lastRequestId,command.requestId);rejected=true;}
         };
         if(hasPendingLoop){discardedUiCommand(pendingLoop);hasPendingLoop=false;}
         LoopCommand discarded{};for(unsigned n=0;n<256&&loopCommands.pop(discarded);++n)discardedUiCommand(discarded);
@@ -111,8 +113,13 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
             ++loopApplied;
         }
         if (!hasPendingLoop) hasPendingLoop = loopCommands.pop(pendingLoop);
-        while (hasPendingLoop && (pendingLoop.frame <= frame||pendingLoop.action==LoopAction::meterGraphStart) && loopApplied < 128) {
-            if(pendingLoop.action==LoopAction::meterGraphStart){
+        while (hasPendingLoop && (pendingLoop.frame <= frame||isMeterCommand(pendingLoop.action)) && loopApplied < 128) {
+            if(pendingLoop.action==LoopAction::meterQueuedWindowStart){
+                // The callback has already happened on the message owner.
+                // Validate against current audio ownership, not its old view.
+                if(pendingLoop.generation==generation()&&meterGraphEventsCurrent())
+                    (void)loops.startQueuedMeterWindow(pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId);
+            }else if(pendingLoop.action==LoopAction::meterGraphStart){
                 // Internal telemetry must not acknowledge or reject a UI action.
                 if(pendingLoop.generation==generation()){
                     if(pendingLoop.frame>frame)(void)meterGraphStarts->push(pendingLoop.frame,loops.trackView(pendingLoop.track).clearEpoch,pendingLoop.track,pendingLoop.meterGraphTicket);

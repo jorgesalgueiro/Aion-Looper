@@ -6922,3 +6922,78 @@ and later queuedCancel fails closed after that state change pending the remainin
 mapping. Full queued panic/STOP lifecycle, capture/edit origins, overlaps,
 envelopes/continuity and visible rendering remain unfinished. No new DAW, hardware,
 Apple or native-sanitizer acceptance, package, version/dependency change or push.
+
+## Conditional queued raw-window reset (2026-10-27)
+
+This continues the unfinished meter migration with the audio-owner half of a
+future queued callback. It does not connect a production queue timer or create a
+message analyser. `meterQueuedWindowStart` carries separate integer graph ticket,
+full-width queue ID and immutable clip ID through the existing bounded FIFO.
+Only frame zero is accepted; enqueue success is distinct from actual acceptance.
+The audio owner validates scope, generation, stream health, queue, clip, source
+state and ticket before resetting raw history. Each queued intent can accept only
+one reset. The raw `started` receipt includes the actual sample boundary, queue
+and clip; it remains outside the immediate-play graph-birth route.
+
+`aion_core_tests --meter-queued` retains all previous intent/cancel checks and adds
+actual paired Engines at tracks 0/19 and 64/128 samples. It checks:
+
+- Zero identities/ticket, foreign generation and nonzero guessed frame rejection.
+- Queue and clip IDs differing only above bit 31, and foreign-track rejection.
+- Exact accepted receipt identities/frame and fresh pre-grid zero raw window,
+  with no early audible playback or performance acknowledgement changes.
+- Duplicate callbacks with higher tickets before/after audible grid, retained
+  live post-grid PCM, and bounded 255-entry duplicate saturation/drain.
+- STOP, STOP NOW, STOP ALL and clear queued ahead of the stale callback in the
+  actual command FIFO, before and after audible grid. The callback cannot reset
+  a cancelled queue or consume a replacement intent's first ticket.
+- Clear/re-record replacement clips, prepare discarding pending resets and
+  component subscriptions refusing queued playback ownership.
+- Exact paired stereo PCM on every fixture callback and zero tracked callback
+  allocation/deallocation.
+
+The initial fixture used a 1000-callback polling bound for a four-beat fractional
+tempo grid. At 64 samples the grid exceeded that bound; it was extended to 4000.
+No audio tolerance, reference method or product timing was changed.
+
+The isolated negative replaces only the new conditional audio dispatch with the
+old unconditional raw reset. It fails `Rejected conditional reset does not create
+a window or alter performance acknowledgements`. Restored source and both
+mutation snapshots are retained under build/queued-window-*. Focused tests pass
+on Windows and Ubuntu. Final full-suite evidence is recorded below.
+
+The first full Ubuntu run reused the deliberately broken negative-test object:
+restoring the saved source also restored its older modification timestamp, so
+incremental compilation skipped it. That run is preserved as
+build/queued-window-stale-object-linux.txt. The object was explicitly removed;
+the guarded source was rebuilt and the focused gate and full suite rerun. The
+final acceptance report excludes the stale-object run.
+
+Final restored-source results (build/queued-window-evidence.json):
+
+| Gate | Result |
+| --- | --- |
+| Windows portable suite | 28/28, 334.61s |
+| Ubuntu portable suite, rebuilt guarded object | 28/28, 623.71s |
+| Windows native processor / standalone SDK generation | 2/2, 8.14s |
+| Ubuntu native processor / standalone SDK generation | 2/2, 20.17s |
+| Ubuntu core AddressSanitizer selection | 6/6, 237.11s |
+| Committed PCM audit | 126 cases, 965826 samples, max error 7.394757495227111e-8 at unchanged 1e-6 tolerance |
+| Original resources / embedding / tamper rejection | Pass |
+
+Native gates retain all eighteen linked production AudioDeviceManager blocks.
+Final logs contain no skips, JUCE assertions, leak reports or sanitizer errors.
+Existing Standalone binaries were rebuilt on both platforms; SDK, other plugin
+format binaries, original resources and committed logo remain unchanged. The
+report records restored-source and rebuilt-binary hashes and the isolated negative.
+
+Research consulted the [JUCE Timer documentation](https://docs.juce.com/master/classjuce_1_1Timer.html)
+and [SooperLooper's Engine ownership queues](https://github.com/essej/sooperlooper/blob/master/src/engine.hpp).
+The latter provides a reference for ownership transfer; the unchanged Ascii-Looper
+remains the authority for graph lifetime and queue timing. No source was copied.
+
+The 100ms message callback, graph transaction and acceptance recovery, independent
+old cleanup, post-callback queue policy, late source phase, other graph origins,
+overlaps/envelopes/continuity and visible meter rendering remain unfinished.
+Existing application behavior and original UI are preserved. No package, version
+or dependency update, push, new DAW/hardware/Apple or native sanitizer acceptance.

@@ -291,7 +291,98 @@ void meterPanicTests(){
     check(allocations.load()==0,"Panic callbacks have zero tracked new/delete");
     std::cout<<"PASS: accepted STOP ALL receipts, 65ms cleanup, repeated/detached panic, capture/edit ordering, replacement/clear/prepare/loss, malformed identity rejection and queued-origin quarantine at tracks 0/19, 64/128; exact paired stereo PCM and zero tracked callback new/delete\n";
 }
+namespace {
+void queuedWindowTests(){
+    using namespace aion;
+    const auto request=[](Fixture& f,unsigned id,const MeterGraphEvent& queue,std::uint32_t ticket){
+        LoopCommand command{LoopAction::meterQueuedWindowStart,id,0xffffffffu,f.engine->generation(),0,0};
+        command.meterGraphTicket=ticket;command.meterQueueId=queue.queueId;command.meterBufferId=queue.bufferId;return command;
+    };
+    const auto begin=[](Fixture& f,unsigned id){
+        f.record(id);(void)f.next(MeterGraphEventKind::bufferInstalled,id);
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,123.456789,1,4,4,false});
+        f.command(LoopAction::play,id);f.cycle();return f.next(MeterGraphEventKind::queuedPlay,id);
+    };
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);auto queued=begin(f,id);
+        auto command=request(f,id,queued,1),wrong=command;
+        wrong.meterGraphTicket=0;check(!f.engine->enqueueLoop(wrong),"Queued raw reset requires a nonzero integer ticket");
+        wrong=command;wrong.frame=1;check(!f.engine->enqueueLoop(wrong),"Queued callback raw reset cannot be scheduled at a guessed future audio frame");
+        wrong=command;wrong.meterQueueId=0;check(!f.engine->enqueueLoop(wrong),"Queued raw reset requires a queue identity");
+        wrong=command;wrong.meterBufferId=0;check(!f.engine->enqueueLoop(wrong),"Queued raw reset requires a committed clip identity");
+        wrong=command;++wrong.generation;check(!f.engine->enqueueLoop(wrong),"Queued raw reset rejects a foreign generation before enqueue");
+        const auto reject=[&](LoopCommand c){
+            check(f.engine->enqueueLoop(c),"Enqueue malformed conditional reset for audio-owned rejection");f.cycle();MeterGraphEvent event;
+            check(!f.engine->popMeterGraphEvent(event)&&!f.engine->loopMeterGraphCurrent(f.engine->generation(),id,c.meterGraphTicket)
+                &&f.view->lastRequestId==f.request&&!f.view->rejected,"Rejected conditional reset does not create a window or alter performance acknowledgements");
+        };
+        wrong=command;wrong.meterQueueId+=1ull<<32;reject(wrong);
+        wrong=command;wrong.meterBufferId+=1ull<<32;reject(wrong);
+        wrong=command;wrong.track=id?0:19;reject(wrong);
+        check(f.engine->enqueueLoop(command),"Enqueue explicit queued callback raw reset");const auto frame=f.engine->clock();
+        check(f.engine->requestLoopMeterWindow(id,f.engine->generation(),1),"Request conditional raw acceptance window");f.cycle();
+        const auto accepted=f.next(MeterGraphEventKind::started,id);
+        check(accepted.frame==frame&&accepted.ticket==1&&accepted.queueId==queued.queueId&&accepted.bufferId==queued.bufferId
+            &&f.engine->loopMeterGraphCurrent(accepted.generation,id,1)&&f.view->tracks[id].state==LoopState::queued
+            &&f.view->lastRequestId==f.request&&!f.view->rejected,"Only actual audio acceptance emits an exact conditional raw-window receipt without early playback");
+        check(f.engine->popLoopMeterWindow(*f.packet)&&f.packet->windowGraphTicket==1&&f.packet->graphStartFrame==frame
+            &&std::all_of(f.packet->samples.begin(),f.packet->samples.end(),[](float sample){return sample==0;}),"Queued raw acceptance has a fresh zero window before audible grid");
+        // Even a higher ticket cannot repeat this queue's one accepted callback.
+        command.meterGraphTicket=2;check(f.engine->enqueueLoop(command),"Enqueue duplicate callback with a newer raw ticket");f.cycle();MeterGraphEvent event;
+        check(!f.engine->popMeterGraphEvent(event)&&f.engine->loopMeterGraphCurrent(accepted.generation,id,1),"Duplicate callback cannot reset the same queued intent twice");
+        for(unsigned n=0;n<4000&&f.view->tracks[id].state==LoopState::queued;++n)f.cycle();
+        check(f.view->tracks[id].state==LoopState::playing&&!f.engine->popMeterGraphEvent(event),"Audible grid does not synthesize another conditional reset or analyser birth");
+        for(unsigned n=0;n<2048/block;++n)f.cycle();
+        check(f.engine->requestLoopMeterWindow(id,f.engine->generation(),1),"Request live PCM after conditional reset");f.cycle();
+        check(f.engine->popLoopMeterWindow(*f.packet)&&f.packet->windowGraphTicket==1
+            &&std::any_of(f.packet->samples.begin(),f.packet->samples.end(),[](float sample){return sample!=0;}),"Accepted conditional reset collects actual post-grid PCM");
+        check(f.engine->enqueueLoop(command),"Enqueue late duplicate after audible transition");f.cycle();
+        check(!f.engine->popMeterGraphEvent(event)&&f.engine->loopMeterGraphCurrent(accepted.generation,id,1),"Late duplicate preserves healthy raw history");
+        // Saturation and internal failures must never become user acknowledgements.
+        for(unsigned n=0;n<255;++n)check(f.engine->enqueueLoop(command),"Fill existing bounded command FIFO with duplicate callbacks");
+        check(!f.engine->enqueueLoop(command),"Conditional reset uses bounded existing command capacity");f.cycle();f.cycle();
+        check(f.view->lastRequestId==f.request&&!f.view->rejected&&!f.engine->popMeterGraphEvent(event),"Bounded duplicate drain preserves user acknowledgements");
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool late:{false,true})for(auto stop:{LoopAction::stop,LoopAction::stopImmediate,LoopAction::stopAll,LoopAction::clear}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);const auto queued=begin(f,id);auto command=request(f,id,queued,1);
+        if(late){for(unsigned n=0;n<4000&&f.view->tracks[id].state==LoopState::queued;++n)f.cycle();check(f.view->tracks[id].state==LoopState::playing,"Advance queued source for late cancellation race");}
+        // Both commands are accepted by the producer. Only audio ownership can
+        // reject the stale callback behind this still-unconsumed cancellation.
+        f.command(stop,id);check(f.engine->enqueueLoop(command),"Enqueue delayed callback behind accepted stop/clear");f.cycle();
+        MeterGraphEvent event;unsigned starts=0;while(f.engine->popMeterGraphEvent(event))if(event.kind==MeterGraphEventKind::started)++starts;
+        check(!starts&&!f.engine->loopMeterGraphCurrent(f.engine->generation(),id,1)&&f.view->lastRequestId==f.request&&!f.view->rejected,
+            "Pending callback cannot reset a cancelled queue before or after the audible grid");
+        // Replace the queued identity; the old callback must not consume a new one.
+        if(stop==LoopAction::clear){
+            for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::off,123.456789,1,4,4,false});
+            f.record(id);(void)f.next(MeterGraphEventKind::bufferInstalled,id);f.command(LoopAction::stopImmediate,id);f.cycle();
+            for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,123.456789,1,4,4,false});
+        }
+        if(f.view->tracks[id].state==LoopState::stopping){for(unsigned n=0;n<4000&&f.view->tracks[id].state==LoopState::stopping;++n)f.cycle();}
+        f.command(LoopAction::play,id);f.cycle();const auto newer=f.next(MeterGraphEventKind::queuedPlay,id);
+        check(newer.queueId>queued.queueId,"New accepted intent has a fresh queue identity");
+        check(f.engine->enqueueLoop(command),"Enqueue stale callback before newer valid callback");
+        command=request(f,id,newer,1);check(f.engine->enqueueLoop(command),"Enqueue new queue callback without burning its ticket on old rejection");f.cycle();
+        const auto accepted=f.next(MeterGraphEventKind::started,id);
+        check(accepted.queueId==newer.queueId&&accepted.bufferId==newer.bufferId&&accepted.ticket==1&&!f.engine->popMeterGraphEvent(event),
+            "Only the newer queue and clip can reset raw history after cancellation/replacement");
+        command.meterGraphTicket=2;check(f.engine->enqueueLoop(command),"Queue callback before prepare barrier");f.prepare();f.cycle();
+        while(f.engine->popMeterGraphEvent(event))check(event.kind==MeterGraphEventKind::bufferInstalled,"Prepare discards pending queued resets without resurrecting old windows");
+        check(!f.engine->loopMeterGraphCurrent(f.engine->generation(),id,2),"Prepare invalidates old conditional reset ownership");
+    }
+    for(auto scope:{MeterEventScope::rawWindows,MeterEventScope::committedBuffers}){
+        Fixture f(64,scope);f.record();MeterGraphEvent event;while(f.engine->popMeterGraphEvent(event)){}
+        LoopCommand command{LoopAction::meterQueuedWindowStart,19,0xffffffffu,f.engine->generation(),0,0};command.meterGraphTicket=1;command.meterQueueId=1;command.meterBufferId=f.view->tracks[19].waveformId;
+        check(f.engine->enqueueLoop(command),"Enqueue conditional reset in component scope");f.cycle();
+        check(!f.engine->popMeterGraphEvent(event)&&!f.engine->loopMeterGraphCurrent(f.engine->generation(),19,1),"Component subscription cannot acquire queued playback ownership");
+    }
+    check(allocations.load()==0,"Conditional queued window callbacks have zero tracked new/delete");
+    std::cout<<"PASS: conditional queued raw-window acceptance, full-width queue/clip validation, duplicate/saturation/cancellation/replacement/prepare guards, exact paired stereo PCM at tracks 0/19 and 64/128; no message graph birth inferred\n";
+}
+}
 void meterQueuedTests(){
+    queuedWindowTests();
     using namespace aion;
     auto stream=std::make_unique<MeterGraphEvents>();stream->reset(3);
     stream->publish(MeterGraphEventKind::queuedPlay,19,0,42,7,9007199254740993ull,0,0xffffffffffffffffull);

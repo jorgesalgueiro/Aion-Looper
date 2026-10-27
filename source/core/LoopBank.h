@@ -14,7 +14,8 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart }; // sourceRestart and meterGraphStart are core-only primitives, never exposed by IPC.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart }; // Source/reset primitives are core-only, never exposed by IPC.
+constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart;}
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
@@ -79,6 +80,21 @@ public:
         (*meterWindows)[id].reset();
         meterGraphEvents->publish(MeterGraphEventKind::started,id,ticket,frame,tracks[id].clearEpoch);return true;
     }
+    // Audio-owned validation for a queued message callback. This only resets a
+    // raw window; it neither creates a message analyser nor starts audio early.
+    // A successfully enqueued request is not an acceptance receipt.
+    bool startQueuedMeterWindow(std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId) noexcept {
+        if(meterScope!=MeterEventScope::acceptedPlayback||id>=trackCount||!ticket||!queueId||!bufferId
+            ||ticket<=meterGraphHighWater[id]||queueId!=meterQueuedIds[id]||queueId==meterQueuedWindowIds[id]
+            ||!tracks[id].clip||tracks[id].clip->waveformId!=bufferId
+            ||(tracks[id].info.state!=LoopState::queued&&tracks[id].info.state!=LoopState::playing))return false;
+        meterQueuedWindowIds[id]=queueId;
+        meterGraphHighWater[id]=meterGraphTickets[id]=ticket;meterGraphFrames[id]=frame;
+        meterImmediateTickets[id]=0;meterPanicKnown[id]=false;
+        (*meterWindows)[id].reset();
+        meterGraphEvents->publish(MeterGraphEventKind::started,id,ticket,frame,tracks[id].clearEpoch,bufferId,0,queueId);
+        return true;
+    }
     // Prepare barrier/audio producer; message owner consumes the same stream.
     void resetMeterGraphEvents(std::uint32_t generation) noexcept {
         meterGraphEvents->reset(generation);
@@ -97,7 +113,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
 private:
@@ -249,6 +265,7 @@ private:
     std::array<std::uint32_t,trackCount> meterGraphTickets{},meterGraphHighWater{},meterImmediateTickets{};
     std::array<bool,trackCount> meterPanicKnown{};
     std::array<std::uint64_t,trackCount> meterQueuedIds{};
+    std::array<std::uint64_t,trackCount> meterQueuedWindowIds{};
     std::uint64_t meterQueueHighWater=0;
     std::array<std::uint64_t,trackCount> meterGraphFrames{};
     std::unique_ptr<MeterGraphEvents> meterGraphEvents=std::make_unique<MeterGraphEvents>();
