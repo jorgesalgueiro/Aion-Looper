@@ -133,6 +133,35 @@ void clearDispatcherTests(bool& audioWatch){
 }
 // Drives the production processor without an editor, while the real message
 // loop services its existing Timer. No test calls serviceMeters directly.
+void processorBufferReceiptTests(bool& audioWatch){
+    for(unsigned block:{64u,128u}){
+        auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
+        const auto rpc=[&](const char* json){auto reply=p->request({juce::JSON::parse(json)});check(static_cast<bool>(reply["ok"]),"Production buffer receipt RPC");return reply;};
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");
+        rpc(R"({"operation":"setParameter","id":"masterGain","value":1})");
+        juce::AudioBuffer<float> audio(2,static_cast<int>(block));juce::MidiBuffer midi;midi.ensureSize(256);unsigned frame=0;
+        const auto cycle=[&]{for(unsigned n=0;n<block;++n){audio.setSample(0,static_cast<int>(n),.3f*static_cast<float>(std::sin((frame+n)*.037)));audio.setSample(1,static_cast<int>(n),-.15f);}
+            audioWatch=true;p->processBlock(audio,midi);audioWatch=false;frame+=block;};
+        const auto command=[&](const char* action){auto* data=new juce::DynamicObject();juce::var request(data);
+            data->setProperty("operation","loop");data->setProperty("action",action);data->setProperty("track",19);
+            data->setProperty("generation",static_cast<int>(p->inspectCallbackClockAudioThread().generation));
+            data->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis())+4000);
+            check(static_cast<bool>(p->request({request})["ok"]),"Production accepted buffer action");};
+        cycle();command("record");for(unsigned n=0;n<512/block;++n)cycle();command("finish");cycle();
+        auto snapshot=rpc(R"({"operation":"snapshot"})");auto s=p->inspectMeterServiceMessageThread();
+        check(static_cast<int>(snapshot["tracks"][19]["length"])==512&&s.buffers==1&&s.bufferApplied==1&&!s.started&&s.current,
+            "Production processor must consume actual committed buffer receipt without inventing graph creation");
+        command("clear");cycle();snapshot=rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(snapshot["tracks"][19]["state"].toString()=="empty"&&s.cleared==1&&s.applied==1&&!s.rejected&&!s.started&&!s.pendingCleanups,
+            "Production typed clear must apply using accepted buffer identity without any raw graph ticket");
+        command("record");for(unsigned n=0;n<512/block;++n)cycle();command("finish");cycle();rpc(R"({"operation":"snapshot"})");
+        const auto oldGeneration=p->inspectMeterServiceMessageThread().generation;
+        p->releaseResources();p->prepareToPlay(48000,static_cast<int>(block));cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.generation!=oldGeneration&&s.buffers==1&&s.bufferApplied==1&&!s.started&&s.current,
+            "Production reprepare seeds retained committed buffer through the same ordered consumer");
+    }
+    std::cout<<"PASS: production committed-buffer subscription consumes actual captured clips, typed clear without graph tickets and retained prepare handoff at 64/128; no inferred graph creation or callback new/delete\n";
+}
 class ProcessorMeterFixture {
 public:
     ProcessorMeterFixture(unsigned size,bool& watch):block(size),audioWatch(watch){
@@ -442,6 +471,7 @@ private:
 
 void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     clearDispatcherTests(audioWatch);
+    processorBufferReceiptTests(audioWatch);
     std::mutex mutex;std::condition_variable changed;bool finished=false;
     std::thread watchdog([&]{std::unique_lock lock(mutex);if(!changed.wait_for(lock,std::chrono::seconds(30),[&]{return finished;})){
         std::cerr<<"Native cleanup timer message-loop watchdog expired"<<std::endl;std::_Exit(1);}});

@@ -181,6 +181,7 @@ void LoopBank::acceptResult() noexcept {
         if(!track.clip)track.info.length=0;
         if(result){updateRate(track);if(!job.normalize&&!job.merge){track.phase=0;track.info.position=0;restartSource(track);}
             if(resultChanged&&!((job.normalize||job.merge)&&track.activeReverse))blend(track);}
+        if(result)publishMeterBuffer(job.track); // Successful audio-owner installation, not worker completion alone.
     }else retire(result);
     result=nullptr;jobState.store(0,std::memory_order_release);
 }
@@ -268,6 +269,7 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     if(redo){if(remove(redoOrder,redoSize,id,true))append(undoOrder,undoSize,id);}
     else if(remove(undoOrder,undoSize,id,true))append(redoOrder,redoSize,id);
     if(track.info.state==LoopState::playing){track.phase=0;track.info.position=0;restartSource(track);blend(track);}
+    publishMeterBuffer(id);
     return true;
 }
 void LoopBank::stop(Track& track) noexcept {
@@ -284,6 +286,7 @@ void LoopBank::stop(Track& track) noexcept {
     track.tail=track.last;track.tailRemaining=fadeLength;track.phase=0;track.info.position=0;
 }
 void LoopBank::clear(Track& track) noexcept {
+    const auto removedBuffer=track.clip?track.clip->waveformId:0;
     ++track.sourceRevision;
     ++track.phaseEpoch;++track.revision;track.startAt=track.endAt=0;track.plannedFrames=0;
     for(std::uint32_t i=0;i<track.info.undoCount;++i)retire(track.undo[i]);
@@ -298,7 +301,7 @@ void LoopBank::clear(Track& track) noexcept {
     if(track.clip){residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;retire(track.clip);track.clip=nullptr;}
     const auto id=static_cast<std::uint32_t>(&track-tracks.data());
     (*meterWindows)[id].reset();meterGraphTickets[id]=0;meterGraphFrames[id]=0;
-    meterGraphEvents->publish(MeterGraphEventKind::cleared,id,0,frame,track.clearEpoch);
+    meterGraphEvents->publish(MeterGraphEventKind::cleared,id,0,frame,track.clearEpoch,removedBuffer);
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
     const bool muted=track.info.muted;track.info=LoopView{};track.info.muted=muted;

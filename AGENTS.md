@@ -1356,3 +1356,18 @@ armed adapter worker destruction and release/generation/recovery checks at 64/12
 twenty-route diagnostics, exact paired PCM/state, zero callback new/delete and
 the unguarded timer failure in build/meter-adapters-unguarded.txt. This does not
 complete play/buffer/stop notifications, overlap/continuity or rendering. No package.
+
+Production Engine uses the fixed committedBuffers subscription in the existing
+sole-consumer stream. Publish installs only after audio-owner worker acceptance
+or successful restore; seed retained nonempty clips at completed prepare. Include
+the removed immutable clip ID on clear. Buffer publication must preserve the raw
+window token; buffer notices never imply analyser creation or reset history.
+Keep full-width buffer identity plus ordered buffer/clear serial rejection and
+the old boolean-notice fence. Route through cleanup adapters with the existing
+32 raw-work budget/loss latch, without new IPC levels or serialized state.
+Retain MeterBufferTests' actual paired 64/128 PCM, all existing edit paths,
+failure/cancellation, typed zero-ticket clear, stale/loss/prepare and concurrent
+metadata cases; native production capture/clear/reprepare must exercise the fixed
+subscription. The missing commit-producer negative is retained in
+build/buffer-receipts-missing-producer.txt. Full graph play/stop/overlap/renderer
+mapping remains pending; no package until its acceptance is complete.

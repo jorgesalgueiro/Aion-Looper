@@ -576,3 +576,25 @@ tests observe twenty constructed but unarmed routes; active stop/release cases
 exercise the same adapter with an explicit controlled completed-generation
 atomic. They do not claim that production play/stop notifications are connected.
 No new DAW/physical-device/Apple or native sanitizer acceptance, package or push.
+
+### Accepted committed-buffer ownership (27 October 2026)
+
+The processor's fixed committed-buffer subscription now transfers successful
+capture/edit/restore results and retained prepare clips to the twenty lifecycle
+owners through the existing bounded stream/cleanup routes. Clear carries the
+removed buffer's waveform ID. An owner with an accepted matching buffer can
+apply clear even when no raw graph ticket exists. Ordered serials reject older
+buffer/clear receipts, and boolean-only notices keep their existing fence.
+
+Actual paired Engine tests compare every stereo callback at 64/128 while
+exercising capture, OD/SUB, MULT/MERGE/NORM, Undo/Redo, worker failure/cancellation,
+retained prepare, zero-ticket clear and loss recovery. Concurrent tests retain
+full-width metadata without changing raw-window ownership. Native bridge tests
+enforce the same subscription with actual processor capture/clear/reprepare.
+Raw-window component tests retain their narrower stream and prior coverage.
+
+This accepts buffer ownership handoff only. Buffer notices preserve analyser
+identity/history; complete JS edit graph timing is outside this component claim.
+Graph creation, accepted stop origins, overlapping graph PCM, device continuity
+and visible rendering remain pending. Original assets and tolerances are
+unchanged. No package or new DAW/hardware/Apple acceptance is implied.

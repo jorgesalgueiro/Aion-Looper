@@ -60,6 +60,7 @@ inline bool sameLoopMeterCallback(const MeterWindowEvent& event,const EngineView
 // the sole producer of commands; the message thread alone consumes meters.
 class Engine {
 public:
+    explicit Engine(MeterEventScope scope=MeterEventScope::rawWindows) :loops(scope){}
     void prepare(double sampleRate, std::uint32_t poolFrames = LoopBank::defaultFrames,DeviceOutputLatency outputLatency = {});
     void configureSync(SyncSettings settings) noexcept {loops.configureSync(settings);}
     void setMonitoring(bool enabled) noexcept { monitoring = enabled; }
@@ -80,7 +81,7 @@ public:
         return requestedGeneration==generation()&&meterTransfer->request(track,requestedGeneration,graphTicket);
     }
     bool popLoopMeterWindow(MeterWindowEvent& event) noexcept {return meterTransfer->pop(event,generation());}
-    // Raw-window mutation receipts, not full playback graph lifecycle.
+    // Window and subscribed committed-buffer receipts, not full graph lifecycle.
     // Recheck stream validity before using retained receipts.
     bool popMeterGraphEvent(MeterGraphEvent& event) noexcept {return loops.popMeterGraphEvent(event,generation());}
     bool popMeterGraphEvent(MeterGraphEvent& event,std::uint32_t requestedGeneration,unsigned& budget) noexcept {return loops.popMeterGraphEvent(event,requestedGeneration,budget);}

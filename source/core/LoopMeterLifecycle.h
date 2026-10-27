@@ -26,7 +26,7 @@ public:
     // a newer Engine generation that may still be inside another prepare.
     bool reset(std::uint32_t next) noexcept {
         if(next!=engine.generation()||next==generation)return false;
-        generation=next;ticket=0;lastClearSerial=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
+        generation=next;ticket=0;lastClearSerial=lastBufferSerial=bufferId=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
         // Keep timer serials across prepare; old delivered callbacks cannot alias.
         return true;
     }
@@ -35,7 +35,7 @@ public:
         // A boolean notification cannot prove that the committed buffer is the
         // one an older raw-window clear removed. Require fresh graph ownership
         // or an explicitly ordered clear after any intervening buffer notice.
-        graph.setBuffer(available);bufferNoticeSinceStart=true;return true;
+        graph.setBuffer(available);bufferId=0;bufferNoticeSinceStart=true;return true;
     }
     bool setState(MeterLoopState state) noexcept {
         if(!current()||static_cast<unsigned>(state)>static_cast<unsigned>(MeterLoopState::multiplying))return false;
@@ -77,18 +77,30 @@ public:
     }
     bool clear() noexcept {
         if(!current())return false;
-        graph.clear();receipt={};cleanup={};return true; // Ticket high-water survives clear.
+        graph.clear();bufferId=0;receipt={};cleanup={};return true; // Ticket high-water survives clear.
+    }
+    // Sole stream consumer supplies the actual installed immutable clip receipt.
+    // A buffer change does not create/reset/detach an analyser or stop timer.
+    bool consumeBuffer(const MeterGraphEvent& event) noexcept {
+        const auto matches=[&]() noexcept {
+            return observable()&&event.kind==MeterGraphEventKind::bufferInstalled&&event.generation==generation
+                &&event.track==id&&event.serial>std::max(lastClearSerial,lastBufferSerial)&&event.bufferId
+                &&!event.ticket&&!event.retiredTicket;
+        };
+        if(!commitLoopMeterObservation(graph,matches,[](LoopMeterGraph& candidate) noexcept {candidate.setBuffer(true);return true;}))return false;
+        bufferId=event.bufferId;lastBufferSerial=event.serial;bufferNoticeSinceStart=true;return true;
     }
     // Sole message consumer supplies an actual Engine-pop receipt. Never route
     // a raw clear to an unaccepted/pending or replacement graph by track alone.
     bool consumeClear(const MeterGraphEvent& event) noexcept {
         const auto matches=[&]() noexcept {
             return observable()&&event.kind==MeterGraphEventKind::cleared&&event.generation==generation
-                &&event.track==id&&event.serial>lastClearSerial&&event.ticket==0
-                &&event.retiredTicket&&event.retiredTicket==ticket&&!bufferNoticeSinceStart;
+                &&event.track==id&&event.serial>std::max(lastClearSerial,lastBufferSerial)&&event.ticket==0
+                &&(bufferId?event.bufferId==bufferId:
+                    event.retiredTicket&&event.retiredTicket==ticket&&!bufferNoticeSinceStart);
         };
         if(!commitLoopMeterObservation(graph,matches,[](LoopMeterGraph& candidate) noexcept {candidate.clear();return true;}))return false;
-        lastClearSerial=event.serial;receipt={};cleanup={};return true;
+        lastClearSerial=event.serial;bufferId=0;receipt={};cleanup={};return true;
     }
     bool destroyGraph() noexcept {if(!current())return false;graph.destroyGraph();return true;}
     bool request() noexcept {
@@ -119,6 +131,7 @@ public:
     const MeterReading& value() const noexcept {return graph.value();}
     LoopMeterBinding binding() const noexcept {return receipt;}
     MeterCleanupRequest cleanupRequest() const noexcept {return cleanup;}
+    std::uint64_t committedBuffer() const noexcept {return bufferId;}
     bool routesTo(const Engine& source,unsigned track) const noexcept {return &engine==&source&&id==track&&current();}
 private:
     bool current() const noexcept {return id<LoopBank::trackCount&&generation&&generation==engine.generation();}
@@ -128,7 +141,7 @@ private:
     bool observable() const noexcept {return current()&&engine.meterGraphEventsCurrent()&&current();}
     Engine& engine;
     std::uint32_t id=0,generation=0,ticket=0;
-    std::uint64_t timerSerial=0,lastClearSerial=0;
+    std::uint64_t timerSerial=0,lastClearSerial=0,lastBufferSerial=0,bufferId=0;
     bool bufferNoticeSinceStart=true;
     LoopMeterGraph graph;
     LoopMeterBinding receipt{};

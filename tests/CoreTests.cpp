@@ -5,6 +5,7 @@
 #include <iostream>
 #include <limits>
 #include <new>
+#include <string_view>
 #include <thread>
 #include <vector>
 thread_local bool watch=false;
@@ -28,6 +29,7 @@ void meterWindowTests();
 void meterTransferTests();
 void meterSourceTests();
 void meterGraphTests();
+void meterBufferTests();
 void playbackClockTests();
 void callbackAudibleTimeTests();
 void callbackClockTests();
@@ -67,7 +69,8 @@ static void hostTransportTests() {
     check(allocations==0,"Host snapshot callback allocation/free");
     std::cout<<"PASS: optional host validation, preroll, meter/cycle, loss/reset and coherent bounded snapshots at 64/128\n";
 }
-int main() {
+int main(int argc,char** argv) {
+    if(argc==2&&std::string_view(argv[1])=="--meter-buffers"){meterBufferTests();return 0;}
     deviceCallbackScopeTests();
     hostTransportTests();
     callbackAudibleTimeTests();
@@ -102,6 +105,7 @@ int main() {
     meterTransferTests();
     meterSourceTests();
     meterGraphTests();
+    meterBufferTests();
     playbackClockTests();
     callbackClockTests();
     outputLatencyTests();

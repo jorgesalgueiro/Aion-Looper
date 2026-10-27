@@ -215,6 +215,7 @@ void AionProcessor::serviceMeters() noexcept {
     ++meterServiceStatus.passes;
     meterServiceStatus.examined+=drained.examined;meterServiceStatus.started+=drained.started;
     meterServiceStatus.cleared+=drained.cleared;meterServiceStatus.applied+=drained.applied;meterServiceStatus.rejected+=drained.rejected;
+    meterServiceStatus.buffers+=drained.buffers;meterServiceStatus.bufferApplied+=drained.bufferApplied;
     meterServiceStatus.current=drained.current&&meterPrepared()&&engine.generation()==generation;
 }
 MeterServiceStatus AionProcessor::inspectMeterServiceMessageThread() const noexcept {

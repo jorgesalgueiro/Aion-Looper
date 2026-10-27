@@ -808,3 +808,26 @@ it cannot determine this application's JS analyser lifetime. No third-party sour
 was copied and no dependency changed. Three isolated build-directory mutations
 (grid-only birth, missing play-request guard, missing transport guard) each fail
 the expanded reference gate. Their logs are under build/meter-scheduling-mutations.
+
+### Committed buffer ownership handoff (27 October 2026)
+
+The audio owner now reports accepted immutable buffer installation after capture,
+OD/SUB, MULT, MERGE, NORM and Undo/Redo, plus retained buffers at prepare. Clear
+reports the buffer it actually removed. The message owner receives these ordered
+facts directly; no polling of state/sourceRevision supplies buffer identity.
+An installation updates buffer ownership while preserving analyser/data identity
+and history until an explicit graph lifecycle notification arrives. This is a
+component contract, not a claim that each complete JS edit retains its analyser.
+
+The new paired Engine tests select the production committed-buffer subscription
+and compare every stereo callback against the existing raw-window subscription
+at 64/128. Native processor tests independently enforce production subscription:
+actual bridge capture must yield a consumed installation, its clear must apply
+with no graph ticket, and reprepare must hand off the retained clip. Keeping raw
+component tests preserves their original narrower queue/identity coverage.
+
+This follows the explicit RT/non-RT queue separation inspected in
+[SooperLooper's engine declarations](https://github.com/essej/sooperlooper/blob/master/src/engine.hpp).
+No external code was copied. Original graph timing, source PCM, UI assets and
+tolerances remain unchanged. Full graph creation/stop/overlap/renderer acceptance
+is still required before visible meters or a package.

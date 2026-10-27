@@ -1904,3 +1904,35 @@ rejected. Restoring readiness does not recreate a cancelled deadline; only a new
 explicit stop arms another one. The unbound adapter remains available for the
 existing explicit Engine-owner component fixtures. No readiness checks, deadline
 calculation or timer creation are added to processBlock.
+
+### Accepted committed-buffer notifications
+
+The production processor constructs Engine with the fixed `committedBuffers`
+subscription. Core raw-window component consumers retain their original default
+stream. The new subscription adds `bufferInstalled` to that same SPSC queue;
+there is still one audio publisher, one message consumer, a 255-receipt bound,
+generation-wide loss invalidation and a 32-raw-work service budget. No runtime
+subscription switch, secondary consumer or UI setting is involved.
+
+The audio owner publishes only after accepting a worker result into the current
+track or completing a successful Undo/Redo restore. Worker failure, cancelled
+results and rejected commands do not publish installations. Completed prepare
+explicitly republishes each retained nonempty clip in the new generation. The
+receipt contains the immutable clip's full-width waveform ID, track, generation,
+serial, clear epoch and actual acceptance frame. Buffer publication preserves
+the current raw-window word and does not reset PCM history.
+
+Clear captures the removed clip ID before retiring its audio lease and includes
+that scalar in its existing receipt. A lifecycle owner can consequently accept
+clear using the buffer it actually received, including when no graph ticket was
+created. Newer buffer/clear serials reject stale receipts. Legacy boolean buffer
+notices still discard exact identity and keep their conservative clear fence.
+All candidate graph metadata changes retain the pre/post generation/health
+checks. The cleanup adapter routes both buffer and clear receipts; a buffer
+notice preserves graph identity, follower history and an existing stop deadline.
+
+Native diagnostics count buffer receipts and successful handoffs. They add no
+APVTS state or IPC meter levels. Graph creation (including the original pre-grid
+lead), accepted stop notifications, overlapping graph PCM and renderer/device
+continuity remain unfinished. A committed buffer is never used as evidence that
+an analyser was created.

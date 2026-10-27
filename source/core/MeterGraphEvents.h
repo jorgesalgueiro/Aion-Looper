@@ -2,13 +2,17 @@
 #include "core/SpscQueue.h"
 #include <limits>
 namespace aion {
-// Facts emitted at the actual raw-window mutation, not inferred graph births.
-enum class MeterGraphEventKind : std::uint8_t { started, cleared };
+// Ordered audio-owner window/buffer facts, never inferred analyser births.
+enum class MeterGraphEventKind : std::uint8_t { started, cleared, bufferInstalled };
+// Raw-window component owners may omit buffer notifications. Production opts
+// into committed buffers once at construction; never switch consumers at runtime.
+enum class MeterEventScope : std::uint8_t { rawWindows, committedBuffers };
 struct MeterGraphEvent {
     std::uint64_t serial=0,frame=0,clearEpoch=0;
     std::uint32_t generation=0,track=0,ticket=0;
     MeterGraphEventKind kind=MeterGraphEventKind::cleared;
     std::uint32_t retiredTicket=0; // Actual window removed by clear; never a JS graph inference.
+    std::uint64_t bufferId=0; // Installed immutable clip, or the clip removed by clear. Never an analyser ID.
 };
 // Heap-owned SPSC stream. Any loss invalidates the generation until prepare.
 // Never silently resynchronise from later events/snapshots or reset queue indices.
@@ -22,7 +26,7 @@ public:
         active.store(generation,std::memory_order_release);
     }
     void publish(MeterGraphEventKind kind,std::uint32_t track,std::uint32_t ticket,
-        std::uint64_t frame,std::uint64_t clearEpoch) noexcept {
+        std::uint64_t frame,std::uint64_t clearEpoch,std::uint64_t bufferId=0) noexcept {
         const auto generation=active.load(std::memory_order_acquire);
         if(!generation||lost.load(std::memory_order_acquire))return;
         if(track>=trackCount){lost.store(generation,std::memory_order_release);return;}
@@ -30,9 +34,10 @@ public:
         const auto retired=kind==MeterGraphEventKind::cleared&&(previous>>32)==generation?
             static_cast<std::uint32_t>(previous):0u;
         const auto currentTicket=kind==MeterGraphEventKind::started?ticket:0;
-        windows[track].store((static_cast<std::uint64_t>(generation)<<32)|currentTicket,std::memory_order_release);
+        if(kind!=MeterGraphEventKind::bufferInstalled)
+            windows[track].store((static_cast<std::uint64_t>(generation)<<32)|currentTicket,std::memory_order_release);
         if(serial==std::numeric_limits<std::uint64_t>::max()||
-            !events.push({++serial,frame,clearEpoch,generation,track,ticket,kind,retired}))
+            !events.push({++serial,frame,clearEpoch,generation,track,ticket,kind,retired,bufferId}))
             lost.store(generation,std::memory_order_release);
     }
     bool current(std::uint32_t generation) const noexcept {

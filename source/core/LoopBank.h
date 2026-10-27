@@ -42,7 +42,7 @@ public:
     static constexpr std::uint32_t trackCount = 20, blockFrames = 4096, maxBlocks = 2048;
     static_assert(trackCount==MeterGraphEvents::trackCount);
     static constexpr std::uint32_t defaultFrames = blockFrames * maxBlocks; // 64 MiB stereo
-    LoopBank() = default;
+    explicit LoopBank(MeterEventScope scope=MeterEventScope::rawWindows) :meterScope(scope){}
     ~LoopBank();
     LoopBank(const LoopBank&) = delete;
     LoopBank& operator=(const LoopBank&) = delete;
@@ -77,7 +77,10 @@ public:
         meterGraphEvents->publish(MeterGraphEventKind::started,id,ticket,frame,tracks[id].clearEpoch);return true;
     }
     // Prepare barrier/audio producer; message owner consumes the same stream.
-    void resetMeterGraphEvents(std::uint32_t generation) noexcept {meterGraphEvents->reset(generation);}
+    void resetMeterGraphEvents(std::uint32_t generation) noexcept {
+        meterGraphEvents->reset(generation);
+        for(unsigned id=0;id<trackCount;++id)publishMeterBuffer(id); // Explicit retained-clip prepare handoff.
+    }
     bool popMeterGraphEvent(MeterGraphEvent& event,std::uint32_t generation) noexcept {return meterGraphEvents->pop(event,generation);}
     bool popMeterGraphEvent(MeterGraphEvent& event,std::uint32_t generation,unsigned& budget) noexcept {return meterGraphEvents->pop(event,generation,budget);}
     bool meterGraphEventsCurrent(std::uint32_t generation) const noexcept {return meterGraphEvents->current(generation);}
@@ -95,6 +98,11 @@ public:
     SyncView syncView() const noexcept {return sync.view(frame);}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
 private:
+    const MeterEventScope meterScope;
+    void publishMeterBuffer(unsigned id) noexcept {
+        if(meterScope==MeterEventScope::committedBuffers&&tracks[id].clip)
+            meterGraphEvents->publish(MeterGraphEventKind::bufferInstalled,id,0,frame,tracks[id].clearEpoch,tracks[id].clip->waveformId);
+    }
     struct Clip {
         std::atomic<std::uint32_t> leases{1};
         std::array<std::vector<float>,2> channels;

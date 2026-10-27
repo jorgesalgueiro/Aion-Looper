@@ -6403,3 +6403,63 @@ device continuity, visible meter rendering and new DAW/hardware/Apple validation
 remain unfinished. Supported worker destruction still requires stopped audio,
 running message dispatch and no message-thread join while a worker awaits it;
 arbitrary concurrent/reentrant/post-quit destruction remains outside this scope.
+
+### Accepted committed-buffer handoff (27 October 2026)
+
+Production now subscribes to accepted immutable buffer receipts in the existing
+ordered meter stream. Audio-owner worker acceptance and successful Undo/Redo
+restore publish the current clip ID; prepare explicitly hands off retained
+nonempty clips. Clear captures the removed ID before retiring its lease. The
+message owner can apply a matching clear without any raw graph ticket, while
+rejecting old buffer/clear serials and preserving the legacy boolean-notice
+fence. Buffer receipt delivery does not create an analyser or reset its window,
+follower history or stop deadline. The same sole consumer/32-raw-work budget and
+generation-wide loss latch remain in use. No new IPC levels or APVTS state.
+
+New MeterBufferTests exercise capture, OD/SUB, MULT, clone MERGE, NORM and
+Undo/Redo; failed and cancelled worker results; rejected empty play; full-width
+IDs; wrong/stale/duplicate clear; typed clear with ticket zero; retained prepare
+and loss/recovery. Each actual 64/128 stereo callback is compared exactly with
+an Engine retaining the raw-window subscription. Two thousand concurrent buffer
+exchanges check coherent metadata above 2^53 and preservation of window tokens.
+Native processor tests independently enforce the production subscription with
+actual bridge capture, zero-ticket clear and retained prepare handoff.
+
+Removing the actual worker-acceptance publication makes the focused test fail
+with `Actual audio owner emits the expected ordered buffer/window fact`.
+The negative source/log are retained in
+build/buffer-receipts-missing-producer-LoopBank.cpp and
+build/buffer-receipts-missing-producer.txt. Final publication is restored.
+
+- Full portable suite: Windows **28/28**, **317.06s**; Ubuntu **28/28**, **530.50s**.
+- Native processor/SDK generation: Windows **2/2**, **5.86s**; Ubuntu **2/2**,
+  **15.26s**. Both retain **18 linked production AudioDeviceManager blocks**,
+  all twenty cleanup routes and the previous timer/readiness/shutdown checks.
+  No skips, JUCE assertion/leak failures or tracked callback new/delete.
+- Ubuntu core sanitizer selection: **6/6**, **173.22s**, including the new
+  committed-buffer cases in core_realtime_contract. No native sanitizer claim.
+- Committed PCM: **126 cases / 965,826 samples**, maximum error
+  **7.394757495227111e-8** at unchanged **1e-6** tolerance. Existing envelope,
+  browser resampling, latency compensation and sync exclusions remain.
+- Original UI byte identity, deterministic embedding and tamper rejection pass.
+  Logo, SDK/generated wrappers, dependencies/version and other-format binaries
+  remain unchanged. Existing native tests and Standalone were rebuilt on both
+  platforms. No package or push.
+
+Logs: build/buffer-receipts-full-{windows,linux}.txt,
+build/buffer-receipts-native-{windows,linux}.txt, build/buffer-receipts-asan.txt,
+build/buffer-receipts-audio.json and build/buffer-receipts-assets.txt.
+build/WriteBufferReceiptEvidence.py verifies these gates, the missing-producer
+failure, unchanged DSP/processor callback/UI/SDK and rebuilt binary hashes,
+writing build/buffer-receipts-evidence.json.
+
+Focused reproduction after building aion_core_tests:
+`build/windows-core/Release/aion_core_tests.exe --meter-buffers` (Windows) or
+`build/core/aion_core_tests --meter-buffers` (Ubuntu).
+
+Acceptance covers committed-buffer ownership and clear routing. Raw-window
+component tests retain their narrower stream; paired Engine and actual processor
+tests enforce production behavior. No complete JS edit graph-lifetime parity,
+accepted play/stop origins, pre-grid graph creation, overlapping graph PCM,
+device continuity or visible renderer acceptance is claimed. These remain
+unfinished before a meter feature package, alongside platform/DAW/hardware work.
