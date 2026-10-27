@@ -1397,3 +1397,20 @@ origin/route checks, prepared adapter rejection and timer cancellation, plus the
 missing producer failure in build/immediate-play-negative.txt. Accepted stop,
 capture/edit graph origins, queued 100ms lead, overlap/continuity and renderer
 remain unfinished. Keep visible meters disabled and do not package this feature.
+
+Explicit stopImmediate and STOP's immediate branch now publish immediateStop only for a
+known accepted immediate-play origin. Preserve the raw window token; clear,
+prepare and raw component resets remove that origin. Do not infer graph presence
+from native stopped/finalizing state: repeated taps can replace pending cleanup,
+and the message owner accepts detached stops as ordered no-ops. Match clip,
+ticket, generation, serial and stream health before owner mutation. Route through
+the sole dispatcher/prepared adapter; duplicates must not postpone an armed
+deadline. Keep actual tracks 0/19 paired 64/128 PCM, NORM->STOP worker-buffer
+ordering, raw reset/loss/prepare guards and real JUCE 25ms frozen-clock teardown,
+repeat/replacement cancellation, detached-clear history and readiness rejection.
+The missing producer failure is build/immediate-stop-negative.txt. This gate
+starts cleanup when the accepted receipt reaches the message owner; end-to-end
+command/receipt deadline alignment remains unaccepted, alongside scheduled STOP,
+STOP ALL, queued/capture/edit graph origins, overlap/envelopes and renderer work.
+Never reuse immediateStop for the different scheduled/panic cleanup delays.
+No visible meters or package until full lifecycle/timing acceptance is complete.

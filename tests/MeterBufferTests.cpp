@@ -61,9 +61,11 @@ void meterPlaybackTests(){
             &&f.engine->loopMeterGraphCurrent(played.generation,19,played.ticket),"Healthy RTRG retains graph and raw window identity");
         f.command(LoopAction::play);f.cycle();check(f.view->rejected&&!f.engine->popMeterGraphEvent(event),"Rejected already-playing PLAY publishes no accepted birth");
         check(owner.stop(1)&&owner.cleanupRequest().serial,"Arm old graph cleanup before replacement receipt");const auto obsolete=owner.cleanupRequest();
-        f.command(LoopAction::stopImmediate);f.command(LoopAction::play);f.cycle();auto replacement=f.next(MeterGraphEventKind::immediatePlay);
+        f.command(LoopAction::stopImmediate);f.command(LoopAction::play);f.cycle();
+        check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop)),"Consume ordered actual stop before immediate replacement");
+        const auto pendingStop=owner.cleanupRequest();auto replacement=f.next(MeterGraphEventKind::immediatePlay);
         auto wrong=replacement;++wrong.bufferId;
-        check(!owner.consumeImmediatePlay(wrong)&&owner.cleanupRequest()==obsolete&&owner.inspect().analyser==identity.analyser,
+        check(!owner.consumeImmediatePlay(wrong)&&owner.cleanupRequest()==pendingStop&&owner.inspect().analyser==identity.analyser,
             "Wrong-buffer immediate play leaves analyser and pending cleanup unchanged");
         check(owner.consumeImmediatePlay(replacement)&&owner.inspect().analyser!=identity.analyser&&owner.inspect().data!=identity.data
             &&reading(owner.value())==held&&!owner.cleanupRequest().serial&&!owner.deliverCleanup(obsolete),
@@ -72,17 +74,22 @@ void meterPlaybackTests(){
         // Two births can be queued before the message service. Their ordering is
         // still meaningful even though only the final raw window is current.
         for(unsigned n=0;n<2;++n){f.command(LoopAction::stopImmediate);f.command(LoopAction::play);}f.cycle();
-        auto first=f.next(MeterGraphEventKind::immediatePlay),second=f.next(MeterGraphEventKind::immediatePlay);
-        check(first.ticket+1==second.ticket&&owner.consumeImmediatePlay(first)&&!f.engine->loopMeterGraphCurrent(first.generation,19,first.ticket),
+        check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop)),"Consume first batched stop");
+        auto first=f.next(MeterGraphEventKind::immediatePlay);
+        check(owner.consumeImmediatePlay(first)&&!f.engine->loopMeterGraphCurrent(first.generation,19,first.ticket),
             "Ordered delayed birth receipt may apply metadata without accepting obsolete PCM");
         const auto oldData=owner.inspect().data;
-        check(owner.consumeImmediatePlay(second)&&owner.inspect().data!=oldData&&owner.binding().ticket==second.ticket,
+        check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop)),"Consume second batched stop");
+        auto second=f.next(MeterGraphEventKind::immediatePlay);
+        check(first.ticket+1==second.ticket&&owner.consumeImmediatePlay(second)&&owner.inspect().data!=oldData&&owner.binding().ticket==second.ticket,
             "Later queued birth owns the final raw window and fresh analyser identity");
         for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,120,1,4,4,false});
         f.command(LoopAction::stopImmediate);f.command(LoopAction::retrigger);f.cycle();
+        check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop)),"Consume stop before stopped synced RTRG");
         auto retriggered=f.next(MeterGraphEventKind::immediatePlay);
         check(f.view->tracks[19].state==LoopState::playing&&owner.consumeImmediatePlay(retriggered),"Stopped RTRG bypasses grid and explicitly creates an immediate graph");
         f.command(LoopAction::stopImmediate);f.command(LoopAction::play);f.cycle();
+        check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop)),"Consume explicit stop before queued PLAY");
         check(f.view->tracks[19].state==LoopState::queued&&!f.engine->popMeterGraphEvent(event),"Queued PLAY must not use the immediate graph creation path");
         unsigned cycles=0;while(f.view->tracks[19].state==LoopState::queued&&++cycles<2000)f.cycle();
         check(f.view->tracks[19].state==LoopState::playing&&!f.engine->popMeterGraphEvent(event),"Audible grid transition is not an inferred graph birth");
@@ -102,6 +109,75 @@ void meterPlaybackTests(){
     }
     check(allocations.load()==0,"Accepted immediate play callbacks have zero tracked new/delete");
     std::cout<<"PASS: accepted immediate PLAY/stopped RTRG graph receipts, healthy RTRG retention, exact bound PCM, replacement/old cleanup cancellation, ordered delayed delivery, queued non-inference, clear/prepare and ticket exhaustion at 64/128; zero tracked callback new/delete\n";
+}
+void meterStopTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,id);
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Accept actual stop fixture clip");
+        const auto play=[&]{f.command(LoopAction::stopImmediate,id);f.command(LoopAction::play,id);f.cycle();
+            return f.next(MeterGraphEventKind::immediatePlay,id);};
+        auto played=play();check(owner.consumeImmediatePlay(played),"Actual immediate graph before stop");
+        for(unsigned n=0;n<2048/block;++n){check(owner.request(),"Request stop fixture PCM");f.cycle();check(f.engine->popLoopMeterWindow(*f.packet),"Receive stop fixture PCM");
+            const double t=static_cast<double>(f.view->frame)/48000;check(owner.observe(*f.packet,*f.view,f.view->callbackClock,{t,t}),"Seed stop history from actual Engine PCM");}
+        const auto identity=owner.inspect();const auto history=reading(owner.value());check(owner.value().peak>0,"Actual stop history is nonzero");
+        const auto frame=f.engine->clock();f.command(LoopAction::stopImmediate,id);f.cycle();auto stopped=f.next(MeterGraphEventKind::immediateStop,id);
+        check(stopped.frame==frame&&stopped.ticket==played.ticket&&stopped.bufferId==played.bufferId&&!stopped.retiredTicket
+            &&f.engine->loopMeterGraphCurrent(stopped.generation,id,played.ticket),"Accepted stop preserves the actual window ticket and names the committed graph clip");
+        auto wrong=stopped;++wrong.ticket;check(!owner.consumeImmediateStop(wrong)&&!owner.cleanupRequest().serial,"Wrong graph stop cannot arm cleanup");
+        wrong=stopped;++wrong.bufferId;check(!owner.consumeImmediateStop(wrong)&&owner.inspect().analyser==identity.analyser,"Wrong clip stop cannot change graph lifetime");
+        check(owner.consumeImmediateStop(stopped)&&owner.inspect().state==MeterLoopState::stopping&&owner.inspect().analyser==identity.analyser
+            &&owner.inspect().data==identity.data&&reading(owner.value())==history&&owner.cleanupRequest().delay==.025,
+            "Accepted immediate stop arms 25ms without detaching analyser or changing history");
+        const auto first=owner.cleanupRequest();
+        check(!owner.consumeImmediateStop(stopped)&&owner.cleanupRequest()==first,"Duplicate stop cannot postpone its cleanup");
+        for(unsigned n=0;n<8192/block;++n)f.cycle();
+        check(owner.inspect().present&&owner.cleanupRequest()==first,"Advancing audio sample time cannot deliver a message-owned cleanup");
+        f.command(LoopAction::stopImmediate,id);f.cycle();auto repeated=f.next(MeterGraphEventKind::immediateStop,id);
+        check(owner.consumeImmediateStop(repeated)&&owner.cleanupRequest().serial==first.serial+1&&!owner.deliverCleanup(first),
+            "Repeated explicit stop replaces pending cleanup after audio has already stopped");
+        const auto last=owner.cleanupRequest();check(owner.deliverCleanup(last)&&!owner.inspect().present&&owner.inspect().data==identity.data
+            &&reading(owner.value())==history,"Explicit cleanup detaches while retaining data and meter history");
+        f.command(LoopAction::stop,id);f.cycle();auto detached=f.next(MeterGraphEventKind::immediateStop,id);
+        check(owner.consumeImmediateStop(detached)&&!owner.cleanupRequest().serial&&!owner.inspect().present&&owner.inspect().data==identity.data
+            &&reading(owner.value())==history,"A stop after actual teardown is a valid no-op and never rearms cleanup");
+        f.command(LoopAction::clear,id);f.cycle();check(owner.consumeClear(f.next(MeterGraphEventKind::cleared,id))&&!owner.inspect().buffer
+            &&owner.inspect().data==identity.data&&reading(owner.value())==history,"Actual clear after stopped teardown retains the original detached-history quirk");
+        f.command(LoopAction::stopImmediate,id);f.cycle();MeterGraphEvent event;
+        check(!f.engine->popMeterGraphEvent(event)&&!owner.consumeImmediateStop(stopped),"Clear cancels the stop origin and rejects old stop receipts");
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Install new take after detached clear");
+        played=play();check(owner.consumeImmediatePlay(played),"New graph after cleared stop origin");
+        f.command(LoopAction::stopImmediate,id);f.command(LoopAction::play,id);f.cycle();stopped=f.next(MeterGraphEventKind::immediateStop,id);
+        check(owner.consumeImmediateStop(stopped),"Ordered stop before same-callback replacement");const auto pending=owner.cleanupRequest();
+        played=f.next(MeterGraphEventKind::immediatePlay,id);
+        check(owner.consumeImmediatePlay(played)&&!owner.cleanupRequest().serial&&!owner.deliverCleanup(pending)&&!owner.consumeImmediateStop(stopped),
+            "Same-callback accepted PLAY cancels prior stop and rejects retained stop metadata");
+        const auto beforeEdit=owner.inspect().data;
+        f.command(LoopAction::normalize,id);f.command(LoopAction::stopImmediate,id);f.cycle();
+        stopped=f.next(MeterGraphEventKind::immediateStop,id);
+        check(owner.consumeImmediateStop(stopped)&&owner.inspect().data==beforeEdit,"Native finalizing state cannot suppress the attached graph's explicit stop");
+        const auto editStop=owner.cleanupRequest();f.cycle(true);
+        check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id))&&owner.cleanupRequest()==editStop&&owner.inspect().data==beforeEdit,
+            "Accepted worker buffer after STOP retains pending cleanup and graph identity");
+        f.command(LoopAction::play,id);f.cycle();played=f.next(MeterGraphEventKind::immediatePlay,id);
+        check(owner.consumeImmediatePlay(played)&&!owner.cleanupRequest().serial,"Accepted restart after stopped worker completion cancels cleanup");
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,120,1,4,4,false});
+        f.command(LoopAction::stop,id);f.cycle();check(f.view->tracks[id].state==LoopState::stopping&&!f.engine->popMeterGraphEvent(event),
+            "Scheduled STOP is not incorrectly published as immediate cleanup");
+        f.command(LoopAction::stopImmediate,id);f.cycle();stopped=f.next(MeterGraphEventKind::immediateStop,id);
+        check(owner.consumeImmediateStop(stopped)&&owner.cleanupRequest().delay==.025,"Explicit immediate stop can override a scheduled audio stop");
+        f.command(LoopAction::retrigger,id);f.cycle();played=f.next(MeterGraphEventKind::immediatePlay,id);check(owner.consumeImmediatePlay(played),"Restart after immediate stop override");
+        f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(event),"STOP ALL does not reuse the wrong 25ms origin");
+        LoopCommand raw{LoopAction::meterGraphStart,id,0,f.engine->generation(),0,0};raw.meterGraphTicket=played.ticket+1;
+        check(f.engine->enqueueLoop(raw),"Queue explicit raw window replacement");f.cycle();(void)f.next(MeterGraphEventKind::started,id);
+        f.command(LoopAction::stopImmediate,id);f.cycle();check(!f.engine->popMeterGraphEvent(event),"Raw component window reset cannot fabricate an accepted playback stop origin");
+        for(unsigned n=0;n<256;++n){f.command(LoopAction::clear,id);f.cycle();}
+        check(!f.engine->meterGraphEventsCurrent()&&!owner.consumeImmediateStop(stopped),"Lost generation refuses retained stop receipts");
+        unsigned budget=255;check(!f.engine->popMeterGraphEvent(event,f.engine->generation(),budget)&&!budget,"Stop stream loss drain stays bounded");
+        f.prepare();check(owner.reset()&&!owner.consumeImmediateStop(stopped)&&!owner.inspect().present&&!owner.cleanupRequest().serial,"Prepare cancels old stop and graph lifetime");
+    }
+    check(allocations.load()==0,"Accepted stop callback paths have zero tracked new/delete");
+    std::cout<<"PASS: accepted immediate STOP/stopImmediate receipts, retained window/clip identity, repeated stops, explicit 25ms cleanup metadata, detached no-op/history, replacement/clear/raw-reset/prepare/loss and scheduled/panic non-inference at tracks 0/19, 64/128; exact paired stereo PCM and zero tracked callback new/delete\n";
 }
 void meterBufferTests(){
     using namespace aion;

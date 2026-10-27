@@ -1971,3 +1971,28 @@ capture/edit auto-play graph origins, the original queued 100ms graph lead,
 overlapping graph PCM, device continuity and renderer acceptance remain pending.
 Visible meters remain disabled. In particular, a grid transition must not reuse
 the immediate-play producer or advance audible playback to simulate graph lead.
+
+Explicit stopImmediate and STOP's immediate branch now publish immediateStop for the
+current accepted immediate-play origin. This fact keeps the raw window alive
+and carries the actual frame, generation, ticket and committed clip ID. A small
+audio-owned per-track origin bank distinguishes accepted playback from a raw
+component reset; clear, prepare and raw resets cancel it. Stop facts are emitted
+from the explicit action branches, never inferred from the private generic stop
+routine used by scheduled/panic operations. Native stopped/finalizing state is
+not an analyser-lifetime authority: the message owner decides whether cleanup is
+still pending, a graph remains attached, or the stop is an ordered detached no-op.
+
+The owner validates ordered receipt identity and creates the existing 25ms
+cleanup request while retaining analyser/data/history. Its prepared JUCE adapter
+captures wall time at message receipt application and arms the timer. Repeated
+new stop receipts replace the deadline; duplicates reject without postponing it.
+Accepted PLAY and typed clear cancel old cleanup through the same ordered route.
+Delivered teardown detaches the analyser but retains data/history, including the
+original detached-clear quirk. No audio sample threshold delivers cleanup.
+
+This is acceptance of the immediate-stop handoff and its message-owner timer
+policy. Absolute deadline alignment across command/accepted-receipt latency is
+not established here. Scheduled STOP and STOP ALL use different original delays
+and remain separate pending work; queued/capture/edit graph origins, overlap,
+envelope/continuity and renderer acceptance are also unfinished. No visible meter
+or feature package is enabled by this handoff.

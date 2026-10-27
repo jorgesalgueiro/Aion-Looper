@@ -22,6 +22,7 @@ struct MeterServiceStatus {
     unsigned cleanupRoutes=0,pendingCleanups=0,attachedGraphs=0; // Native ownership diagnostics only.
     std::uint64_t buffers=0,bufferApplied=0;
     std::uint64_t plays=0,playApplied=0;
+    std::uint64_t stops=0,stopApplied=0;
     bool current=false,timerRunning=false;
 };
 class AionProcessor final : private aion::ProcessorMessageLifetime, public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {

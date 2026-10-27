@@ -300,7 +300,7 @@ void LoopBank::clear(Track& track) noexcept {
     track.blockCount=track.captureLength=0;
     if(track.clip){residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;retire(track.clip);track.clip=nullptr;}
     const auto id=static_cast<std::uint32_t>(&track-tracks.data());
-    (*meterWindows)[id].reset();meterGraphTickets[id]=0;meterGraphFrames[id]=0;
+    (*meterWindows)[id].reset();meterGraphTickets[id]=meterImmediateTickets[id]=0;meterGraphFrames[id]=0;
     meterGraphEvents->publish(MeterGraphEventKind::cleared,id,0,frame,track.clearEpoch,removedBuffer);
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
@@ -387,10 +387,10 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
                 if(end-frame>rate*0.05){t.endAt=SyncClock::deadline(end);t.info.stopPending=true;return true;}
             }
             return finish(t);
-        case LoopAction::stopImmediate:stop(t);return true;
+        case LoopAction::stopImmediate:publishImmediateMeterStop(id);stop(t);return true;
         case LoopAction::stop:
             if(s==LoopState::playing&&sync.settings.mode!=SyncMode::off){++t.phaseEpoch;t.info.phaseApplyFrame=0;s=LoopState::stopping;t.endAt=SyncClock::deadline(sync.nextGrid(frame));return true;}
-            stop(t);return true;
+            publishImmediateMeterStop(id);stop(t);return true;
         case LoopAction::clear:++t.clearEpoch;clear(t);return true;
         case LoopAction::play:
             if(s!=LoopState::stopped||!t.clip)return false;

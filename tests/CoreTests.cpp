@@ -31,6 +31,7 @@ void meterSourceTests();
 void meterGraphTests();
 void meterBufferTests();
 void meterPlaybackTests();
+void meterStopTests();
 void playbackClockTests();
 void callbackAudibleTimeTests();
 void callbackClockTests();
@@ -73,6 +74,7 @@ static void hostTransportTests() {
 int main(int argc,char** argv) {
     if(argc==2&&std::string_view(argv[1])=="--meter-buffers"){meterBufferTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-playback"){meterPlaybackTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--meter-stops"){meterStopTests();return 0;}
     deviceCallbackScopeTests();
     hostTransportTests();
     callbackAudibleTimeTests();
@@ -109,6 +111,7 @@ int main(int argc,char** argv) {
     meterGraphTests();
     meterBufferTests();
     meterPlaybackTests();
+    meterStopTests();
     playbackClockTests();
     callbackClockTests();
     outputLatencyTests();

@@ -6597,3 +6597,81 @@ Acceptance is limited to the immediate playback handoff. Stop notification
 origins, capture/edit auto-play graph lifecycle, queued 100ms lead, overlapping
 graph PCM, envelope parity, device continuity and visible rendering remain
 unfinished. No visible meter, package, dependency/version change or push.
+
+### Accepted immediate-stop handoff (2026-10-27)
+
+The acceptedPlayback stream now carries distinct immediateStop facts from
+explicit stopImmediate and STOP's immediate branch for known accepted playback
+origins. The facts retain the raw window token and name the actual clip, ticket,
+frame and generation. Clear, prepare and raw component resets cancel the origin.
+The private generic stop routine, scheduled STOP and STOP ALL never invent this
+25ms origin. Native worker/finalizing or stopped state cannot decide analyser
+attachment: the message owner applies the stop to its explicitly owned graph,
+replaces a pending cleanup for a repeated tap, or accepts a detached ordered no-op.
+
+The owner validates stream health, serial, generation, ticket and clip before
+committing graph metadata. Duplicates/stale/wrong-owner receipts leave the
+cleanup deadline and history unchanged. The sole dispatcher routes through the
+prepared timer adapter, which captures wall time at receipt application and arms
+the existing 25ms cleanup. A new accepted PLAY cancels old cleanup without
+resetting meter history. Actual timer delivery detaches the analyser while
+retaining data/history; a subsequent clear preserves the unchanged JS detached
+history quirk. Stop receipt counters are native diagnostics, not IPC levels.
+
+MeterBufferTests' --meter-stops mode drives actual paired Engine callbacks at
+64/128 on tracks 0/19. It covers immediate/unsynced actions, actual frame/clip/
+window identity, nonzero seeded history, wrong ticket/clip/duplicate rejection,
+audio-clock advancement without teardown, repeated stops after audio has stopped,
+explicit cleanup and detached no-op, typed clear history, same-callback stop/play
+cancellation, NORM->STOP while the worker finalizes followed by the accepted
+buffer, scheduled-stop override, scheduled/panic non-inference, raw reset and
+lost/prepare rejection. Every callback compares exact stereo PCM with a control
+Engine and tracks new/delete. Existing accepted-play tests retain their earlier
+assertions while explicitly consuming the new ordered stop facts.
+
+Native tests drive actual stop receipts through JUCE timers with the audio clock
+frozen, checking the 25ms minimum, repeat/replacement cancellation, detached clear
+history, attached and detached readiness rejection, retained-receipt recovery and
+nonzero PCM/history. The test readiness atomic now outlives its bound fixture
+adapters. Actual production RPC -> callback -> message dispatcher -> pending
+cleanup -> accepted PLAY cancellation is checked at 64/128, retaining previous
+buffer, twenty-route service, shutdown and linked device-manager coverage.
+
+Removing the actual stopImmediate action's publication makes the focused gate
+fail with `Actual audio owner emits the expected ordered buffer/window fact`.
+The mutation and failure are retained in build/immediate-stop-missing-producer.cpp
+and build/immediate-stop-negative.txt. The final producer is restored.
+
+- Full portable suites: Windows **28/28**, **322.87s**; Ubuntu **28/28**,
+  **568.36s**, including prior buffer/playback cases and the new stop handoff.
+- Rebuilt native tests and existing Standalone: Windows **2/2**, **6.50s**;
+  Ubuntu **2/2**, **16.83s**. Both retain **18 linked production
+  AudioDeviceManager blocks**, actual processor/service/readiness/shutdown checks,
+  no skips/JUCE assertion/leak failures and zero tracked callback new/delete.
+- Ubuntu core sanitizer meter selection: **6/6**, **186.75s**, including the new
+  accepted stop/worker-ordering cases. No native sanitizer claim.
+- Committed PCM: **126 cases / 965,826 samples**, maximum error
+  **7.394757495227111e-8** at unchanged **1e-6** tolerance. Existing envelope,
+  browser-resampling, latency-compensation and sync exclusions remain.
+- Original UI byte identity, deterministic embedding and tamper rejection pass.
+  Logo, SDK/generated clock wrappers, dependencies/version and other-format
+  binaries remain unchanged.
+
+Logs: build/immediate-stop-full-{windows,linux}.txt,
+build/immediate-stop-native-{windows,linux}.txt, build/immediate-stop-asan.txt,
+build/immediate-stop-audio.json and build/immediate-stop-assets.txt.
+build/WriteImmediateStopEvidence.py checks these gates, the missing-producer
+failure, unchanged DSP/processor callback/UI/SDK/other-format artifacts and rebuilt
+binary hashes, writing build/immediate-stop-evidence.json.
+Focused reproduction: `build/windows-core/Release/aion_core_tests.exe --meter-stops`
+or `build/core/aion_core_tests --meter-stops` on Ubuntu.
+
+The unchanged reference Loop.stop/_teardown methods remain the behavior authority.
+[JUCE Timer documentation](https://docs.juce.com/master/classjuce_1_1Timer.html)
+confirms callbacks run on the message thread and can be delayed by its workload;
+there is no upper callback-latency assumption in the tests. This gate measures
+25ms from accepted receipt application on that thread. Absolute deadline alignment
+across command/receipt delivery latency, scheduled STOP/STOP ALL, queued/capture/
+edit graph origins, overlap/envelope/continuity and rendering remain unaccepted.
+No full original end-to-end stop timing, physical IO, DAW or Apple acceptance is
+claimed. Keep visible meters disabled; no package/version/dependency change or push.

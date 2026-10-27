@@ -7,7 +7,8 @@
 namespace aion {
 // One per Engine/track, on the message thread, outlived by its lifecycle owner.
 // Explicit stop calls capture the deadline; synchronise only validates/cancels it.
-// Processor service owns these routes; playback stop notification callers are pending.
+// Processor service routes accepted immediate stops here. Scheduled stop origins
+// remain separate; their cleanup must not use the immediate 25ms policy.
 class LoopMeterCleanupTimer final : private juce::Timer {
 public:
     explicit LoopMeterCleanupTimer(LoopMeterLifecycle& lifecycle,const std::atomic<std::uint32_t>* prepared=nullptr) noexcept
@@ -56,6 +57,16 @@ public:
         assertMessageThread();
         if(!ready()||!owner.consumeImmediatePlay(event))return false;
         synchronise();return true;
+    }
+    bool consumeImmediateStop(const MeterGraphEvent& event) noexcept {
+        assertMessageThread();if(!ready())return false;
+        const double wall=wallTime();
+        if(!MeterCleanupDeadline::canArm(wall,.025)||!owner.consumeImmediateStop(event))return false;
+        const auto request=owner.cleanupRequest();stopTimer();deadline.cancel();
+        if(!request.serial)return true; // Already detached: preserve history without rearming.
+        const bool armed=deadline.arm(request,wall);jassert(armed);
+        if(armed)schedule(wall);
+        return armed;
     }
     bool pending() const noexcept {assertMessageThread();return deadline.pending().serial!=0;}
     bool routesTo(const Engine& source,unsigned track) const noexcept {assertMessageThread();return ready()&&owner.routesTo(source,track);}

@@ -6,6 +6,7 @@ struct MeterClearDispatchResult {
     unsigned examined=0,started=0,cleared=0,applied=0,rejected=0;
     unsigned buffers=0,bufferApplied=0;
     unsigned plays=0,playApplied=0;
+    unsigned stops=0,stopApplied=0;
     bool current=false;
 };
 // Sole message consumer of Engine's shared raw-window stream. All twenty
@@ -37,6 +38,11 @@ public:
             else if(event.kind==MeterGraphEventKind::immediatePlay){
                 ++result.plays;
                 if(event.track<routes.size()&&routes[event.track]->consumeImmediatePlay(event))++result.playApplied;
+                else ++result.rejected;
+            }
+            else if(event.kind==MeterGraphEventKind::immediateStop){
+                ++result.stops;
+                if(event.track<routes.size()&&routes[event.track]->consumeImmediateStop(event))++result.stopApplied;
                 else ++result.rejected;
             }
             else if(event.kind==MeterGraphEventKind::bufferInstalled){

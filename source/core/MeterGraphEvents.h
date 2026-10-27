@@ -4,7 +4,7 @@
 namespace aion {
 // Ordered audio-owner facts. Only immediatePlay explicitly proves a new graph;
 // a raw started event or a buffer installation never implies analyser creation.
-enum class MeterGraphEventKind : std::uint8_t { started, cleared, bufferInstalled, immediatePlay };
+enum class MeterGraphEventKind : std::uint8_t { started, cleared, bufferInstalled, immediatePlay, immediateStop };
 // Component scopes retain raw-window/buffer-only contracts. Production adds
 // accepted immediate playback once at construction; never switch at runtime.
 enum class MeterEventScope : std::uint8_t { rawWindows, committedBuffers, acceptedPlayback };
@@ -35,7 +35,7 @@ public:
         const auto retired=kind==MeterGraphEventKind::cleared&&(previous>>32)==generation?
             static_cast<std::uint32_t>(previous):0u;
         const auto currentTicket=kind==MeterGraphEventKind::started||kind==MeterGraphEventKind::immediatePlay?ticket:0;
-        if(kind!=MeterGraphEventKind::bufferInstalled)
+        if(kind==MeterGraphEventKind::started||kind==MeterGraphEventKind::immediatePlay||kind==MeterGraphEventKind::cleared)
             windows[track].store((static_cast<std::uint64_t>(generation)<<32)|currentTicket,std::memory_order_release);
         if(serial==std::numeric_limits<std::uint64_t>::max()||
             !events.push({++serial,frame,clearEpoch,generation,track,ticket,kind,retired,bufferId}))

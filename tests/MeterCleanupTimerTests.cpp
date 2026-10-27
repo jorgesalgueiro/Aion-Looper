@@ -120,7 +120,10 @@ void immediatePlayAdapterTests(bool& audioWatch){
         prepared.store(f.engine->generation(),std::memory_order_release);check(f.timer->consumeBuffer(installed),"Bind actual immediate-play fixture clip");
         const auto play=[&]{for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::stopImmediate,19,0,e->generation(),0,0})
             &&e->enqueueLoop({LoopAction::play,19,0,e->generation(),0,0}),"Queue actual immediate play pair");f.cycle();
-            MeterGraphEvent event;check(f.engine->popMeterGraphEvent(event)&&event.kind==MeterGraphEventKind::immediatePlay,"Actual accepted immediate play receipt");return event;};
+            MeterGraphEvent event;check(f.engine->popMeterGraphEvent(event),"Actual accepted playback receipt");
+            if(event.kind==MeterGraphEventKind::immediateStop){check(f.timer->consumeImmediateStop(event),"Apply actual stop before native replacement");
+                check(f.engine->popMeterGraphEvent(event),"Actual replacement after native stop");}
+            check(event.kind==MeterGraphEventKind::immediatePlay,"Actual accepted immediate play receipt");return event;};
         auto played=play();
         for(auto invalid:{0u,f.engine->generation()+1}){
             prepared.store(invalid,std::memory_order_release);
@@ -241,7 +244,11 @@ void processorBufferReceiptTests(bool& audioWatch){
         command("retrigger");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.plays==1&&s.playApplied==1&&s.attachedGraphs==1,"Production healthy RTRG retains accepted graph identity");
         command("stopImmediate");command("retrigger");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
-        check(s.plays==2&&s.playApplied==2&&s.attachedGraphs==1,"Production stopped RTRG attaches one replacement graph");
+        check(s.plays==2&&s.playApplied==2&&s.attachedGraphs==1&&s.stops==1&&s.stopApplied==1&&!s.pendingCleanups,"Production stopped RTRG attaches one replacement graph and cancels accepted stop cleanup");
+        command("stop");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.stops==2&&s.stopApplied==2&&s.attachedGraphs==1&&s.pendingCleanups==1,"Production unsynced STOP arms the existing owner cleanup without inferring audio-clock teardown");
+        command("play");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.plays==3&&s.playApplied==3&&s.attachedGraphs==1&&!s.pendingCleanups,"Production accepted PLAY cancels pending stop through the sole dispatcher");
         command("clear");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(!s.attachedGraphs&&s.applied==1&&!s.rejected,"Production typed clear detaches accepted playback graph");
     }
@@ -435,16 +442,49 @@ public:
     explicit Runner(bool& watch):audioWatch(watch){begin(64);startTimer(5);}
     ~Runner() override {stopTimer();check(!cleanupWorker.joinable(),"Cleanup worker must finish before owner destruction");}
 private:
-    bool& audioWatch;std::unique_ptr<Fixture> f;std::unique_ptr<ProcessorMeterFixture> processorMeters;
+    bool& audioWatch;std::atomic<std::uint32_t> cleanupPrepared{0}; // Outlives bound fixture adapters.
+    std::unique_ptr<Fixture> f;std::unique_ptr<ProcessorMeterFixture> processorMeters;
     std::unique_ptr<ProcessorShutdownFixture> shutdown;unsigned stage=0;
     double started=0,expectedDelay=0;std::uint64_t frame=0,data=0;std::array<double,7> held{};
     aion::MeterCleanupRequest obsolete{};
     std::thread cleanupWorker;
     std::atomic<bool> cleanupDestroyed{false};
-    std::atomic<std::uint32_t> cleanupPrepared{0};
     void capture(){started=wall();frame=f->engine->clock();data=f->owner->inspect().data;held=reading(f->owner->value());}
     void stopped(){check(!f->owner->inspect().present&&!f->timer->pending()&&f->owner->inspect().data==data
         &&reading(f->owner->value())==held&&f->engine->clock()==frame,"Real timer detaches analyser but retains data/history with frozen audio clock");}
+    void acceptedPlay(bool seed=true){
+        for(auto* e:{f->engine.get(),f->control.get()})check(e->enqueueLoop({aion::LoopAction::stopImmediate,19,0,e->generation(),0,0})
+            &&e->enqueueLoop({aion::LoopAction::play,19,0,e->generation(),0,0}),"Queue actual accepted stop/play timer pair");f->cycle();
+        aion::MeterGraphEvent event;unsigned plays=0;
+        while(f->engine->popMeterGraphEvent(event)){
+            if(event.kind==aion::MeterGraphEventKind::immediateStop)check(f->timer->consumeImmediateStop(event),"Route actual accepted stop before timed replacement");
+            else {check(event.kind==aion::MeterGraphEventKind::immediatePlay&&f->timer->consumeImmediatePlay(event),"Route actual accepted timer playback");++plays;}
+        }
+        check(plays==1,"Exactly one actual timer playback birth");
+        if(seed)for(unsigned n=0;n<2048/f->block;++n){check(f->owner->request(),"Request accepted stop timer PCM");f->cycle();
+            check(f->engine->popLoopMeterWindow(*f->packet),"Receive accepted stop timer PCM");const double t=static_cast<double>(f->view->frame)/48000;
+            check(f->owner->observe(*f->packet,*f->view,f->view->callbackClock,{t,t}),"Seed accepted stop timer history");}
+    }
+    aion::MeterGraphEvent acceptedStop(){
+        for(auto* e:{f->engine.get(),f->control.get()})check(e->enqueueLoop({aion::LoopAction::stopImmediate,19,0,e->generation(),0,0}),"Queue actual stop for native Timer");f->cycle();
+        aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&event.kind==aion::MeterGraphEventKind::immediateStop,"Actual accepted native stop receipt");return event;
+    }
+    void beginAcceptedStops(){
+        const auto block=f->block;f=std::make_unique<Fixture>(block,audioWatch,aion::MeterEventScope::acceptedPlayback);
+        cleanupPrepared.store(f->engine->generation(),std::memory_order_release);
+        f->timer=std::make_unique<aion::LoopMeterCleanupTimer>(*f->owner,&cleanupPrepared);
+        aion::MeterGraphEvent installed;check(f->engine->popMeterGraphEvent(installed)&&f->timer->consumeBuffer(installed),"Install actual native stop fixture buffer");
+        acceptedPlay();check(f->owner->value().peak>0,"Actual accepted stop fixture has nonzero meter history");
+        const auto event=acceptedStop();const auto presentData=f->owner->inspect().data;const auto presentHistory=reading(f->owner->value());
+        for(auto invalid:{0u,f->engine->generation()+1}){
+            cleanupPrepared.store(invalid,std::memory_order_release);
+            check(!f->timer->consumeImmediateStop(event)&&f->owner->inspect().present&&f->owner->inspect().data==presentData
+                &&!f->timer->pending()&&!f->owner->cleanupRequest().serial&&reading(f->owner->value())==presentHistory,
+                "Released or mismatched accepted stop cannot mutate an attached graph or consume the retained receipt");
+        }
+        cleanupPrepared.store(f->engine->generation(),std::memory_order_release);
+        check(f->timer->consumeImmediateStop(event),"Accepted immediate stop arms actual JUCE cleanup");capture();stage=12;
+    }
     void begin(unsigned block){
         shutdown=std::make_unique<ProcessorShutdownFixture>(block,audioWatch);
         processorMeters=std::make_unique<ProcessorMeterFixture>(block,audioWatch);
@@ -550,6 +590,37 @@ private:
                 "A mismatched completed generation rejects new stops without owner or deadline mutation");
             cleanupPrepared.store(f->engine->generation(),std::memory_order_release);f->timer->synchronise();
             check(!f->timer->pending()&&f->owner->deliverCleanup(obsolete),"Generation cancellation retains explicit owner metadata without rescheduling");
+            beginAcceptedStops();break;
+        case 12: {
+            if(f->owner->inspect().present)return;
+            check(wall()-started>=.025,"Accepted stop cannot detach before the original 25ms wall interval");stopped();
+            const auto event=acceptedStop();
+            for(auto invalid:{0u,f->engine->generation()+1}){
+                cleanupPrepared.store(invalid,std::memory_order_release);
+                check(!f->timer->consumeImmediateStop(event)&&!f->timer->pending()&&f->owner->inspect().data==data&&reading(f->owner->value())==held,
+                    "Unprepared or mismatched accepted stop cannot consume metadata or rearm cleanup");
+            }
+            cleanupPrepared.store(f->engine->generation(),std::memory_order_release);
+            check(f->timer->consumeImmediateStop(event)&&!f->timer->pending()&&!f->timer->consumeImmediateStop(event),"Detached accepted stop is a valid no-op and duplicate rejection");
+            for(auto* e:{f->engine.get(),f->control.get()})check(e->enqueueLoop({aion::LoopAction::clear,19,0,e->generation(),0,0}),"Queue actual clear after native stop teardown");f->cycle();
+            aion::MeterGraphEvent cleared;check(f->engine->popMeterGraphEvent(cleared)&&f->timer->consumeClear(cleared)
+                &&f->owner->inspect().data==data&&reading(f->owner->value())==held,"Actual clear after timed teardown retains original detached history");
+            f->record();check(f->engine->popMeterGraphEvent(cleared)&&f->timer->consumeBuffer(cleared),"Reinstall actual native stop buffer");
+            acceptedPlay();check(f->timer->consumeImmediateStop(acceptedStop()),"Arm accepted stop before repeated tap");obsolete=f->owner->cleanupRequest();
+            check(f->timer->consumeImmediateStop(acceptedStop())&&f->owner->cleanupRequest().serial!=obsolete.serial&&!f->owner->deliverCleanup(obsolete),"Repeated accepted stop replaces the real JUCE deadline");
+            capture();stage=14;break;
+        }
+        case 14: {
+            if(f->owner->inspect().present)return;
+            check(wall()-started>=.025,"Repeated accepted stop retains a fresh 25ms minimum");stopped();
+            acceptedPlay();const auto oldData=f->owner->inspect().data;held=reading(f->owner->value());
+            check(f->timer->consumeImmediateStop(acceptedStop()),"Arm accepted stop before real replacement cancellation");obsolete=f->owner->cleanupRequest();acceptedPlay(false);
+            check(f->owner->inspect().data!=oldData&&!f->timer->pending()&&!f->owner->deliverCleanup(obsolete)&&reading(f->owner->value())==held,"Accepted PLAY cancels real stop cleanup without resetting held meter history");
+            capture();stage=15;break;
+        }
+        case 15:
+            if(wall()-started<.08)return;
+            check(f->owner->inspect().present&&!f->timer->pending()&&f->owner->inspect().data==data&&reading(f->owner->value())==held&&f->engine->clock()==frame,"Cancelled accepted stop cannot later detach replacement graph with frozen audio clock");
             if(f->block==64){begin(128);break;}
             stopTimer();juce::MessageManager::getInstance()->stopDispatchLoop();break;
         }
@@ -574,4 +645,5 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     std::cout<<"PASS: prepared/released/unprepared host shutdown, nested message ownership and direct message-thread destruction at 64/128; actual native member and AudioProcessor base parameter destructors retain message ownership, after nonzero PCM and real service callbacks\n";
     std::cout<<"PASS: production twenty-track cleanup adapters are created by message service after host construction/prepare, retained across release/loss/reprepare, routed through the sole clear dispatcher and destroyed under host-held message ownership; armed adapter destruction preserves its surviving owner at 64/128\n";
     std::cout<<"PASS: prepared-generation cleanup guard cancels released/mismatched callbacks without owner or PCM-history mutation, rejects released stops, never resurrects cancelled deadlines and recovers on fresh 25ms stops at 64/128\n";
+    std::cout<<"PASS: actual accepted stop receipts drive 25ms JUCE teardown with frozen audio clocks, repeated stop replacement, prepared rejection, detached clear history and real accepted PLAY cancellation at 64/128; exact paired PCM and zero tracked callback new/delete\n";
 }
