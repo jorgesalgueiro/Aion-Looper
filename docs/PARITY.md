@@ -479,3 +479,17 @@ new clip and report its buffer before starting a graph. The old receipt must not
 clear that buffer or mutate retained data/readings. Because a boolean buffer
 notification has no identity proof, receipt consumption rejects after any buffer
 notice following graph start until fresh graph ownership is established.
+
+### Shared clear routing and generation retention (27 October 2026)
+
+Original-JS graph/owner comparisons remain unchanged. Native tests record/observe
+all twenty tracks, deliver seven Clear All receipts, verify thirteen owners/timers
+remain unchanged, then deliver the remainder. Missing/duplicate/foreign route
+tables consume nothing. Prepare requires owner/dispatcher reset; lost generations
+drain without applying clear or repairing health. Actual paired stereo PCM and
+callback new/delete checks remain required at 64/128.
+An old-header negative fixture reproduces stale-generation pop erasing a newer
+receipt. Conditional dequeue now guards ownership before advancing the head.
+Budget tests retain newer generations and preserve output on zero/failed work,
+including stale/lost discard and SPSC index recovery. This is controlled routing,
+not production processor/renderer or physical-device acceptance.

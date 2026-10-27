@@ -83,6 +83,7 @@ public:
     // Raw-window mutation receipts, not full playback graph lifecycle.
     // Recheck stream validity before using retained receipts.
     bool popMeterGraphEvent(MeterGraphEvent& event) noexcept {return loops.popMeterGraphEvent(event,generation());}
+    bool popMeterGraphEvent(MeterGraphEvent& event,std::uint32_t requestedGeneration,unsigned& budget) noexcept {return loops.popMeterGraphEvent(event,requestedGeneration,budget);}
     bool meterGraphEventsCurrent() const noexcept {return loops.meterGraphEventsCurrent(generation());}
     bool loopMeterGraphCurrent(std::uint32_t requestedGeneration,unsigned track,std::uint32_t ticket) const noexcept {
         return requestedGeneration==generation()&&loops.meterGraphCurrent(requestedGeneration,track,ticket)&&requestedGeneration==generation();

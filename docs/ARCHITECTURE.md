@@ -1756,3 +1756,33 @@ caller performs an explicitly ordered clear). This prevents delayed old DEL from
 removing newly reported buffer metadata before playback starts. It leaves ordinary
 window observations and explicit stop/clear APIs intact; repeated notifications
 may conservatively require the eventual full buffer/lifecycle mapping.
+
+### Bounded shared clear dispatcher (27 October 2026)
+
+LoopMeterClearDispatcher uses a fixed non-owning table for all twenty cleanup
+timers. Every route must match its Engine/track/current owner before any dequeue.
+Owners/timers outlive it and belong to the Engine lifetime, not an editor.
+Reset requires a changed generation, owners reset after prepare, and healthy
+stream. Same-generation reset cannot repair event loss.
+
+Drain clamps raw dequeues to 255, including stale/lost discards. Start facts are
+counted without inferring graph births; clears pass the existing owner guards
+and cancel only accepted timers. Rejections/partial delivery are explicit. Lost
+queues can drain without becoming healthy. Result.current describes stream/route
+readiness, not playback, device continuity or an atomic batch.
+
+SpscQueue::popIf checks active generation after head acquisition and before
+advancing ownership; ordinary pop remains unchanged. A stale requested generation
+leaves newer receipts queued. Correct consumers discard old entries within their
+raw budget. The old-header reproduction is build/dispatch-stale-before.txt.
+
+Native acceptance records/observes all twenty tracks, compares exact paired Engine
+stereo at 64/128 and exercises partial Clear All, pending timers, invalid routes,
+prepare/reset and queue loss. The dispatcher currently has an acceptance caller
+only. Production processor construction/service, full play/buffer/stop mapping,
+zero-ticket pending graphs, overlap PCM, backend continuity and renderer remain
+unfinished. No visible meter or package is enabled.
+
+The inspected [SooperLooper engine queues](https://github.com/essej/sooperlooper/blob/master/src/engine.hpp)
+also separate realtime and main-thread lifecycle handoffs. Aion retains its own
+fixed value queues and unchanged Ascii-Looper behavior oracle.

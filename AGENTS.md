@@ -1273,3 +1273,17 @@ clear-receipt buffer ownership ambiguous. Reject consumption until a fresh accep
 graph start, or use an explicitly ordered clear. Retain the actual DEL/new stopped
 clip/buffer notice/no-new-graph regression as well as replacement-ticket cases.
 Do not infer buffer identity from a boolean or weaken the retained clear checks.
+
+Shared clear dispatcher: keep all twenty non-owning routes matched to the same
+Engine/track/current owner. Missing/duplicate/foreign routes must not dequeue.
+Budget raw work at 255 including stale/lost receipts. Count start facts without
+graph-birth inference; route clear through existing owner/timer guards. Report
+rejected/partial delivery, not atomic batches or device-running status. Lost drain
+cannot repair health; reset only after new-generation prepare/all owner resets.
+Keep actual all-twenty-track 64/128 PCM/Clear All/pending timer/partial delivery/
+route/prepare/loss tests and callback allocation checks. Processor/renderer wiring
+remains pending; no visible meter or package.
+Conditional event pop must validate active generation before advancing the SPSC
+head. A stale caller must retain newer receipts. Keep the old-header failure in
+build/dispatch-stale-before.txt, raw budgets, zero-work/failure-output and lost-
+generation recovery cases. Leave unconditional SpscQueue::pop behavior unchanged.

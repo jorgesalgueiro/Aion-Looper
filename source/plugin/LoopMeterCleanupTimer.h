@@ -38,6 +38,7 @@ public:
         synchronise();return true;
     }
     bool pending() const noexcept {assertMessageThread();return deadline.pending().serial!=0;}
+    bool routesTo(const Engine& source,unsigned track) const noexcept {assertMessageThread();return owner.routesTo(source,track);}
 private:
     static void assertMessageThread() noexcept {jassert(juce::MessageManager::existsAndIsCurrentThread());}
     static double wallTime() noexcept {return juce::Time::getMillisecondCounterHiRes()*.001;}

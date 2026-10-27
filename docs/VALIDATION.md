@@ -6097,3 +6097,61 @@ Current logs are `build/clear-receipt-final-{windows,linux,asan}.txt` and
 the 26 unaffected portable executables, original-JS lifecycle coverage, PCM/assets,
 rebuilt native test/Standalone targets and unchanged SDK/other-format/logo hashes,
 producing `build/clear-receipt-evidence.json`.
+
+### Bounded shared clear dispatcher and generation-safe dequeue (27 October 2026)
+
+The old MeterGraphEvents header is reproduced in build/dispatch-before with a
+minimal diagnostic: publish generation 1, prepare/publish generation 2, call pop
+with stale generation 1, then try the correct generation. Old code drains the
+new receipt and fails. build/dispatch-stale-before.txt retains that failure.
+The new conditional dequeue checks active ownership before advancing the head;
+ordinary SpscQueue::pop remains byte-identical at the source-function level.
+A budgeted event pop counts raw stale/lost dequeues and preserves output when no
+valid event is returned. Core tests cover future receipt retention, partial stale
+discard, zero work, lost-generation draining and fresh-generation recovery, plus
+all previous concurrent field/PCM checks and zero tracked new/delete.
+
+LoopMeterClearDispatcher accepts a complete fixed non-owning table for twenty
+current same-Engine/track timers. Invalid tables consume no events. Drain clamps
+to 255 raw dequeues, counts starts without graph-birth inference and applies clears
+through existing owner/timer guards. Partial/rejected delivery is explicit; lost
+streams can drain but cannot recover without prepare. Owners reset after the
+prepare barrier before the dispatcher captures the new generation.
+
+Native fixtures record/observe all twenty tracks and compare actual paired Engine
+stereo at 64/128. All timers are pending during actual Clear All: seven deliveries
+cancel/reset exactly seven owners while thirteen remain intact, then the remainder
+is delivered. Missing/duplicate/foreign tables preserve all initial start facts.
+Prepare/stale-owner/reset, raw stale budgets, unbound clears and event overflow /
+loss are exercised. These controlled callbacks do not establish physical-device
+continuity or full original overlapping-graph PCM. Message Timer cancellation uses
+the actual JUCE API; existing actual message-loop timer tests remain enabled.
+
+Production processor construction/service and complete play/buffer/stop mapping,
+zero-ticket pending graphs, overlap PCM, backend continuity and renderer acceptance
+remain unfinished. This dispatcher has a native acceptance caller, not a production
+processor caller. No new GUI/DAW/hardware/Apple acceptance, visible meters, package,
+version/dependency change or push. Original UI/native logo and DSP/processor source
+remain unchanged; existing native test and Standalone targets are rebuilt.
+
+Final current gates:
+
+- Windows full portable **28/28**, 318.96s.
+- Ubuntu full portable **28/28**, 560.08s.
+- ASan/UBSan targeted realtime/clock/meter **6/6**, 172.78s.
+- Windows native processor/SDK **2/2**, 6.34s.
+- Ubuntu native processor/SDK **2/2**, 13.12s.
+- Committed PCM **126 cases / 965,826 samples**, maximum absolute error
+  **7.394757495227111e-8** at unchanged **1e-6** tolerance. Capture/OD/SUB scope
+  excludes playback envelopes, browser resampling, latency compensation and sync.
+- Original UI byte identity, deterministic embedding and tamper rejection pass.
+
+Both native runs include the actual all-twenty-track dispatcher fixture, existing
+real message-loop cleanup tests and **18 linked production AudioDeviceManager
+blocks**, with no skips/assertions/leaks. Current logs are
+build/dispatch-full-{windows,linux}.txt, build/dispatch-asan.txt,
+build/dispatch-native-{windows,linux}.txt, build/dispatch-audio.json and
+build/dispatch-assets.txt. build/WriteDispatchEvidence.py verifies current results,
+the old-header failure and unchanged ordinary pop source, source/log hashes,
+rebuilt native/Standalone targets and unchanged SDK/other-format/UI/logo evidence,
+producing build/dispatch-evidence.json.

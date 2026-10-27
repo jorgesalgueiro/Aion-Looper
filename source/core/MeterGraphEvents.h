@@ -47,8 +47,14 @@ public:
         return windows[track].load(std::memory_order_acquire)==expected&&current(generation);
     }
     bool pop(MeterGraphEvent& output,std::uint32_t generation) noexcept {
+        unsigned budget=queueSize-1;return pop(output,generation,budget);
+    }
+    // Budget counts raw dequeues, including stale/lost receipts. A stale caller
+    // must leave future-generation entries queued for the correct owner.
+    bool pop(MeterGraphEvent& output,std::uint32_t generation,unsigned& budget) noexcept {
         MeterGraphEvent event;
-        for(unsigned n=0;n<queueSize-1&&events.pop(event);++n){
+        while(budget&&events.popIf(event,[&]() noexcept {return generation&&active.load(std::memory_order_acquire)==generation;})){
+            --budget;
             if(event.generation==generation&&current(generation)){
                 output=event;return true;
             }

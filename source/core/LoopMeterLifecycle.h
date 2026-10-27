@@ -114,6 +114,7 @@ public:
     const MeterReading& value() const noexcept {return graph.value();}
     LoopMeterBinding binding() const noexcept {return receipt;}
     MeterCleanupRequest cleanupRequest() const noexcept {return cleanup;}
+    bool routesTo(const Engine& source,unsigned track) const noexcept {return &engine==&source&&id==track&&current();}
 private:
     bool current() const noexcept {return id<LoopBank::trackCount&&generation&&generation==engine.generation();}
     // Event loss invalidates retained graph/window receipts for this generation.

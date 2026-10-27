@@ -20,6 +20,13 @@ public:
         if (r == write.load(std::memory_order_acquire)) return false;
         value = values[r]; read.store((r + 1) & (N - 1), std::memory_order_release); return true;
     }
+    // Sole consumer gate, after acquiring the immutable head and before taking
+    // ownership. The predicate must not reenter this queue.
+    template<class Ready> bool popIf(T& value,Ready&& ready) noexcept {
+        const auto r=read.load(std::memory_order_relaxed);
+        if(r==write.load(std::memory_order_acquire)||!ready())return false;
+        value=values[r];read.store((r+1)&(N-1),std::memory_order_release);return true;
+    }
 private:
     std::array<T, N> values{};
     alignas(128) std::atomic<std::uint32_t> write{0};

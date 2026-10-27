@@ -11,6 +11,29 @@ extern thread_local bool watch;
 extern std::atomic<int> allocations;
 namespace {void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}}
 namespace {
+void budgetedEventPopTests(){
+    using namespace aion;SpscQueue<unsigned,4> queue;unsigned value=99,calls=0;
+    auto stream=std::make_unique<MeterGraphEvents>();MeterGraphEvent event{};event.serial=999;
+    watch=true;check(queue.push(7),"Seed conditional dequeue");
+    check(!queue.popIf(value,[&]() noexcept {++calls;return false;})&&value==99&&calls==1
+        &&queue.popIf(value,[]() noexcept {return true;})&&value==7,"Rejected gate leaves head and output untouched");
+    check(!queue.popIf(value,[&]() noexcept {++calls;return true;})&&calls==1,"Empty conditional pop never calls its gate");
+    stream->reset(1);for(unsigned n=0;n<3;++n)stream->publish(MeterGraphEventKind::started,n,n+1,n,0);
+    stream->reset(2);stream->publish(MeterGraphEventKind::started,19,99,50,0);
+    unsigned budget=5;
+    check(!stream->pop(event,1,budget)&&budget==5&&event.serial==999,"Stale-generation consumer must not drain future receipts");
+    budget=2;check(!stream->pop(event,2,budget)&&budget==0&&event.serial==999,"Stale discard obeys raw dequeue budget and preserves output");
+    budget=0;check(!stream->pop(event,2,budget)&&event.serial==999,"Zero work budget preserves head/output");
+    budget=2;check(stream->pop(event,2,budget)&&budget==0&&event.track==19&&event.ticket==99,"Correct owner recovers retained future receipt after bounded stale discard");
+    stream->reset(3);for(unsigned n=0;n<256;++n)stream->publish(MeterGraphEventKind::cleared,0,0,n,n);
+    budget=5;event.serial=999;check(!stream->pop(event,3,budget)&&budget==0&&event.serial==999&&!stream->current(3),"Lost-generation draining stays bounded and cannot restore health");
+    stream->reset(4);stream->publish(MeterGraphEventKind::started,19,100,1000,0);
+    budget=7;check(!stream->pop(event,3,budget)&&budget==7,"Lost old caller cannot consume recovered-generation queue");
+    check(!stream->pop(event,4,budget)&&budget==0&&event.serial==999,"Old full backlog cannot defeat the new owner budget");
+    budget=255;check(stream->pop(event,4,budget)&&event.generation==4&&event.serial==1&&event.ticket==100,"New generation recovers without resetting SPSC indices");
+    watch=false;
+    std::cout<<"PASS: generation-safe conditional meter dequeue, raw stale/lost budgets, zero work and untouched outputs; zero tracked new/delete\n";
+}
 void cleanupDeadlineTests(){
     using namespace aion;MeterCleanupDeadline timer;MeterCleanupRequest out{99,99,99};double left=99;
     const MeterCleanupRequest first{0xffffffffffffffffull,0xffffffffu,.025},later{1,1,.13};
@@ -524,6 +547,7 @@ void meterGraphTests(){
         const auto reading=meter.value();watch=false;
         if(block==64)baseline=reading;else check(reading.rms==baseline.rms&&reading.peak==baseline.peak&&reading.rmsPercent==baseline.rmsPercent,"Exact supplied-window graph meter 64/128 invariance");
     }
+    budgetedEventPopTests();
     cleanupDeadlineTests();
     clearReceiptOwnerTests();
     boundGraphTests();

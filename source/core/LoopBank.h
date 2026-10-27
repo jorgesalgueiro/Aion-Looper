@@ -79,6 +79,7 @@ public:
     // Prepare barrier/audio producer; message owner consumes the same stream.
     void resetMeterGraphEvents(std::uint32_t generation) noexcept {meterGraphEvents->reset(generation);}
     bool popMeterGraphEvent(MeterGraphEvent& event,std::uint32_t generation) noexcept {return meterGraphEvents->pop(event,generation);}
+    bool popMeterGraphEvent(MeterGraphEvent& event,std::uint32_t generation,unsigned& budget) noexcept {return meterGraphEvents->pop(event,generation,budget);}
     bool meterGraphEventsCurrent(std::uint32_t generation) const noexcept {return meterGraphEvents->current(generation);}
     bool meterGraphCurrent(std::uint32_t generation,unsigned id,std::uint32_t ticket) const noexcept {return meterGraphEvents->owns(generation,id,ticket);}
     std::uint32_t meterGraphTicket(unsigned id) const noexcept {return id<trackCount?meterGraphTickets[id]:0;}

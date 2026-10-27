@@ -1,4 +1,5 @@
 #include "plugin/LoopMeterCleanupTimer.h"
+#include "plugin/LoopMeterClearDispatcher.h"
 #include <array>
 #include <atomic>
 #include <condition_variable>
@@ -37,10 +38,10 @@ struct Fixture {
         }
         record();
     }
-    void record(){
+    void record(unsigned track=19){
         const auto start=engine->clock();
-        for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({aion::LoopAction::record,19,1,e->generation(),start,0})
-            &&e->enqueueLoop({aion::LoopAction::finish,19,2,e->generation(),start+4096,0}),"Prepare actual recorded timer PCM");
+        for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({aion::LoopAction::record,track,1,e->generation(),start,0})
+            &&e->enqueueLoop({aion::LoopAction::finish,track,2,e->generation(),start+4096,0}),"Prepare actual recorded timer PCM");
         for(unsigned n=0;n<8192/block;++n)cycle(true);
     }
     void clearFromAudio(){
@@ -61,6 +62,64 @@ struct Fixture {
         check(owner->value().peak>0,"Timer history contains nonzero actual PCM");
     }
 };
+void clearDispatcherTests(bool& audioWatch){
+    using namespace aion;
+    for(unsigned block:{64u,128u}){
+        Fixture f(block,audioWatch);
+        std::array<std::unique_ptr<LoopMeterLifecycle>,20> owners;
+        std::array<std::unique_ptr<LoopMeterCleanupTimer>,20> timers;
+        std::array<LoopMeterLifecycle*,20> ownerRoutes{};LoopMeterClearDispatcher::Routes routes{};
+        for(unsigned id=0;id<20;++id){
+            if(id==19){ownerRoutes[id]=f.owner.get();routes[id]=f.timer.get();}
+            else {f.record(id);owners[id]=std::make_unique<LoopMeterLifecycle>(*f.engine,id);ownerRoutes[id]=owners[id].get();
+                timers[id]=std::make_unique<LoopMeterCleanupTimer>(*owners[id]);routes[id]=timers[id].get();}
+            check(ownerRoutes[id]->setBuffer(true)&&ownerRoutes[id]->start(f.engine->clock()),"Start all twenty explicit dispatcher graphs");
+        }
+        for(unsigned n=0;n<40;++n){
+            for(auto* owner:ownerRoutes)check(owner->request(),"Request all dispatcher windows");f.cycle();
+            while(f.engine->popLoopMeterWindow(*f.packet)){
+                const double t=static_cast<double>(f.view->frame)/48000;
+                check(ownerRoutes[f.packet->track]->observe(*f.packet,*f.view,f.view->callbackClock,{t,t}),"Observe actual all-track dispatcher PCM");
+            }
+        }
+        for(auto* owner:ownerRoutes)check(owner->value().peak>0,"Every dispatch route has actual nonzero PCM history");
+        auto missing=routes;missing[4]=nullptr;LoopMeterClearDispatcher absent(*f.engine,missing);
+        check(!absent.drain().examined,"Incomplete routes cannot consume the shared stream");
+        auto duplicate=routes;duplicate[4]=routes[3];LoopMeterClearDispatcher repeated(*f.engine,duplicate);
+        check(!repeated.drain().examined,"Duplicate/wrong-track route cannot consume the shared stream");
+        LoopMeterLifecycle foreign(*f.control,0);LoopMeterCleanupTimer foreignTimer(foreign);
+        auto wrongEngine=routes;wrongEngine[0]=&foreignTimer;LoopMeterClearDispatcher unrelated(*f.engine,wrongEngine);
+        check(!unrelated.drain().examined,"Foreign Engine route cannot consume another Engine's stream");
+        LoopMeterClearDispatcher dispatcher(*f.engine,routes);
+        check(dispatcher.drain(0).current&&!dispatcher.reset(),"Zero budget and same-generation reset cannot consume/repair work");
+        auto result=dispatcher.drain(7);check(result.current&&result.examined==7&&result.started==7&&!result.cleared,"Initial starts consume only the requested raw budget");
+        result=dispatcher.drain(255);check(result.current&&result.examined==13&&result.started==13,"Invalid route tables left all twenty start facts unread");
+        for(auto* timer:routes)check(timer->stop(1),"Arm all twenty native cleanup timers");
+        const auto clearAll=[&]{for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::clearAll,0,3,e->generation(),0,0}),"Actual dispatcher Clear All");f.cycle();};
+        clearAll();result=dispatcher.drain(7);
+        check(result.current&&result.examined==7&&result.cleared==7&&result.applied==7&&!result.rejected,"Slow consumer clears exactly seven matching owners/timers");
+        for(unsigned id=0;id<20;++id)check(routes[id]->pending()==(id>=7)&&ownerRoutes[id]->inspect().buffer==(id>=7),"Partial dispatch preserves all undelivered track ownership");
+        result=dispatcher.drain(std::numeric_limits<unsigned>::max());
+        check(result.current&&result.examined==13&&result.applied==13,"Large drain requests clamp to fixed queue capacity");
+        for(unsigned id=0;id<20;++id)check(!routes[id]->pending()&&!ownerRoutes[id]->inspect().data&&ownerRoutes[id]->value().peak==0,"Shared dispatch cancels all timers and attached history exactly once");
+        clearAll();f.prepare();
+        check(!dispatcher.drain().examined&&!dispatcher.reset(),"Prepare rejects stale routes without consuming new receipts");
+        for(auto* owner:ownerRoutes)owner->reset();
+        check(!dispatcher.drain().examined&&dispatcher.reset(),"All owners must reset before explicit dispatcher generation reset");
+        clearAll();result=dispatcher.drain(5);
+        check(result.current&&result.examined==5&&!result.cleared,"Old-generation discard counts against the shared raw budget");
+        result=dispatcher.drain(255);
+        check(result.current&&result.examined==35&&result.cleared==20&&result.rejected==20&&!result.applied,"Correct generation retains new unbound clears after stale consumer rejection");
+        for(unsigned n=0;n<256;++n){
+            for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::clear,0,10+n,e->generation(),0,0}),"Fill dispatcher event stream");
+            if(n%100==99)f.cycle();
+        }
+        f.cycle();result=dispatcher.drain(5);
+        check(!result.current&&result.examined==5&&!result.applied&&!dispatcher.reset(),"Lost stream drains bounded work without applying clear or repairing health");
+        result=dispatcher.drain(255);check(!result.current&&result.examined==250&&!result.applied,"Lost queue remainder drains without silent recovery");
+    }
+    std::cout<<"PASS: sole-consumer dispatcher routes actual 20-track Clear All, bounded stale/lost budgets, missing/duplicate/foreign routes, prepare reset and native timer cancellation at 64/128 with exact paired PCM\n";
+}
 class Runner final : private juce::Timer {
 public:
     explicit Runner(bool& watch):audioWatch(watch){begin(64);startTimer(5);}
@@ -135,6 +194,7 @@ private:
 }
 
 void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
+    clearDispatcherTests(audioWatch);
     std::mutex mutex;std::condition_variable changed;bool finished=false;
     std::thread watchdog([&]{std::unique_lock lock(mutex);if(!changed.wait_for(lock,std::chrono::seconds(30),[&]{return finished;})){
         std::cerr<<"Native cleanup timer message-loop watchdog expired"<<std::endl;std::_Exit(1);}});
