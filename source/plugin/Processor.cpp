@@ -67,7 +67,11 @@ AionProcessor::AionProcessor(ExportDestination destination,OutputLatencyReader l
     syncBars=parameters.getRawParameterValue("syncBars");syncNum=parameters.getRawParameterValue("syncNum");
     syncDen=parameters.getRawParameterValue("syncDen");countIn=parameters.getRawParameterValue("countInVisual");countInAudio=parameters.getRawParameterValue("countInAudio");
 }
-AionProcessor::~AionProcessor(){midiDeviceChanges.reset();stopTimer();exportLifetime.reset();exportWriter.removeAllJobs(true,-1);exportChooser.reset();}
+AionProcessor::~AionProcessor(){
+    retainMessageOwnershipForDestruction();
+    preparedGeneration.store(0,std::memory_order_release);
+    midiDeviceChanges.reset();stopTimer();exportLifetime.reset();exportWriter.removeAllJobs(true,-1);exportChooser.reset();
+}
 bool AionProcessor::updateMidi(aion::MidiSettings next){
     std::lock_guard guard(midiSettingsMutex);
     next.revision=midiSettings.revision+1;if(!next.revision)++next.revision;

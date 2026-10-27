@@ -217,18 +217,111 @@ private:
         check(audible,"Processor meter fixture monitors actual nonzero PCM");
     }
 };
+struct ShutdownState {
+    std::atomic<bool> armed{false},done{false},memberOwned{false},parameterOwned{false},memberOnMessage{false},parameterOnMessage{false};
+    std::atomic<unsigned> members{0},parameters{0};
+    std::mutex mutex;std::condition_variable changed;bool releaseUnowned=false;
+};
+struct ShutdownResource {
+    std::shared_ptr<ShutdownState> state;
+    ~ShutdownResource(){
+        if(!state->armed.load(std::memory_order_acquire))return;
+        auto* manager=juce::MessageManager::getInstanceWithoutCreating();
+        const bool owned=manager&&manager->currentThreadHasLockedMessageManager();
+        state->memberOwned.store(owned);state->memberOnMessage.store(manager&&manager->isThisTheMessageThread());
+        state->members.fetch_add(1,std::memory_order_release);
+        // The old-code negative run pauses here until the message test elects
+        // to join it. Parameters cannot be freed against a running UI callback.
+        if(!owned){std::unique_lock lock(state->mutex);state->changed.wait(lock,[&]{return state->releaseUnowned;});}
+    }
+};
+class ShutdownParameter final : public juce::AudioParameterBool {
+public:
+    explicit ShutdownParameter(std::shared_ptr<ShutdownState> observer)
+        :AudioParameterBool(juce::ParameterID{"shutdownProbe",1},"Shutdown probe",false),state(std::move(observer)){}
+    ~ShutdownParameter() override {
+        if(!state->armed.load(std::memory_order_acquire))return;
+        auto* manager=juce::MessageManager::getInstanceWithoutCreating();
+        state->parameterOwned.store(manager&&manager->currentThreadHasLockedMessageManager());
+        state->parameterOnMessage.store(manager&&manager->isThisTheMessageThread());
+        state->parameters.fetch_add(1,std::memory_order_release);
+    }
+private:
+    std::shared_ptr<ShutdownState> state;
+};
+// Observe actual std::function member cleanup and AudioProcessor-owned parameter
+// deletion, after AionProcessor's own members and APVTS have been destroyed.
+class ProcessorShutdownFixture {
+public:
+    ProcessorShutdownFixture(unsigned size,bool& watch):block(size),audioWatch(watch){begin();}
+    ~ProcessorShutdownFixture(){check(!worker.joinable(),"Shutdown fixture must finish host destruction before teardown");}
+    bool complete() const noexcept {return which==5;}
+    void poll(){
+        if(complete())return;
+        if(worker.joinable()){
+            if(state->members.load(std::memory_order_acquire)&&!state->memberOwned.load()){
+                {std::lock_guard lock(state->mutex);state->releaseUnowned=true;}state->changed.notify_one();
+                worker.join();
+                check(false,"Background processor destruction must retain message ownership through member and base parameter cleanup");
+            }
+            if(!state->done.load(std::memory_order_acquire))return;
+            worker.join();verify(false);advance();return;
+        }
+        if(which!=4&&processor->inspectMeterServiceMessageThread().passes<=initialPasses)return;
+        if(which==1)processor->releaseResources();
+        state->armed.store(true,std::memory_order_release);
+        if(which==3){processor.reset();verify(true);advance();return;}
+        const bool nested=which==2;
+        worker=std::thread([held=std::move(processor),observer=state,nested]() mutable {
+            if(nested){const juce::MessageManagerLock outer;held.reset();}
+            else held.reset();
+            observer->done.store(true,std::memory_order_release);
+        });
+    }
+private:
+    unsigned block,which=0;bool& audioWatch;std::uint64_t initialPasses=0;
+    std::shared_ptr<ShutdownState> state;
+    std::unique_ptr<AionProcessor> processor;
+    std::thread worker;
+    void verify(bool onMessage){
+        check(state->members.load()==1&&state->parameters.load()==1&&state->memberOwned.load()&&state->parameterOwned.load(),
+            "Message ownership must cover both native members and AudioProcessor base parameters");
+        check(state->memberOnMessage.load()==onMessage&&state->parameterOnMessage.load()==onMessage,
+            "Shutdown ownership must preserve the host-selected destruction thread");
+    }
+    void advance(){if(++which<5)begin();}
+    void begin(){
+        state=std::make_shared<ShutdownState>();auto resource=std::make_shared<ShutdownResource>();resource->state=state;
+        processor=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},[resource]{return aion::DeviceOutputLatency{};});
+        processor->addParameter(new ShutdownParameter(state));
+        if(which==4)return; // Never prepared: APVTS still owns a live timer.
+        processor->setPlayConfigDetails(2,2,48000,static_cast<int>(block));processor->prepareToPlay(48000,static_cast<int>(block));
+        processor->parameters.getParameter("masterGain")->setValueNotifyingHost(.5f);
+        processor->parameters.getParameter("inputMonitor")->setValueNotifyingHost(1);
+        juce::AudioBuffer<float> audio(2,static_cast<int>(block));audio.clear();
+        for(int n=0;n<static_cast<int>(block);++n){audio.setSample(0,n,.25f);audio.setSample(1,n,-.125f);}
+        juce::MidiBuffer midi;midi.ensureSize(256);
+        audioWatch=true;processor->processBlock(audio,midi);audioWatch=false;
+        check(audio.getMagnitude(0,static_cast<int>(block))>0,"Shutdown fixture renders actual nonzero PCM before stopping audio calls");
+        processor->request({juce::JSON::parse(R"({"operation":"snapshot"})")});
+        const auto status=processor->inspectMeterServiceMessageThread();check(status.current&&status.timerRunning,"Shutdown begins with live processor service");
+        initialPasses=status.passes;
+    }
+};
 class Runner final : private juce::Timer {
 public:
     explicit Runner(bool& watch):audioWatch(watch){begin(64);startTimer(5);}
     ~Runner() override {stopTimer();}
 private:
-    bool& audioWatch;std::unique_ptr<Fixture> f;std::unique_ptr<ProcessorMeterFixture> processorMeters;unsigned stage=0;
+    bool& audioWatch;std::unique_ptr<Fixture> f;std::unique_ptr<ProcessorMeterFixture> processorMeters;
+    std::unique_ptr<ProcessorShutdownFixture> shutdown;unsigned stage=0;
     double started=0,expectedDelay=0;std::uint64_t frame=0,data=0;std::array<double,7> held{};
     aion::MeterCleanupRequest obsolete{};
     void capture(){started=wall();frame=f->engine->clock();data=f->owner->inspect().data;held=reading(f->owner->value());}
     void stopped(){check(!f->owner->inspect().present&&!f->timer->pending()&&f->owner->inspect().data==data
         &&reading(f->owner->value())==held&&f->engine->clock()==frame,"Real timer detaches analyser but retains data/history with frozen audio clock");}
     void begin(unsigned block){
+        shutdown=std::make_unique<ProcessorShutdownFixture>(block,audioWatch);
         processorMeters=std::make_unique<ProcessorMeterFixture>(block,audioWatch);
         f=std::make_unique<Fixture>(block,audioWatch);f->play();capture();
         check(f->timer->stop(1)&&f->owner->cleanupRequest().delay==.025,"Native immediate stop captures 25ms");stage=0;
@@ -240,6 +333,7 @@ private:
         check(f->owner->inspect().present,"Blocked message thread cannot deliver a timer callback");
     }
     void timerCallback() override {
+        shutdown->poll();
         processorMeters->poll();
         switch(stage){
         case 0:
@@ -284,6 +378,7 @@ private:
         case 7:
             if(wall()-started<.08)return;
             if(!processorMeters->complete())return;
+            if(!shutdown->complete())return;
             check(f->owner->inspect().present&&f->owner->inspect().data==data&&!f->timer->pending()
                 &&reading(f->owner->value())==held,"Cleared timer cannot detach the same-generation re-recorded graph");
             if(f->block==64){begin(128);break;}
@@ -304,4 +399,5 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     std::cout<<"PASS: real JUCE message-loop cleanup at 64/128, 25/50ms, late delivery, cancellation/replacement, queued-play retention, prepare/destruction and exact PCM; zero tracked callback new/delete\n";
     std::cout<<"PASS: actual DEL receipt cancels pending JUCE cleanup and preserves same-generation re-recorded graph at 64/128\n";
     std::cout<<"PASS: production processor-owned twenty-track meter routing, 32-work request budget, autonomous editor-free timer, host-thread release/prepare, idle wakeup retention, frozen release, loss latch and fresh recovery at 64/128; exact nonzero stereo PCM and unchanged state\n";
+    std::cout<<"PASS: prepared/released/unprepared host shutdown, nested message ownership and direct message-thread destruction at 64/128; actual native member and AudioProcessor base parameter destructors retain message ownership, after nonzero PCM and real service callbacks\n";
 }

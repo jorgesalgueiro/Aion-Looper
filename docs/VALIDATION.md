@@ -6258,3 +6258,51 @@ build/meter-service-evidence.json. Full 28-test portable suites were not rerun
 for this bounded lifecycle integration; their earlier 05ed773 results remain
 above. The final Windows core rebuild required elevated access to protected
 MSBuild .tlog metadata; its retry and all final checks succeeded.
+
+### Processor shutdown message ownership (27 October 2026)
+
+The added native regression fails against 8543d6b with `Background processor
+destruction must retain message ownership through member and base parameter
+cleanup` in build/shutdown-before.txt. The unchanged pre-fix Processor.cpp/.h
+are retained as build/shutdown-before-Processor.{cpp,h}. A gated dependency
+destructor lets the negative fixture finish parameter cleanup while the message
+test is blocked, avoiding a race merely to report the missing ownership.
+
+The new first private base acquires ownership only during host-worker shutdown
+and retains it through native members, APVTS and AudioProcessor base parameters.
+Existing message-thread or pre-held ownership is reused. Both actual dependency
+and base-parameter destructors verify ownership and the host-selected destruction
+thread. At 64/128 the fixture covers prepared/released/unprepared worker teardown,
+nested ownership and direct message destruction; prepared cases render nonzero
+PCM and wait for real processor service callbacks before stopping audio calls.
+processBlock, core DSP, runtime meter servicing, original UI and state format are
+unchanged. Only the existing native test and Standalone targets were rebuilt.
+
+Final current gates:
+
+- Windows native processor/SDK **2/2**, 6.01s; Ubuntu **2/2**, 14.39s.
+- Selected realtime/clock/unchanged-JS meter gates: Windows **6/6**, 90.80s;
+  Ubuntu **6/6**, 53.75s. No core source changed; full portable/sanitizer suites
+  were not rerun and no native sanitizer result is claimed.
+- Each native run retains **18 linked production AudioDeviceManager blocks**,
+  real JUCE meter cleanup and twenty-track processor servicing, with no skips,
+  assertion/leak failures or tracked callback new/delete.
+- Committed PCM **126 cases / 965,826 samples**, maximum absolute error
+  **7.394757495227111e-8** at unchanged **1e-6** tolerance; existing envelope/
+  browser-resampling/latency-compensation/sync exclusions remain.
+- Original UI byte identity/deterministic embedding/tamper rejection pass.
+  The committed logo, SDK/generated wrappers and other-format artifacts remain
+  unchanged. No package, dependency/version change or push.
+
+Logs: build/shutdown-{native,core}-{windows,linux}.txt,
+build/shutdown-audio.json and build/shutdown-assets.txt. The evidence writer
+build/WriteShutdownEvidence.py verifies the old-code failure, current gates,
+source/binary hashes and unchanged processBlock/core/UI/logo/SDK, producing
+build/shutdown-evidence.json.
+
+The running dispatcher must remain available during worker shutdown; the message
+thread cannot join a worker awaiting message ownership. Audio must already have
+stopped. After global dispatch shutdown the caller must already have quiesced
+callbacks; no new lock is requested then. Concurrent audio, reentrant or arbitrary
+post-quit destruction and DAW/Apple/hardware acceptance are not established.
+Full meter playback/buffer/stop notification mapping and rendering remain pending.

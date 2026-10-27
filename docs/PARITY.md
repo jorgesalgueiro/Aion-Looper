@@ -531,3 +531,24 @@ These tests establish bounded raw-clear service and stable owner storage. They
 do not establish the missing playback/buffer/stop producer, visible level updates,
 backend continuity, DAW/hardware/Apple behavior or arbitrary concurrent processor
 destruction. The original web interface remains byte-identical.
+
+### Processor shutdown lifecycle (27 October 2026)
+
+An actual native worker-destruction test fails on 8543d6b: the native dependency
+member destructor runs without message ownership. The fixture observes both that
+member and a parameter owned/deleted by the AudioProcessor base. The new first-base
+guard must retain ownership through both, without moving destruction to a different
+host thread. Cases cover prepared/released/unprepared worker destruction, a worker
+already holding ownership, and message-thread destruction at 64/128.
+
+No audio calls overlap deletion. Prepared cases first render actual nonzero PCM
+and wait for real processor timer servicing. Existing all-track meter, cleanup,
+exact PCM and saved-state tests remain intact. The message test polls worker
+completion and joins only completed workers; it never blocks the dispatcher on a
+worker that is awaiting message ownership. The negative-run dependency gate also
+keeps parameter cleanup serialized while reporting the old failure.
+
+This establishes the tested running-dispatch shutdown boundary. It does not prove
+arbitrary destruction concurrent with audio, reentrant destruction or teardown
+after global message shutdown. Full meter playback/buffer/stop mapping, overlap
+PCM, backend continuity and rendering remain unfinished; no package is enabled.

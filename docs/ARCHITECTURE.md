@@ -1841,3 +1841,32 @@ This is production ownership and raw-clear servicing, not full playback/buffer/
 stop notification mapping. Per-track cleanup adapters are not constructed in the
 processor yet. Pending zero-ticket graphs, overlap PCM, backend continuity,
 renderer and visible-meter acceptance remain unfinished; no package is enabled.
+
+### Processor shutdown message ownership (27 October 2026)
+
+ProcessorMessageLifetime is the first private base and is destroyed last. Only
+during processor destruction, a host worker without existing message ownership
+acquires a JUCE MessageManagerLock before timers or members are torn down. The
+lock survives native member, APVTS, AudioProcessor-owned parameter and Timer-base
+destruction. A local destructor-body lock or an ordinary member guard would end
+too soon to cover that complete sequence. Message-thread destruction and hosts
+already holding ownership reuse their current ownership.
+
+The running message loop must remain available while a host worker obtains this
+ownership. The message thread must not wait for that worker while it is acquiring
+the lock. Audio callbacks must already be stopped. After global message dispatch
+has been stopped, no new lock is requested: callback quiescence is then the
+caller's responsibility. This is not arbitrary concurrent audio/reentrant or
+post-shutdown destruction support. Construction and processBlock do not acquire
+this guard, so it introduces no lock or allocation on the audio callback.
+
+The native fixture observes actual dependency-member and AudioProcessor-owned
+parameter destructors at 64/128 after nonzero PCM and real service callbacks.
+It covers prepared, released and unprepared worker destruction, pre-held nested
+ownership and direct message-thread destruction. The old-code negative run gates
+unowned dependency destruction so the test can report the failure without freeing
+parameters against a running message callback.
+
+This follows the documented [JUCE Timer stop contract](https://docs.juce.com/master/classjuce_1_1Timer.html)
+and [MessageManagerLock ownership contract](https://docs.juce.com/master/classjuce_1_1MessageManagerLock.html).
+No external looper implementation or SDK source was imported or modified.

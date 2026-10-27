@@ -1316,3 +1316,17 @@ Keep the timer-backed dispatcher tests alongside owner routes. Cleanup adapter
 construction, full playback/buffer/stop mapping, overlap/continuity and renderer
 remain pending; do not claim visible meters or arbitrary concurrent host-thread
 destruction safety from this service gate. No package yet.
+
+Processor shutdown must retain JUCE message ownership through all members and
+base parameter destruction, not merely until the destructor body exits. Keep
+ProcessorMessageLifetime as the first private base, destroyed last; acquire its
+guard only during non-audio destruction when a running dispatcher is available
+and the host thread does not already own it. Message-thread/nested ownership
+paths must remain valid. The caller stops audio and must not block the message
+thread joining a worker awaiting ownership; global shutdown requires prior
+callback quiescence. Retain native actual dependency and base-parameter destructor
+checks at 64/128 for prepared/released/unprepared workers, nested ownership and
+direct message destruction. Keep the gated old-code failure in
+build/shutdown-before.txt, nonzero PCM/real-service setup and zero callback
+new/delete. This does not establish arbitrary concurrent/reentrant/post-quit
+destruction, full meter lifecycle mapping or renderer acceptance. No package yet.

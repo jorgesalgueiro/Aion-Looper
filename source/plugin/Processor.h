@@ -5,6 +5,7 @@
 #include "core/CallbackAudibleTime.h"
 #include "plugin/Vst3ProgramRouting.h"
 #include "plugin/LoopMeterClearDispatcher.h"
+#include "plugin/ProcessorMessageLifetime.h"
 #include <mutex>
 static_assert(std::atomic<float>::is_always_lock_free, "Audio parameter loads must be lock-free");
 static_assert(std::atomic<bool>::is_always_lock_free, "MIDI input readiness must be lock-free");
@@ -20,7 +21,7 @@ struct MeterServiceStatus {
     std::uint64_t passes=0,examined=0,started=0,cleared=0,applied=0,rejected=0;
     bool current=false,timerRunning=false;
 };
-class AionProcessor final : public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {
+class AionProcessor final : private aion::ProcessorMessageLifetime, public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {
 public:
     using ExportDestination = std::function<void(const juce::String&, std::function<void(juce::File)>)>;
     using OutputLatencyReader = std::function<aion::DeviceOutputLatency()>; // Optional controlled prepare-time IO.
