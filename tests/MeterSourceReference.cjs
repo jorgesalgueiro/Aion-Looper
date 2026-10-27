@@ -138,6 +138,19 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   else{assert.equal(loop.state,'stopped');assert.equal(loop.stopTimeout,null);noGraph(loop);}
   ++queuedStopCases;
  }
+ let latePanicCases=0;
+ for(const id of [0,19])for(const attached of [false,true]){
+  timers.clear();audio.state='running';audio.currentTime=1;grid=1.2;
+  const loop=ctx.fresh(id,true);
+  if(attached){await loop.play(1);loop.stop();loop.state='queued';loop.queueTimeout=ctx.setTimeout(()=>{},100);}
+  else await ctx.action(id);
+  const pending=loop.queueTimeout,cleanup=loop.stopTimeout,analyser=loop.analyser,data=loop.analyserData;
+  audio.currentTime=1.23;assert.equal(loop.state,'queued');assert(timers.has(pending));ctx.panic();
+  assert.equal(loop.state,'stopped');assert.equal(loop.queueTimeout,null);assert(!timers.has(pending));
+  assert.equal(loop.stopTimeout,cleanup);assert.equal(loop.analyser,analyser);assert.equal(loop.analyserData,data);
+  if(attached)assert.equal(timers.get(cleanup).ms,25);else noGraph(loop);
+  ctx.panic();assert.equal(loop.stopTimeout,cleanup);assert.equal(loop.state,'stopped');++latePanicCases;
+ }
  let nativeQueueTimingCases=0,zeroLeadCases=0,positiveLeadCases=0;
  if(process.argv[2]){
   const {spawnSync}=require('node:child_process'),queries=[];
@@ -162,6 +175,6 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   }
   assert.equal(nativeQueueTimingCases,96);assert.equal(zeroLeadCases,48);assert.equal(positiveLeadCases,48);
  }
- console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,nativeQueueTimingCases,zeroLeadCases,positiveLeadCases,
+ console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,latePanicCases,nativeQueueTimingCases,zeroLeadCases,positiveLeadCases,
   scope:'Unchanged Loop/AudioGraph methods, handleAction/grid scheduling/cancellation and AudioEngine.resume with controlled timer IO. Native comparison covers only accepted queue delay and unchanged grid deadline, not message delivery/birth, browser PCM or renderer acceptance.'},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});

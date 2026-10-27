@@ -1483,3 +1483,13 @@ dispatcher delay comparisons (48 zero, 48 positive) at tracks 0/19 and 64/128.
 The rounded-deadline negative is build/queued-delay-negative.txt. This does not
 prove message delivery timing, queued graph birth/acceptance recovery, late source
 phase or visible meters. Keep this feature unfinished and do not package it yet.
+
+STOP ALL must select queuedCancel using the explicit pending meter queue ID,
+including after audible grid. Native playing is not proof of message callback
+delivery and must not strand a still-queued owner or restore a 65ms graph stop.
+Retain exact queue/clip/generation/serial validation, old cleanup/history, repeated
+panic suppression, delayed ordered receipts, all-twenty 7/13 routing and real
+pre/post-grid frozen-clock cleanup tests at 64/128. Generic audible stop remains
+unchanged. If old teardown already changed message state, retain the existing
+fail-closed boundary until full callback mapping. See docs/MIGRATION_CURRENT.md and
+post-grid-panic-before.txt for the source/state distinction and reproduced failure.

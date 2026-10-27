@@ -7064,3 +7064,67 @@ Both existing Standalone binaries were rebuilt. The evidence report records
 source/binary hashes, the isolated rounding failure and unchanged SDK/other-format
 artifacts and logo. This completes the delay-metadata handoff only; queued message
 callback/graph integration and visible-meter acceptance remain unfinished.
+
+## Pending queued STOP ALL cancellation after grid (2026-10-27)
+
+Scope: repair an existing production cancellation handoff, without activating a
+new timer, graph or control. Native audio can cross its grid while the independent
+message owner still has an accepted queued intent. STOP ALL previously selected
+queuedCancel only from the audio `queued` state, so it emitted no cancellation
+after that transition. Select the explicit pending queue ID instead and retire it
+once. The same generic audio stop still runs. Panic origin remains quarantined;
+no audible state or raw receipt is reinterpreted as message graph creation.
+
+The added core regression failed on the unchanged baseline with `Late STOP ALL
+must publish cancellation for the still-pending queued intent after audible grid`.
+Retained failure/build logs: build/post-grid-panic-before.txt and
+post-grid-panic-before-build.txt. The original JS methods independently confirm
+late panic cancellation in four added cases at tracks 0/19 with/without an attached
+graph. The attached case is a controlled queued-state fixture, as in the existing
+panic characterization; it is not proof of every workflow that creates that state.
+All earlier 136/14/22/14/4 cases and the 96 actual native grid/delay cases remain.
+
+The repaired core tests use actual paired Engine PCM at 64/128, exact pending IDs,
+stale/duplicate/repeated panic rejection, retained analyser/data/history/cleanup
+and ordered queue+cancel delivery when message service is delayed until after
+panic. Native tests additionally exercise the production processor/bridge/sole
+dispatcher, twenty pending post-grid cancellations with bounded 7/13 delivery and
+partial owner isolation, and actual JUCE 25ms cleanup with frozen audio after late
+cancellation. The original pre-grid real-timer test remains and the late test is
+an additional stage. Existing readiness, loss, clear and prepare gates are retained.
+
+The implementation diff is one receipt-selection predicate plus its explanatory
+comment. Engine scheduling, generic audible stop, DSP, parameters/state, bridge,
+original UI, reference and dependency/SDK sources are unchanged. There is no new
+callback allocation, deallocation, lock or loop; the existing twenty-track bound
+and stream overflow behavior remain. See docs/MIGRATION_CURRENT.md for the compact
+parity checklist, acceptance criteria, baseline and exact commands.
+
+Limit: cancellation applies only while the message owner is still queued. An old
+teardown changing that state retains the existing rejection boundary; full queued
+message callback/graph transaction, late-source sound alignment and wall timing
+remain unaccepted. This repair does not enable visible meters or complete the
+overall meter migration. No new REAPER/Ardour, physical hardware, Apple or native
+sanitizer acceptance; no package, version/dependency update or push.
+STOP/STOP NOW after audible grid also require separate pending-intent validation;
+this STOP ALL repair must not be reported as acceptance of all queued controls.
+
+Final results (build/post-grid-panic-evidence.json):
+
+| Gate | Result |
+| --- | --- |
+| Windows portable | 28/28, 397.04s |
+| Ubuntu portable | 28/28, 632.81s |
+| Windows native processor / SDK generation | 2/2, 11.99s |
+| Ubuntu native processor / SDK generation | 2/2, 23.92s |
+| Core AddressSanitizer selection | 6/6, 289.48s |
+| Committed PCM | 126 cases, 965826 samples, max error 7.394757495227111e-8, unchanged 1e-6 tolerance |
+| Original UI / embedding / tamper | Pass |
+
+Native runs retain all eighteen linked production AudioDeviceManager blocks.
+Final logs contain no skips, JUCE assertions, leak reports or sanitizer errors.
+Existing Standalone binaries were rebuilt on both hosts. SDK/other-format binaries
+and committed logo remain unchanged. The report verifies the exact source diff,
+retained pre-fix failure, scoped markers and source/binary/log hashes. Full
+configure/build/platform instructions remain in BUILDING.md; the compact resume
+note contains the focused and full commands actually used here.

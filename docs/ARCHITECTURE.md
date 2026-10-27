@@ -2101,3 +2101,13 @@ delay once the intent is cancelled/cleared/replaced. This is accepted timing
 metadata, not a wall-clock origin, message delivery proof or analyser birth.
 No timer is armed by this receipt; receipt-to-command wall alignment and the
 actual graph callback transaction still require integration and acceptance.
+
+STOP ALL's queued cancellation is selected by the explicit pending queue ID,
+even after the source crosses its audible grid. The message queue callback and
+audio grid are independent; `playing` cannot prove a message graph exists or
+discard a pending intent. Publish queuedCancel once, retire that pending ID and
+retain the existing panic-origin quarantine. Generic audible stop is unchanged.
+The owner still validates exact queue/clip/window/serial/generation and queued
+message state, retaining the old cleanup and analyser/data/history. A delivered
+old teardown changing message state remains the existing fail-closed boundary.
+This repair does not implement late source/graph alignment or enable a renderer.

@@ -259,7 +259,23 @@ void meterPanicTests(){
         f.command(LoopAction::stopAll,id);f.cycle();check(owner.consumeQueuedCancel(f.next(MeterGraphEventKind::queuedCancel,id))&&!f.engine->popMeterGraphEvent(event)&&owner.cleanupRequest()==retained,"Queued panic cannot replace retained old cleanup with an inferred active-graph delay");
         f.command(LoopAction::play,id);f.cycle();check(owner.consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay,id)),"Consume second actual queued intent");unsigned cycles=0;while(f.view->tracks[id].state==LoopState::queued&&++cycles<1000)f.cycle();
         check(f.view->tracks[id].state==LoopState::playing,"Reach actual audible queued transition");
-        f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(event),"Audible queued transition cannot recover quarantined panic graph origin");
+        const auto pendingQueue=owner.queuedIntentId();const auto beforeLate=owner.inspect();const auto beforeLateReading=reading(owner.value());
+        f.command(LoopAction::stopAll,id);f.cycle();
+        check(f.engine->popMeterGraphEvent(event)&&event.kind==MeterGraphEventKind::queuedCancel&&event.queueId==pendingQueue,
+            "Late STOP ALL must publish cancellation for the still-pending queued intent after audible grid");
+        auto wrongLate=event;++wrongLate.queueId;check(!owner.consumeQueuedCancel(wrongLate)&&owner.queuedIntentId()==pendingQueue,"Late panic cannot cancel a different queued intent");
+        check(owner.consumeQueuedCancel(event)&&!owner.queuedIntentId()&&owner.queuedCallbackDelay()==-1&&owner.cleanupRequest()==retained
+            &&owner.inspect().state==MeterLoopState::stopped&&owner.inspect().analyser==beforeLate.analyser&&owner.inspect().data==beforeLate.data
+            &&reading(owner.value())==beforeLateReading&&!owner.consumeQueuedCancel(event)&&!f.engine->popMeterGraphEvent(wrongLate),
+            "Late queued panic preserves old cleanup and analyser/history without reviving a 65ms graph stop");
+        f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(wrongLate),"Repeated late queued panic cannot re-emit the cancelled intent or recover quarantined graph ownership");
+        f.command(LoopAction::play,id);f.cycle();
+        for(unsigned n=0;n<1000&&f.view->tracks[id].state==LoopState::queued;++n)f.cycle();
+        check(f.view->tracks[id].state==LoopState::playing,"Advance a second queue before its message receipts are consumed");
+        f.command(LoopAction::stopAll,id);f.cycle();
+        check(owner.consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay,id))&&owner.consumeQueuedCancel(f.next(MeterGraphEventKind::queuedCancel,id))
+            &&!owner.queuedIntentId()&&owner.cleanupRequest()==retained&&!f.engine->popMeterGraphEvent(wrongLate),
+            "Delayed message service consumes ordered queued intent and late panic without a graph birth");
         f.command(LoopAction::retrigger,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Actual stopped retrigger restores known panic origin");
         f.command(LoopAction::stopAll,id);f.cycle();event=f.next(MeterGraphEventKind::stopAll,id);check(owner.consumeStopAll(event),"Panic works after explicit origin recovery");
         f.command(LoopAction::clear,id);f.cycle();check(owner.consumeClear(f.next(MeterGraphEventKind::cleared,id))&&!owner.inspect().data&&!owner.cleanupRequest().serial&&!owner.consumeStopAll(event),"Attached clear invalidates panic and resets history");
@@ -290,6 +306,7 @@ void meterPanicTests(){
     }
     check(allocations.load()==0,"Panic callbacks have zero tracked new/delete");
     std::cout<<"PASS: accepted STOP ALL receipts, 65ms cleanup, repeated/detached panic, capture/edit ordering, replacement/clear/prepare/loss, malformed identity rejection and queued-origin quarantine at tracks 0/19, 64/128; exact paired stereo PCM and zero tracked callback new/delete\n";
+    std::cout<<"PASS: post-grid pending queued panic cancellation, stale/duplicate/repeated rejection, delayed ordered message delivery and retained old cleanup/history at tracks 0/19 and 64/128\n";
 }
 namespace {
 void queuedWindowTests(){

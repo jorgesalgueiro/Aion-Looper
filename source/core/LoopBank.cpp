@@ -312,7 +312,9 @@ void LoopBank::clear(Track& track) noexcept {
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
     if(action==LoopAction::stopAll){for(unsigned next=0;next<trackCount;++next){
-        if(tracks[next].info.state==LoopState::queued)publishMeterQueueEnd(next,MeterGraphEventKind::queuedCancel);
+        // Pending message intent survives the audible grid. That transition is
+        // not proof that the independent queued graph callback was delivered.
+        if(meterQueuedIds[next])publishMeterQueueEnd(next,MeterGraphEventKind::queuedCancel);
         else publishMeterPanic(next);
         stop(tracks[next]);}return true;}
     if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks){++track.clearEpoch;clear(track);}return true;}
