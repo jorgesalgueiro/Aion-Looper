@@ -6997,3 +6997,70 @@ old cleanup, post-callback queue policy, late source phase, other graph origins,
 overlaps/envelopes/continuity and visible meter rendering remain unfinished.
 Existing application behavior and original UI are preserved. No package, version
 or dependency update, push, new DAW/hardware/Apple or native sanitizer acceptance.
+
+## Unrounded queued callback delay (2026-10-27)
+
+The unfinished meter queue path now carries the original max(0, grid delta minus
+100ms) delay in accepted queuedPlay receipts. Calculation uses the unrounded grid
+time. Audible playback still uses the identical sample-rounded deadline; neither
+the receipt nor its delay creates an analyser, starts audio early or arms a timer.
+The message lifecycle rejects NaN/infinite/negative delays before mutation,
+retains the exact accepted value and hides it after cancellation. Cancellation
+and queued STOP receipts must carry zero delay. The existing cleanup remains
+independent, including teardown retaining a still-pending queue intent.
+
+The existing original_meter_source_lifecycle CTest now passes the native
+aion_meter_graph_probe into MeterSourceReference.cjs. All prior 136 lifecycle,
+14 scheduling, 22 resume, 14 panic and 4 queued STOP cases remain. A new
+--queued-timing mode runs actual Engine capture/commit/stop/queue at tracks 0/19,
+64/128 blocks, fixed/dynamic sync and 120/137.3/999 BPM. It transfers the actual
+frame, origin, grid period, accepted queue delay and unchanged source deadline.
+The probe also delivers the actual committed buffer and queue receipts to the
+message owner, requiring an exact retained delay without an analyser/cleanup.
+
+The Node oracle executes the unchanged getNextGridTime method from scales.js and
+the unchanged handleAction dispatcher. Its controlled context/timer IO captures
+the original timeout for each native case. It compares 96 cases at the existing
+1e-12 millisecond near() tolerance: 48 zero-delay cases and 48 positive cases,
+including 99.9/100.1ms grid leads. The source deadline remains the grid ceiling
+within one sample; that sample test is separate from callback-delay precision.
+This extends the test to the native producer; it does not establish real wall
+delivery, browser PCM, source late-start phase or visible meter acceptance.
+
+An isolated negative reconstructs the delay from t.startAt, the rounded sample
+deadline. The unchanged original oracle rejects it: 0.11805555555541503ms becomes
+0.125000000000014ms. Final and mutated source snapshots plus failure are retained
+as build/queued-delay-final.cpp, queued-delay-rounded.cpp and
+queued-delay-negative.txt. The restored source receives a fresh timestamp and
+its Ubuntu object is explicitly removed before the final build and oracle run;
+the final build log confirms recompilation. No reference or tolerance was changed.
+
+The [JUCE Timer documentation](https://docs.juce.com/master/classjuce_1_1Timer.html)
+confirms that delivery occurs on the message thread and can run late. This stage
+therefore treats the receipt's audio-time delay as metadata, not proof of a wall
+deadline or a callback. The actual 100ms callback/graph transaction, acceptance
+recovery, post-callback cancellation, old-cleanup overlap, late source alignment,
+other graph origins, envelopes/continuity and renderer remain unfinished.
+Original UI, logo, audio DSP, processor/bridge state, SDK and other plugin-format
+binaries remain unchanged. No package, dependency/version update, push or new
+DAW/hardware/Apple/native-sanitizer acceptance.
+
+Final restored-source results (build/queued-delay-evidence.json):
+
+| Gate | Result |
+| --- | --- |
+| Windows portable suite | 28/28, 341.90s |
+| Ubuntu portable suite | 28/28, 598.26s |
+| Windows native processor / standalone SDK generation | 2/2, 8.17s |
+| Ubuntu native processor / standalone SDK generation | 2/2, 20.15s |
+| Ubuntu core AddressSanitizer selection | 6/6, 278.44s |
+| Original grid/dispatcher vs actual Engine timing | 96 cases per portable/sanitizer run; 48 zero, 48 positive delays |
+| Committed PCM audit | 126 cases, 965826 samples, max error 7.394757495227111e-8 at unchanged 1e-6 tolerance |
+| Original resources / embedding / tamper rejection | Pass |
+
+Native tests retain all eighteen linked production AudioDeviceManager blocks.
+Final logs contain no skips, JUCE assertions, leak reports or sanitizer errors.
+Both existing Standalone binaries were rebuilt. The evidence report records
+source/binary hashes, the isolated rounding failure and unchanged SDK/other-format
+artifacts and logo. This completes the delay-metadata handoff only; queued message
+callback/graph integration and visible-meter acceptance remain unfinished.

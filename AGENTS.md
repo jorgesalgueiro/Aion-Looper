@@ -1472,3 +1472,14 @@ queue lifecycle and visible rendering remain unfinished; no package yet.
 After isolated negative mutations, explicitly rebuild the restored object before
 positive gates: restoring a saved file can retain an older timestamp and leave
 the deliberately broken object cached. Confirm the focused positive gate first.
+
+Queued PLAY receipts carry the original unrounded max(0, grid delta minus 100ms)
+callback delay separately from the source's rounded sample deadline. Never derive
+it from startAt or arm a message timer from a guessed audio/wall conversion.
+Reject nonfinite/negative delays before owner mutation; cancel/STOP facts must
+carry zero. Retain delay across old cleanup, hide it when the intent ends, and
+keep the original 136/14/22/14/4 reference cases plus the 96 actual Engine/grid/
+dispatcher delay comparisons (48 zero, 48 positive) at tracks 0/19 and 64/128.
+The rounded-deadline negative is build/queued-delay-negative.txt. This does not
+prove message delivery timing, queued graph birth/acceptance recovery, late source
+phase or visible meters. Keep this feature unfinished and do not package it yet.

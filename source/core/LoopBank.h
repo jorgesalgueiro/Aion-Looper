@@ -153,19 +153,19 @@ private:
         // audible queued/playing snapshot or revive its old immediate origin.
         if(meterPanicKnown[id])publishMeterStop(id,MeterGraphEventKind::stopAll,.015);
     }
-    void publishMeterQueue(unsigned id) noexcept {
+    void publishMeterQueue(unsigned id,double delay) noexcept {
         if(meterScope!=MeterEventScope::acceptedPlayback)return;
         if(meterQueueHighWater==std::numeric_limits<std::uint64_t>::max()){meterGraphEvents->invalidate();return;}
         meterQueuedIds[id]=++meterQueueHighWater;
-        publishMeterQueueFact(id,MeterGraphEventKind::queuedPlay);
+        publishMeterQueueFact(id,MeterGraphEventKind::queuedPlay,delay);
     }
     void publishMeterQueueEnd(unsigned id,MeterGraphEventKind kind) noexcept {
         if(meterScope!=MeterEventScope::acceptedPlayback||!meterQueuedIds[id])return;
         publishMeterQueueFact(id,kind);meterQueuedIds[id]=0;
     }
-    void publishMeterQueueFact(unsigned id,MeterGraphEventKind kind) noexcept {
+    void publishMeterQueueFact(unsigned id,MeterGraphEventKind kind,double delay=0) noexcept {
         const auto ticket=meterImmediateTickets[id]==meterGraphTickets[id]?meterImmediateTickets[id]:0u;
-        meterGraphEvents->publish(kind,id,ticket,frame,tracks[id].clearEpoch,tracks[id].clip?tracks[id].clip->waveformId:0,0,meterQueuedIds[id]);
+        meterGraphEvents->publish(kind,id,ticket,frame,tracks[id].clearEpoch,tracks[id].clip?tracks[id].clip->waveformId:0,0,meterQueuedIds[id],delay);
     }
     struct Clip {
         std::atomic<std::uint32_t> leases{1};

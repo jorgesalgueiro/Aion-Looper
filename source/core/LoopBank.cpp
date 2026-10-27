@@ -406,7 +406,11 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::clear:++t.clearEpoch;clear(t);return true;
         case LoopAction::play:
             if(s!=LoopState::stopped||!t.clip)return false;
-            if(sync.settings.mode!=SyncMode::off){meterPanicKnown[id]=false;s=LoopState::queued;t.startAt=SyncClock::deadline(sync.nextGrid(frame));publishMeterQueue(id);return true;}
+            if(sync.settings.mode!=SyncMode::off){
+                const double grid=sync.nextGridSeconds(frame);
+                meterPanicKnown[id]=false;s=LoopState::queued;t.startAt=SyncClock::deadline(grid*rate);
+                publishMeterQueue(id,std::max(0.0,grid-static_cast<double>(frame)/rate-.1));return true;
+            }
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);publishImmediateMeterPlay(id);return true;
         case LoopAction::overdub:
         case LoopAction::substitute:

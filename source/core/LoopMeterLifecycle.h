@@ -124,7 +124,7 @@ public:
     bool consumeQueuedPlay(const MeterGraphEvent& event) noexcept {
         const auto matches=[&]() noexcept {return queueMatches(event,MeterGraphEventKind::queuedPlay)&&event.queueId>queueHighWater;};
         if(!commitLoopMeterObservation(graph,matches,[](LoopMeterGraph& candidate) noexcept {candidate.setState(MeterLoopState::queued);return true;}))return false;
-        queuedId=queueHighWater=event.queueId;lastQueueSerial=event.serial;return true;
+        queuedId=queueHighWater=event.queueId;queuedDelay=event.queueDelaySeconds;lastQueueSerial=event.serial;return true;
     }
     bool consumeQueuedCancel(const MeterGraphEvent& event) noexcept {
         const auto matches=[&]() noexcept {return queueMatches(event,MeterGraphEventKind::queuedCancel)&&event.queueId==queuedId&&graph.inspect().state==MeterLoopState::queued;};
@@ -148,7 +148,9 @@ private:
         return observable()&&event.kind==kind&&event.generation==generation&&event.track==id
             &&event.serial>lastSerial()&&event.bufferId&&event.bufferId==bufferId
             &&(event.ticket?event.ticket==ticket:!graph.inspect().present&&!receipt.ticket)
-            &&!event.retiredTicket&&event.stopLeadSeconds==0&&event.queueId;
+            &&!event.retiredTicket&&event.stopLeadSeconds==0&&event.queueId
+            &&std::isfinite(event.queueDelaySeconds)&&event.queueDelaySeconds>=0
+            &&(kind==MeterGraphEventKind::queuedPlay||event.queueDelaySeconds==0);
     }
     bool consumeStop(const MeterGraphEvent& event,MeterGraphEventKind kind,double lead) noexcept {
         const auto matches=[&]() noexcept {
@@ -211,6 +213,7 @@ public:
     MeterCleanupRequest cleanupRequest() const noexcept {return cleanup;}
     std::uint64_t committedBuffer() const noexcept {return bufferId;}
     std::uint64_t queuedIntentId() const noexcept {return queuedId;}
+    double queuedCallbackDelay() const noexcept {return queuedId?queuedDelay:-1;}
     bool inGeneration(std::uint32_t completed) const noexcept {return completed&&completed==generation&&current();}
     bool routesTo(const Engine& source,unsigned track) const noexcept {return &engine==&source&&id==track&&current();}
 private:
@@ -224,6 +227,7 @@ private:
     std::uint32_t id=0,generation=0,ticket=0;
     std::uint64_t timerSerial=0,lastClearSerial=0,lastBufferSerial=0,lastPlaySerial=0,lastStopSerial=0,bufferId=0;
     std::uint64_t lastQueueSerial=0,queuedId=0,queueHighWater=0;
+    double queuedDelay=0;
     bool bufferNoticeSinceStart=true;
     LoopMeterGraph graph;
     LoopMeterBinding receipt{};

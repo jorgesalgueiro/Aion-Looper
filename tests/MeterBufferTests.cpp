@@ -400,10 +400,16 @@ void meterQueuedTests(){
         wrong=queued;++wrong.ticket;check(!owner.consumeQueuedPlay(wrong),"Queue wrong raw identity rejects");
         wrong=queued;++wrong.bufferId;check(!owner.consumeQueuedPlay(wrong),"Queue wrong clip rejects");
         wrong=queued;++wrong.generation;check(!owner.consumeQueuedPlay(wrong),"Queue wrong generation rejects");
+        for(double delay:{-1.,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}){
+            wrong=queued;wrong.queueDelaySeconds=delay;check(!owner.consumeQueuedPlay(wrong)&&owner.queuedCallbackDelay()==-1,"Invalid queued callback delay cannot change accepted intent");
+        }
         check(owner.consumeQueuedPlay(queued)&&owner.queuedIntentId()==queued.queueId&&owner.inspect().state==MeterLoopState::queued&&!owner.inspect().present&&!owner.inspect().data&&!owner.cleanupRequest().serial&&!owner.request(),"Accepted first queue creates no analyser, data or cleanup");
+        check(owner.queuedCallbackDelay()==queued.queueDelaySeconds&&queued.queueDelaySeconds>0,"Owner retains accepted unrounded callback delay without starting a timer");
         check(!owner.consumeQueuedPlay(queued)&&!owner.consumeImmediatePlay(queued),"Duplicate queue and wrong birth route reject");
         f.command(LoopAction::stopAll,id);f.cycle();auto cancel=f.next(MeterGraphEventKind::queuedCancel,id);
+        wrong=cancel;wrong.queueDelaySeconds=.1;check(!owner.consumeQueuedCancel(wrong)&&owner.queuedIntentId()==queued.queueId,"Cancellation cannot carry a fabricated callback delay");
         check(cancel.queueId==queued.queueId&&!cancel.ticket&&owner.consumeQueuedCancel(cancel)&&!owner.queuedIntentId()&&owner.inspect().state==MeterLoopState::stopped&&!owner.cleanupRequest().serial&&!owner.consumeQueuedCancel(cancel),"Actual queued panic cancels first intent without creating cleanup");
+        check(owner.queuedCallbackDelay()==-1,"Cancellation hides the obsolete queued callback delay");
         for(auto action:{LoopAction::stop,LoopAction::stopImmediate}){
             queued=queue();check(queued.queueId>first.queueId&&owner.consumeQueuedPlay(queued),"New queued intent does not reuse cleared identity");
             wrong=cancel;wrong.serial=queued.serial+1;check(!owner.consumeQueuedCancel(wrong)&&owner.queuedIntentId()==queued.queueId,"Old cancellation cannot cancel newer queue even with a fresh serial");

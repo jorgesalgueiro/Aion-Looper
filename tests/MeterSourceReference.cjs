@@ -138,6 +138,30 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   else{assert.equal(loop.state,'stopped');assert.equal(loop.stopTimeout,null);noGraph(loop);}
   ++queuedStopCases;
  }
- console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,
-  scope:'Unchanged Loop/AudioGraph methods, actual handleAction scheduling/cancellation and AudioEngine.resume with controlled context/timer IO. Includes pre-grid analyser birth, late source phase, pending-resume invalidation and identity retention. No native producer, browser PCM or renderer acceptance.'},null,2));
+ let nativeQueueTimingCases=0,zeroLeadCases=0,positiveLeadCases=0;
+ if(process.argv[2]){
+  const {spawnSync}=require('node:child_process'),queries=[];
+  for(const block of [64,128])for(const id of [0,19])for(const mode of [1,2])for(const bpm of [120,137.3,999])for(const lead of [.035,.0999,.1001,.2345])queries.push({block,id,mode,bpm,lead});
+  const run=spawnSync(process.argv[2],['--queued-timing'],{input:queries.map(q=>`${q.block} ${q.id} ${q.mode} ${q.bpm} ${q.lead}`).join('\n')+'\n',encoding:'utf8',maxBuffer:1024*1024});
+  assert.equal(run.status,0,run.stderr);const rows=run.stdout.trim().split('\n');assert.equal(rows.length,queries.length);
+  // Execute the original grid method and dispatcher, rather than reproducing
+  // their lead formula in a second native model. Keep the old IO-stub cases.
+  const scales=fs.readFileSync(path.join(root,'resources/ui/Modules/scales.js'),'utf8');
+  const begin=scales.indexOf('    static getNextGridTime('),end=scales.indexOf('\n    static ',begin+1);assert(begin>=0&&end>begin);
+  vm.runInContext('SyncManager.getNextGridTime=function '+scales.slice(begin+11,end).trim()+';globalThis.clockGrid=(origin,length)=>{state.masterStartTime=origin;state.loopLength=length;};',ctx);
+  for(let n=0;n<queries.length;++n){
+   const q=queries[n],[frame,origin,period,delay,scheduledFrame]=rows[n].trim().split(/\s+/).map(Number);
+   assert([frame,origin,period,delay,scheduledFrame].every(Number.isFinite));assert.notEqual(origin,0);
+   timers.clear();audio.state='running';audio.currentTime=frame/48000;
+   const loop=ctx.fresh(q.id,true);ctx.clockGrid(origin,period);const next=ctx.SyncManager.getNextGridTime();
+   await ctx.action(q.id);assert.equal(loop.state,'queued');noGraph(loop);
+   const pending=timers.get(loop.queueTimeout);assert(pending);near(pending.ms,delay*1000);
+   assert(Math.abs(scheduledFrame-next*48000)<1.000001,'Native source retains the original grid sample deadline');
+   if(delay===0)++zeroLeadCases;else ++positiveLeadCases;
+   ++nativeQueueTimingCases;
+  }
+  assert.equal(nativeQueueTimingCases,96);assert.equal(zeroLeadCases,48);assert.equal(positiveLeadCases,48);
+ }
+ console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,nativeQueueTimingCases,zeroLeadCases,positiveLeadCases,
+  scope:'Unchanged Loop/AudioGraph methods, handleAction/grid scheduling/cancellation and AudioEngine.resume with controlled timer IO. Native comparison covers only accepted queue delay and unchanged grid deadline, not message delivery/birth, browser PCM or renderer acceptance.'},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});

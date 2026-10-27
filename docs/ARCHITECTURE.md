@@ -2086,3 +2086,18 @@ dispatcher counts this receipt as a raw start without creating a graph, cancelli
 an old cleanup or binding PCM to an analyser. The 100ms callback, message graph
 transaction/acceptance recovery, post-callback cancellation and late source phase
 still need integration and acceptance before visible metering can be enabled.
+
+## Unrounded queued callback delay
+
+Accepted queuedPlay receipts additionally carry `queueDelaySeconds`, calculated
+as max(0, unrounded grid time minus current audio time minus 100ms). The source
+continues to use the same sample-rounded grid deadline. The two values are
+deliberately distinct: reconstructing the message delay from the rounded deadline
+adds up to a sample of error. Cancellation/STOP receipts carry zero delay.
+
+The message lifecycle validates finite nonnegative queue delays before accepting
+an intent, retains the exact value across an old cleanup teardown and exposes no
+delay once the intent is cancelled/cleared/replaced. This is accepted timing
+metadata, not a wall-clock origin, message delivery proof or analyser birth.
+No timer is armed by this receipt; receipt-to-command wall alignment and the
+actual graph callback transaction still require integration and acceptance.
