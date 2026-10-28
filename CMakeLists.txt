@@ -20,6 +20,10 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 option(AION_BUILD_STANDALONE "Build standalone app" ON)
 option(AION_BUILD_VST3 "Build VST3 on desktop" ${desktop})
+if(linux_desktop)
+    # Retire the Linux target even in existing build trees cached with VST3=ON.
+    set(AION_BUILD_VST3 OFF CACHE BOOL "VST3 is not a Linux delivery target" FORCE)
+endif()
 option(AION_BUILD_CLAP "Build CLAP using pinned extension" ${desktop})
 option(AION_BUILD_AU "Build macOS Audio Unit" ${apple_desktop})
 set(auv3_default OFF)
@@ -235,17 +239,6 @@ if(BUILD_TESTING AND linux_desktop)
             FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected"
             LABELS "host;lv2;audio;linux")
     endif()
-    set(AION_LINUX_PLUGINVAL_EXECUTABLE "" CACHE FILEPATH "Pinned official Linux pluginval 1.0.4 (optional VST3 gate)")
-    if(AION_LINUX_PLUGINVAL_EXECUTABLE)
-        if(NOT TARGET AionLooper_VST3 OR NOT EXISTS "${AION_LINUX_PLUGINVAL_EXECUTABLE}")
-            message(FATAL_ERROR "Linux pluginval requires AION_BUILD_VST3 and an existing validator")
-        endif()
-        get_target_property(aion_linux_validation_vst3 AionLooper_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
-        add_test(NAME linux_vst3_pluginval COMMAND "${Python3_EXECUTABLE}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tools/TestLinuxVst3.py"
-            --validator "${AION_LINUX_PLUGINVAL_EXECUTABLE}" --plugin "${aion_linux_validation_vst3}")
-        set_tests_properties(linux_vst3_pluginval PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE LABELS "host;vst3;pluginval;linux")
-    endif()
     set(AION_LINUX_CLAP_VALIDATOR_EXECUTABLE "" CACHE FILEPATH "Pinned official Ubuntu CLAP validator 0.4.1 (optional)")
     if(AION_LINUX_CLAP_VALIDATOR_EXECUTABLE)
         if(NOT AION_BUILD_CLAP OR NOT EXISTS "${AION_LINUX_CLAP_VALIDATOR_EXECUTABLE}")
@@ -305,6 +298,7 @@ install(FILES README.md docs/ARCHITECTURE.md docs/MIGRATION_BLUEPRINT.md docs/BU
 # Primary source notices accompany local preview packages; the full release inventory
 # remains a separate gate documented in LICENSING.md.
 set(notice_dir share/licenses/Aion-Looper)
+install(FILES LICENSE DESTINATION ${notice_dir} RENAME Aion-Looper-AGPL-3.0.txt)
 install(FILES resources/ui/LICENSE DESTINATION ${notice_dir} RENAME Ascii-Looper-GPL-2.0.txt)
 install(FILES "${juce_SOURCE_DIR}/LICENSE.md" DESTINATION ${notice_dir} RENAME JUCE-LICENSE.md)
 if(AION_BUILD_CLAP)

@@ -1,5 +1,27 @@
 # Current migration checkpoint
 
+## Documentation, target and license decision — 2026-10-28
+
+- README now describes the default 10 loop / 10 drone / 10 sampler workspace.
+  Native 20-slot capacity, IDs and compatibility are unchanged; drone/sampler
+  ports remain pending. README source-build commands are Linux-only.
+- Linux VST3 generation and its optional CTest are removed, including cached
+  VST3=ON configurations. Windows VST3 remains. Active build instructions reflect
+  this; historical validation and the shared LV2 validator helper are retained.
+- Owner selected AGPL-3.0-only after discussing GPL-2.0/JUCE incompatibility.
+  Root LICENSE uses the standard AGPLv3 text from the pinned JUCE checkout and
+  package rules include it. Original UI/license files stay unchanged. Original
+  GPL-2.0-only asset permissions and dependency inventory remain release checks.
+- Chrome is not a drop-in JUCE browser backend. Windows still uses WebView2
+  Runtime, independent of the Edge browser. CEF would be a separate integration;
+  no browser/dependency switch was made.
+- README links/fences and whitespace checks pass. Linux configuration completed
+  with an explicit VST3=ON request reset to OFF; Windows configuration completed
+  and retains its VST3 project. Direct Ninja target inventory confirms Linux
+  Standalone/CLAP/LV2 remain and VST3 is absent; the negative VST3 build/query
+  rejects the unknown target as expected. No DSP code changed, audio suites were
+  not rerun, and no packages were generated.
+
 Updated 2026-10-28. Current CLI source baseline: `21f9a32`. The session began at
 `24df7e9`, clean main twelve commits ahead of cached origin; the verified queued
 edge-case slice was committed separately before adding the running-app CLI.

@@ -2,8 +2,9 @@
 
 **Build a performance, one loop at a time.**
 
-Aion-Looper is becoming a live looping instrument for Windows and Linux: twenty
-stereo loop slots, hands-on performance controls, and a distinctive ASCII interface.
+Aion-Looper is becoming a live looping instrument for Windows and Linux, with a
+default workspace of **10 loop tracks, 10 drone tracks and 10 sampler tracks**,
+hands-on controls, and a distinctive ASCII interface.
 Record a phrase, layer another, reshape the arrangement, and turn a small idea
 into a whole piece — from a guitar or voice to a keyboard or an ambient texture.
 
@@ -20,7 +21,7 @@ workspace, playable with a mouse, keyboard, MIDI controller or command line.
 
 ## What you can play today
 
-- **Twenty stereo loops.** Record, play, stop, overdub, replace with SUB, mute,
+- **Stereo live looping.** Record, play, stop, overdub, replace with SUB, mute,
   solo and shape each loop with volume, pan and feedback.
 - **Play freely or follow a grid.** OFF, STATIC and DYNAMIC recording modes,
   internal master BPM, bars and meter, a metronome, and independent visual and
@@ -53,14 +54,14 @@ See the [feature-by-feature parity checklist](docs/PARITY.md) for exact coverage
 | macOS | Future | AU | Build configuration prepared; platform acceptance pending |
 | iOS | Future | AUv3 | Build configuration prepared; device acceptance pending |
 
-Linux also has a VST3 build target. Format availability does not mean every
-workflow has passed in every host: [validation notes](docs/VALIDATION.md) describe
+Format availability does not mean every workflow has passed in every host: [validation notes](docs/VALIDATION.md) describe
 the checks actually run. Apple delivery is future work.
 
 ### Your first loop: Windows or Linux
 
-1. Build the Standalone using the instructions below, then launch **Aion-Looper**.
-   Windows needs the **Microsoft Edge WebView2 Evergreen Runtime** installed;
+1. Launch **Aion-Looper Standalone**. For Linux, source-build instructions are below.
+   Windows currently needs the **WebView2 Evergreen Runtime** (a separate embedded
+   runtime, not the Edge browser);
    Linux needs the GTK/WebKit runtime libraries installed with the build dependencies.
 2. Open the window's **Options** and select your audio input/output device and
    buffer size. Enable **Unmute Input** in the Standalone. Start with a buffer
@@ -73,8 +74,8 @@ the checks actually run. Apple delivery is future work.
 5. Click the recorded waveform to export the stored loop to WAV. This exports
    the recorded audio, rather than a rendered mix of playback controls/effects.
 
-The default number keys **1–0** address loops 1–10; **Shift + 1–0** addresses
-11–20. **Space / STOP ALL** stops performance and cancels queued starts. On a
+The default number keys **1–0** address the ten default loop tracks.
+**Space / STOP ALL** stops performance and cancels queued starts. On a
 playing loop's main STOP button or assigned number key, a **600 ms hold cuts
 playback while keeping audio**; a continuous **4-second hold deletes the loop
 and its history**. **DEL** deletes directly.
@@ -118,7 +119,9 @@ python tools/aion.py loop stopImmediate 1
 python tools/aion.py rename 1 "First idea"
 ```
 
-Named loop commands use slots **1–20**. With several Standalone instances open,
+The default loop tracks are numbered **1–10**. The development engine also retains
+additional internal slots for compatibility; see the CLI guide for command limits.
+With several Standalone instances open,
 select one with `--instance INSTANCE_ID`. This client controls the already
 running app on the same computer and OS user; it does not control DAW plugin
 instances. It is a development tool, currently distributed as source.
@@ -127,7 +130,7 @@ The goal is CLI access alongside every newly ported feature. Current commands,
 MIDI Learn examples, JSON requests and result/timeout behavior are documented in
 the [CLI guide](docs/CLI.md).
 
-## Build from source
+## Build from source on Linux
 
 You need **Git, CMake 3.22+, a C++20 compiler and Python 3.8+**. Dependencies are
 downloaded at pinned revisions on the first configure. Node.js is optional for
@@ -137,24 +140,6 @@ additional frontend/reference tests. Run the following commands from a terminal:
 git clone https://github.com/jorgesalgueiro/Aion-Looper.git
 cd Aion-Looper
 ```
-
-### Windows x64
-
-Install **Visual Studio 2022** with *Desktop development with C++* and a Windows
-SDK, plus CMake, Python and NuGet. Use a **Developer PowerShell for VS 2022**
-with `cmake`, `python` and `nuget` available on PATH:
-
-```powershell
-nuget install Microsoft.Web.WebView2 -Version 1.0.3485.44 -OutputDirectory .deps/nuget
-cmake --preset windows -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$PWD/.deps/nuget"
-cmake --build --preset windows --parallel 2
-ctest --test-dir build/windows -C Release --output-on-failure
-& './build/windows/AionLooper_artefacts/Release/Standalone/Aion-Looper.exe'
-```
-
-This builds Standalone, VST3 and CLAP. The WebView2 SDK used to compile is
-separate from the Evergreen Runtime needed to run. Optional ASIO configuration
-and troubleshooting are covered in the [Windows build guide](docs/BUILDING.md#windows-x64).
 
 ### Ubuntu / Debian-based Linux
 
@@ -174,23 +159,13 @@ ctest --preset linux
 ./build/linux/AionLooper_artefacts/Release/Standalone/Aion-Looper
 ```
 
-This builds Standalone, CLAP, LV2 and the additional Linux VST3 target. ALSA/JACK
+This builds Standalone, CLAP and LV2. ALSA/JACK
 development libraries enable the corresponding JUCE backends; physical device
 and low-latency performance still need testing with your own setup.
 
-### Core tests without the app or plugin SDKs
-
-With Ninja, CMake, a C++20 compiler and Python installed:
-
-```sh
-cmake --preset core
-cmake --build --preset core
-ctest --preset core
-```
-
-For offline dependency overrides, focused targets, validators, development package
-commands and future Apple setup, see [BUILDING.md](docs/BUILDING.md). Distributable
-packages follow feature acceptance; a development ZIP is not a release-ready product.
+Additional development commands, core tests and dependency overrides are in the
+[build guide](docs/BUILDING.md). Packages follow feature acceptance; development
+builds are not release-ready products.
 
 ## Under the hood
 
@@ -216,11 +191,11 @@ next one advances.
 
 | Milestone | What it brings | Current status / next gate |
 | --- | --- | --- |
-| Native looper foundation | Twenty loops, capture/playback, OD/SUB, mixer, history, MULT/MERGE, WAV export | Implemented for documented preview scope; broader hardware and long-session acceptance remains |
+| Native looper foundation | Default ten-loop workspace, capture/playback, OD/SUB, mixer, history, MULT/MERGE, WAV export | Implemented for documented preview scope; broader hardware and long-session acceptance remains |
 | Faithful performance and feedback | Original gestures, waveforms, live traces, timing and visual meters | Many controls verified; queued source transitions, overlap/late phase, remaining metering and full browser sound comparisons continue |
 | CLI coverage | The same musical actions available to scripts and terminal users | Running-Standalone development client implemented; extend alongside new ports and bundle later |
 | Projects, editing and routing | Save/reload audio sessions, remaining imports/exports and routing workflows | Pending; recorded audio currently remains session-only |
-| Full instrument workspace | Original drones, sampler/tracker/sequencing and effects | Pending native ports and reference parity checks |
+| Full instrument workspace | Default ten-drone and ten-sampler banks, tracker/sequencing and effects | Pending native ports and reference parity checks |
 | Connected performance | Full host/MIDI-clock sync, wider MIDI Learn, controller workflows and HID/gamepad adapter | Looper MIDI and selected CC Learn implemented; clock, remaining targets and device coverage pending |
 | Windows and Linux releases | Reliable Standalone/plugins, real-device stress, host workflows, installers and distribution | Development builds and scoped checks exist; release acceptance and licensing work remain |
 | macOS and iOS | Standalone/AU on macOS; Standalone/AUv3 on iOS | Future phase; configuration prepared, Apple builds/devices/signing not accepted |
@@ -241,7 +216,14 @@ the shortest steps that reproduce it.
 
 Aion-Looper continues Jorge Salgueiro's Ascii-Looper, preserving its visual identity
 and using its original behavior as the reference for the native migration.
-Original UI assets retain their GPL-2.0 notices. JUCE, CLAP extensions and platform
-SDKs have their own terms; commercial distribution requires a compatible licensing
-plan. See [LICENSING.md](docs/LICENSING.md) for provenance and outstanding release
-requirements.
+
+**Aion-Looper is free and open-source software.** Project-owned code is licensed
+under **AGPL-3.0-only**; see [LICENSE](LICENSE). This choice matches JUCE 9's
+open-source licensing route. You can study, modify and share the software under
+those terms; distributing it includes obligations to provide corresponding source.
+
+Original Ascii-Looper UI files retain their GPL-2.0 notices. Third-party libraries
+and SDKs retain their own licenses. Rights/permissions for combining the original
+GPL-2.0-only assets with the AGPL application and the remaining dependency inventory
+must be checked before release; the new license does not relicense third-party
+work. See [LICENSING.md](docs/LICENSING.md).

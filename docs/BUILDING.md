@@ -37,7 +37,7 @@ cmake --install build/linux --prefix dist/linux
 cpack --config build/linux/CPackConfig.cmake -B dist -G ZIP
 ```
 
-Targets: `AionLooper_Standalone`, `AionLooper_VST3`, `AionLooper_CLAP`,
+Targets: `AionLooper_Standalone`, `AionLooper_CLAP`,
 `AionLooper_LV2`, `aion_core_tests`. JUCE natively supplies LV2; do not use an old
 fork of JUCE_LV2. The browser subprocess is embedded for plugin hosts. Default
 JUCE Linux backends include ALSA/JACK when their development libraries are present;
@@ -594,7 +594,7 @@ cmake -S . -B build/linux -DCMAKE_BUILD_TYPE=Debug \
   -DFETCHCONTENT_SOURCE_DIR_CLAP_JUCE_EXTENSIONS="$PWD/.deps/clap-juce-extensions" \
   -DAION_TEST_NATIVE_PROCESSOR=ON
 cmake --build build/linux --parallel 2 --target \
-  AionLooper_Standalone AionLooper_VST3 AionLooper_CLAP AionLooper_LV2 \
+  AionLooper_Standalone AionLooper_CLAP AionLooper_LV2 \
   aion_midi_processor_tests
 # Explicit one-time local validator setup + complete validation:
 python3 tools/TestLinuxClap.py --download-tool
@@ -625,46 +625,6 @@ processor/host tests without an ALSA sequencer device while retaining Standalone
 hotplug cancellation. midiDevices.deviceWatchRequested is routing diagnostics,
 not proof that a physical controller or OS notification was tested.
 
-## Optional Linux VST3 host validation
-
-The existing Linux VST3 can be checked through the official Tracktion pluginval
-1.0.4 host. This gate requires an X display (WSLg works); editor tests stay
-enabled. It needs no audio device, plugin installation or package. From Ubuntu
-at the repository root, after building AionLooper_VST3:
-
-```sh
-# Explicit one-time project-local tool download and validation:
-python3 tools/TestLinuxVst3.py --download-tool
-cmake -S . -B build/linux \
-  -DAION_LINUX_PLUGINVAL_EXECUTABLE="$PWD/.toolchain/pluginval/1.0.4-linux/pluginval"
-ctest --test-dir build/linux -R '^linux_vst3_pluginval$' \
-  --no-tests=error --output-on-failure
-# Subsequent direct runs need no network; override --plugin for another tree:
-python3 tools/TestLinuxVst3.py
-```
-
-The helper pins both official archive and executable hashes, uses level 9 and
-seed 1337, and requires completed editor/automation/state/thread/fuzz tests plus
-all 15 combinations of 44100/48000/96000 Hz and 64/128/256/512/1024 samples.
-Inherited pluginval options are removed only from the child environment so
-SKIP_GUI_TESTS or DISABLED_TESTS cannot weaken coverage. The parent environment
-is unchanged. An outer 240-second timeout terminates only the owned validator
-process group. stdout/stderr and result.json record source, tool, harness,
-before/after module hashes and explicit test limits under build/linux-pluginval.
-The serial optional CTest has a 300-second limit; default builds need no tool.
-
-This tests the public VST3 wrapper and editor lifecycle, not the rendered HTML
-control workflow. The runtime policy deliberately blocks original inline scripts
-and legacy WebAudio modules; WebKit may print CSP refusal messages for those
-blocked resources. Native adapters are injected separately as JUCE user scripts.
-The recorded WSLg run also reports a libEGL/DRI3 acceleration warning. Neither
-message is evidence of HTML interaction or accelerated-rendering acceptance.
-The official binary omits the allocation test, and no external Steinberg
-validator is configured: result.json records both as false. Actual DAW sessions,
-recorded-loop project recall, JACK/ALSA hardware, Release latency/CPU and Apple
-platforms remain separate gates.
-
-
 ## Optional Linux LV2 host and stereo audio validation
 
 The existing JUCE LV2 bundle has two complementary acceptance checks: official
@@ -673,7 +633,7 @@ use the built Debug bundle without installing a plugin or creating a package.
 From Ubuntu at the repository root, after building AionLooper_LV2:
 
 ```sh
-# Reuses the same pinned official Linux tool as the VST3 gate:
+# Download the pinned official Linux pluginval tool:
 python3 tools/TestLinuxLv2.py --download-tool
 cmake -S . -B build/linux \
   -DAION_LINUX_LV2_PLUGINVAL_EXECUTABLE="$PWD/.toolchain/pluginval/1.0.4-linux/pluginval"
@@ -985,7 +945,7 @@ persist=0 within the owned isolated profile, never the user's project/preference
 
 ### Building and checking the VST3 program bridge
 
-The normal native CMake build generates the patched wrapper from the pinned JUCE
+The Windows native CMake build generates the patched wrapper from the pinned JUCE
 source. No additional SDK or modified dependency checkout is required. The app's
 UI and preset/mapping schema are unchanged; VST3 gains sixteen hidden routing
 parameters and per-channel command lists required by the host protocol.
@@ -997,12 +957,13 @@ python tools/TestReaper.py --midi
 ```
 
 ```sh
-cmake --build build/linux --target AionLooper_VST3 aion_midi_processor_tests aion_vst3_program_tests -j2
+cmake --build build/linux --target aion_midi_processor_tests aion_vst3_program_tests -j2
 ctest --test-dir build/linux -R 'vst3_program_routing|vst3_wrapper_generation|native_midi_processor' --output-on-failure
 ```
 
 Core-only builds also include vst3_program_routing without JUCE/SDK dependencies.
-The real host gate adds all sixteen channel-specific PC0/PC127 routes and rejects
+Linux retains the portable protocol/processor regressions above, without a VST3
+plugin target. The real Windows host gate adds all sixteen channel-specific PC0/PC127 routes and rejects
 wrong-channel and unmapped-program actions. It now checks 20 MIDI renders per
 format plus the original seven monitor renders. REAPER VST3's observed PC capture
 period is 7168 frames versus nominal 7200; its PC event timing remains a host

@@ -107,7 +107,7 @@ juce_add_plugin(AionLooper
 | --- | --- | --- |
 | `core` | No JUCE wrappers | Portable DSP/queue/reference tests; Windows also has an existing MSVC core tree |
 | `windows` | Standalone, VST3, CLAP | WebView2; ASIO is opt-in and enabled in this PC's current cache; hardware/host gates separate |
-| `linux` | Standalone, VST3, CLAP, LV2 | JUCE ALSA/JACK, WebKitGTK; current portable tests do not establish current Linux GUI/host acceptance |
+| `linux` | Standalone, CLAP, LV2 | JUCE ALSA/JACK, WebKitGTK; current portable tests do not establish current Linux GUI/host acceptance |
 | `macos` | Standalone, VST3, CLAP, AU, AUv3 | Xcode universal arm64/x86_64; CoreAudio/WebKit; requires a Mac |
 | `ios` | Standalone, AUv3 | Xcode/iPhoneOS, CoreAudio/WebKit; device/signing/extension lifecycle unverified |
 
@@ -239,6 +239,10 @@ Standalone input/configuration interface remains unchanged.
 
 
 ### Linux VST3 acceptance entry point (22 October 2026)
+
+Historical validation: the Linux VST3 target and its CTest registration were
+removed at the owner's request on 28 October 2026. The shared validator helper
+remains for LV2. This section is not a current build instruction.
 
 AION_LINUX_PLUGINVAL_EXECUTABLE adds the opt-in serial linux_vst3_pluginval
 CTest against the actual JUCE VST3 bundle. TestLinuxVst3.py pins official Linux
