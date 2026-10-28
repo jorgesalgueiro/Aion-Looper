@@ -1,3 +1,42 @@
+# Owner-approved development policy — 28 October 2026
+
+This policy supersedes older format/build-cadence requirements and any demand
+for identical internal WebAudio machinery below. It does not waive musical,
+real-time, compatibility or user-visible acceptance requirements.
+
+- Active delivery: Windows Standalone + VST3 (REAPER); Linux Standalone + LV2
+  (Ardour). CLAP stays opt-in/deferred; preserve its code/IDs and prior evidence.
+  macOS Standalone/AU and iOS Standalone/AUv3 remain future work, not current gates.
+- Keep JUCE + embedded offline ASCII UI. Do not add a Qt/Tauri/CEF migration now.
+  Preserve sound, timing, controls, workflows, parameters, presets and session IDs.
+- Define each slice by observable audio, state and interaction acceptance. A
+  simpler native implementation is allowed when equivalent behavior is demonstrated;
+  reproducing browser node topology/internal bookkeeping is not a product goal.
+  Retain regressions that protect observable behavior and real-time ownership.
+  Never delete a failing regression or loosen tolerances just to get a pass.
+  Explain and review implementation-coupled test changes with replacement evidence.
+- Iteration: run affected core/reference/frontend/processor tests and build only
+  needed targets. Use windows-dev/linux-dev for Standalone UI work. Run real UI
+  and selected-host checks when those paths change. Do not repeat all suites for
+  docs-only edits or rerun unchanged passing suites without a new reason.
+- Feature completion: run relevant Windows/Linux regressions and required original
+  JS/audio/interaction gates at 64/128. Fix blocking failures before advancing.
+  Device/host coverage is separate; report unavailable checks precisely. Full
+  selected-format validators, stress/sanitizers and packaging belong at applicable
+  integration/release gates. Do not package each fix or claim zero bugs.
+- Linux builds use /home/jorge/projects/Aion-Looper (native WSL filesystem), with
+  its own build and .deps directories. Windows remains the primary editing and
+  publishing checkout. Use tools/SetupWslWorkspace.sh for committed snapshots;
+  never reset/overwrite a dirty Linux checkout or copy Windows CMake caches.
+  See docs/DEVELOPMENT_WORKFLOW.md for sync, benchmark and command details.
+- Every newly ported feature must extend the shared GUI/CLI command layer, without
+  duplicating DSP. Project-owned code is AGPL-3.0-only; retain third-party notices
+  and unresolved asset-rights checks. Defaults: 10 loops, 10 drones, 10 samplers;
+  preserve existing expanded capacity/IDs rather than changing runtime scope here.
+
+Historical detailed gates follow. Treat them as retained, change-dependent
+regression coverage, not a requirement to rebuild every wrapper on every edit.
+
 # Aion-Looper quality gate
 
 The user requires one feature at a time: implement, compare, test, fix and retest;

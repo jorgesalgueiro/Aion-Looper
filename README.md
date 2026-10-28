@@ -49,13 +49,14 @@ See the [feature-by-feature parity checklist](docs/PARITY.md) for exact coverage
 
 | Platform | Standalone | Plugin formats in scope | Validation / availability |
 | --- | --- | --- | --- |
-| Windows x64 | Yes | VST3, CLAP | Development builds; scoped REAPER checks recorded |
-| Linux | Yes | CLAP, LV2 | Development builds; scoped Ardour LV2 checks recorded |
+| Windows x64 | Yes | VST3 | Development builds; scoped REAPER checks recorded |
+| Linux | Yes | LV2 | Development builds; scoped Ardour LV2 checks recorded |
 | macOS | Future | AU | Build configuration prepared; platform acceptance pending |
 | iOS | Future | AUv3 | Build configuration prepared; device acceptance pending |
 
 Format availability does not mean every workflow has passed in every host: [validation notes](docs/VALIDATION.md) describe
-the checks actually run. Apple delivery is future work.
+the checks actually run. Apple delivery is future work. CLAP remains available as an opt-in build, deferred
+from the current development/release matrix.
 
 ### Your first loop: Windows or Linux
 
@@ -91,8 +92,8 @@ host's plugin search paths and rescan:
 
 | System | Build output folders | Suggested workflow |
 | --- | --- | --- |
-| Windows | `build/windows/AionLooper_artefacts/Release/VST3` and `build/windows/AionLooper_artefacts/Release/CLAP` | Load VST3 or CLAP in REAPER |
-| Linux | `build/linux/AionLooper_artefacts/Release/LV2` and `build/linux/AionLooper_artefacts/Release/CLAP` | Load LV2 in Ardour; use a CLAP-capable host for CLAP |
+| Windows | `build/windows/AionLooper_artefacts/Release/VST3` | Load VST3 in REAPER |
+| Linux | `build/linux/AionLooper_artefacts/Release/LV2` | Load LV2 in Ardour |
 
 Route the track's audio and MIDI into the plugin, open its editor, and raise
 MASTER VOLUME. The plugin uses the **DAW's routing and devices**; configure
@@ -159,7 +160,7 @@ ctest --preset linux
 ./build/linux/AionLooper_artefacts/Release/Standalone/Aion-Looper
 ```
 
-This builds Standalone, CLAP and LV2. ALSA/JACK
+This builds Standalone and LV2. CLAP is opt-in/deferred. ALSA/JACK
 development libraries enable the corresponding JUCE backends; physical device
 and low-latency performance still need testing with your own setup.
 
@@ -197,7 +198,7 @@ next slice advances. Every newly ported feature also gets CLI access.
 | **0.5.0** | Projects, editing and routing | Save/reload recorded audio with sessions, remaining import/export paths and original routing workflows; shared GUI/CLI commands | ⬜ |
 | **0.6.0** | The full instrument workspace | Native ports for the default ten-drone and ten-sampler banks, tracker/sequencing and effects, preserving the original musical behavior | ⬜ |
 | **0.7.0** | Connected performance | Full host/MIDI-clock synchronization, remaining MIDI Learn targets, controller workflows and HID/gamepad mapping; wider physical-device coverage | ⬜ |
-| **0.8.0** | Windows and Linux hardening | Standalone, Windows VST3/CLAP and Linux CLAP/LV2; real-device stress, long sessions, REAPER/Ardour workflows, bundled CLI, installers and licensing checks | ⬜ |
+| **0.8.0** | Windows and Linux hardening | Standalone, Windows VST3 and Linux LV2; CLAP deferred; real-device stress, long sessions, REAPER/Ardour workflows, bundled CLI, installers and licensing checks | ⬜ |
 | **1.0.0** | Stable Windows and Linux release | Complete reference parity for the agreed scope, documented workflows, passing release gates and reproducible packages | ⬜ |
 | **Later — version TBD** | macOS and iOS | macOS Standalone/AU, iOS Standalone/AUv3, device/host lifecycle, permissions and signing; prepared configuration still needs platform acceptance | ⬜ |
 
@@ -207,6 +208,7 @@ next slice advances. Every newly ported feature also gets CLI access.
 - [Current engineering handoff](docs/MIGRATION_CURRENT.md): the active slice and next steps.
 - [Validation](docs/VALIDATION.md) and [reference audit](docs/REFERENCE_AUDIT.md): evidence and limits.
 - [Architecture](docs/ARCHITECTURE.md) and [migration blueprint](docs/MIGRATION_BLUEPRINT.md): how the port fits together.
+- [Development workflow](docs/DEVELOPMENT_WORKFLOW.md) and [reusable task prompt](docs/DEVELOPMENT_PROMPT.md).
 - [Build guide](docs/BUILDING.md) and [CLI guide](docs/CLI.md): reproducible commands and usage.
 
 When reporting a problem, include your OS, build/commit, Standalone or plugin

@@ -1,5 +1,13 @@
 # Build and package
 
+Current active formats: Windows Standalone/VST3; Linux Standalone/LV2. CLAP is
+deferred/opt-in (`-DAION_BUILD_CLAP=ON`). Use `windows-dev` / `linux-dev` build
+presets for Standalone-only iteration. Linux builds belong in native WSL storage,
+not `/mnt/d`; see [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) for safe
+setup/sync, test tiers and exact commands. Historical CLAP instructions below
+apply only when explicitly enabling that format. Package commands are release/
+requested-package steps, not routine development commands.
+
 Development CLI: start the current Standalone, then run
 `python tools/aion.py instances` / `python tools/aion.py status` from the repository.
 See [CLI.md](CLI.md) for commands, per-instance selection, limits and current
@@ -37,7 +45,7 @@ cmake --install build/linux --prefix dist/linux
 cpack --config build/linux/CPackConfig.cmake -B dist -G ZIP
 ```
 
-Targets: `AionLooper_Standalone`, `AionLooper_CLAP`,
+Default targets: `AionLooper_Standalone`,
 `AionLooper_LV2`, `aion_core_tests`. JUCE natively supplies LV2; do not use an old
 fork of JUCE_LV2. The browser subprocess is embedded for plugin hosts. Default
 JUCE Linux backends include ALSA/JACK when their development libraries are present;

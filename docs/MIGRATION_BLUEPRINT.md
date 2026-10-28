@@ -6,6 +6,23 @@ working implementation or claim complete Ascii-Looper parity.
 Host-observation increment updated 22 October 2026; fresh evidence is in VALIDATION.md.
 Windows VST3 pluginval and CLAP validator gates added 22 October 2026; their exact scope is recorded there.
 
+## Current delivery and iteration policy — 28 October 2026
+
+Active formats are Windows Standalone/VST3 and Linux Standalone/LV2. CLAP stays
+opt-in/deferred, preserving code/IDs and historical acceptance. Future macOS is
+Standalone/AU; future iOS is Standalone/AUv3. Historical all-format test records
+below are evidence, not the current per-edit build matrix.
+
+Use [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) and the current AGENTS.md
+policy: focused affected checks during iteration, relevant Windows/Linux acceptance
+at feature completion, and selected-format full validation/packaging at applicable
+integration/release gates. No safety or observable musical regression is waived.
+Compare sound/timing/state/controls rather than require identical internal browser
+graph machinery. Keep JUCE + offline ASCII UI; no GUI framework migration now.
+Linux builds use the independent native WSL checkout, dependencies and build tree
+at `/home/jorge/projects/Aion-Looper`, synchronized without overwriting local work.
+The reusable task prompt is [DEVELOPMENT_PROMPT.md](DEVELOPMENT_PROMPT.md).
+
 ## Repository and original reference
 
 - `.reference/Ascii-Looper`: original browser application, including main.js,
@@ -67,7 +84,8 @@ JUCE is pinned to `9.0.4`, commit
 https://github.com/juce-framework/JUCE/releases/tag/9.0.4
 
 `cmake/Dependencies.cmake` checks the actual source revision, including local
-FetchContent overrides. CLAP uses pinned clap-juce-extensions and its submodules.
+FetchContent overrides. Opt-in CLAP uses pinned clap-juce-extensions and its submodules;
+default builds do not fetch or build that extension.
 JUCE already provides the LV2 wrapper; no separate legacy juce_lv2 fork is used.
 
 The actual build has three shared targets:
@@ -106,9 +124,9 @@ juce_add_plugin(AionLooper
 | Preset | Selected default formats | Backend / validation boundary |
 | --- | --- | --- |
 | `core` | No JUCE wrappers | Portable DSP/queue/reference tests; Windows also has an existing MSVC core tree |
-| `windows` | Standalone, VST3, CLAP | WebView2; ASIO is opt-in and enabled in this PC's current cache; hardware/host gates separate |
-| `linux` | Standalone, CLAP, LV2 | JUCE ALSA/JACK, WebKitGTK; current portable tests do not establish current Linux GUI/host acceptance |
-| `macos` | Standalone, VST3, CLAP, AU, AUv3 | Xcode universal arm64/x86_64; CoreAudio/WebKit; requires a Mac |
+| `windows` | Standalone, VST3 | WebView2; ASIO is opt-in and enabled in this PC's current cache; hardware/host gates separate |
+| `linux` | Standalone, LV2 | JUCE ALSA/JACK, WebKitGTK; current portable tests do not establish current Linux GUI/host acceptance |
+| `macos` | Future Standalone, AU | Xcode universal arm64/x86_64; CoreAudio/WebKit; requires a Mac |
 | `ios` | Standalone, AUv3 | Xcode/iPhoneOS, CoreAudio/WebKit; device/signing/extension lifecycle unverified |
 
 Windows BUILD_TESTING optionally accepts AION_PLUGINVAL_EXECUTABLE. This adds the

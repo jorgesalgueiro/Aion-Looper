@@ -20,14 +20,18 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/linux",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "AION_BUILD_CLAP": "OFF"
       }
     },
     {
       "name": "windows",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
-      "binaryDir": "${sourceDir}/build/windows"
+      "binaryDir": "${sourceDir}/build/windows",
+      "cacheVariables": {
+        "AION_BUILD_CLAP": "OFF"
+      }
     },
     {
       "name": "macos",
@@ -35,7 +39,10 @@
       "binaryDir": "${sourceDir}/build/macos",
       "cacheVariables": {
         "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64",
-        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0"
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0",
+        "AION_BUILD_CLAP": "OFF",
+        "AION_BUILD_VST3": "OFF",
+        "AION_BUILD_AUV3": "OFF"
       }
     },
     {
@@ -46,7 +53,8 @@
         "CMAKE_SYSTEM_NAME": "iOS",
         "CMAKE_OSX_SYSROOT": "iphoneos",
         "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0",
-        "AION_BUILD_AUV3": "ON"
+        "AION_BUILD_AUV3": "ON",
+        "AION_BUILD_CLAP": "OFF"
       }
     }
   ],
@@ -73,6 +81,21 @@
       "name": "ios",
       "configurePreset": "ios",
       "configuration": "Release"
+    },
+    {
+      "name": "windows-dev",
+      "configurePreset": "windows",
+      "configuration": "Release",
+      "targets": [
+        "AionLooper_Standalone"
+      ]
+    },
+    {
+      "name": "linux-dev",
+      "configurePreset": "linux",
+      "targets": [
+        "AionLooper_Standalone"
+      ]
     }
   ],
   "testPresets": [

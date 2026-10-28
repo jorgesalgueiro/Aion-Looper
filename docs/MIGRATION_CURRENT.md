@@ -1,5 +1,23 @@
 # Current migration checkpoint
 
+## Owner-approved faster development workflow — 28 October 2026
+
+Active delivery is Windows Standalone/VST3 and Linux Standalone/LV2. CLAP is
+preserved but opt-in/deferred; Apple delivery remains future work. Read the new
+AGENTS.md policy first, plus DEVELOPMENT_WORKFLOW.md and DEVELOPMENT_PROMPT.md.
+Use windows-dev/linux-dev for incremental Standalone builds; run affected checks
+while iterating, relevant Windows/Linux acceptance at feature completion, and
+applicable full selected-format gates at integration/release. Observable sound,
+timing, controls/state and real-time ownership stay strict; identical internal
+browser graph machinery is not a product requirement. Do not weaken regressions.
+
+Native WSL mirror setup/measurement is being completed at
+`/home/jorge/projects/Aion-Looper`. Windows remains the editing/publishing owner;
+SetupWslWorkspace.sh mirrors committed main and pristine dependency/reference
+caches without resetting dirty work. Do not copy Windows build caches or silently
+assume uncommitted Windows edits exist in WSL. Evidence will be recorded below.
+No DSP/parameter/UI implementation is changed by this workflow update.
+
 ## Documentation, target and license decision — 2026-10-28
 
 - README now describes the default 10 loop / 10 drone / 10 sampler workspace.

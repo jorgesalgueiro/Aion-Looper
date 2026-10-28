@@ -5,6 +5,21 @@ For the audited current implementation versus planned modules, see
 names in the initial design below include future components; they are not a claim
 that synths, tracker, full clock sync or project persistence are already ported.
 
+## Current development policy
+
+Windows Standalone/VST3 and Linux Standalone/LV2 are the active delivery matrix.
+CLAP remains optional/deferred; macOS Standalone/AU and iOS Standalone/AUv3 are
+future work. Keep the shared JUCE processor and offline ASCII presentation.
+Use native WSL storage for Linux source, dependencies and build files, with a
+separate checkout from Windows. See [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md).
+
+Acceptance protects observable sound, timing, controls, state and real-time safety;
+internal WebAudio node topology is not an architectural constraint. Retain relevant
+behavior/ownership regressions and justify any implementation-coupled test changes.
+Use affected checks while iterating and relevant cross-platform gates at feature
+completion. Full selected-format release checks are not a per-documentation-edit
+requirement. The detailed contracts below retain their safety/compatibility scope.
+
 ## Reference audit
 
 Source: `.reference/Ascii-Looper`, version string `v0.76.16`. It is a browser

@@ -1,5 +1,11 @@
 # Migration status
 
+Active delivery: Windows Standalone/VST3 and Linux Standalone/LV2. CLAP is
+opt-in/deferred; historical CLAP results remain valid within their recorded scope.
+See [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) for focused iteration and
+feature-completion/release gates. No status below implies unavailable hardware
+or Apple acceptance.
+
 | Capability | Foundation status | Release acceptance |
 | --- | --- | --- |
 | Original runtime assets | 16 files preserved with SHA256 | Automated byte identity checks |
