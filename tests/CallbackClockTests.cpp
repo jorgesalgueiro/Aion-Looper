@@ -1,4 +1,5 @@
 #include "core/Engine.h"
+#include "core/QueuedMeterCallbackTime.h"
 #include <atomic>
 #include <cstdlib>
 #include <iostream>
@@ -9,6 +10,46 @@ extern std::atomic<int> allocations;
 namespace {void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}}
 void callbackClockTests(){
     using namespace aion;
+    for(double rate:{8000.0,44100.0,48000.0,96000.0})for(unsigned block:{0u,1u,64u,128u,1024u})
+    for(std::uint64_t base:{std::uint64_t{0},(std::uint64_t{1}<<63)+17})for(double delay:{0.,.0000001,.1345}){
+        MeterGraphEvent event;event.kind=MeterGraphEventKind::queuedPlay;event.serial=3;event.generation=7;event.track=19;
+        event.queueId=(std::uint64_t{1}<<60)+9;event.bufferId=(std::uint64_t{1}<<61)+11;event.queueDelaySeconds=delay;
+        event.frame=base+(block?block-1:0);event.callbackClock={9,base,base+block,0,rate,7};event.callbackClock.processorEntry={100.25,true};
+        const double command=100.25+static_cast<double>(block?block-1:0)/rate,deadline=command+delay;
+        for(double lag:{0.,.04,.25}){
+            const double wall=100.25+static_cast<double>(block)/rate+lag;QueuedMeterCallbackTime time;
+            watch=true;const bool ok=queuedMeterCallbackTime(event,73,{73,wall},7,time);watch=false;
+            check(ok&&time.generation==7&&time.track==19&&time.eventSerial==3&&time.callbackSerial==9&&time.clockOrigin==73
+                &&time.queueId==event.queueId&&time.bufferId==event.bufferId&&time.commandSeconds==command&&time.deadlineSeconds==deadline
+                &&time.remainingSeconds==std::max(0.,deadline-wall),"Queued callback maps exact local offset and immutable unrounded deadline across lag and full-width frames");
+        }
+    }
+    MeterGraphEvent queued;queued.kind=MeterGraphEventKind::queuedPlay;queued.serial=1;queued.generation=7;queued.track=19;
+    queued.queueId=8;queued.bufferId=9;queued.frame=105;queued.queueDelaySeconds=.1;queued.callbackClock={2,100,228,0,48000,7};queued.callbackClock.processorEntry={100,true};
+    QueuedMeterCallbackTime held;check(queuedMeterCallbackTime(queued,73,{73,101},7,held),"Seed queued timing before invalid inputs");
+    const auto reject=[&](MeterGraphEvent event,MonotonicClockPoint wall=MonotonicClockPoint{73,101},std::uint32_t generation=7,std::uint64_t origin=73){
+        auto result=held;check(!queuedMeterCallbackTime(event,origin,wall,generation,result)&&result==held,"Invalid queued timing leaves caller output unchanged");};
+    auto bad=queued;bad.kind=MeterGraphEventKind::started;reject(bad);bad=queued;bad.serial=0;reject(bad);
+    bad=queued;bad.queueId=0;reject(bad);bad=queued;bad.bufferId=0;reject(bad);bad=queued;bad.track=20;reject(bad);
+    bad=queued;bad.retiredTicket=1;reject(bad);bad=queued;bad.stopLeadSeconds=.015;reject(bad);
+    bad=queued;bad.generation=8;reject(bad);reject(queued,{73,101},8);reject(queued,{0,101});reject(queued,{74,101});reject(queued,{73,101},7,0);
+    bad=queued;bad.callbackClock.generation=8;reject(bad);bad=queued;bad.callbackClock.serial=0;reject(bad);
+    bad=queued;bad.callbackClock.nonRealtime=true;reject(bad);bad=queued;bad.callbackClock.processorEntry={};reject(bad);
+    bad=queued;bad.frame=99;reject(bad);bad=queued;bad.frame=228;reject(bad);
+    bad=queued;bad.callbackClock.endFrame=99;reject(bad);bad=queued;bad.callbackClock.endFrame=100+static_cast<std::uint64_t>(std::numeric_limits<int>::max())+1;reject(bad);
+    for(double value:{-1.,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}){
+        bad=queued;bad.queueDelaySeconds=value;reject(bad);bad=queued;bad.callbackClock.sampleRate=value;reject(bad);
+        bad=queued;bad.callbackClock.processorEntry={value,true};reject(bad);reject(queued,{73,value});
+    }
+    reject(queued,{73,99});bad=queued;bad.callbackClock.sampleRate=0;reject(bad);
+    bad=queued;bad.callbackClock.processorEntry.seconds=1e308;reject(bad,{73,1e308});
+    bad=queued;bad.callbackClock.sampleRate=1e-308;reject(bad);
+    bad=queued;bad.callbackClock.hasHostTimeNs=true;bad.callbackClock.hostTimeNs=std::numeric_limits<std::uint64_t>::max();
+    bad.callbackClock.hasOutputLatency=true;bad.callbackClock.outputLatencySamples=std::numeric_limits<std::uint32_t>::max();
+    QueuedMeterCallbackTime independent;check(queuedMeterCallbackTime(bad,73,{73,101},7,independent)&&independent==held,"Queued command time never uses host nanoseconds or audible output latency");
+    auto startup=queued;startup.frame=0;startup.queueDelaySeconds=0;startup.callbackClock={1,0,0,0,48000,7};startup.callbackClock.processorEntry={0,true};
+    check(queuedMeterCallbackTime(startup,73,{73,0},7,independent)&&independent.commandSeconds==0&&independent.deadlineSeconds==0
+        &&independent.remainingSeconds==0,"Known-zero command counter and due time differ from missing correlation");
     Transport host;host.hostTimeNs=123;check(validatedTransport(host).hostTimeNs==0,"Missing host clears stale callback time");
     host.hostValid=true;check(validatedTransport(host).hostTimeNs==0,"Missing optional timestamp clears stale value");
     host.hasHostTimeNs=true;host.hostTimeNs=0;check(validatedTransport(host).hasHostTimeNs,"Engaged zero timestamp is distinct from missing timestamp");
@@ -61,5 +102,6 @@ void callbackClockTests(){
         watch=false;
     }
     check(allocations.load()==0,"Raw callback timestamp acquisition/transfer/validation has zero tracked new/delete");
+    std::cout<<"PASS: queued command counter correlation, immutable deadline and late-receipt remainder, zero/variable blocks, 8/44.1/48/96k rates, full-width frames, malformed/offline/foreign-clock rejection and host/latency independence\n";
     std::cout<<"PASS: raw optional callback clock, exact uint64/ns and 64/128/zero-frame ranges, bounded transfer, same-frame serial guard, reset and bit-identical PCM; zero tracked new/delete\n";
 }

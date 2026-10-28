@@ -1,9 +1,10 @@
 # Current migration checkpoint
 
-Updated 2026-10-28. Current source baseline: `ecf414b` (clean main at session start,
-six local commits ahead of cached origin). This session implements explicitly
-requested queued graph acceptance. Automatic callback scheduling stays unwired.
-Prior transaction, reference-oracle and STOP acceptance remain applicable.
+Updated 2026-10-28. Current source baseline: `84601d7` (clean main at session start,
+seven local commits ahead of cached origin). This session captures the exact queued
+command callback and exposes an immutable counter deadline. Automatic callback
+scheduling stays unwired. Prior graph transaction, reference-oracle and STOP
+acceptance remain applicable.
 Continue the existing implementation; this is not a restart or release checklist.
 
 ## Reference and baseline
@@ -13,10 +14,10 @@ The available original is `.reference/Ascii-Looper` inside this repository.
 `tests/AssetTests.py` verifies embedded original UI bytes against that copy.
 Neither reference nor original UI files are modified by this repair.
 
-The baseline evidence is `build/queued-start-guard-evidence.json`: Windows/Ubuntu
+The baseline evidence is `build/queued-graph-evidence.json`: Windows/Ubuntu
 portable 28/28 each, native 2/2 each, core sanitizer 6/6, 96 queue-delay cases,
 126 committed-PCM cases. A fresh focused baseline passed before the new normal
-transaction tests were added. Historical
+correlation tests were added. Historical
 STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 
 ## Compact parity checklist
@@ -24,7 +25,7 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Reference behavior | Native status / evidence | Remaining gap |
 | --- | --- | --- |
 | Capture and accepted loop edits preserve committed PCM | Existing scoped audit: 126 capture/OD/SUB cases at 1e-6; other loop-edit gates retained | Full browser envelopes/resampling and physical input timing are separate |
-| Queue callback uses max(0, grid delta minus 100ms) | Accepted unrounded metadata; 96 actual Engine/original grid+dispatcher cases retained | Actual message callback, graph transaction and wall alignment remain unwired |
+| Queue callback uses max(0, grid delta minus 100ms) | Exact accepting callback retained; immutable command-counter deadline; 96 original delay cases plus 288 offset cases / 864 deadline reads at 1e-12 | Automatic delivery, cleanup origin alignment and full source sound remain unaccepted |
 | STOP ALL cancels a still-queued intent even after its grid time | This repair routes queuedCancel by explicit pending ID; core, production processor, 20-route and real-timer regressions | This does not fix audible playback occurring before a late message callback |
 | STOP NOW clears pending queue before immediate graph cleanup, including after grid | Explicit queue-ID routing; graphless/attached, production requests and real 25ms timer checks | Normal synchronized STOP and old-teardown state boundary remain separate |
 | Normal STOP takes immediate path when sync is disabled | Pending-ID routing covers sync disabled after grid; accepted graph origins support immediate and synchronized stops before/after grid | Actual automatic callback delivery and full transition sound remain separate |
@@ -36,7 +37,50 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Explicit graph callback owns subsequent stop routing | Real queue IDs, 120 core lifetime/stop combinations, prepared processor hook and twenty-track result/stop routing pass | Automatic timer delivery, overlap/envelopes and source phase are not accepted by this logical transaction phase |
 | Full instruments/effects/controller/persistence/host parity | No new acceptance from this session; see PARITY.md and feature-specific validation notes | Do not infer suite completion from these looper/meter gates |
 
-## Current slice: explicit queued graph transaction
+## Current slice: queued command clock correlation
+
+Each actual queuedPlay fact now carries the callback stamp captured before MIDI
+and command dispatch. The message owner retains that exact fact independently of
+later or missing processor views. The existing fixed heap-owned SPSC queue still
+has 255 usable entries and the same fail-closed generation-loss policy; callback
+work adds fixed copies, without new clocks, allocation, locks or IO.
+
+For a validated shared monotonic counter origin:
+
+```text
+commandSeconds = acceptingEntrySeconds + (commandFrame - beginFrame) / sampleRate
+deadlineSeconds = commandSeconds + unroundedQueueDelay
+remainingSeconds = max(0, deadlineSeconds - currentCounterSeconds)
+```
+
+Frame subtraction occurs as full-width integers before conversion. This is the
+processor-entry command-counter model, not physical output timing. Host nanoseconds,
+device/DAC delivery, output latency, later snapshots and receipt-plus-delay cannot
+substitute for that correlation. Late receipts reduce remaining time to zero and
+never move the deadline. A known zero entry/deadline is valid, including a real
+zero-frame MIDI callback. Missing entry, offline callbacks, foreign origin, invalid
+generation/range/nonfinite values and lost precision reject without changing output.
+
+`readQueuedMeterCallbackTimeMessageThread(track)` is an internal native readout
+using the same configured reader as processBlock. It services the existing bounded
+route and validates the prepared generation. It adds no JS operation, timer,
+parameter or serialized-state field. Old cleanup can leave a still-live intent and
+its original deadline; cancellation, clear, replacement, prepare and stream loss
+make it unavailable. Loss recovery drains old notices before prepare, preserving
+the existing queue ownership rules.
+
+Acceptance covers pure clock/range/precision failures, actual sub-block commands
+at tracks 0/19 and 64/128, later/missing-view independence, zero-frame MIDI,
+old cleanup, cancellation/clear/prepare/loss recovery, exact paired PCM and zero
+tracked callback allocations. Original grid/dispatcher delays are compared at
+three offsets and three receipt lags: 288 cases and 864 deadline reads at 1e-12.
+The intentional receipt-time-rearm negative must fail before restored-object gates.
+
+Automatic scheduling remains a separate slice: timer fire must validate its stored
+generation, queue, clip and event identity, not retarget a newer queue via bare track.
+Cleanup clock origins and source lifetime/sound still need independent alignment.
+
+## Previous slice: explicit queued graph transaction
 
 The new core-only `meterQueuedGraphRequest` shares the bounded command FIFO,
 ticket reservation and full-width queue/clip validation. It is a distinct request
@@ -171,6 +215,7 @@ Windows (PowerShell, repository root; use the bundled CMake/CTest path if not on
 
 ```powershell
 cmake --build build/windows-core --config Release --parallel 2
+build/windows-core/Release/aion_core_tests.exe --callback-clock
 build/windows-core/Release/aion_core_tests.exe --meter-queued
 ctest --test-dir build/windows-core -C Release -V
 cmake --build build/windows --config Release --target aion_midi_processor_tests AionLooper_Standalone --parallel 2
@@ -183,10 +228,11 @@ Ubuntu, in `/mnt/d/Jorge/Documents/Codex/Aion-Looper`:
 
 ```sh
 cmake --build build/core -j2
+build/core/aion_core_tests --callback-clock
 build/core/aion_core_tests --meter-queued
 ctest --test-dir build/core -V
 cmake --build build/linux --target aion_midi_processor_tests AionLooper_Standalone -j2
-ctest --test-dir build/linux -V -R '^(native_midi_processor|standalone_clock_sdk_generation)$'
+DISPLAY=:0 ctest --test-dir build/linux -V -R '^(native_midi_processor|standalone_clock_sdk_generation)$'
 cmake --build build/core-asan -j2
 ctest --test-dir build/core-asan -V -R '^(core_realtime_contract|js_native_playback_clock|js_native_meter_graph|original_meter_source_lifecycle|js_native_meter_window|js_native_meter)$'
 ```
@@ -197,30 +243,36 @@ compiling sources or overlap CTests in a build tree.
 
 ## Next concrete step / validation still needed
 
-Current graph transaction evidence: `build/queued-graph-evidence.json`.
-Windows/Ubuntu portable 28/28 (389.63s/599.71s), native 2/2 (11.16s/23.38s),
-core sanitizer 6/6 (318.56s), focused queued regressions, unchanged 126-case PCM
+Current command-clock evidence: `build/queued-clock-evidence.json`.
+Windows/Ubuntu portable 28/28 (412.21s/665.68s), native 2/2 (11.61s/24.52s),
+core sanitizer 6/6 (473.37s), focused clock/queued regressions, unchanged 126-case PCM
 audit (965,826 samples, max error 7.394757495227111e-8 at 1e-6), and original UI
-byte/embedding/tamper checks all pass. No unrelated failing gate was found.
-The unchanged 72-case graph oracle retains all 1,655 observations at 1e-12.
-An intentional early-opening source gate failed at `Scheduled pre-grid stop
-retains audio gate`; restored source objects were rebuilt and focused positive
-tests passed before full gates. The first focused attempt also corrected a test
-which incorrectly requested analyser data after deliberately detaching its graph.
+byte/embedding/tamper checks pass. No unrelated failing gate, skipped check,
+sanitizer error, JUCE assertion or leaked-object report was found. Existing compiler
+warnings remain. The unchanged 72-case graph oracle retains all 1,655 observations
+at 1e-12; 96 original queue timings and the new 288 counter cases / 864 reads pass.
+
+The isolated receipt-time-rearm negative failed the exact immutable-deadline check
+in `build/queued-clock-negative.txt`. The correct header was restored with a fresh
+mtime, all affected Windows/Ubuntu objects rebuilt and focused positives rerun
+before broader gates. Initial fixture repairs replaced a private MIDI API call
+with actual public zero-frame MIDI input and drained the intentionally full lost
+event queue before prepare. Neither required weakening production guards.
 
 Both Standalone development binaries and native test binaries rebuilt. Prior raw
 transaction/STOP evidence remains in VALIDATION.md and `build/`; its regression
 cases are retained. Application parameters, serialized state, original assets,
 dependency versions and target configuration remain unchanged.
 
-Next establish valid wall/audio alignment and implement bounded explicit callback
-delivery, using the full graph hook directly. Retain original unrounded delay and
-independent old cleanup, and distinguish callback delivery after cleanup from
-cleanup retiring an already-pending result. The raw-only hook and generic start
-must not become shortcuts to graph creation. Then compare automatic delivery,
-late-source phase, outgoing/incoming audio overlap and cleanup sound against the
-original before enabling the renderer. Audible playing still does not prove that
-an automatic message callback has occurred; no such timer was activated here.
+Next implement bounded explicit callback delivery using this command correlation
+and the full graph hook directly, with stored-identity guards at timer fire. Retain
+the fixed unrounded deadline and independent old cleanup; establish cleanup clock
+origins and distinguish callback after cleanup from cleanup retiring an already
+pending result. The raw-only hook and generic start must not become shortcuts to
+graph creation. Compare automatic delivery, late-source phase, outgoing/incoming
+audio overlap and cleanup sound against the original before enabling the renderer.
+Audible playing does not prove an automatic message callback occurred; no such
+timer was activated here.
 
 Full transition sound/late-source alignment is still unaccepted. No REAPER/Ardour
 or physical-controller/device tests were added here. Rebuild the relevant current

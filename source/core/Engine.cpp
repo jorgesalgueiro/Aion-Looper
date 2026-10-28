@@ -72,6 +72,11 @@ bool Engine::applyLoop(LoopAction action,std::uint32_t track,double value) noexc
 void Engine::process(float* const* channels, int count, int frames,std::span<const MidiEvent> midiEvents, bool nonRealtime,ProcessorClockObservation processorEntry,DeviceCallbackObservation deviceEntry) noexcept {
     if (count < 0 || frames < 0 || (count > 0 && channels == nullptr)) return;
     const auto callbackBegin=frame;
+    auto serial=callbackClock.serial+1;if(!serial)++serial;
+    const bool hasHostTime=transport.hostValid&&transport.hasHostTimeNs&&transport.callbackFrame==callbackBegin;
+    const CallbackClockStamp thisCallback{serial,callbackBegin,callbackBegin+static_cast<unsigned>(frames),hasHostTime?transport.hostTimeNs:0,preparedRate,generation(),hasHostTime,nonRealtime,
+        outputLatency.available?static_cast<std::uint32_t>(outputLatency.samples):0,outputLatency.available,validatedProcessorClock(processorEntry),validatedDeviceCallback(deviceEntry,frames)};
+    loops.setMeterCallbackClock(thisCallback);
     float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
     if(nonRealtime)loops.completeOfflineEdits();
     loops.beginBlock();
@@ -169,10 +174,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     }
     // Telemetry is lossy by design; never wait when the editor is closed/slow.
     renderedMasterPeak=masterPeak;
-    auto serial=callbackClock.serial+1;if(!serial)++serial;
-    const bool hasHostTime=transport.hostValid&&transport.hasHostTimeNs&&transport.callbackFrame==callbackBegin;
-    callbackClock={serial,callbackBegin,frame,hasHostTime?transport.hostTimeNs:0,preparedRate,generation(),hasHostTime,nonRealtime,
-        outputLatency.available?static_cast<std::uint32_t>(outputLatency.samples):0,outputLatency.available,validatedProcessorClock(processorEntry),validatedDeviceCallback(deviceEntry,frames)};
+    callbackClock=thisCallback;callbackClock.endFrame=frame;
     (void) meters.push({frame, peak});
     const auto tracks=loops.view();
     meterTransfer->publish(generation(),frame,preparedRate,[&](unsigned id,MeterWindowEvent& event) noexcept {
@@ -197,6 +199,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
         else break; // Closed/slow editor: retry later, never wait.
     }
     (void) views->push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame),midi->view(),transport,callbackClock});
+    loops.setMeterCallbackClock({}); // A direct action outside this callback has no captured correlation.
 }
 bool Engine::enqueueExport(ExportRequest request) noexcept {
     if(exportOutstanding||request.generation!=generation()||!request.generation||request.track>=LoopBank::trackCount||!request.waveformId)return false;

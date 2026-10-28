@@ -238,6 +238,17 @@ bool AionProcessor::requestQueuedMeterGraphMessageThread(unsigned track) noexcep
     const auto& owner=*(*meterOwners)[track];
     return (*meterTimers)[track]->requestQueuedGraph(owner.queuedIntentId(),owner.committedBuffer());
 }
+bool AionProcessor::readQueuedMeterCallbackTimeMessageThread(unsigned track,aion::QueuedMeterCallbackTime& output) noexcept {
+    JUCE_ASSERT_MESSAGE_THREAD
+    if(!meterPrepared()||track>=aion::LoopBank::trackCount)return false;
+    serviceMeters();
+    if(!meterPrepared()||!meterOwners)return false;
+    constexpr std::uint64_t counterOrigin=1; // Same configured reader as processBlock, never a host/DAC clock.
+    aion::QueuedMeterCallbackTime candidate;
+    if(!(*meterOwners)[track]->readQueuedCallbackTime(counterOrigin,{counterOrigin,processorClockReader()},candidate)
+        ||!meterPrepared()||candidate.generation!=preparedGeneration.load(std::memory_order_acquire))return false;
+    output=candidate;return true;
+}
 MeterServiceStatus AionProcessor::inspectMeterServiceMessageThread() const noexcept {
     JUCE_ASSERT_MESSAGE_THREAD
     auto result=meterServiceStatus;

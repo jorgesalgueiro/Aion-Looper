@@ -124,11 +124,13 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { meterCallbackClock={};for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
+    void setMeterCallbackClock(const CallbackClockStamp& callback) noexcept {meterCallbackClock=callback;}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
 private:
     const MeterEventScope meterScope;
+    CallbackClockStamp meterCallbackClock{}; // Audio owner, supplied once before dispatch in this callback.
     void publishMeterBuffer(unsigned id) noexcept {
         if(meterScope!=MeterEventScope::rawWindows&&tracks[id].clip)
             meterGraphEvents->publish(MeterGraphEventKind::bufferInstalled,id,0,frame,tracks[id].clearEpoch,tracks[id].clip->waveformId);
@@ -176,7 +178,8 @@ private:
     }
     void publishMeterQueueFact(unsigned id,MeterGraphEventKind kind,double delay=0) noexcept {
         const auto ticket=meterImmediateTickets[id]==meterGraphTickets[id]?meterImmediateTickets[id]:0u;
-        meterGraphEvents->publish(kind,id,ticket,frame,tracks[id].clearEpoch,tracks[id].clip?tracks[id].clip->waveformId:0,0,meterQueuedIds[id],delay);
+        meterGraphEvents->publish(kind,id,ticket,frame,tracks[id].clearEpoch,tracks[id].clip?tracks[id].clip->waveformId:0,0,meterQueuedIds[id],delay,
+            kind==MeterGraphEventKind::queuedPlay?meterCallbackClock:CallbackClockStamp{});
     }
     struct Clip {
         std::atomic<std::uint32_t> leases{1};

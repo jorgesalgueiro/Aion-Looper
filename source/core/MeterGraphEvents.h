@@ -1,8 +1,10 @@
 #pragma once
 #include "core/SpscQueue.h"
+#include "core/CallbackClock.h"
 #include <limits>
 namespace aion {
-// Ordered audio-owner facts. Only immediatePlay explicitly proves a new graph;
+// Ordered audio-owner facts. Immediate play and requested graph results are
+// distinct from raw resets;
 // a raw started event or a buffer installation never implies analyser creation.
 enum class MeterGraphEventKind : std::uint8_t { started, cleared, bufferInstalled, immediatePlay, immediateStop, scheduledStop, stopAll, queuedPlay, queuedCancel, queuedStop, queuedWindowRejected, queuedWindowAccepted, queuedGraphRejected, queuedGraphAccepted };
 // Component scopes retain raw-window/buffer-only contracts. Production adds
@@ -17,6 +19,8 @@ struct MeterGraphEvent {
     double stopLeadSeconds=0; // Scheduled stop delta at audio acceptance, before sample deadline rounding. Not wall time.
     std::uint64_t queueId=0; // Accepted queued intent, independent of analyser/raw-window tickets.
     double queueDelaySeconds=0; // max(0, unrounded grid delta - 100ms), only on queuedPlay. Not wall time.
+    CallbackClockStamp callbackClock{}; // Exact queued-command callback; never a later snapshot or DAC edge.
+    bool operator==(const MeterGraphEvent&) const noexcept = default;
 };
 // Heap-owned SPSC stream. Any loss invalidates the generation until prepare.
 // Never silently resynchronise from later events/snapshots or reset queue indices.
@@ -30,7 +34,7 @@ public:
         active.store(generation,std::memory_order_release);
     }
     void publish(MeterGraphEventKind kind,std::uint32_t track,std::uint32_t ticket,
-        std::uint64_t frame,std::uint64_t clearEpoch,std::uint64_t bufferId=0,double stopLeadSeconds=0,std::uint64_t queueId=0,double queueDelaySeconds=0) noexcept {
+        std::uint64_t frame,std::uint64_t clearEpoch,std::uint64_t bufferId=0,double stopLeadSeconds=0,std::uint64_t queueId=0,double queueDelaySeconds=0,const CallbackClockStamp& callback={}) noexcept {
         const auto generation=active.load(std::memory_order_acquire);
         if(!generation||lost.load(std::memory_order_acquire))return;
         if(track>=trackCount){lost.store(generation,std::memory_order_release);return;}
@@ -41,7 +45,7 @@ public:
         if(kind==MeterGraphEventKind::started||kind==MeterGraphEventKind::immediatePlay||kind==MeterGraphEventKind::cleared)
             windows[track].store((static_cast<std::uint64_t>(generation)<<32)|currentTicket,std::memory_order_release);
         if(serial==std::numeric_limits<std::uint64_t>::max()||
-            !events.push({++serial,frame,clearEpoch,generation,track,ticket,kind,retired,bufferId,stopLeadSeconds,queueId,queueDelaySeconds}))
+            !events.push({++serial,frame,clearEpoch,generation,track,ticket,kind,retired,bufferId,stopLeadSeconds,queueId,queueDelaySeconds,callback}))
             lost.store(generation,std::memory_order_release);
     }
     bool current(std::uint32_t generation) const noexcept {

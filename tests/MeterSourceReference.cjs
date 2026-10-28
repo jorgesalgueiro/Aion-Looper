@@ -166,7 +166,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   else{assert.equal(loop.state,'stopped');assert.equal(loop.stopTimeout,null);noGraph(loop);}
   if(syncOff)++lateSyncOffStopCases;else ++lateStopNowCases;
  }
- let nativeQueueTimingCases=0,zeroLeadCases=0,positiveLeadCases=0;
+ let nativeQueueTimingCases=0,zeroLeadCases=0,positiveLeadCases=0,counterCases=0,counterDeadlineReads=0;
  if(process.argv[2]){
   const {spawnSync}=require('node:child_process'),queries=[];
   for(const block of [64,128])for(const id of [0,19])for(const mode of [1,2])for(const bpm of [120,137.3,999])for(const lead of [.035,.0999,.1001,.2345])queries.push({block,id,mode,bpm,lead});
@@ -189,7 +189,26 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
    ++nativeQueueTimingCases;
   }
   assert.equal(nativeQueueTimingCases,96);assert.equal(zeroLeadCases,48);assert.equal(positiveLeadCases,48);
+  const counters=queries.flatMap(q=>[0,q.block/2,q.block-1].map(offset=>({...q,offset})));
+  const mapped=spawnSync(process.argv[2],['--queued-counter'],{input:counters.map(q=>`${q.block} ${q.id} ${q.mode} ${q.bpm} ${q.lead} ${q.offset}`).join('\n')+'\n',encoding:'utf8',maxBuffer:1024*1024});
+  assert.equal(mapped.status,0,mapped.stderr);const mappedRows=mapped.stdout.trim().split('\n');assert.equal(mappedRows.length,counters.length);
+  for(let n=0;n<counters.length;++n){
+   const q=counters[n],row=mappedRows[n].trim().split(/\s+/).map(Number);
+   assert.equal(row.length,14);assert(row.every(Number.isFinite));
+   const [frame,origin,period,delay,scheduled,begin,end,entry,command,deadline,...rest]=row;
+   assert.equal(frame-begin,q.offset);assert.equal(end-begin,q.block);assert(rest[3]>0);
+   near(entry,100+begin/48000);const commandCounter=entry+(frame-begin)/48000;near(command,commandCounter);
+   timers.clear();audio.state='running';audio.currentTime=frame/48000;
+   const loop=ctx.fresh(q.id,true);ctx.clockGrid(origin,period);await ctx.action(q.id);
+   const pending=timers.get(loop.queueTimeout);assert(pending);near(pending.ms,delay*1000);
+   const due=commandCounter+pending.ms/1000;near(deadline,due);
+   const wall=entry+(end-begin)/48000;
+   for(let i=0;i<3;++i){near(rest[i],Math.max(0,due-(wall+[0,.04,.25][i])));++counterDeadlineReads;}
+   assert(Math.abs(scheduled-ctx.SyncManager.getNextGridTime()*48000)<1.000001);
+   ++counterCases;
+  }
+  assert.equal(counterCases,288);assert.equal(counterDeadlineReads,864);
  }
- console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,latePanicCases,lateStopNowCases,lateSyncOffStopCases,nativeQueueTimingCases,zeroLeadCases,positiveLeadCases,
-  scope:'Unchanged Loop/AudioGraph methods, handleAction/grid scheduling/cancellation and AudioEngine.resume with controlled timer IO. Native comparison covers only accepted queue delay and unchanged grid deadline, not message delivery/birth, browser PCM or renderer acceptance.'},null,2));
+ console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,latePanicCases,lateStopNowCases,lateSyncOffStopCases,nativeQueueTimingCases,zeroLeadCases,positiveLeadCases,counterCases,counterDeadlineReads,
+  scope:'Unchanged Loop/AudioGraph methods, handleAction/grid scheduling/cancellation and AudioEngine.resume with controlled timer IO. Native comparison covers queue delay, grid deadline and immutable command-counter deadline with deterministic entry capture; automatic delivery, browser PCM and renderer excluded.'},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});

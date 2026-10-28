@@ -20,17 +20,21 @@ struct Fixture {
     explicit Fixture(unsigned size,aion::MeterEventScope scope=aion::MeterEventScope::committedBuffers):engine(std::make_unique<aion::Engine>(scope)),block(size){prepare();}
     void prepare(){for(auto* e:{engine.get(),control.get()}){e->prepare(48000,81920,{true,48000,0});e->configureSync({aion::SyncMode::off,120,1,4,4,false});e->setMonitoring(false);e->setTarget(1);}}
     void command(aion::LoopAction action,unsigned id=19){++request;for(auto* e:{engine.get(),control.get()})check(e->enqueueLoop({action,id,request,e->generation(),0,0}),"Queue paired buffer fixture action");}
-    void cycle(bool offline=false){
+    void cycle(bool offline=false,aion::ProcessorClockObservation entry={}){
         std::array<float,128> l{},r{},cl{},cr{};
         for(unsigned i=0;i<block;++i){l[i]=.3f*static_cast<float>(std::sin((engine->clock()+i)*.037));r[i]=-.5f*l[i];}cl=l;cr=r;
         float* channels[]={l.data(),r.data()},*other[]={cl.data(),cr.data()};
-        watch=true;engine->process(channels,2,static_cast<int>(block),{},offline);control->process(other,2,static_cast<int>(block),{},offline);watch=false;
+        watch=true;engine->process(channels,2,static_cast<int>(block),{},offline,entry);control->process(other,2,static_cast<int>(block),{},offline,entry);watch=false;
         check(l==cl&&r==cr,"Buffer receipts preserve exact paired stereo PCM at 64/128");
         while(engine->popView(*view)){}
     }
     void record(unsigned id=19){command(aion::LoopAction::record,id);for(unsigned n=0;n<512/block;++n)cycle();command(aion::LoopAction::finish,id);cycle(true);}
     aion::MeterGraphEvent next(aion::MeterGraphEventKind kind,unsigned id=19){
-        aion::MeterGraphEvent event;check(engine->popMeterGraphEvent(event)&&event.kind==kind&&event.track==id,"Actual audio owner emits the expected ordered buffer/window fact");return event;
+        aion::MeterGraphEvent event;const bool found=engine->popMeterGraphEvent(event);
+        if(!found||event.kind!=kind||event.track!=id){
+            std::cerr<<"Actual audio owner emits the expected ordered buffer/window fact: expected "<<static_cast<unsigned>(kind)
+                <<"/"<<id<<", found "<<found<<" "<<static_cast<unsigned>(event.kind)<<"/"<<event.track<<", frame "<<engine->clock()<<", request "<<request<<'\n';std::exit(1);
+        }return event;
     }
 };
 }
@@ -309,6 +313,64 @@ void meterPanicTests(){
     std::cout<<"PASS: post-grid pending queued panic cancellation, stale/duplicate/repeated rejection, delayed ordered message delivery and retained old cleanup/history at tracks 0/19 and 64/128\n";
 }
 namespace {
+void queuedCallbackClockTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool attached:{false,true}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,id);
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Queued clock installs actual clip");
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        if(attached){f.command(LoopAction::play,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Queued clock retains explicit old graph");
+            f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Queued clock arms independent cleanup");}
+        const auto cleanup=owner.cleanupRequest();const auto binding=owner.binding();const auto old=owner.inspect();
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,120,1,1,4,false});
+        const auto begin=f.engine->clock(),at=begin+block/2;++f.request;
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::play,id,f.request,e->generation(),at,0}),"Queue command at exact mid-callback sample");
+        f.cycle(false,{17.25,true});const auto event=f.next(MeterGraphEventKind::queuedPlay,id);
+        check(event.frame==at&&event.callbackClock==f.view->callbackClock&&event.callbackClock.beginFrame==begin
+            &&event.callbackClock.endFrame==begin+block&&event.callbackClock.processorEntry==ProcessorClockObservation{17.25,true},"Queued intent carries its own exact callback correlation");
+        check(owner.consumeQueuedPlay(event),"Queued clock owner accepts actual intent");
+        QueuedMeterCallbackTime first;const double wall=17.25+static_cast<double>(block)/48000;
+        check(owner.readQueuedCallbackTime(73,{73,wall},first)&&first.commandSeconds==17.25+static_cast<double>(block/2)/48000
+            &&first.deadlineSeconds==first.commandSeconds+event.queueDelaySeconds,"Actual queued deadline starts at accepting sample offset");
+        f.cycle();check(!f.view->callbackClock.processorEntry.available&&f.view->callbackClock.serial>event.callbackClock.serial,"Later view deliberately has no correlation");
+        QueuedMeterCallbackTime later;check(owner.readQueuedCallbackTime(73,{73,wall+.5},later)&&later.deadlineSeconds==first.deadlineSeconds
+            &&later.callbackSerial==event.callbackClock.serial&&later.remainingSeconds==0,"Late receipt preserves command deadline without replacing it with later view");
+        check(owner.inspect().analyser==old.analyser&&owner.binding().ticket==binding.ticket&&owner.cleanupRequest()==cleanup,"Deadline reads do not create graphs, bind PCM or rearm cleanup");
+        if(attached){check(owner.deliverCleanup(cleanup)&&owner.readQueuedCallbackTime(73,{73,wall+.5},later),"Old cleanup leaves live callback deadline readable from stopped");
+            f.command(LoopAction::clear,id);f.cycle();check(owner.consumeClear(f.next(MeterGraphEventKind::cleared,id)),"Clear retires queued clock intent");}
+        else{f.command(LoopAction::stopAll,id);f.cycle();check(owner.consumeQueuedCancel(f.next(MeterGraphEventKind::queuedCancel,id)),"Panic retires queued clock intent");}
+        auto unchanged=later;check(!owner.readQueuedCallbackTime(73,{73,wall+.5},unchanged)&&unchanged==later,"Retired queued deadline cannot leak stale output");
+        if(!attached){
+            MidiSettings settings;settings.enabled=true;settings.revision=1;settings.bindings.fill(0);settings.bindings[id]=midiBinding(1,60);
+            for(auto* e:{f.engine.get(),f.control.get()})check(e->configureMidi(settings),"Configure public MIDI input for zero callback");
+            const MidiEvent note{0,144,60,100,3};
+            watch=true;f.engine->process(nullptr,0,0,{&note,1},false,{17.30,true});f.control->process(nullptr,0,0,{&note,1},false,{17.30,true});watch=false;
+            const auto zero=f.next(MeterGraphEventKind::queuedPlay,id);
+            QueuedMeterCallbackTime zeroTime;
+            check(zero.callbackClock.serial>event.callbackClock.serial&&zero.callbackClock.beginFrame==zero.callbackClock.endFrame
+                &&owner.consumeQueuedPlay(zero)&&owner.readQueuedCallbackTime(73,{73,17.35},zeroTime)
+                &&zeroTime.commandSeconds==17.30,"Actual MIDI queue in zero callback owns its current same-frame counter correlation");
+        }
+        f.prepare();check(owner.reset()&&!owner.readQueuedCallbackTime(73,{73,wall+.5},unchanged)&&unchanged==later,"Prepare clears retained command correlation");
+    }
+    for(unsigned block:{64u,128u}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,19);
+        f.record();check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled)),"Loss clock installs actual clip");f.command(LoopAction::stopImmediate);f.cycle();
+        const auto queue=[&]{for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,120,1,1,4,false});
+            f.command(LoopAction::play);f.cycle(false,{100,true});const auto q=f.next(MeterGraphEventKind::queuedPlay);check(owner.consumeQueuedPlay(q),"Loss clock accepts intent");return q;};
+        auto q=queue();QueuedMeterCallbackTime first;check(owner.readQueuedCallbackTime(73,{73,101},first),"Seed clock before event loss");
+        LoopCommand bad{LoopAction::meterQueuedGraphRequest,19,0,f.engine->generation(),0,0};bad.meterGraphTicket=1;bad.meterQueueId=q.queueId+(1ull<<32);bad.meterBufferId=q.bufferId;
+        for(unsigned n=0;n<255;++n)check(f.engine->enqueueLoop(bad),"Fill actual event stream with typed negatives");f.cycle();f.cycle();
+        check(f.engine->enqueueLoop(bad),"Overflow full clock event stream");f.cycle();auto held=first;
+        check(!owner.readQueuedCallbackTime(73,{73,101},held)&&held==first,"Event loss invalidates queued clock without stale output");
+        MeterGraphEvent discarded;unsigned budget=255;
+        check(!f.engine->popMeterGraphEvent(discarded,f.engine->generation(),budget)&&budget==0,"Clock loss recovery first drains all retained raw entries with bounded work");
+        f.prepare();check(owner.reset()&&owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled)),"Clock loss prepare recovers retained clip");q=queue();
+        check(owner.readQueuedCallbackTime(73,{73,101},held)&&held.generation!=first.generation&&held.queueId==q.queueId,"Fresh generation recovers queued clock with new provenance");
+    }
+    check(allocations.load()==0,"Queued command clock capture has zero callback new/delete");
+    std::cout<<"PASS: actual queued command clock capture, exact sub-block offset, later/missing-view independence, immutable late deadline, old cleanup, cancel/clear/prepare/loss recovery and paired PCM at tracks 0/19, 64/128\n";
+}
 void queuedGraphTransactionTests(){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool late:{false,true})
@@ -598,6 +660,7 @@ void queuedWindowTests(){
 }
 }
 void meterQueuedTests(){
+    queuedCallbackClockTests();
     queuedGraphTransactionTests();
     queuedWindowTransactionTests();
     queuedWindowTests();

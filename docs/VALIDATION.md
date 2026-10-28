@@ -7468,3 +7468,70 @@ outgoing/incoming overlap/envelopes, cleanup sound and renderer integration rema
 unaccepted. No frontend/parameter/state schema, dependency or format configuration
 changed. No current plugin-format build, REAPER/Ardour, physical controller/device,
 listening or Apple validation was added. No package or push performed.
+
+### Queued command callback correlation — 2026-10-28
+
+Baseline `84601d7`, clean main seven commits ahead of cached origin at session
+start. Accepted queuedPlay facts now include their actual accepting callback stamp,
+captured before dispatch, rather than requiring correlation with a later snapshot.
+The message owner retains that fact. A pure validated policy and internal native
+processor readout expose command-counter time, a fixed unrounded deadline and
+nonnegative remaining time. They do not deliver a timer or change source playback.
+
+The command model is accepting processor-entry seconds plus the callback-local
+frame offset divided by sample rate. Subtract integers before conversion. Add the
+unchanged original queue delay once; never add it to receipt time. Host time,
+output latency, DAC/device-delivery edges and later views are not substitutes.
+Same-origin counter ownership is explicit. Offline/missing/stale/malformed or
+precision-losing input rejects without output mutation; known zero remains valid.
+
+Acceptance evidence:
+
+| Gate | Actual result |
+| --- | --- |
+| Windows portable | 28/28, 412.21s |
+| Ubuntu portable | 28/28, 665.68s |
+| Windows native processor / SDK generation | 2/2, 11.61s |
+| Ubuntu native processor / SDK generation | 2/2, 24.52s |
+| Core sanitizer selection | 6/6, 473.37s; no sanitizer error, skip, JUCE assertion or leaked-object report in final gates |
+| Focused clock and queued regressions | Windows/Ubuntu pass after restored-header rebuild |
+| Original queue/grid oracle | Prior 96 cases retained: 48 zero and 48 positive delay |
+| Original command-counter oracle | 288 offset cases, 864 deadline reads, unchanged 1e-12 tolerance |
+| Original graph lifetime oracle | Unchanged 72 cases / 1,655 observations |
+| Committed-PCM audit | 126 cases, 965,826 samples, max error 7.394757495227111e-8 at unchanged 1e-6 |
+| Original assets | Byte identity, deterministic embedding and tamper rejection pass |
+
+Pure tests cover zero/1/64/128/1024 blocks, 8/44.1/48/96k rates, full-width frames,
+clock/range/identity/finite/precision errors and unchanged output on rejection.
+Actual paired Engines cover tracks 0/19 at 64/128, mid-block commands, missing or
+newer subsequent views, old cleanup, cancel/clear/prepare/loss recovery, and real
+MIDI delivery in a zero-frame callback. Deadline reads retain the original event
+through old cleanup and never create a graph, bind PCM or rearm cleanup. Tracked
+callback new/delete stays zero and paired fixture PCM is exact. The prepared native
+processor test checks the real configured clock reader, subsequent callbacks,
+cancellation and invalid-track output preservation. Existing graph/raw transaction
+and all-track bounded-route regressions remain enabled.
+
+The isolated negative changed the deadline to receipt counter plus delay and
+failed `Queued callback maps exact local offset and immutable unrounded deadline
+across lag and full-width frames` in `build/queued-clock-negative.txt`. Restoring
+the header with fresh mtime and rebuilding affected Windows/Ubuntu objects preceded
+positive focused and full gates. Initial test defects were corrected: private MIDI
+access became public zero-frame input; loss recovery drains the full old queue
+before prepare. Production API visibility and loss guards were preserved.
+
+Commands are in MIGRATION_CURRENT.md; configure/platform/package instructions
+remain in BUILDING.md. Logs use `build/queued-clock-*`. The ignored
+`build/WriteQueuedClockEvidence.cjs` requires complete gates and new/retained
+markers, validates unchanged enums/existing processor and state methods/oracle,
+scoped source changes and original logo, then hashes source, logs and binaries.
+Both development Standalone binaries rebuilt (Windows Release, Ubuntu Debug).
+Compiler warnings remain; do not infer warning-free compilation.
+
+No JS/IPC operation, APVTS parameter, serialized-state schema, asset, dependency,
+target or packaging configuration changed. Automatic timer delivery, cleanup clock
+origin alignment, source phase/overlap/envelopes and renderer remain unaccepted.
+Future timer fire must bind expected generation/queue/clip/event identities rather
+than retarget current state through bare track. No current plugin-format build,
+REAPER/Ardour, physical device/controller, listening or Apple validation was added.
+No package or push performed.

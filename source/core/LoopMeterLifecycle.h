@@ -1,5 +1,6 @@
 #pragma once
 #include "core/LoopMeterObservation.h"
+#include "core/QueuedMeterCallbackTime.h"
 #include <limits>
 
 namespace aion {
@@ -34,7 +35,7 @@ public:
     bool reset(std::uint32_t next) noexcept {
         if(next!=engine.generation()||next==generation)return false;
         generation=next;ticket=0;lastClearSerial=lastBufferSerial=lastPlaySerial=lastStopSerial=lastQueueSerial=bufferId=queuedId=queueHighWater=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
-        issuedTicket=rebasedTicket=0;rebasedBuffer=lastWindowSerial=0;queuedWindow={};
+        issuedTicket=rebasedTicket=0;rebasedBuffer=lastWindowSerial=0;queuedWindow={};queuedNotice={};
         // Keep timer serials across prepare; old delivered callbacks cannot alias.
         return true;
     }
@@ -197,7 +198,7 @@ public:
         const auto matches=[&]() noexcept {return queueMatches(event,MeterGraphEventKind::queuedPlay)&&event.queueId>queueHighWater;};
         if(!commitLoopMeterObservation(graph,matches,[](LoopMeterGraph& candidate) noexcept {candidate.setState(MeterLoopState::queued);return true;}))return false;
         if(queuedWindow.queueId!=event.queueId)invalidateQueuedWindow();
-        queuedId=queueHighWater=event.queueId;queuedDelay=event.queueDelaySeconds;lastQueueSerial=event.serial;return true;
+        queuedId=queueHighWater=event.queueId;queuedDelay=event.queueDelaySeconds;queuedNotice=event;lastQueueSerial=event.serial;return true;
     }
     bool consumeQueuedCancel(const MeterGraphEvent& event) noexcept {
         const auto matches=[&]() noexcept {return queueMatches(event,MeterGraphEventKind::queuedCancel)&&event.queueId==queuedId&&graph.inspect().state==MeterLoopState::queued;};
@@ -294,6 +295,12 @@ public:
     std::uint64_t committedBuffer() const noexcept {return bufferId;}
     std::uint64_t queuedIntentId() const noexcept {return queuedId;}
     double queuedCallbackDelay() const noexcept {return queuedId?queuedDelay:-1;}
+    bool readQueuedCallbackTime(std::uint64_t nativeOrigin,MonotonicClockPoint wall,QueuedMeterCallbackTime& output) const noexcept {
+        if(!observable()||!queuedId||queuedNotice.queueId!=queuedId||queuedNotice.bufferId!=bufferId)return false;
+        QueuedMeterCallbackTime candidate;
+        if(!queuedMeterCallbackTime(queuedNotice,nativeOrigin,wall,generation,candidate)||!observable())return false;
+        output=candidate;return true;
+    }
     bool inGeneration(std::uint32_t completed) const noexcept {return completed&&completed==generation&&current();}
     bool routesTo(const Engine& source,unsigned track) const noexcept {return &engine==&source&&id==track&&current();}
 private:
@@ -311,6 +318,7 @@ private:
     std::uint32_t issuedTicket=0,rebasedTicket=0;
     std::uint64_t rebasedBuffer=0,lastWindowSerial=0;
     QueuedWindowTransaction queuedWindow{};
+    MeterGraphEvent queuedNotice{}; // Exact accepted command correlation, not the latest processor view.
     bool bufferNoticeSinceStart=true;
     LoopMeterGraph graph;
     LoopMeterBinding receipt{};

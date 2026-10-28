@@ -1564,3 +1564,21 @@ loss/prepare recovery, actual processor hooks, twenty prepared 7/32/1 graph-resu
 and 7/13 panic batches, prior raw cases and unchanged 72-case oracle. No automatic
 callback timer or renderer yet. Wall alignment and full overlap/envelopes/late
 source sound remain unaccepted; do not package this logical phase as complete.
+
+Queued command timing retains the exact queuedPlay callback stamp captured before
+dispatch, including its processor-entry counter; never substitute a newer view.
+Map only a validated same-origin entry plus callback-local integer frame offset,
+then add the original unrounded delay. Receipt time reduces remaining time and
+cannot rearm/postpone the deadline. This is command-counter time, not host/DAC or
+latency compensation. Known zero is valid; missing/offline/foreign/stale/malformed
+correlation rejects without output mutation. Keep fixed copies in the existing
+heap SPSC stream, its 255-entry usable bound and loss-until-prepare policy.
+Retain the original fact through old cleanup while its queue/clip identity lives;
+cancel/clear/replacement/prepare/loss invalidate it. The internal production
+readout adds no JS/parameter/state operation or automatic timer. Keep 288 original
+counter cases / 864 reads, original 96 delay and 72/1655 graph oracle checks,
+zero-frame MIDI, late/missing-view, full-width/precision, lifecycle and native
+readout regressions. The receipt-time-rearm negative is in
+build/queued-clock-negative.txt. Future automatic timer delivery must verify stored
+generation/queue/clip/event identities before requesting the graph; bare-track
+retargeting is unsafe. Cleanup origins and full source sound remain unaccepted.

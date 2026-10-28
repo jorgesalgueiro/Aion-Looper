@@ -258,8 +258,17 @@ void processorBufferReceiptTests(bool& audioWatch){
         check(s.stops==5&&s.stopApplied==5&&s.pendingCleanups==1&&!s.rejected,"Production STOP ALL replaces stopping graph cleanup through prepared route");
         command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.stops==6&&s.stopApplied==6&&s.pendingCleanups==1&&!s.rejected,"Production repeated STOP ALL retains the message-owned stopping graph origin");
-        command("play");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        p->setNonRealtime(false);command("play");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.queued==1&&s.queueApplied==1&&s.plays==3&&s.attachedGraphs==1&&s.pendingCleanups==1&&!s.rejected,"Production queued PLAY routes intent and retains old graph/cleanup without a birth");
+        aion::QueuedMeterCallbackTime firstTime;
+        check(p->readQueuedMeterCallbackTimeMessageThread(19,firstTime)&&firstTime.clockOrigin==1
+            &&firstTime.callbackSerial==p->inspectCallbackClockAudioThread().serial,"Production queued deadline uses its actual accepting callback and configured counter");
+        cycle();rpc(R"({"operation":"snapshot"})");aion::QueuedMeterCallbackTime laterTime;
+        check(p->readQueuedMeterCallbackTimeMessageThread(19,laterTime)&&laterTime.deadlineSeconds==firstTime.deadlineSeconds
+            &&laterTime.callbackSerial==firstTime.callbackSerial&&laterTime.remainingSeconds<=firstTime.remainingSeconds
+            &&p->inspectCallbackClockAudioThread().serial>firstTime.callbackSerial,"Production later snapshot cannot postpone queued deadline or replace command correlation");
+        auto unchangedTime=laterTime;check(!p->readQueuedMeterCallbackTimeMessageThread(20,unchangedTime)&&unchangedTime==laterTime,"Production invalid deadline track preserves output");
+        p->setNonRealtime(true);
         check(!p->requestQueuedMeterWindowMessageThread(20)&&p->requestQueuedMeterWindowMessageThread(19)
             &&!p->requestQueuedMeterWindowMessageThread(19),"Production stages one internal window request and rejects invalid/duplicate requests");
         s=p->inspectMeterServiceMessageThread();check(s.pendingWindows==1&&!s.readyWindows&&s.attachedGraphs==1&&s.pendingCleanups==1,"Production enqueue does not create a graph or replace cleanup");
@@ -268,6 +277,7 @@ void processorBufferReceiptTests(bool& audioWatch){
             &&s.plays==3&&s.attachedGraphs==1&&s.pendingCleanups==1&&!s.rejected,"Sole production consumer routes typed window acceptance without graph birth");
         command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.queued==2&&s.queueApplied==2&&s.stops==6&&s.pendingCleanups==1&&!s.rejected,"Production queued panic cancels intent without new 65ms stop cleanup");
+        check(!p->readQueuedMeterCallbackTimeMessageThread(19,unchangedTime)&&unchangedTime==laterTime,"Production cancellation retires queued clock without stale output");
         command("play");cycle();rpc(R"({"operation":"snapshot"})");command("stopImmediate");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.queued==4&&s.queueApplied==4&&s.pendingCleanups==1&&!s.rejected,"Production explicit queued STOP routes its distinct cleanup policy");
         rpc(R"({"operation":"setParameter","id":"syncBpm","value":999})");
@@ -321,6 +331,7 @@ void processorBufferReceiptTests(bool& audioWatch){
     std::cout<<"PASS: production post-grid STOP NOW consumes queued intent without orphan cancellation at 64/128\n";
     std::cout<<"PASS: production normal STOP after sync off consumes pending post-grid intent at 64/128\n";
     std::cout<<"PASS: production internal queued-window request and typed result preserve graph/cleanup and subsequent quarantine routing at 64/128\n";
+    std::cout<<"PASS: production queued command counter deadline retains original callback across later views and retires on cancellation at 64/128\n";
 }
 void panicDispatcherTests(bool& audioWatch){
     using namespace aion;

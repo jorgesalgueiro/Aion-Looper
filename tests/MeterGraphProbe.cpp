@@ -7,22 +7,24 @@
 #include <sstream>
 #include <string>
 int main(int argc,char** argv){
-    if(argc==2&&std::string(argv[1])=="--queued-timing"){
+    if(argc==2&&(std::string(argv[1])=="--queued-timing"||std::string(argv[1])=="--queued-counter")){
+        const bool counter=std::string(argv[1])=="--queued-counter";
         unsigned block,id,mode;double bpm,lead;
         std::cout<<std::setprecision(17);
         while(std::cin>>block>>id>>mode>>bpm>>lead){
+            unsigned offset=0;if(counter&&!(std::cin>>offset))return 2;
             if((block!=64&&block!=128)||id>=20||(mode!=1&&mode!=2)||!std::isfinite(bpm)||bpm<10||bpm>999
-                ||!std::isfinite(lead)||lead<0||lead>1)return 2;
+                ||!std::isfinite(lead)||lead<0||lead>1||offset>=block)return 2;
             auto engine=std::make_unique<aion::Engine>(aion::MeterEventScope::acceptedPlayback);
             engine->prepare(48000,8192);engine->configureSync({aion::SyncMode::off,121,1,4,4,false});
             aion::LoopMeterLifecycle owner(*engine,id);
             std::array<float,128> left{},right{};float* channels[]={left.data(),right.data()};
             aion::EngineView view;
             const auto cycle=[&](unsigned count,bool offline=false){
-                left.fill(.25f);right.fill(-.125f);engine->process(channels,2,static_cast<int>(count),{},offline);
+                left.fill(.25f);right.fill(-.125f);engine->process(channels,2,static_cast<int>(count),{},offline,{100+static_cast<double>(engine->clock())/48000,true});
                 while(engine->popView(view)){}
             };
-            const auto action=[&](aion::LoopAction next){return engine->enqueueLoop({next,id,1,engine->generation(),0,0});};
+            const auto action=[&](aion::LoopAction next,std::uint64_t at=0){return engine->enqueueLoop({next,id,1,engine->generation(),at,0});};
             if(!action(aion::LoopAction::record))return 3;
             for(unsigned n=0;n<512/block;++n)cycle(block);
             if(!action(aion::LoopAction::finish))return 3;
@@ -38,11 +40,25 @@ int main(int argc,char** argv){
             while(target<static_cast<double>(engine->clock())){grid+=period;target=std::floor((grid-lead)*48000);}
             const auto targetFrame=static_cast<std::uint64_t>(target);
             while(engine->clock()<targetFrame)cycle(static_cast<unsigned>(std::min<std::uint64_t>(block,targetFrame-engine->clock())));
-            const auto frame=engine->clock();if(!action(aion::LoopAction::play))return 3;cycle(block);
+            const auto frame=engine->clock()+offset;if(!action(aion::LoopAction::play,frame))return 3;cycle(block);
             if(!engine->popMeterGraphEvent(event)||event.kind!=aion::MeterGraphEventKind::queuedPlay||event.frame!=frame)return 4;
             if(!owner.consumeQueuedPlay(event)||owner.queuedCallbackDelay()!=event.queueDelaySeconds
                 ||owner.inspect().present||owner.cleanupRequest().serial)return 4;
-            std::cout<<frame<<' '<<origin<<' '<<period<<' '<<event.queueDelaySeconds<<' '<<view.tracks[id].scheduledFrame<<'\n';
+            const auto scheduled=view.tracks[id].scheduledFrame;
+            if(event.callbackClock!=view.callbackClock)return 4;
+            std::cout<<frame<<' '<<origin<<' '<<period<<' '<<event.queueDelaySeconds<<' '<<scheduled;
+            if(counter){
+                const auto captured=event.callbackClock;cycle(block); // A later view must never replace the command edge.
+                if(view.callbackClock.serial<=captured.serial)return 4;
+                const double wall=captured.processorEntry.seconds+static_cast<double>(captured.endFrame-captured.beginFrame)/48000;
+                std::array<aion::QueuedMeterCallbackTime,3> times;
+                for(unsigned n=0;n<times.size();++n)if(!owner.readQueuedCallbackTime(73,{73,wall+(n==0?0:n==1?.04:.25)},times[n])
+                    ||times[n].callbackSerial!=captured.serial||(n&&times[n].deadlineSeconds!=times[0].deadlineSeconds))return 4;
+                std::cout<<' '<<captured.beginFrame<<' '<<captured.endFrame<<' '<<captured.processorEntry.seconds
+                    <<' '<<times[0].commandSeconds<<' '<<times[0].deadlineSeconds<<' '<<times[0].remainingSeconds
+                    <<' '<<times[1].remainingSeconds<<' '<<times[2].remainingSeconds<<' '<<captured.serial;
+            }
+            std::cout<<'\n';
         }
         return std::cin.eof()?0:2;
     }

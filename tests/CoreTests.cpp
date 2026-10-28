@@ -79,6 +79,7 @@ int main(int argc,char** argv) {
     if(argc==2&&std::string_view(argv[1])=="--meter-stops"){meterStopTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-panic"){meterPanicTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-queued"){meterQueuedTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--callback-clock"){callbackClockTests();return 0;}
     deviceCallbackScopeTests();
     hostTransportTests();
     callbackAudibleTimeTests();
