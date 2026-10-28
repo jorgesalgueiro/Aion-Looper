@@ -1,162 +1,247 @@
-# Aion-Looper — native JUCE migration
+# Aion-Looper
 
-Version 0.4.3 is a **native loop preview**, not a completed port or commercial release.
-See the [audited blueprint](docs/MIGRATION_BLUEPRINT.md),
-[ARCHITECTURE](docs/ARCHITECTURE.md), [BUILDING](docs/BUILDING.md),
-[SDKS](docs/SDKS.md) and [PARITY](docs/PARITY.md).
+**Build a performance, one loop at a time.**
 
-- JUCE 9.0.4 and CLAP extension sources are pinned. CMake targets cover Standalone,
-  VST3, CLAP, LV2, AU and AUv3 on supported platforms.
-- Twenty stereo loop slots now record, finish into playback, stop/restart, overdub,
-  substitute, mute, adjust volume/feedback and clear through the C++ engine.
-- Capture uses a 64 MiB fixed-block pool allocated before processing; immutable
-  clips and worker finalization also use memory outside the callback. Capture,
-  editing and playback do not allocate/free in the callback. At 48 kHz this pool
-  holds about 175 seconds across all tracks. Full memory finishes recording without
-  overwriting another loop, and clear makes its blocks reusable.
-- Original reference files in `resources/ui` remain byte-for-byte intact. The original
-  pure loop-card markup methods are reused in a separate native adapter. Inline
-  handlers and legacy audio scripts remain blocked; supported controls use native RPC.
-- Output starts muted and input monitoring is off. Standalone input also has JUCE's
-  Unmute Input control; choose devices/ASIO and buffer size in the window's Options.
-- **Recorded audio is temporary and is not included in DAW/project state yet.**
-  Same-rate reprepare retains PCM and stops loops; a sample-rate change clears PCM
-  and reports the reset. Raw loop WAV export and MIDI loop/volume/pan learning
-  are implemented; projects, remaining import/export paths, synths, tracker,
-  effects, other MIDI learn targets and full host/MIDI clock synchronization
-  remain pending. See PARITY for the exact tested scope.
+Aion-Looper is becoming a live looping instrument for Windows and Linux: twenty
+stereo loop slots, hands-on performance controls, and a distinctive ASCII interface.
+Record a phrase, layer another, reshape the arrangement, and turn a small idea
+into a whole piece — from a guitar or voice to a keyboard or an ambient texture.
+
+It brings the character of Jorge Salgueiro's **Ascii-Looper** into a native
+C++ audio engine, with a Standalone app and plugins for your DAW. The long-term
+vision combines looping, drones, sampling, sequencing and effects in one musical
+workspace, playable with a mouse, keyboard, MIDI controller or command line.
+
+> **Current status: native development preview, version 0.4.3 plus ongoing source
+> updates.** The core looper is playable; the complete workstation is still being
+> ported. Older downloadable builds may lack features described here. For the
+> current implementation, build from source. **Recorded audio is temporary and
+> is not yet saved inside projects or DAW sessions. Export loops before closing.**
+
+## What you can play today
+
+- **Twenty stereo loops.** Record, play, stop, overdub, replace with SUB, mute,
+  solo and shape each loop with volume, pan and feedback.
+- **Play freely or follow a grid.** OFF, STATIC and DYNAMIC recording modes,
+  internal master BPM, bars and meter, a metronome, and independent visual and
+  audible count-in.
+- **Reshape a phrase while performing.** Reverse on the next play/retrigger,
+  change speed, shift or quantize the start, retrigger, and hold STUT to repeat
+  a fragment before returning to the full loop.
+- **Build and recover arrangements.** MULT extends or doubles loops; MERGE
+  combines them. Normalize a quiet take, or use per-loop and global Undo/Redo
+  for supported audio edits.
+- **See and keep your takes.** Recorded-loop waveforms, a DYNAMIC recording
+  trace, editable loop names, and WAV export of each loop's stored audio.
+- **Perform with MIDI.** Note, CC and Program Change looper actions, MIDI Learn
+  on supported loop controls, CC volume/pan control, and saved MIDI mappings.
+- **Control the running app from a terminal.** The development CLI shares the
+  Standalone's session, devices and native command layer.
+
+The original ASCII layout, loop cards and familiar controls remain the design
+contract. Controls whose engines have not been ported stay disabled. Drone voices,
+sampler/tracker/sequencing engines, effects, full project persistence, remaining
+import/export workflows and full DAW/MIDI-clock following are still ahead.
+See the [feature-by-feature parity checklist](docs/PARITY.md) for exact coverage.
+
+## Choose how to run it
+
+| Platform | Standalone | Plugin formats in scope | Validation / availability |
+| --- | --- | --- | --- |
+| Windows x64 | Yes | VST3, CLAP | Development builds; scoped REAPER checks recorded |
+| Linux | Yes | CLAP, LV2 | Development builds; scoped Ardour LV2 checks recorded |
+| macOS | Future | AU | Build configuration prepared; platform acceptance pending |
+| iOS | Future | AUv3 | Build configuration prepared; device acceptance pending |
+
+Linux also has a VST3 build target. Format availability does not mean every
+workflow has passed in every host: [validation notes](docs/VALIDATION.md) describe
+the checks actually run. Apple delivery is future work.
+
+### Your first loop: Windows or Linux
+
+1. Build the Standalone using the instructions below, then launch **Aion-Looper**.
+   Windows needs the **Microsoft Edge WebView2 Evergreen Runtime** installed;
+   Linux needs the GTK/WebKit runtime libraries installed with the build dependencies.
+2. Open the window's **Options** and select your audio input/output device and
+   buffer size. Enable **Unmute Input** in the Standalone. Start with a buffer
+   your device handles reliably; 64/128 samples are development targets, not a
+   guarantee of total latency.
+3. Raise **MASTER VOLUME** gradually: output starts muted and input monitoring
+   starts off. Choose **OFF** sync for a simple free-length first recording.
+4. Press a loop's main button to record, then **FINISH** to end the take. Use
+   **PLAY** if Auto-play after Rec is off. Layer with OD/SUB or record another slot.
+5. Click the recorded waveform to export the stored loop to WAV. This exports
+   the recorded audio, rather than a rendered mix of playback controls/effects.
+
+The default number keys **1–0** address loops 1–10; **Shift + 1–0** addresses
+11–20. **Space / STOP ALL** stops performance and cancels queued starts. On a
+playing loop's main STOP button or assigned number key, a **600 ms hold cuts
+playback while keeping audio**; a continuous **4-second hold deletes the loop
+and its history**. **DEL** deletes directly.
+
+Same-rate audio-device reinitialization retains recorded audio but stops loops;
+changing the sample rate clears recorded audio. Export important takes first.
+The in-app manuals explain the original controls and workflows.
+
+### Use it in a DAW
+
+Build the plugin formats below, then add the relevant output folder to your
+host's plugin search paths and rescan:
+
+| System | Build output folders | Suggested workflow |
+| --- | --- | --- |
+| Windows | `build/windows/AionLooper_artefacts/Release/VST3` and `build/windows/AionLooper_artefacts/Release/CLAP` | Load VST3 or CLAP in REAPER |
+| Linux | `build/linux/AionLooper_artefacts/Release/LV2` and `build/linux/AionLooper_artefacts/Release/CLAP` | Load LV2 in Ardour; use a CLAP-capable host for CLAP |
+
+Route the track's audio and MIDI into the plugin, open its editor, and raise
+MASTER VOLUME. The plugin uses the **DAW's routing and devices**; configure
+physical inputs in the DAW. Host transport information can be observed, but full
+musical host synchronization and MIDI Clock are not implemented yet: use the
+internal master grid for the currently supported timing workflow.
+
+DAW session recall does **not** currently restore recorded loop audio. Export
+your takes separately. Plugin installation and host-specific validation details
+are in the [build guide](docs/BUILDING.md) and [validation notes](docs/VALIDATION.md).
+
+### Use it from the command line
+
+Start a freshly built Standalone, then run these commands from the repository
+with Python 3.8+ (`python3` on Linux):
+
+```sh
+python tools/aion.py instances
+python tools/aion.py status
+python tools/aion.py parameter masterGain 0.5
+python tools/aion.py loop record 1
+python tools/aion.py loop finish 1
+python tools/aion.py loop stopImmediate 1
+python tools/aion.py rename 1 "First idea"
+```
+
+Named loop commands use slots **1–20**. With several Standalone instances open,
+select one with `--instance INSTANCE_ID`. This client controls the already
+running app on the same computer and OS user; it does not control DAW plugin
+instances. It is a development tool, currently distributed as source.
+
+The goal is CLI access alongside every newly ported feature. Current commands,
+MIDI Learn examples, JSON requests and result/timeout behavior are documented in
+the [CLI guide](docs/CLI.md).
+
+## Build from source
+
+You need **Git, CMake 3.22+, a C++20 compiler and Python 3.8+**. Dependencies are
+downloaded at pinned revisions on the first configure. Node.js is optional for
+additional frontend/reference tests. Run the following commands from a terminal:
+
+```sh
+git clone https://github.com/jorgesalgueiro/Aion-Looper.git
+cd Aion-Looper
+```
+
+### Windows x64
+
+Install **Visual Studio 2022** with *Desktop development with C++* and a Windows
+SDK, plus CMake, Python and NuGet. Use a **Developer PowerShell for VS 2022**
+with `cmake`, `python` and `nuget` available on PATH:
+
+```powershell
+nuget install Microsoft.Web.WebView2 -Version 1.0.3485.44 -OutputDirectory .deps/nuget
+cmake --preset windows -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$PWD/.deps/nuget"
+cmake --build --preset windows --parallel 2
+ctest --test-dir build/windows -C Release --output-on-failure
+& './build/windows/AionLooper_artefacts/Release/Standalone/Aion-Looper.exe'
+```
+
+This builds Standalone, VST3 and CLAP. The WebView2 SDK used to compile is
+separate from the Evergreen Runtime needed to run. Optional ASIO configuration
+and troubleshooting are covered in the [Windows build guide](docs/BUILDING.md#windows-x64).
+
+### Ubuntu / Debian-based Linux
+
+These package names match the Ubuntu build setup; other distributions may use
+different names. Ninja is the generator used by the Linux preset.
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential cmake ninja-build git python3 pkg-config \
+  libasound2-dev libjack-jackd2-dev libfreetype6-dev libfontconfig1-dev \
+  libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+  libxrandr-dev libxrender-dev libgl1-mesa-dev libegl1-mesa-dev \
+  libwebkit2gtk-4.1-dev libgtk-3-dev
+cmake --preset linux
+cmake --build --preset linux --parallel 2
+ctest --preset linux
+./build/linux/AionLooper_artefacts/Release/Standalone/Aion-Looper
+```
+
+This builds Standalone, CLAP, LV2 and the additional Linux VST3 target. ALSA/JACK
+development libraries enable the corresponding JUCE backends; physical device
+and low-latency performance still need testing with your own setup.
+
+### Core tests without the app or plugin SDKs
+
+With Ninja, CMake, a C++20 compiler and Python installed:
 
 ```sh
 cmake --preset core
 cmake --build --preset core
 ctest --preset core
-node tests/FrontendTests.cjs
 ```
 
-The native loop tests cover stereo PCM, feedback/substitution, pool exhaustion/reuse,
-20 tracks, gain transitions, sample deadlines, 64/128 block invariance, lifecycle
-resets and no observed callback C++ new/delete. See [VALIDATION](docs/VALIDATION.md)
-for platform and browser checks and their limits. See [LICENSING](docs/LICENSING.md)
-before distribution. SDK caches, reference checkouts and build/user data are excluded
-from Git. The prior Rust migration remains aborted.
+For offline dependency overrides, focused targets, validators, development package
+commands and future Apple setup, see [BUILDING.md](docs/BUILDING.md). Distributable
+packages follow feature acceptance; a development ZIP is not a release-ready product.
 
-The original layout is the UI contract. Native controls now occupy the existing
-PROJECT MENU, MASTER OUTPUT, INPUT MIXER and INPUT MAPPING areas; the separate
-preview toolbar has been removed. Original workspace/manual tabs and loop mode
-shortcuts are restored. SOLO, manual RTRG, DEL ALL, continuous volume/feedback and
-Auto-play after Rec now reach the C++ engine. Full reference parity remains work
-in progress; unported controls stay visible and disabled.
+## Under the hood
 
-Loop pan and varispeed now use the original controls: 0-10 pan, 0.25x-2x speed,
-1/2 toggle, 1x reset, double-click speed reset and H on the selected loop. Pan
-matches the reference mono-fold/equal-power stage; raw captured stereo PCM stays
-intact. Pan/rate changes ramp over 20 ms. DEL resets loop controls to their
-reference defaults. Overdub/substitute require unity speed, matching the reference.
-The current resampler uses linear interpolation; high-quality antialiasing and
-browser-rendered audio comparison remain release gates.
+| Layer | Technology and purpose |
+| --- | --- |
+| Audio and plugin framework | **C++20 + JUCE 9.0.4**, with CMake presets and pinned dependency revisions |
+| Interface | Original **HTML/CSS/JavaScript ASCII presentation**, embedded as offline assets in `juce::WebBrowserComponent`; WebView2 on Windows and WebKit on Linux |
+| Native integration | Validated JS/C++ commands and state synchronization; `AudioProcessorValueTreeState` for host parameters and state |
+| Audio engine | Preallocated capture storage, bounded queues, sample-based scheduling, smoothing, and worker-side audio edits/finalization |
+| Plugin formats | JUCE wrappers, **clap-juce-extensions** for CLAP, and JUCE's native LV2 support |
+| Verification | Native tests, unchanged-JavaScript comparisons, allocation checks, UI/PCM workflows and scoped plugin-validator/DAW checks |
 
-The [reference audit](docs/REFERENCE_AUDIT.md) records actual unchanged-JS state
-and DSP comparisons and their limits. Capture/overdub/substitute finalization now
-passes its connected manual PCM gate: 126 mono/stereo cases / 965,826 frames at
-1e-6 tolerance. FINISH publishes SAVING while a worker applies reference
-crossfade/DC/mixing to a private result. Failed edits preserve the original PCM;
-block-boundary ownership transfer and worker retirement keep scans/allocation/
-deletion off the audio callback. This establishes committed-PCM parity for that
-path; browser envelopes/resampling, latency/sync and hardware remain unverified.
+Audio processing belongs in C++; JavaScript handles presentation and interaction.
+The engine is being tested at 64/128-sample blocks with variable timing and
+lifecycle cases. Passing these tests does not establish full sound parity,
+physical round-trip latency or production readiness.
 
-0.4.3 adds the original NORM action: linked stereo peak normalization runs as an
-immutable worker transaction, preserving playback phase, volume/pan/rate/mute,
-and stopped/playing intent. Clear/reset cancel the result; allocation failure
-keeps the prior clip. NORM is unavailable during capture or another pending edit.
-The original near-silence and near-unity thresholds are retained. It does not add
-undo or persistent audio storage. Rapid performance commands now queue in order;
-Stop cancels unsent work and survives a pause in the same audio configuration.
-Unsent ordinary actions expire after three seconds, and sliders coalesce their
-pending values. The original UI files remain unchanged.
+## Roadmap
 
+The order below reflects the migration priorities, not promised release dates.
+Each slice must pass its own reference, audio and interaction checks before the
+next one advances.
 
-Development follow-up: the original **Rvers** checkbox now reaches C++. As in the
-reference, it changes direction on the next play/retrigger and leaves the current
-source alone. PCM storage stays forward; reversed playback reads the immutable
-clip in reverse order without allocating a reversed copy in the callback. If NORM
-changes the stored clip during reversed playback, the old source is retained
-until restart/stop, matching the reference's independent reversed buffer. Other
-effect controls remain unported. This source build extends 0.4.3; old ZIPs do not
-contain these follow-ups. Only the incremental standalone test build is updated.
+| Milestone | What it brings | Current status / next gate |
+| --- | --- | --- |
+| Native looper foundation | Twenty loops, capture/playback, OD/SUB, mixer, history, MULT/MERGE, WAV export | Implemented for documented preview scope; broader hardware and long-session acceptance remains |
+| Faithful performance and feedback | Original gestures, waveforms, live traces, timing and visual meters | Many controls verified; queued source transitions, overlap/late phase, remaining metering and full browser sound comparisons continue |
+| CLI coverage | The same musical actions available to scripts and terminal users | Running-Standalone development client implemented; extend alongside new ports and bundle later |
+| Projects, editing and routing | Save/reload audio sessions, remaining imports/exports and routing workflows | Pending; recorded audio currently remains session-only |
+| Full instrument workspace | Original drones, sampler/tracker/sequencing and effects | Pending native ports and reference parity checks |
+| Connected performance | Full host/MIDI-clock sync, wider MIDI Learn, controller workflows and HID/gamepad adapter | Looper MIDI and selected CC Learn implemented; clock, remaining targets and device coverage pending |
+| Windows and Linux releases | Reliable Standalone/plugins, real-device stress, host workflows, installers and distribution | Development builds and scoped checks exist; release acceptance and licensing work remain |
+| macOS and iOS | Standalone/AU on macOS; Standalone/AUv3 on iOS | Future phase; configuration prepared, Apple builds/devices/signing not accepted |
 
+## Follow the project
 
-Development follow-up: original per-loop and global **UNDO/REDO** buttons now
-restore overdub/substitute checkpoints in C++, with Ctrl/Cmd+Z and Shift+Z redo.
-The five-snapshot loop limit and 50-entry global order follow the reference.
-NORM does not create a checkpoint. Undo/Redo preserve controls and stopped state;
-playing loops restart with the restored PCM. Failed/canceled edits preserve prior
-history. Restoration is available on stable playing/stopped tracks; the same
-track's capture/finalization temporarily disables it. Audio/history remain
-session-only, and retained snapshots add memory beyond the capture pool. No new
-package is produced; use the current incremental standalone build for testing.
+- [Migration status](docs/PARITY.md): what's implemented and what's missing.
+- [Current engineering handoff](docs/MIGRATION_CURRENT.md): the active slice and next steps.
+- [Validation](docs/VALIDATION.md) and [reference audit](docs/REFERENCE_AUDIT.md): evidence and limits.
+- [Architecture](docs/ARCHITECTURE.md) and [migration blueprint](docs/MIGRATION_BLUEPRINT.md): how the port fits together.
+- [Build guide](docs/BUILDING.md) and [CLI guide](docs/CLI.md): reproducible commands and usage.
 
-Development follow-up: the original **MULT** button and `\` shortcut now extend
-playing loops with captured input, or double a stopped loop / a playing loop with
-no native input source. Takes shorter than 128 frames are discarded. The native
-worker applies the original DC removal and splice fade before appending; Undo/Redo
-restore the original lengths and PCM. Like JS, MULT adds local undo history rather
-than a new global entry. Stop finishes without late autoplay, and failed/canceled
-jobs preserve existing audio. Growth and longer history restores must fit the
-current session audio budget. No new ZIP or version is made; use the existing
-incremental standalone test app. Persistence and full application parity remain
-pending.
+When reporting a problem, include your OS, build/commit, Standalone or plugin
+format, DAW version if applicable, audio device, sample rate, buffer size, and
+the shortest steps that reproduce it.
 
-Development follow-up: the main **arm / record / play** workflow now uses a
-native sample clock, with the original OFF / STATIC / DYNAMIC controls, BPM,
-bars, meter fields, independent VISUAL/SOUND count-in, timeline and main loop buttons.
+## Credits and licensing
 
-- Choose the audio device/input in Options and Unmute Input, then raise MASTER
-  VOLUME to hear playback. A missing native input now reports an explicit error.
-- Click a loop's main button, or use 1–0 (Shift for loops 11–20). Mouse down and
-  key down use the same action path; release cannot duplicate the action.
-- STATIC arms for the shared grid, records the fixed length and optionally plays.
-  CANCEL disarms it. A stopped loop queues PLAY; pressing CANCEL prevents its start.
-- DYNAMIC records immediately. FINISH normally waits for the next bar; a second
-  FINISH stops now. As in the reference, the last 50ms of a bar finish immediately
-  and short takes are retained rather than padded to a whole bar.
-- A synced short STOP waits for the grid; another STOP cuts now. A 600ms hold
-  cuts without deleting. Keep holding STOP for 4 seconds to delete (see below).
-  Space / STOP ALL cancels queued starts and finishes capture without late autoplay.
-
-The browser timer receiver bug that stranded held keys/pointers is fixed, with
-real WebView2 press/release/hold regressions. This increment uses the internal
-Master BPM grid. Continuous metronome and static SOUND count-in render in C++,
-bypass MASTER and stay out of internal loop capture. SOUND plays 100ms triangle
-cues in the final bar (440 Hz, then 880 Hz on the final beat). VISUAL and SOUND
-independently request the same lead-in; CANCEL, DEL and STOP ALL cancel pending
-cues. OFF and DYNAMIC start immediately. Loop-source sync, DAW/MIDI clock following,
-latency calibration and pre-tap snapping remain pending. Recording
-settings are latched for the active take. Audio/projects are still session-only.
-Only the current standalone test app is rebuilt; no new ZIP or version is made.
-
-
-Mouse performance: the original loop header/state text also triggers the main
-short action, as in Ascii-Looper. The main button supports press/release outside
-its bounds without duplicating the action; clicks on nested controls or the
-waveform do not toggle recording. Hardware-free real-mouse/native-PCM acceptance
-instructions are in [BUILDING](docs/BUILDING.md#hardware-free-mouse-acceptance-windows).
-
-Hold STOP to delete (intentional): continuously hold a playing loop's main STOP
-button or assigned number key for **4 seconds**, measured from the initial press.
-The tap stops/schedules stopping; 600ms cuts playback but keeps audio. Only the
-4-second hold deletes the loop and its Undo/Redo history, regardless of sync mode.
-Releasing earlier, losing focus/pointer capture or STOP ALL cancels deletion.
-PLAY/FINISH/CANCEL/RECORD holds never delete. DEL deletes directly. The in-app
-English, Spanish and Portuguese manuals explain these rules.
-
-
-The original **Start** slider now adjusts playback phase. Drag to choose the
-value and release to apply it 50ms later during playback; STOP ALL cancels pending
-restarts and preserves the value, while DEL resets it. Q/nudge remain pending.
-
-
-The original **STUT** button now repeats a short fragment while held and restores
-full-loop playback on release. Focus loss, editor reload/close and STOP ALL clear
-the temporary region. This uses native C++ playback and leaves the recording
-unchanged. See [the reference audit](docs/REFERENCE_AUDIT.md) for tested sound scope
-and remaining platform/driver acceptance.
+Aion-Looper continues Jorge Salgueiro's Ascii-Looper, preserving its visual identity
+and using its original behavior as the reference for the native migration.
+Original UI assets retain their GPL-2.0 notices. JUCE, CLAP extensions and platform
+SDKs have their own terms; commercial distribution requires a compatible licensing
+plan. See [LICENSING.md](docs/LICENSING.md) for provenance and outstanding release
+requirements.
