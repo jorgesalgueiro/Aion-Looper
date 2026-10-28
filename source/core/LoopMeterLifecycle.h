@@ -1,6 +1,7 @@
 #pragma once
 #include "core/LoopMeterObservation.h"
 #include "core/QueuedMeterCallbackTime.h"
+#include "core/MeterStopCallbackTime.h"
 #include <limits>
 
 namespace aion {
@@ -35,7 +36,7 @@ public:
     bool reset(std::uint32_t next) noexcept {
         if(next!=engine.generation()||next==generation)return false;
         generation=next;ticket=0;lastClearSerial=lastBufferSerial=lastPlaySerial=lastStopSerial=lastQueueSerial=bufferId=queuedId=queueHighWater=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
-        issuedTicket=rebasedTicket=0;rebasedBuffer=lastWindowSerial=queuedDueSerial=0;queuedWindow={};queuedNotice={};
+        issuedTicket=rebasedTicket=0;rebasedBuffer=lastWindowSerial=queuedDueSerial=0;queuedWindow={};queuedNotice={};cleanupNotice={};correlatedCleanup={};
         // Keep timer serials across prepare; old delivered callbacks cannot alias.
         return true;
     }
@@ -229,6 +230,7 @@ public:
         }))return false;
         queuedId=0;invalidateQueuedWindow();lastQueueSerial=event.serial;
         cleanup=arm?MeterCleanupRequest{++timerSerial,generation,graph.inspect().teardownDelay}:MeterCleanupRequest{};
+        cleanupNotice=event;correlatedCleanup=cleanup;
         if(!graph.inspect().analyser)receipt={};return true;
     }
 private:
@@ -261,6 +263,7 @@ private:
         }))return false;
         lastStopSerial=event.serial;queuedId=0;invalidateQueuedWindow();
         cleanup=arm?MeterCleanupRequest{++timerSerial,generation,graph.inspect().teardownDelay}:MeterCleanupRequest{};
+        cleanupNotice=event;correlatedCleanup=cleanup;
         if(!graph.inspect().analyser)receipt={};
         return true;
     }
@@ -316,6 +319,12 @@ public:
         output=candidate;return true;
     }
     bool inGeneration(std::uint32_t completed) const noexcept {return completed&&completed==generation&&current();}
+    bool readCleanupCallbackTime(std::uint64_t origin,MonotonicClockPoint wall,MeterStopCallbackTime& output) const noexcept {
+        if(!observable()||!cleanup.serial||cleanup!=correlatedCleanup)return false;
+        MeterStopCallbackTime candidate;
+        if(!meterStopCallbackTime(cleanupNotice,origin,wall,generation,candidate)||candidate.delaySeconds!=cleanup.delay||!observable())return false;
+        candidate.cleanupSerial=cleanup.serial;output=candidate;return true;
+    }
     bool routesTo(const Engine& source,unsigned track) const noexcept {return &engine==&source&&id==track&&current();}
 private:
     std::uint64_t lastSerial() const noexcept {return std::max({lastClearSerial,lastBufferSerial,lastPlaySerial,lastStopSerial,lastQueueSerial,lastWindowSerial});}
@@ -334,6 +343,8 @@ private:
     QueuedWindowTransaction queuedWindow{};
     MeterGraphEvent queuedNotice{}; // Exact accepted command correlation, not the latest processor view.
     std::uint64_t queuedDueSerial=0; // Successful due delivery only; independent of pending-result retirement.
+    MeterGraphEvent cleanupNotice{};
+    MeterCleanupRequest correlatedCleanup{}; // Stop fact bound to this cleanup, not later graph/buffer state.
     bool bufferNoticeSinceStart=true;
     LoopMeterGraph graph;
     LoopMeterBinding receipt{};

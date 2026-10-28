@@ -166,7 +166,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   else{assert.equal(loop.state,'stopped');assert.equal(loop.stopTimeout,null);noGraph(loop);}
   if(syncOff)++lateSyncOffStopCases;else ++lateStopNowCases;
  }
- let nativeQueueTimingCases=0,zeroLeadCases=0,positiveLeadCases=0,counterCases=0,counterDeadlineReads=0;
+ let nativeQueueTimingCases=0,zeroLeadCases=0,positiveLeadCases=0,counterCases=0,counterDeadlineReads=0,stopCounterCases=0,stopDeadlineReads=0;
  if(process.argv[2]){
   const {spawnSync}=require('node:child_process'),queries=[];
   for(const block of [64,128])for(const id of [0,19])for(const mode of [1,2])for(const bpm of [120,137.3,999])for(const lead of [.035,.0999,.1001,.2345])queries.push({block,id,mode,bpm,lead});
@@ -208,7 +208,24 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
    ++counterCases;
   }
   assert.equal(counterCases,288);assert.equal(counterDeadlineReads,864);
+  const stops=[];
+  for(const kind of [0,1,2,3])for(const rate of [8000,44100,48000,96000])for(const block of [64,128])
+  for(const offset of [0,block/2,block-1])for(const lead of kind===1?[.0001,.134567,2]:[kind===2?.015:0])stops.push({kind,rate,block,offset,lead});
+  const stopProbe=spawnSync(process.argv[2],['--stop-counter'],{input:stops.map(s=>`${s.kind} ${s.rate} ${s.block} ${s.offset} ${s.lead}`).join('\n')+'\n',encoding:'utf8',maxBuffer:1024*1024});
+  assert.equal(stopProbe.status,0,stopProbe.stderr);const stopRows=stopProbe.stdout.trim().split('\n');assert.equal(stopRows.length,stops.length);
+  for(let n=0;n<stops.length;++n){
+   const s=stops[n],row=stopRows[n].trim().split(/\s+/).map(Number);assert.equal(row.length,12);assert(row.every(Number.isFinite));
+   timers.clear();audio.state='running';audio.currentTime=1;const loop=ctx.make(19);await loop.play(1);
+   if(s.kind===3)loop.state='queued';
+   if(s.kind===2)ctx.panic();else loop.stop(s.kind===1?1+s.lead:0);
+   const pending=timers.get(loop.stopTimeout);assert(pending);
+   const command=100+s.offset/s.rate,delay=pending.ms/1000,due=command+delay;
+   for(let i=0;i<3;++i){const [actualCommand,actualDelay,deadline,remaining]=row.slice(i*4,i*4+4);
+    near(actualCommand,command);near(actualDelay,delay);near(deadline,due);near(remaining,Math.max(0,due-(100+s.block/s.rate+[0,.04,.25][i])));++stopDeadlineReads;}
+   ++stopCounterCases;
+  }
+  assert.equal(stopCounterCases,144);assert.equal(stopDeadlineReads,432);
  }
- console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,latePanicCases,lateStopNowCases,lateSyncOffStopCases,nativeQueueTimingCases,zeroLeadCases,positiveLeadCases,counterCases,counterDeadlineReads,
-  scope:'Unchanged Loop/AudioGraph methods, handleAction/grid scheduling/cancellation and AudioEngine.resume with controlled timer IO. Native comparison covers queue delay, grid deadline and immutable command-counter deadline with deterministic entry capture; automatic delivery, browser PCM and renderer excluded.'},null,2));
+ console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,latePanicCases,lateStopNowCases,lateSyncOffStopCases,nativeQueueTimingCases,zeroLeadCases,positiveLeadCases,counterCases,counterDeadlineReads,stopCounterCases,stopDeadlineReads,
+  scope:'Unchanged Loop/AudioGraph methods, handleAction/grid scheduling/cancellation and AudioEngine.resume with controlled timer IO. Native comparison covers queue/grid and stop-cleanup command-counter deadlines with deterministic entry capture; automatic delivery, browser PCM and renderer excluded.'},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});

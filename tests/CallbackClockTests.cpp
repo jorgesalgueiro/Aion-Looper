@@ -1,5 +1,6 @@
 #include "core/Engine.h"
 #include "core/QueuedMeterCallbackTime.h"
+#include "core/MeterStopCallbackTime.h"
 #include <atomic>
 #include <cstdlib>
 #include <iostream>
@@ -10,6 +11,36 @@ extern std::atomic<int> allocations;
 namespace {void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}}
 void callbackClockTests(){
     using namespace aion;
+    for(double rate:{8000.,44100.,48000.,96000.})for(unsigned block:{0u,1u,64u,128u,1024u})
+    for(std::uint64_t base:{std::uint64_t{0},(std::uint64_t{1}<<63)+17})for(unsigned kind=0;kind<4;++kind){
+        MeterGraphEvent e;e.kind=kind==0?MeterGraphEventKind::immediateStop:kind==1?MeterGraphEventKind::scheduledStop:kind==2?MeterGraphEventKind::stopAll:MeterGraphEventKind::queuedStop;
+        e.serial=3;e.generation=7;e.track=19;e.ticket=kind==3?0:2;e.bufferId=(1ull<<61)+11;e.queueId=kind==3?(1ull<<60)+9:0;
+        e.stopLeadSeconds=kind==1?.134567:kind==2?.015:0;e.frame=base+(block?block-1:0);
+        e.callbackClock={9,base,base+block,0,rate,7};e.callbackClock.processorEntry={100.25,true};
+        const double command=100.25+static_cast<double>(block?block-1:0)/rate,delay=kind==0||kind==3?.025:e.stopLeadSeconds+.05;
+        for(double lag:{0.,.04,.25}){const double wall=100.25+static_cast<double>(block)/rate+lag;MeterStopCallbackTime out;
+            watch=true;const bool ok=meterStopCallbackTime(e,73,{73,wall},7,out);watch=false;
+            check(ok&&out.commandSeconds==command&&out.delaySeconds==delay&&out.deadlineSeconds==command+delay
+                &&out.remainingSeconds==std::max(0.,command+delay-wall)&&out.eventSerial==3&&out.callbackSerial==9&&out.bufferId==e.bufferId
+                &&out.queueId==e.queueId&&out.cleanupSerial==0,"Stop command deadline retains unrounded policy across receipt lag and full-width frames");}
+        MeterStopCallbackTime held;check(meterStopCallbackTime(e,73,{73,101},7,held),"Seed stop clock rejection output");
+        const auto reject=[&](MeterGraphEvent bad,MonotonicClockPoint now=MonotonicClockPoint{73,101}){auto out=held;check(!meterStopCallbackTime(bad,73,now,7,out)&&out==held,"Malformed stop clock rejects without output mutation");};
+        auto bad=e;bad.kind=MeterGraphEventKind::queuedCancel;reject(bad);bad=e;bad.serial=0;reject(bad);bad=e;bad.bufferId=0;reject(bad);
+        bad=e;bad.retiredTicket=1;reject(bad);bad=e;bad.generation=8;reject(bad);bad=e;bad.track=20;reject(bad);
+        bad=e;bad.queueDelaySeconds=.1;reject(bad);bad=e;bad.queueId=kind==3?0:1;reject(bad);
+        if(kind!=3){bad=e;bad.ticket=0;reject(bad);}bad=e;bad.stopLeadSeconds=kind==1?0:.1;reject(bad);
+        bad=e;bad.callbackClock.processorEntry={};reject(bad);bad=e;bad.callbackClock.nonRealtime=true;reject(bad);
+        bad=e;bad.callbackClock.generation=8;reject(bad);bad=e;bad.frame=base+block+1;reject(bad);
+        bad=e;bad.callbackClock.sampleRate=0;reject(bad);bad=e;bad.callbackClock.processorEntry.seconds=1e308;reject(bad,{73,1e308});
+        reject(e,{74,101});reject(e,{73,99});reject(e,{73,std::numeric_limits<double>::quiet_NaN()});
+        bad=e;bad.callbackClock.hasHostTimeNs=true;bad.callbackClock.hostTimeNs=std::numeric_limits<std::uint64_t>::max();bad.callbackClock.hasOutputLatency=true;bad.callbackClock.outputLatencySamples=12345;
+        MeterStopCallbackTime independent;check(meterStopCallbackTime(bad,73,{73,101},7,independent)&&independent==held,"Stop command counter excludes host time and output latency");
+    }
+    {MeterGraphEvent e;e.kind=MeterGraphEventKind::immediateStop;e.serial=1;e.generation=7;e.ticket=1;e.bufferId=1;e.callbackClock={1,0,0,0,48000,7};e.callbackClock.processorEntry={0,true};
+        MeterStopCallbackTime t;check(meterStopCallbackTime(e,73,{73,0},7,t)&&t.commandSeconds==0&&t.deadlineSeconds==.025,"Known zero stop counter is valid");
+        const auto held=t;for(double bad:{-1.,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}){
+            auto corrupt=e;corrupt.stopLeadSeconds=bad;check(!meterStopCallbackTime(corrupt,73,{73,1},7,t)&&t==held,"Nonfinite stop lead preserves output");}}
+    std::cout<<"PASS: stop command counter policy, 25ms/unrounded lead+50ms/65ms, immutable late deadline, full-width frames, zero/variable blocks and invalid/offline/foreign-clock rejection\n";
     for(double rate:{8000.0,44100.0,48000.0,96000.0})for(unsigned block:{0u,1u,64u,128u,1024u})
     for(std::uint64_t base:{std::uint64_t{0},(std::uint64_t{1}<<63)+17})for(double delay:{0.,.0000001,.1345}){
         MeterGraphEvent event;event.kind=MeterGraphEventKind::queuedPlay;event.serial=3;event.generation=7;event.track=19;

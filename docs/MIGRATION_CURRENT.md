@@ -1,10 +1,10 @@
 # Current migration checkpoint
 
-Updated 2026-10-28. Current source baseline: `fdcfab1` (clean main at session start,
-eight local commits ahead of cached origin). Current work adds guarded delivery of
-a retained due callback receipt. Automatic callback scheduling stays unwired.
-Prior command correlation, graph transaction, reference-oracle and STOP acceptance
-remain applicable.
+Updated 2026-10-28. Current source baseline: `a6b5738` (clean main at session start,
+nine local commits ahead of cached origin). Current work correlates stop commands
+with their cleanup requests and exposes immutable command-counter deadlines.
+Running cleanup timers retain their accepted receipt-time behavior; automatic
+queued callback scheduling stays unwired. Prior guarded delivery remains accepted.
 Continue the existing implementation; this is not a restart or release checklist.
 
 ## Reference and baseline
@@ -14,10 +14,10 @@ The available original is `.reference/Ascii-Looper` inside this repository.
 `tests/AssetTests.py` verifies embedded original UI bytes against that copy.
 Neither reference nor original UI files are modified by this repair.
 
-The baseline evidence is `build/queued-clock-evidence.json`: Windows/Ubuntu
+The baseline evidence is `build/queued-due-evidence.json`: Windows/Ubuntu
 portable 28/28 each, native 2/2 each, core sanitizer 6/6, 96 queue-delay cases,
 288 counter cases / 864 reads, and 126 committed-PCM cases. A fresh Windows
-queued baseline passed before the guarded delivery changes. Historical
+queued baseline passed before the stop correlation changes. Historical
 STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 
 ## Compact parity checklist
@@ -26,6 +26,7 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | --- | --- | --- |
 | Capture and accepted loop edits preserve committed PCM | Existing scoped audit: 126 capture/OD/SUB cases at 1e-6; other loop-edit gates retained | Full browser envelopes/resampling and physical input timing are separate |
 | Queue callback uses max(0, grid delta minus 100ms) | Exact accepting callback retained; immutable command-counter deadline; 96 original delay cases plus 288 offset cases / 864 deadline reads at 1e-12 | Automatic delivery, cleanup origin alignment and full source sound remain unaccepted |
+| Stop cleanup uses 25ms / unrounded lead+50ms / 65ms | Exact stop callback and live cleanup-request readout; 144 stop cases / 432 deadline reads against original JS | Running timers still use receipt-time origin; actual teardown alignment remains unaccepted |
 | STOP ALL cancels a still-queued intent even after its grid time | This repair routes queuedCancel by explicit pending ID; core, production processor, 20-route and real-timer regressions | This does not fix audible playback occurring before a late message callback |
 | STOP NOW clears pending queue before immediate graph cleanup, including after grid | Explicit queue-ID routing; graphless/attached, production requests and real 25ms timer checks | Normal synchronized STOP and old-teardown state boundary remain separate |
 | Normal STOP takes immediate path when sync is disabled | Pending-ID routing covers sync disabled after grid; accepted graph origins support immediate and synchronized stops before/after grid | Actual automatic callback delivery and full transition sound remain separate |
@@ -38,7 +39,36 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Due callback retains its original intent and fires once | Guarded local-owner delivery checks deadline and stable receipt, preserves cleanup ordering, rejects stale replacement and retries FIFO failure | Automatic timer lifetime/instance binding and cleanup clock origins remain separate |
 | Full instruments/effects/controller/persistence/host parity | No new acceptance from this session; see PARITY.md and feature-specific validation notes | Do not infer suite completion from these looper/meter gates |
 
-## Current slice: guarded due callback delivery
+## Current slice: stop command / cleanup-request correlation
+
+ImmediateStop, scheduledStop, stopAll and queuedStop facts now copy the existing
+accepting callback stamp. Queued cancellation remains distinct and cannot imply
+cleanup. A pure validated policy maps processor-entry plus callback-local frame
+offset to command-counter time, then adds the original delay: 25ms immediate or
+queued STOP; unrounded lead + 50ms scheduled; 65ms panic. Late reads reduce the
+remainder without moving the deadline. Host/DAC time, output latency and later
+views cannot replace that captured edge. Known zero is valid; missing, offline,
+foreign, stale, malformed or precision-losing correlation rejects unchanged.
+
+The message owner retains each actual stop fact with its exact cleanup request.
+The internal `readMeterCleanupCallbackTimeMessageThread(track)` uses the configured
+processor counter and validates the prepared generation. Delivered/cancelled or
+replaced requests cannot reuse old correlation. A manual stop lacking a captured
+command cannot borrow one either. A still-pending old cleanup retains its own time
+when another queued source is accepted. Graphless stops do not invent a request.
+This adds fixed copies to existing preallocated storage; no audio clock queries,
+allocation, locks, serialization or timer scheduling change.
+
+Acceptance: original four stop policies, exact sub-block capture at tracks 0/19,
+64/128; full-width frames and 8/44.1/48/96k pure-clock cases; zero/variable blocks,
+invalid/offline/foreign inputs with unchanged outputs; late/missing-view retention,
+request replacement/delivery/manual-stop/prepare rejection, exact paired PCM and
+zero tracked callback new/delete; native reader and original JS delay comparison.
+The copied-policy negative must reject receipt-plus-delay without modifying any
+production source/object. Actual timer activation and full source sound remain
+unaccepted. This command-counter model is not a physical latency measurement.
+
+## Previous slice: guarded due callback delivery
 
 Acceptance: a retained callback receipt may request its graph at or after its
 original deadline, once successfully enqueued. Recompute timing from the owner's
@@ -272,7 +302,17 @@ compiling sources or overlap CTests in a build tree.
 
 ## Next concrete step / validation still needed
 
-Current guarded-delivery evidence: `build/queued-due-evidence.json`.
+Current stop-clock evidence: `build/stop-clock-evidence.json`.
+Windows/Ubuntu portable 28/28 (417.43s/671.34s), native 2/2 (11.61s/23.91s),
+core sanitizer 6/6 (467.25s), fresh focused policy/actual-event tests, original
+144 stop cases / 432 deadline reads, prior queue/graph oracles, 126-case PCM audit
+and original asset checks pass. PCM remains 965,826 samples with maximum error
+7.394757495227111e-8 at unchanged 1e-6. No final skip, sanitizer error, JUCE
+assertion or leaked-object report; existing compiler warnings remain.
+The isolated copied-policy positive exits 0 and receipt-rearm negative exits 1.
+See VALIDATION.md for fixture/harness corrections and actual verification scope.
+
+Previous guarded-delivery evidence: `build/queued-due-evidence.json`.
 Windows/Ubuntu portable 28/28 (405.64s/671.27s), native 2/2 (11.68s/24.08s),
 core sanitizer 6/6 (453.38s), rebuilt focused queued regressions, unchanged 126-case PCM
 audit (965,826 samples, max error 7.394757495227111e-8 at 1e-6), and original UI
@@ -291,10 +331,11 @@ transaction/STOP evidence remains in VALIDATION.md and `build/`; its regression
 cases are retained. Application parameters, serialized state, original assets,
 dependency versions and target configuration remain unchanged.
 
-Next capture stop-command callback correlation and compare cleanup clock origins
-against the original, then connect bounded automatic delivery to the guarded due
-hook. Each timer must retain its receipt and owning processor
-lifetime, recompute remaining time without rearming the deadline, and service
+Next integrate validated command-based cleanup deadlines into the actual adapter
+using its configured counter. Define and test missing/offline correlation behavior,
+manual stops, delayed notices, replacement and loss without changing unrelated
+accepted paths. Then connect bounded automatic queued delivery to the guarded due
+hook. Each timer must retain its receipt and owning processor lifetime and service
 ordered cancellation/loss/prepare safely. Cleanup before callback remains distinct
 from cleanup retiring an already-pending result. The raw-only hook and generic
 start must not become shortcuts to graph creation. Compare automatic delivery,

@@ -7585,3 +7585,74 @@ native two-test, sanitizer six-test, PCM and asset commands. Logs use
 new and retained markers, the original failing traces, stable existing processor
 and state code/oracles/enum files, scoped diff and logo, then hashes source/logs/
 binaries into `build/queued-due-evidence.json`. No unrelated failing gate found.
+
+### Stop command / cleanup clock correlation — 2026-10-28
+
+Baseline `a6b5738`, clean main nine local commits ahead of cached origin at
+session start. Immediate, scheduled, panic and queued STOP now retain their exact
+accepting callback stamp in the existing fixed event stream. Queued cancellation
+is excluded. The message owner binds the fact to the cleanup request it actually
+created. The internal native reader uses the same configured counter as
+processBlock, checks prepared generation and returns a local-owner readout.
+
+The command-counter model is processor-entry seconds plus local integer frame
+offset / sample rate, then original 25ms, unrounded lead+50ms, or 65ms delay.
+Late receipts cannot postpone that deadline. Known zero is valid. Missing,
+offline, foreign, stale, malformed or precision-losing inputs fail unchanged;
+host/DAC time and output latency do not participate. Delivered, replaced or manual
+uncorrelated requests cannot borrow old timing. Another queued source retains its
+older independent cleanup origin. A graphless stop cannot invent cleanup.
+
+Core tests exercise actual mid-block stop facts and owners at tracks 0/19,
+64/128, each stop policy, graphless queued STOP, later/missing callback views,
+retained old cleanup, accepted replacement graph, new stop serial, manual
+uncorrelated replacement and prepare. Paired stereo PCM is exact and tracked
+callback new/delete remains zero. Pure tests cover 8/44.1/48/96k, zero/1/64/128/
+1024 blocks, frames above 2^63, policy/clock/range/identity failures, known zero
+and host/latency independence. Native processor tests use the existing configured
+counter seam and prove accepting-callback retention, later-view independence and
+release rejection with unchanged output.
+
+The unchanged original Loop.stop and panic path are compared with a small policy
+probe: 144 stop cases, 432 deadline reads, including fractional/short/long leads,
+rates, offsets and late receipt. The original queue 96 cases / 288 counter cases /
+864 reads and 72-case / 1,655-observation graph oracle remain enabled at 1e-12.
+This comparison covers delay and command-counter math, not source PCM/envelopes.
+
+An isolated copied-header negative replaces command+delay with receipt+delay. Its
+probe fails `Stop deadline must remain command-based after delayed receipt` with
+exit 1; the unchanged production header passes with exit 0. Saved harness
+`build/StopClockNegative.sh` checks both codes; no deliberately broken production
+source or object was used. The initial inline harness had a shell quoting error;
+the saved Bash harness removes that ambiguity. Initial actual-event fixtures were
+also corrected: scheduled audio must reach its grid before new queued PLAY, and
+after old cleanup the surviving queued callback must request its explicit graph
+transaction. Existing lifecycle guards were preserved. An early Windows focused
+run still used the previous executable while compilation was active; only fresh
+build-then-test runs are used as evidence.
+
+Running cleanup timers still use their previously accepted receipt-time origin.
+This phase adds a diagnostic/model readout, not timer rearming or automatic queued
+delivery. Integrating fixed deadlines into actual timers, asynchronous cancellation/
+backlog/loss/lifetime policy and full source sound remain unaccepted. No parameter,
+state, UI, dependency or target configuration change. No new plugin-format, DAW,
+physical device, listening or Apple validation, package or push.
+
+Final gates for this phase: Windows portable 28/28 (417.43s), Ubuntu portable
+28/28 (671.34s), Windows native 2/2 (11.61s), Ubuntu native 2/2 (23.91s), core
+sanitizer selection 6/6 (467.25s). Both development Standalone binaries rebuilt.
+No final skip, sanitizer error, JUCE assertion or leaked-object report; compiler
+warnings remain. PCM: 126 cases / 965,826 samples, max error
+7.394757495227111e-8 at unchanged 1e-6. Original byte/embedding/tamper gate passes.
+
+Commands remain in MIGRATION_CURRENT.md and BUILDING.md: build before running
+`aion_core_tests --callback-clock` and `--meter-queued`, full portable CTest,
+the native two-test and sanitizer six-test selections, PCM and asset audits.
+`node tests/MeterSourceReference.cjs build/windows-core/Release/aion_meter_graph_probe.exe`
+runs the focused original-source timing comparison on Windows. The same script
+with `build/core/aion_meter_graph_probe` runs on Ubuntu. Logs/build logs use
+`build/stop-clock-*`. `build/WriteStopClockEvidence.cjs` requires complete gates,
+new/retained markers, exact isolated negative/positive results, stable existing
+timer/processor/state code, enums/oracle/assets and scoped diff, then records
+source/log/binary hashes in `build/stop-clock-evidence.json`. No unrelated failing
+gate was found. No package or push was performed.

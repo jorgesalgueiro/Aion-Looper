@@ -241,13 +241,22 @@ void processorDueDeliveryTests(bool& audioWatch){
         check(p->requestQueuedMeterGraphDueMessageThread(expected)&&!p->requestQueuedMeterGraphDueMessageThread(expected),"Native due gate enqueues exact receipt once");
         cycle();rpc(R"({"operation":"snapshot"})");const auto status=p->inspectMeterServiceMessageThread();
         check(status.attachedGraphs==1&&status.windowApplied==1&&!status.pendingWindows&&!status.rejected,"Native due result binds graph through sole prepared route");
-        command("stopImmediate");cycle();command("play");cycle();
+        command("stopImmediate");cycle();
+        aion::MeterStopCallbackTime stopTime,laterStop;
+        check(p->readMeterCleanupCallbackTimeMessageThread(track,stopTime)&&stopTime.clockOrigin==1&&stopTime.delaySeconds==.025
+            &&stopTime.callbackSerial==p->inspectCallbackClockAudioThread().serial&&stopTime.cleanupSerial,"Native cleanup readout binds accepted stop and configured clock");
+        queuedDueCounter+=.01;cycle();
+        check(p->readMeterCleanupCallbackTimeMessageThread(track,laterStop)&&laterStop.deadlineSeconds==stopTime.deadlineSeconds
+            &&laterStop.callbackSerial==stopTime.callbackSerial&&laterStop.remainingSeconds<=stopTime.remainingSeconds,"Native later callbacks cannot rearm cleanup command deadline");
+        command("play");cycle();
         aion::QueuedMeterCallbackTime replacement;check(p->readQueuedMeterCallbackTimeMessageThread(track,replacement)&&replacement.queueId!=expected.queueId,"Native due fixture replaces queue on same track");
         queuedDueCounter=replacement.deadlineSeconds+1;
         check(!p->requestQueuedMeterGraphDueMessageThread(expected)&&!p->inspectMeterServiceMessageThread().pendingWindows,"Native old timer cannot retarget replacement queue");
         p->releaseResources();check(!p->requestQueuedMeterGraphDueMessageThread(replacement),"Native released processor rejects retained due timer");
+        auto held=laterStop;check(!p->readMeterCleanupCallbackTimeMessageThread(track,held)&&held==laterStop,"Native released cleanup readout preserves caller output");
     }
     std::cout<<"PASS: production guarded due delivery uses configured counter, exact receipt and sole result route; early/stale/duplicate/replacement/release rejection at tracks 0/19, 64/128\n";
+    std::cout<<"PASS: production cleanup command readout retains accepting callback across later views and rejects release at tracks 0/19, 64/128\n";
 }
 void processorBufferReceiptTests(bool& audioWatch){
     for(unsigned block:{64u,128u}){

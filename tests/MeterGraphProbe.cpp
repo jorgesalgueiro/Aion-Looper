@@ -7,6 +7,20 @@
 #include <sstream>
 #include <string>
 int main(int argc,char** argv){
+    if(argc==2&&std::string(argv[1])=="--stop-counter"){
+        unsigned kind,block,offset;double rate,lead;std::cout<<std::setprecision(17);
+        while(std::cin>>kind>>rate>>block>>offset>>lead){
+            if(kind>3||!block||offset>=block||block>1024||rate<8000||rate>96000||!std::isfinite(lead)||lead<0)return 2;
+            aion::MeterGraphEvent e;e.kind=kind==0?aion::MeterGraphEventKind::immediateStop:kind==1?aion::MeterGraphEventKind::scheduledStop:kind==2?aion::MeterGraphEventKind::stopAll:aion::MeterGraphEventKind::queuedStop;
+            e.serial=1;e.generation=7;e.track=19;e.bufferId=11;e.ticket=kind==3?0:2;e.queueId=kind==3?9:0;e.stopLeadSeconds=lead;
+            e.frame=100+offset;e.callbackClock={3,100,100+block,0,rate,7};e.callbackClock.processorEntry={100,true};
+            aion::MeterStopCallbackTime t;
+            for(double lag:{0.,.04,.25}){
+                if(!aion::meterStopCallbackTime(e,73,{73,100+static_cast<double>(block)/rate+lag},7,t))return 4;
+                std::cout<<t.commandSeconds<<' '<<t.delaySeconds<<' '<<t.deadlineSeconds<<' '<<t.remainingSeconds<<' ';
+            }std::cout<<'\n';
+        }return std::cin.eof()?0:2;
+    }
     if(argc==2&&(std::string(argv[1])=="--queued-timing"||std::string(argv[1])=="--queued-counter")){
         const bool counter=std::string(argv[1])=="--queued-counter";
         unsigned block,id,mode;double bpm,lead;

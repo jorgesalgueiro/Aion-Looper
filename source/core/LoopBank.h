@@ -158,7 +158,7 @@ private:
             ||meterImmediateTickets[id]!=meterGraphTickets[id])return;
         // Native worker/finalizing state cannot decide whether the JS-style
         // graph remains attached. Its explicit origin and message owner do.
-        meterGraphEvents->publish(kind,id,meterImmediateTickets[id],frame,tracks[id].clearEpoch,tracks[id].clip->waveformId,lead);
+        meterGraphEvents->publish(kind,id,meterImmediateTickets[id],frame,tracks[id].clearEpoch,tracks[id].clip->waveformId,lead,0,0,meterCallbackClock);
     }
     void publishMeterPanic(unsigned id) noexcept {
         // A queued PLAY introduces an unmapped message-time graph transition.
@@ -179,7 +179,7 @@ private:
     void publishMeterQueueFact(unsigned id,MeterGraphEventKind kind,double delay=0) noexcept {
         const auto ticket=meterImmediateTickets[id]==meterGraphTickets[id]?meterImmediateTickets[id]:0u;
         meterGraphEvents->publish(kind,id,ticket,frame,tracks[id].clearEpoch,tracks[id].clip?tracks[id].clip->waveformId:0,0,meterQueuedIds[id],delay,
-            kind==MeterGraphEventKind::queuedPlay?meterCallbackClock:CallbackClockStamp{});
+            kind==MeterGraphEventKind::queuedPlay||kind==MeterGraphEventKind::queuedStop?meterCallbackClock:CallbackClockStamp{});
     }
     struct Clip {
         std::atomic<std::uint32_t> leases{1};

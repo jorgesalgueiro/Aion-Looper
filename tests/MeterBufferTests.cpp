@@ -313,6 +313,53 @@ void meterPanicTests(){
     std::cout<<"PASS: post-grid pending queued panic cancellation, stale/duplicate/repeated rejection, delayed ordered message delivery and retained old cleanup/history at tracks 0/19 and 64/128\n";
 }
 namespace {
+void stopCallbackClockTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned mode=0;mode<5;++mode){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,id);
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Stop clock installs actual clip");
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        if(mode!=4){f.command(LoopAction::play,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Stop clock attaches actual graph");}
+        if(mode>=3){if(mode==3){f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Stop clock retains old graph for queued stop");}
+            for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            f.command(LoopAction::play,id);f.cycle(false,{99,true});check(owner.consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay,id)),"Stop clock queues real intent");}
+        else if(mode==1)for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+        const auto begin=f.engine->clock(),at=begin+block/2;const auto action=mode==1?LoopAction::stop:mode==2?LoopAction::stopAll:LoopAction::stopImmediate;
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({action,id,++f.request,e->generation(),at,0}),"Queue actual sub-block stop");
+        f.cycle(false,{100,true});const auto kind=mode==1?MeterGraphEventKind::scheduledStop:mode==2?MeterGraphEventKind::stopAll:mode>=3?MeterGraphEventKind::queuedStop:MeterGraphEventKind::immediateStop;
+        const auto event=f.next(kind,id);check(event.frame==at&&event.callbackClock==f.view->callbackClock,"Stop fact owns exact accepting callback");
+        check(mode==1?owner.consumeScheduledStop(event):mode==2?owner.consumeStopAll(event):mode>=3?owner.consumeQueuedStop(event):owner.consumeImmediateStop(event),"Stop fact commits original cleanup policy");
+        MeterStopCallbackTime first;
+        if(mode==4){check(!owner.cleanupRequest().serial&&!owner.readCleanupCallbackTime(73,{73,101},first),"Graphless queued stop cannot invent cleanup correlation");continue;}
+        check(owner.readCleanupCallbackTime(73,{73,100+static_cast<double>(block)/48000},first)
+            &&first.commandSeconds==100+static_cast<double>(block/2)/48000&&first.cleanupSerial==owner.cleanupRequest().serial
+            &&first.delaySeconds==owner.cleanupRequest().delay,"Actual stop readout binds exact cleanup request");
+        const auto cleanup=owner.cleanupRequest();f.cycle();MeterStopCallbackTime later;
+        check(owner.readCleanupCallbackTime(73,{73,101},later)&&later.deadlineSeconds==first.deadlineSeconds&&later.callbackSerial==first.callbackSerial
+            &&later.remainingSeconds==0&&owner.cleanupRequest()==cleanup,"Late/missing processor view cannot move cleanup command deadline");
+        for(unsigned n=0;n<1000&&f.view->tracks[id].state!=LoopState::stopped;++n)f.cycle();
+        check(f.view->tracks[id].state==LoopState::stopped,"Scheduled audio stop reaches grid before new queued play");
+        // Queuing a new source retains the old independent cleanup and its clock.
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+        f.command(LoopAction::play,id);f.cycle(false,{101,true});check(owner.consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay,id)),"Queue new source before old cleanup");
+        check(owner.readCleanupCallbackTime(73,{73,102},later)&&later.deadlineSeconds==first.deadlineSeconds,"New queued intent retains old cleanup origin");
+        check(owner.deliverCleanup(cleanup),"Deliver original cleanup explicitly");auto unchanged=later;
+        check(!owner.readCleanupCallbackTime(73,{73,102},unchanged)&&unchanged==later,"Delivered cleanup cannot expose stale timestamp");
+        check(owner.requestQueuedGraph(owner.queuedIntentId(),owner.committedBuffer()),"Deliver retained graph callback after old cleanup");
+        const auto pending=owner.queuedWindowTransaction();LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};
+        mirror.meterGraphTicket=pending.ticket;mirror.meterQueueId=pending.queueId;mirror.meterBufferId=pending.bufferId;
+        check(f.control->enqueueLoop(mirror),"Mirror replacement graph for exact PCM");f.cycle();(void)f.next(MeterGraphEventKind::started,id);
+        check(owner.consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"Attach replacement graph for cleanup correlation");
+        f.command(LoopAction::stopImmediate,id);f.cycle(false,{103,true});check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Replace cleanup with new actual stop");
+        check(owner.readCleanupCallbackTime(73,{73,103},later)&&later.cleanupSerial>first.cleanupSerial&&later.eventSerial>first.eventSerial
+            &&later.commandSeconds==103,"New stop replaces cleanup clock by exact request identity");
+        check(owner.stop(0),"Direct uncorrelated stop replaces request");unchanged=later;
+        check(!owner.readCleanupCallbackTime(73,{73,104},unchanged)&&unchanged==later,"Uncorrelated manual cleanup cannot reuse older stop clock");
+        f.prepare();check(owner.reset()&&!owner.readCleanupCallbackTime(73,{73,102},unchanged)&&unchanged==later,"Prepare clears cleanup correlation");
+    }
+    check(allocations.load()==0,"Stop clock capture has zero callback new/delete");
+    std::cout<<"PASS: actual stop callback capture, cleanup-request binding, sub-block deadlines, old-cleanup retention, graphless rejection and prepare at tracks 0/19, 64/128; exact paired PCM\n";
+}
 void queuedDueDeliveryTests(){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cleanupOrder:{0u,1u,2u}){
@@ -713,6 +760,7 @@ void queuedWindowTests(){
 }
 }
 void meterQueuedTests(){
+    stopCallbackClockTests();
     queuedDueDeliveryTests();
     queuedCallbackClockTests();
     queuedGraphTransactionTests();

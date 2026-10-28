@@ -1591,3 +1591,16 @@ Reserve the delivered event serial only after successful enqueue, independently
 of pending-result lifetime: cleanup retiring a result must not permit the same
 one-shot callback to fire again. FIFO failure may retry. Preserve old explicit
 raw/graph hooks and cleanup before-delivery versus after-enqueue semantics.
+
+Stop-command correlation now uses the existing callback stamp on immediateStop,
+scheduledStop, stopAll and queuedStop; queuedCancel remains unrelated to cleanup.
+Retain the exact fact alongside its cleanup request. Reads must require that same
+live serial/generation/delay, rejecting manual/uncorrelated replacement, delivered,
+cancelled, lost or prepared state without output mutation. New queued sources do
+not move an older independent cleanup deadline. Map processor-entry plus local
+integer frame offset, then original 25ms / unrounded lead+50ms / 65ms; never receipt
+time, latest view, host/DAC or latency substitution. Preserve known zero versus
+missing, offline/foreign/invalid/precision rejection and graphless no-request rules.
+The readout is internal and owner-local; existing JUCE timers still arm from receipt
+time. Do not claim actual cleanup alignment, automatic queued delivery or source
+sound acceptance from this diagnostic/model phase. Keep original source unchanged.
