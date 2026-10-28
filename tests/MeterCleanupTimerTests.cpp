@@ -25,11 +25,11 @@ struct Fixture {
     std::unique_ptr<aion::MeterWindowEvent> packet=std::make_unique<aion::MeterWindowEvent>();
     unsigned block;bool& watch;
     Fixture(unsigned size,bool& audioWatch,aion::MeterEventScope scope=aion::MeterEventScope::rawWindows):engine(std::make_unique<aion::Engine>(scope)),block(size),watch(audioWatch){prepare();owner=std::make_unique<aion::LoopMeterLifecycle>(*engine,19);owner->setBuffer(true);timer=std::make_unique<aion::LoopMeterCleanupTimer>(*owner);}
-    void cycle(bool offline=false){
+    void cycle(bool offline=false,aion::ProcessorClockObservation entry={}){
         std::array<float,128> l{},r{},cl{},cr{};
         for(unsigned i=0;i<block;++i)l[i]=r[i]=1.8f*static_cast<float>(std::sin((engine->clock()+i)*.037));
         cl=l;cr=r;float* channels[]={l.data(),r.data()},*cc[]={cl.data(),cr.data()};
-        watch=true;engine->process(channels,2,static_cast<int>(block),{},offline);control->process(cc,2,static_cast<int>(block),{},offline);watch=false;
+        watch=true;engine->process(channels,2,static_cast<int>(block),{},offline,entry);control->process(cc,2,static_cast<int>(block),{},offline,entry);watch=false;
         check(l==cl&&r==cr,"Native cleanup timer preserves bit-identical stereo Engine PCM");
         while(engine->popView(*view)){}
     }
@@ -688,12 +688,73 @@ private:
         initialPasses=status.passes;
     }
 };
+double cleanupCounter=0;
+double readCleanupCounter() noexcept {return cleanupCounter;}
+class CorrelatedCleanupRunner final : private juce::Timer {
+public:
+    explicit CorrelatedCleanupRunner(bool& watch):audioWatch(watch){begin();startTimer(5);}
+    bool finished() const noexcept {return done;}
+private:
+    bool& audioWatch;bool done=false;unsigned index=0,phase=0;
+    std::unique_ptr<Fixture> f;double due=0,started=0,receipt=0;
+    std::uint64_t frame=0,data=0;aion::MeterCleanupRequest request{};
+    void command(aion::LoopAction action,std::uint64_t at=0){for(auto* e:{f->engine.get(),f->control.get()})
+        check(e->enqueueLoop({action,19,0,e->generation(),at,0}),"Queue correlated real-timer fixture action");}
+    aion::MeterGraphEvent next(aion::MeterGraphEventKind kind){aion::MeterGraphEvent e;
+        check(f->engine->popMeterGraphEvent(e)&&e.kind==kind,"Actual correlated timer event kind");return e;}
+    bool consume(const aion::MeterGraphEvent& e){using K=aion::MeterGraphEventKind;
+        return e.kind==K::immediateStop?f->timer->consumeImmediateStop(e):e.kind==K::queuedStop?f->timer->consumeQueuedStop(e):
+            e.kind==K::scheduledStop?f->timer->consumeScheduledStop(e):f->timer->consumeStopAll(e);}
+    void play(){command(aion::LoopAction::play);f->cycle();check(f->timer->consumeImmediatePlay(next(aion::MeterGraphEventKind::immediatePlay)),"Correlated timer attaches accepted graph");}
+    void begin(){using namespace aion;
+        const unsigned block=index<8?(index<4?64:128):((index-8)/2?128:64),kind=index<8?index%4:0;
+        cleanupCounter=10+index*10;f=std::make_unique<Fixture>(block,audioWatch,MeterEventScope::acceptedPlayback);
+        f->timer=std::make_unique<LoopMeterCleanupTimer>(*f->owner,nullptr,&readCleanupCounter);
+        check(f->timer->consumeBuffer(next(MeterGraphEventKind::bufferInstalled)),"Correlated timer accepts actual clip");
+        command(LoopAction::stopImmediate);f->cycle();play();
+        if(kind==3){command(LoopAction::stopImmediate);f->cycle();check(consume(next(MeterGraphEventKind::immediateStop)),"Prepare old graph for correlated queued stop");
+            for(auto* e:{f->engine.get(),f->control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            command(LoopAction::play);f->cycle();check(f->timer->consumeQueuedPlay(next(MeterGraphEventKind::queuedPlay)),"Correlated timer retains old cleanup while queued");}
+        else if(kind==1)for(auto* e:{f->engine.get(),f->control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+        const double entry=cleanupCounter;command(kind==1?LoopAction::stop:kind==2?LoopAction::stopAll:LoopAction::stopImmediate,f->engine->clock()+block/2);
+        f->cycle(false,{entry,true});auto event=next(kind==1?MeterGraphEventKind::scheduledStop:kind==2?MeterGraphEventKind::stopAll:kind==3?MeterGraphEventKind::queuedStop:MeterGraphEventKind::immediateStop);
+        cleanupCounter=entry+event.stopLeadSeconds+1;receipt=cleanupCounter;
+        const auto old=f->owner->cleanupRequest();auto bad=event;bad.callbackClock.sampleRate=0;
+        check(!consume(bad)&&f->owner->cleanupRequest()==old,"Malformed live correlation cannot mutate cleanup");
+        if(index>=8){if(index%2)event.callbackClock.nonRealtime=true;else event.callbackClock.processorEntry={};}
+        check(consume(event)&&f->timer->pending()&&f->owner->inspect().present,"Correlated cleanup is armed asynchronously");
+        double left=-1;check(f->timer->remaining(left)&&(index<8?left==0:std::abs(left-.025)<1e-12),"Real timer uses command deadline or explicit missing/offline fallback");
+        frame=f->engine->clock();data=f->owner->inspect().data;started=wall();phase=index<8?0:3;
+    }
+    void detached(){check(!f->timer->pending()&&!f->owner->inspect().present&&f->owner->inspect().data==data&&f->engine->clock()==frame,
+        "Actual correlated JUCE callback retains data and frozen audio clock");}
+    void advance(){f.reset();if(++index==12){done=true;stopTimer();std::cout<<"PASS: real configured-clock JUCE cleanup, all four overdue stop policies, future sample offset, early wake, missing/offline fallback and malformed rejection at 64/128; exact paired PCM\n";}
+        else begin();}
+    void timerCallback() override {
+        if(phase==0){if(f->owner->inspect().present)return;detached();
+            if(index%4){advance();return;}
+            play();const double entry=200+index*10;cleanupCounter=entry;
+            command(aion::LoopAction::stopImmediate,f->engine->clock()+f->block/2);f->cycle(false,{entry,true});const auto event=next(aion::MeterGraphEventKind::immediateStop);
+            check(consume(event),"Arm future sub-block command cleanup");due=entry+static_cast<double>(f->block/2)/48000+.025;
+            double left=0;check(f->timer->remaining(left)&&std::abs(left-(due-entry))<1e-12,"Receipt before logical command still schedules timer");
+            frame=f->engine->clock();data=f->owner->inspect().data;request=f->owner->cleanupRequest();started=wall();phase=1;return;}
+        if(phase==1){if(wall()-started<.05)return;
+            check(f->owner->inspect().present&&f->timer->pending(),"Early real wake cannot deliver before configured deadline");
+            cleanupCounter=due-.001;f->timer->synchronise();double left=0;
+            check(f->timer->remaining(left)&&std::abs(left-.001)<1e-12&&f->owner->cleanupRequest()==request,"Synchronise cannot postpone correlated deadline");
+            cleanupCounter=due;phase=2;return;}
+        if(phase==3){if(wall()-started<.04)return;
+            check(f->owner->inspect().present&&f->timer->pending(),"Fallback remains receipt-origin when counter is frozen");cleanupCounter=receipt+.025;phase=2;return;}
+        if(f->owner->inspect().present)return;detached();advance();
+    }
+};
 class Runner final : private juce::Timer {
 public:
-    explicit Runner(bool& watch):audioWatch(watch){begin(64);startTimer(5);}
+    explicit Runner(bool& watch):audioWatch(watch){correlated=std::make_unique<CorrelatedCleanupRunner>(watch);startTimer(5);}
     ~Runner() override {stopTimer();check(!cleanupWorker.joinable(),"Cleanup worker must finish before owner destruction");}
 private:
     bool& audioWatch;std::atomic<std::uint32_t> cleanupPrepared{0}; // Outlives bound fixture adapters.
+    std::unique_ptr<CorrelatedCleanupRunner> correlated;
     std::unique_ptr<Fixture> f;std::unique_ptr<ProcessorMeterFixture> processorMeters;
     std::unique_ptr<ProcessorShutdownFixture> shutdown;unsigned stage=0;bool lateStopSyncOff=false;
     double started=0,expectedDelay=0;std::uint64_t frame=0,data=0;std::array<double,7> held{};
@@ -751,6 +812,7 @@ private:
         check(f->owner->inspect().present,"Blocked message thread cannot deliver a timer callback");
     }
     void timerCallback() override {
+        if(correlated){if(!correlated->finished())return;correlated.reset();begin(64);return;}
         shutdown->poll();
         processorMeters->poll();
         switch(stage){

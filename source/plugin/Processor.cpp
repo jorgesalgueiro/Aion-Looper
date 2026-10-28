@@ -202,7 +202,7 @@ void AionProcessor::serviceMeters() noexcept {
     for(auto& owner:*meterOwners)owner->reset(generation);
     if(preparedGeneration.load(std::memory_order_acquire)!=generation||engine.generation()!=generation)return;
     if(!(*meterTimers)[0]){
-        for(unsigned id=0;id<meterTimers->size();++id)(*meterTimers)[id].emplace(*(*meterOwners)[id],&preparedGeneration);
+        for(unsigned id=0;id<meterTimers->size();++id)(*meterTimers)[id].emplace(*(*meterOwners)[id],&preparedGeneration,processorClockReader);
     }
     for(auto& timer:*meterTimers)timer->synchronise(); // Cancel obsolete prepare receipts without rearming deadlines.
     if(!meterDispatcher){

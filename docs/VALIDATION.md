@@ -7656,3 +7656,71 @@ new/retained markers, exact isolated negative/positive results, stable existing
 timer/processor/state code, enums/oracle/assets and scoped diff, then records
 source/log/binary hashes in `build/stop-clock-evidence.json`. No unrelated failing
 gate was found. No package or push was performed.
+
+### Configured-counter cleanup timer integration — 2026-10-28
+
+Baseline `692c773`, clean main ten commits ahead of cached origin at session
+start. Production cleanup adapters receive the same immutable counter reader as
+processBlock. For valid live stop facts they arm from captured command time plus
+the original 25ms / unrounded lead+50ms / 65ms policy. Receipt time is only the
+counter-regression floor, so receipt before a logical sub-block command is valid.
+An overdue deadline schedules an asynchronous minimum tick; it never acquires
+another full delay from receipt. Synchronise and duplicate requests cannot postpone
+expiry. Audio rendering, commands, parameter IDs and state are unchanged.
+
+Manual stops, canonical missing timestamps, offline facts and unconfigured
+component adapters retain receipt-origin compatibility. Invalid present stamps
+or counter values fail before owner mutation. Basis is fixed when armed; a later
+snapshot cannot change it. Existing cancellation/replacement, old-cleanup
+retention, prepared lifetime, release/destruction and already-armed loss behavior
+remain. Automatic queued graph callback delivery is not activated.
+
+Pure deadline tests cover overdue delivery, future sub-block command time,
+duplicate immutability, exact due checks, invalid-input rollback and retained
+legacy policy. Real JUCE callbacks run through the existing native message loop
+with a configured controlled counter: all four overdue stop kinds at 64/128,
+asynchronous delivery with frozen audio/data identity, future offset, actual early
+wakes, synchronise without postponement, missing/offline fallback and malformed
+rejection. Exact paired stereo PCM and zero tracked callback new/delete remain.
+The configured test clock is not a physical output/driver latency measurement.
+
+Fresh Windows native baseline passed before its rebuild. The intended focused
+`--meter-graph` command is not a recognized selector and ran the complete normal
+core audit instead. Both Windows/Ubuntu audits reached their final full-audit PASS
+with the new correlated-deadline marker; those results are retained, then the
+remaining 27 CTest checks run with `-E '^core_realtime_contract$'`. Reproduce the
+direct audit without arguments. This avoids repeating the same full core audit
+while retaining the equivalent full 28-check portable coverage per platform.
+
+The isolated copied-header negative changes command+delay to receipt+delay and
+must fail `Correlated cleanup must not rearm an overdue command from receipt`
+with exit 1. The production policy passes with exit 0. The saved Bash harness
+checks both exact codes without changing production sources or objects.
+
+This accepts command-counter cleanup scheduling for the scoped live path, not
+punctual event-loop delivery, full browser source/overlap/envelope parity or
+physical latency. Existing original 144 stop cases / 432 reads, queue and graph
+oracles remain enabled. No new UI/bridge/state schema, dependency or format change;
+no new plugin-format build, REAPER/Ardour, physical hardware, listening or Apple
+validation. Only development Standalone targets are rebuilt. No package or push.
+
+Final evidence: complete direct core audits on Windows/Ubuntu plus 27/27 remaining
+CTest checks each (278.35s/583.70s for those 27), native 2/2 each (12.24s/25.21s),
+core sanitizer selection 6/6 (457.77s). Fresh native baseline was 2/2 (11.38s).
+Original 144 stop cases / 432 reads, 96 queue timings / 288 counter cases / 864
+reads and unchanged 72-case / 1,655-observation graph oracle pass. PCM stays
+126 cases / 965,826 samples, max error 7.394757495227111e-8 at 1e-6. Original
+UI byte identity, deterministic embedding and tamper rejection pass. No final
+skip, sanitizer error, JUCE assertion or leaked-object report; compiler warnings
+remain. No unrelated failing gate was found.
+
+Logs/build logs use `build/correlated-cleanup-*`. The ignored
+`build/WriteCorrelatedCleanupEvidence.cjs` requires complete direct audit markers,
+all 27 remaining CTest checks, real configured-clock dispatch markers, native and
+sanitizer gates, exact copied-header negative/positive results and retained
+oracles/assets. It verifies Processor.cpp differs only at the reader binding,
+other audio/state/parameter/oracle source is unchanged, and records scoped
+source/log/binary hashes in `build/correlated-cleanup-evidence.json`.
+Reproduction commands are in MIGRATION_CURRENT.md and BUILDING.md. Existing
+preview/plugin binaries keep their original source snapshots until rebuilt;
+this session builds development Standalone targets and tests, not release packages.

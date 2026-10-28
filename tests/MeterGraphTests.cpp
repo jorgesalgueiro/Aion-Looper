@@ -56,7 +56,17 @@ void cleanupDeadlineTests(){
     out={99,99,99};check(!timer.takeDue(later,31,out)&&out.serial==99&&!timer.pending().serial,"Superseded receipt cancels without publishing output");
     check(timer.arm(later,0),"Known-zero wall origin accepted");timer.cancel();
     check(!timer.takeDue(later,1,out)&&!timer.pending().serial,"Explicit cancellation never delivers");
+    check(timer.armCorrelated(first,10,11)&&timer.remaining(11,left)&&left==0,"Overdue correlated cleanup does not rearm from receipt");
+    check(timer.takeDue(first,11,out)&&out==first,"Overdue correlated cleanup delivers once");
+    check(timer.armCorrelated(first,20.002,20)&&timer.remaining(20,left)&&std::abs(left-.027)<1e-12,"Sub-block command may be logically ahead of receipt");
+    check(timer.armCorrelated(first,100,20.01)&&timer.remaining(20.01,left)&&std::abs(left-.017)<1e-12,"Duplicate correlated request cannot postpone deadline");
+    check(!timer.takeDue(first,20.026,out)&&timer.takeDue(first,20.027,out),"Correlated cleanup honors exact future deadline");
+    check(timer.armCorrelated(first,30,30),"Seed correlated invalid-input guard");
+    for(double bad:{-1.,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()})
+        check(!timer.armCorrelated(later,bad,31)&&!timer.armCorrelated(later,31,bad)&&timer.pending()==first,"Invalid correlated arm preserves existing request");
+    timer.cancel();
     watch=false;
+    std::cout<<"PASS: correlated cleanup deadline, overdue/no-rearm, future sub-block command, duplicate immutability and atomic invalid-input rejection\n";
     std::cout<<"PASS: cleanup deadline origin, duplicate/no-postpone, 25/50ms, replacement, cancellation, full-width identities and invalid clocks; zero tracked new/delete\n";
 }
 auto readingTuple(const aion::MeterReading& value){return std::array<double,7>{value.rms,value.peak,value.linearPeak,value.peakDb,value.rmsPercent,value.peakPercent,value.clipped?1.0:0.0};}

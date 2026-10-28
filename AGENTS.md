@@ -1601,6 +1601,20 @@ not move an older independent cleanup deadline. Map processor-entry plus local
 integer frame offset, then original 25ms / unrounded lead+50ms / 65ms; never receipt
 time, latest view, host/DAC or latency substitution. Preserve known zero versus
 missing, offline/foreign/invalid/precision rejection and graphless no-request rules.
-The readout is internal and owner-local; existing JUCE timers still arm from receipt
-time. Do not claim actual cleanup alignment, automatic queued delivery or source
-sound acceptance from this diagnostic/model phase. Keep original source unchanged.
+The readout is internal and owner-local. The subsequent configured-counter timer
+integration below supersedes the earlier receipt-only phase. Keep original source
+unchanged; full source sound and automatic queued delivery remain unaccepted.
+
+Configured cleanup adapters now use the processor's immutable counter reader.
+Valid live command facts arm an immutable command-origin deadline; an overdue
+cleanup remains asynchronous (minimum one timer tick). Receipt time is only the
+clock-regression floor, allowing logical sub-block command time ahead of receipt.
+Repeated synchronise/duplicate request cannot postpone expiry. Manual stops,
+canonical missing timestamps, offline facts and unconfigured component adapters
+retain receipt-origin compatibility; malformed present timestamps reject before
+owner mutation. Do not silently substitute a latest view or host/DAC clock.
+Already-armed loss/generation/cancellation/lifetime behavior remains unchanged.
+Keep real JUCE configured-clock tests for all four overdue stop kinds, future
+offset/early wake, missing/offline fallback and malformed rejection at 64/128,
+paired PCM and tracked callback allocations. Fixed deadlines do not guarantee
+event-loop punctuality or establish physical latency/full sound parity.

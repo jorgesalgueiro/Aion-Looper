@@ -8,11 +8,13 @@ namespace aion {
 // One per Engine/track, on the message thread, outlived by its lifecycle owner.
 // Explicit stop calls capture the deadline; synchronise only validates/cancels it.
 // Distinct accepted scheduled stops retain the original delta + 50ms policy.
-// Receipt delivery starts this wall deadline; command/delivery alignment is pending.
+// Explicitly configured live command correlation fixes the deadline origin.
+// Manual, missing-clock and offline stops retain receipt-origin compatibility.
 class LoopMeterCleanupTimer final : private juce::Timer {
 public:
-    explicit LoopMeterCleanupTimer(LoopMeterLifecycle& lifecycle,const std::atomic<std::uint32_t>* prepared=nullptr) noexcept
-        :owner(lifecycle),preparedGeneration(prepared){assertMessageThread();}
+    using ClockReader=double (*)() noexcept;
+    explicit LoopMeterCleanupTimer(LoopMeterLifecycle& lifecycle,const std::atomic<std::uint32_t>* prepared=nullptr,ClockReader reader=nullptr) noexcept
+        :owner(lifecycle),preparedGeneration(prepared),clockReader(reader?reader:&defaultWallTime),counterConfigured(reader!=nullptr){assertMessageThread();}
     LoopMeterCleanupTimer(const LoopMeterCleanupTimer&)=delete;
     LoopMeterCleanupTimer& operator=(const LoopMeterCleanupTimer&)=delete;
     ~LoopMeterCleanupTimer() override {
@@ -91,22 +93,29 @@ private:
     bool consumeStop(const MeterGraphEvent& event,MeterGraphEventKind kind) noexcept {
         assertMessageThread();if(!ready())return false;
         const double wall=wallTime();
-        if(!MeterCleanupDeadline::canArm(wall,kind==MeterGraphEventKind::immediateStop||kind==MeterGraphEventKind::queuedStop?.025:event.stopLeadSeconds+.05))return false;
+        MeterStopCallbackTime command;
+        const auto& captured=event.callbackClock;
+        if(counterConfigured&&captured!=CallbackClockStamp{}&&!validCallbackClock(captured))return false;
+        const bool correlated=counterConfigured&&!captured.nonRealtime&&captured.processorEntry.available;
+        if(correlated){if(!meterStopCallbackTime(event,1,{1,wall},event.generation,command))return false;}
+        else if(!MeterCleanupDeadline::canArm(wall,kind==MeterGraphEventKind::immediateStop||kind==MeterGraphEventKind::queuedStop?.025:event.stopLeadSeconds+.05))return false;
         const bool accepted=kind==MeterGraphEventKind::queuedStop?owner.consumeQueuedStop(event):kind==MeterGraphEventKind::stopAll?owner.consumeStopAll(event):
             kind==MeterGraphEventKind::scheduledStop?owner.consumeScheduledStop(event):owner.consumeImmediateStop(event);
         if(!accepted)return false;
         const auto request=owner.cleanupRequest();stopTimer();deadline.cancel();
         if(!request.serial)return true; // Already detached: preserve history without rearming.
-        const bool armed=deadline.arm(request,wall);jassert(armed);
+        const bool armed=correlated?deadline.armCorrelated(request,command.commandSeconds,wall):deadline.arm(request,wall);jassert(armed);
         if(armed)schedule(wall);
         return armed;
     }
 public:
     bool pending() const noexcept {assertMessageThread();return deadline.pending().serial!=0;}
+    bool remaining(double& seconds) const noexcept {assertMessageThread();return deadline.remaining(wallTime(),seconds);}
     bool routesTo(const Engine& source,unsigned track) const noexcept {assertMessageThread();return ready()&&owner.routesTo(source,track);}
 private:
     static void assertMessageThread() noexcept {jassert(juce::MessageManager::existsAndIsCurrentThread());}
-    static double wallTime() noexcept {return juce::Time::getMillisecondCounterHiRes()*.001;}
+    static double defaultWallTime() noexcept {return juce::Time::getMillisecondCounterHiRes()*.001;}
+    double wallTime() const noexcept {return clockReader();}
     // A nonzero generation can still belong to another completed prepare.
     // Refuse all entry points before touching owner metadata or dequeuing facts.
     bool ready() const noexcept {
@@ -132,6 +141,8 @@ private:
     }
     LoopMeterLifecycle& owner;
     const std::atomic<std::uint32_t>* preparedGeneration=nullptr; // Optional processor lifetime, outlives this adapter.
+    const ClockReader clockReader;
+    const bool counterConfigured;
     MeterCleanupDeadline deadline;
 };
 }

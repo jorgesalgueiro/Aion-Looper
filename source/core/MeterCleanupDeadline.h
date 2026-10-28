@@ -17,6 +17,13 @@ public:
         request=next;begin=wall;deadline=wall+next.delay;return true;
     }
     void cancel() noexcept {request={};begin=deadline=0;}
+    // The first receipt is the clock-regression floor, not the deadline origin.
+    // A logical sub-block command can still be ahead of this receipt counter.
+    bool armCorrelated(MeterCleanupRequest next,double command,double wall) noexcept {
+        if(!next.serial||!next.generation||!canArm(command,next.delay)||!std::isfinite(wall)||wall<0)return false;
+        if(next==request)return true;
+        request=next;begin=wall;deadline=command+next.delay;return true;
+    }
     MeterCleanupRequest pending() const noexcept {return request;}
     bool remaining(double wall,double& seconds) const noexcept {
         if(!request.serial||!std::isfinite(wall)||wall<begin)return false;
