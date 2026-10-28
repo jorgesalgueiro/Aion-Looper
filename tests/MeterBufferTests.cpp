@@ -313,6 +313,57 @@ void meterPanicTests(){
     std::cout<<"PASS: post-grid pending queued panic cancellation, stale/duplicate/repeated rejection, delayed ordered message delivery and retained old cleanup/history at tracks 0/19 and 64/128\n";
 }
 namespace {
+void queuedDueDeliveryTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cleanupOrder:{0u,1u,2u}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,id);
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Due callback installs clip");
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        if(cleanupOrder){f.command(LoopAction::play,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Due callback attaches old graph");
+            f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Due callback retains old cleanup");}
+        const auto cleanup=owner.cleanupRequest();
+        const auto queue=[&]{for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,120,1,1,4,false});
+            f.command(LoopAction::play,id);f.cycle(false,{100,true});const auto q=f.next(MeterGraphEventKind::queuedPlay,id);
+            check(owner.consumeQueuedPlay(q),"Due callback accepts intent");QueuedMeterCallbackTime time;
+            check(owner.readQueuedCallbackTime(73,{73,100},time),"Capture retained due callback receipt");return time;};
+        const auto expected=queue();const auto prior=owner.queuedWindowTransaction();const auto graph=owner.inspect();
+        const auto rejects=[&](QueuedMeterCallbackTime bad,MonotonicClockPoint now){
+            check(!owner.requestQueuedGraphDue(bad,73,now)&&owner.queuedWindowTransaction().ticket==prior.ticket
+                &&owner.queuedWindowTransaction().status==prior.status&&owner.cleanupRequest()==cleanup
+                &&owner.inspect().analyser==graph.analyser,"Stale or early due callback cannot mutate request, graph or cleanup");};
+        rejects(expected,{73,std::nextafter(expected.deadlineSeconds,-std::numeric_limits<double>::infinity())});
+        const MonotonicClockPoint due{73,expected.deadlineSeconds};
+        auto bad=expected;++bad.generation;rejects(bad,due);bad=expected;bad.track=(id+1)%20;rejects(bad,due);
+        bad=expected;bad.queueId+=(1ull<<32);rejects(bad,due);bad=expected;bad.bufferId+=(1ull<<32);rejects(bad,due);
+        bad=expected;++bad.eventSerial;rejects(bad,due);bad=expected;++bad.callbackSerial;rejects(bad,due);
+        bad=expected;++bad.clockOrigin;rejects(bad,due);bad=expected;bad.commandSeconds+=.1;rejects(bad,due);
+        bad=expected;bad.deadlineSeconds=100;rejects(bad,due);rejects(expected,{74,due.seconds});
+        rejects(expected,{73,std::numeric_limits<double>::quiet_NaN()});
+        if(cleanupOrder==1)check(owner.deliverCleanup(cleanup),"Old cleanup before due delivery retains real intent");
+        auto observation=expected;observation.remainingSeconds=999; // An old readout is not delivery authority.
+        check(owner.requestQueuedGraphDue(observation,73,due)&&!owner.requestQueuedGraphDue(expected,73,due),"Due callback enqueues once at exact original deadline");
+        const auto pending=owner.queuedWindowTransaction();
+        LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};
+        mirror.meterGraphTicket=pending.ticket;mirror.meterQueueId=expected.queueId;mirror.meterBufferId=expected.bufferId;
+        check(f.control->enqueueLoop(mirror),"Mirror guarded callback for exact PCM");
+        if(cleanupOrder==2)check(owner.deliverCleanup(cleanup),"Cleanup after enqueue retires guarded callback result");
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);const auto result=f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+        check(owner.consumeQueuedWindowResult(result)==(cleanupOrder!=2),"Due callback result retains existing cleanup retirement policy");
+        check(!owner.requestQueuedGraphDue(expected,73,{73,due.seconds+1}),"Duplicate late due receipt cannot create another graph");
+        f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Stop guarded callback graph origin");
+        const auto replacement=queue();const auto before=owner.queuedWindowTransaction();
+        check(replacement.queueId!=expected.queueId&&!owner.requestQueuedGraphDue(expected,73,{73,replacement.deadlineSeconds+1})
+            &&owner.queuedWindowTransaction().ticket==before.ticket,"Old timer cannot retarget a new queue on same clip and track");
+        // Saturation rejects without reserving a ticket; the same due receipt retries.
+        for(unsigned n=0;n<255;++n)f.command(LoopAction::mute,id);
+        check(!owner.requestQueuedGraphDue(replacement,73,{73,replacement.deadlineSeconds+1})
+            &&owner.queuedWindowTransaction().ticket==before.ticket,"Full FIFO preserves due callback for retry");
+        f.cycle();f.cycle();check(owner.requestQueuedGraphDue(replacement,73,{73,replacement.deadlineSeconds+1}),"Late due callback retries after bounded FIFO drain");
+        f.prepare();check(owner.reset()&&!owner.requestQueuedGraphDue(replacement,73,{73,replacement.deadlineSeconds+1}),"Prepared generation rejects retained timer receipt");
+    }
+    check(allocations.load()==0,"Due callback transactions retain zero tracked callback new/delete");
+    std::cout<<"PASS: guarded due graph delivery, exact deadline, stale full-width identities, no track retarget, cleanup ordering, duplicate/FIFO/prepare rejection and exact paired PCM at tracks 0/19, 64/128\n";
+}
 void queuedCallbackClockTests(){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool attached:{false,true}){
@@ -340,6 +391,7 @@ void queuedCallbackClockTests(){
             f.command(LoopAction::clear,id);f.cycle();check(owner.consumeClear(f.next(MeterGraphEventKind::cleared,id)),"Clear retires queued clock intent");}
         else{f.command(LoopAction::stopAll,id);f.cycle();check(owner.consumeQueuedCancel(f.next(MeterGraphEventKind::queuedCancel,id)),"Panic retires queued clock intent");}
         auto unchanged=later;check(!owner.readQueuedCallbackTime(73,{73,wall+.5},unchanged)&&unchanged==later,"Retired queued deadline cannot leak stale output");
+        check(!owner.requestQueuedGraphDue(first,73,{73,first.deadlineSeconds+1}),"Cancelled or cleared due receipt cannot enqueue");
         if(!attached){
             MidiSettings settings;settings.enabled=true;settings.revision=1;settings.bindings.fill(0);settings.bindings[id]=midiBinding(1,60);
             for(auto* e:{f.engine.get(),f.control.get()})check(e->configureMidi(settings),"Configure public MIDI input for zero callback");
@@ -363,6 +415,7 @@ void queuedCallbackClockTests(){
         for(unsigned n=0;n<255;++n)check(f.engine->enqueueLoop(bad),"Fill actual event stream with typed negatives");f.cycle();f.cycle();
         check(f.engine->enqueueLoop(bad),"Overflow full clock event stream");f.cycle();auto held=first;
         check(!owner.readQueuedCallbackTime(73,{73,101},held)&&held==first,"Event loss invalidates queued clock without stale output");
+        check(!owner.requestQueuedGraphDue(first,73,{73,first.deadlineSeconds+1}),"Lost event stream rejects due delivery");
         MeterGraphEvent discarded;unsigned budget=255;
         check(!f.engine->popMeterGraphEvent(discarded,f.engine->generation(),budget)&&budget==0,"Clock loss recovery first drains all retained raw entries with bounded work");
         f.prepare();check(owner.reset()&&owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled)),"Clock loss prepare recovers retained clip");q=queue();
@@ -660,6 +713,7 @@ void queuedWindowTests(){
 }
 }
 void meterQueuedTests(){
+    queuedDueDeliveryTests();
     queuedCallbackClockTests();
     queuedGraphTransactionTests();
     queuedWindowTransactionTests();

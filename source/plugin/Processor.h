@@ -66,6 +66,7 @@ public:
     bool requestQueuedMeterWindowMessageThread(unsigned track) noexcept;
     bool requestQueuedMeterGraphMessageThread(unsigned track) noexcept;
     bool readQueuedMeterCallbackTimeMessageThread(unsigned track,aion::QueuedMeterCallbackTime&) noexcept;
+    bool requestQueuedMeterGraphDueMessageThread(const aion::QueuedMeterCallbackTime&) noexcept;
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:

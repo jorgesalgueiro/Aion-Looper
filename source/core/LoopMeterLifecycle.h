@@ -35,7 +35,7 @@ public:
     bool reset(std::uint32_t next) noexcept {
         if(next!=engine.generation()||next==generation)return false;
         generation=next;ticket=0;lastClearSerial=lastBufferSerial=lastPlaySerial=lastStopSerial=lastQueueSerial=bufferId=queuedId=queueHighWater=0;bufferNoticeSinceStart=true;graph=LoopMeterGraph{};receipt={};cleanup={};
-        issuedTicket=rebasedTicket=0;rebasedBuffer=lastWindowSerial=0;queuedWindow={};queuedNotice={};
+        issuedTicket=rebasedTicket=0;rebasedBuffer=lastWindowSerial=queuedDueSerial=0;queuedWindow={};queuedNotice={};
         // Keep timer serials across prepare; old delivered callbacks cannot alias.
         return true;
     }
@@ -76,6 +76,20 @@ public:
     // result. May arrive after older cleanup, which leaves the intent alive.
     bool requestQueuedGraph(std::uint64_t queue,std::uint64_t clip) noexcept {
         return requestQueuedCallback(queue,clip,true);
+    }
+    // A timer delivers its retained receipt, never a lookup of the current track.
+    // Recompute due time from our original fact; caller remaining time is only
+    // an earlier observation and is deliberately not used as authority.
+    bool requestQueuedGraphDue(const QueuedMeterCallbackTime& expected,std::uint64_t origin,MonotonicClockPoint now) noexcept {
+        QueuedMeterCallbackTime current;
+        if(expected.eventSerial<=queuedDueSerial||!readQueuedCallbackTime(origin,now,current)||current.remainingSeconds>0
+            ||expected.generation!=current.generation||expected.track!=current.track
+            ||expected.queueId!=current.queueId||expected.bufferId!=current.bufferId
+            ||expected.eventSerial!=current.eventSerial||expected.callbackSerial!=current.callbackSerial
+            ||expected.clockOrigin!=current.clockOrigin||expected.commandSeconds!=current.commandSeconds
+            ||expected.deadlineSeconds!=current.deadlineSeconds)return false;
+        if(!requestQueuedGraph(current.queueId,current.bufferId))return false;
+        queuedDueSerial=current.eventSerial;return true; // One-shot even when cleanup later retires the result.
     }
 private:
     bool requestQueuedCallback(std::uint64_t queue,std::uint64_t clip,bool createGraph) noexcept {
@@ -319,6 +333,7 @@ private:
     std::uint64_t rebasedBuffer=0,lastWindowSerial=0;
     QueuedWindowTransaction queuedWindow{};
     MeterGraphEvent queuedNotice{}; // Exact accepted command correlation, not the latest processor view.
+    std::uint64_t queuedDueSerial=0; // Successful due delivery only; independent of pending-result retirement.
     bool bufferNoticeSinceStart=true;
     LoopMeterGraph graph;
     LoopMeterBinding receipt{};

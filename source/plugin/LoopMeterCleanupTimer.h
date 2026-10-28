@@ -80,6 +80,9 @@ public:
     bool requestQueuedGraph(std::uint64_t queue,std::uint64_t clip) noexcept {
         assertMessageThread();return ready()&&owner.requestQueuedGraph(queue,clip);
     }
+    bool requestQueuedGraphDue(const QueuedMeterCallbackTime& expected,std::uint64_t origin,MonotonicClockPoint now) noexcept {
+        assertMessageThread();return ready()&&owner.requestQueuedGraphDue(expected,origin,now);
+    }
     bool consumeQueuedWindowResult(const MeterGraphEvent& event) noexcept {
         assertMessageThread();if(!ready()||!owner.consumeQueuedWindowResult(event))return false;
         synchronise();return true;

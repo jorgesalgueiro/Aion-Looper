@@ -213,6 +213,42 @@ void clearDispatcherTests(bool& audioWatch){
 }
 // Drives the production processor without an editor, while the real message
 // loop services its existing Timer. No test calls serviceMeters directly.
+double queuedDueCounter=100;
+double queuedDueClock() noexcept {return queuedDueCounter;}
+void processorDueDeliveryTests(bool& audioWatch){
+    for(unsigned block:{64u,128u})for(unsigned track:{0u,19u}){
+        queuedDueCounter=100;
+        auto p=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},AionProcessor::OutputLatencyReader{},&queuedDueClock);
+        p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
+        const auto rpc=[&](const char* text){auto result=p->request({juce::JSON::parse(text)});check(static_cast<bool>(result["ok"]),"Due native RPC");};
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");
+        juce::AudioBuffer<float> audio(2,static_cast<int>(block));juce::MidiBuffer midi;midi.ensureSize(256);
+        const auto cycle=[&]{audio.clear();audioWatch=true;p->processBlock(audio,midi);audioWatch=false;};
+        const auto command=[&](const char* action){auto* data=new juce::DynamicObject();juce::var request(data);
+            data->setProperty("operation","loop");data->setProperty("action",action);data->setProperty("track",static_cast<int>(track));
+            data->setProperty("generation",static_cast<int>(p->inspectCallbackClockAudioThread().generation));
+            data->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis())+4000);
+            check(static_cast<bool>(p->request({request})["ok"]),"Due native command");};
+        cycle();command("record");for(unsigned n=0;n<512/block;++n)cycle();command("finish");cycle();
+        command("stopImmediate");cycle();rpc(R"({"operation":"snapshot"})");
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":1})");cycle();
+        p->setNonRealtime(false);command("play");cycle();
+        aion::QueuedMeterCallbackTime expected;check(p->readQueuedMeterCallbackTimeMessageThread(track,expected),"Native due receipt reads captured entry");
+        queuedDueCounter=std::nextafter(expected.deadlineSeconds,-std::numeric_limits<double>::infinity());
+        check(!p->requestQueuedMeterGraphDueMessageThread(expected)&&!p->inspectMeterServiceMessageThread().pendingWindows,"Native due gate rejects early configured counter");
+        queuedDueCounter=expected.deadlineSeconds;auto bad=expected;bad.queueId+=(1ull<<32);
+        check(!p->requestQueuedMeterGraphDueMessageThread(bad),"Native due gate rejects stale full-width receipt");
+        check(p->requestQueuedMeterGraphDueMessageThread(expected)&&!p->requestQueuedMeterGraphDueMessageThread(expected),"Native due gate enqueues exact receipt once");
+        cycle();rpc(R"({"operation":"snapshot"})");const auto status=p->inspectMeterServiceMessageThread();
+        check(status.attachedGraphs==1&&status.windowApplied==1&&!status.pendingWindows&&!status.rejected,"Native due result binds graph through sole prepared route");
+        command("stopImmediate");cycle();command("play");cycle();
+        aion::QueuedMeterCallbackTime replacement;check(p->readQueuedMeterCallbackTimeMessageThread(track,replacement)&&replacement.queueId!=expected.queueId,"Native due fixture replaces queue on same track");
+        queuedDueCounter=replacement.deadlineSeconds+1;
+        check(!p->requestQueuedMeterGraphDueMessageThread(expected)&&!p->inspectMeterServiceMessageThread().pendingWindows,"Native old timer cannot retarget replacement queue");
+        p->releaseResources();check(!p->requestQueuedMeterGraphDueMessageThread(replacement),"Native released processor rejects retained due timer");
+    }
+    std::cout<<"PASS: production guarded due delivery uses configured counter, exact receipt and sole result route; early/stale/duplicate/replacement/release rejection at tracks 0/19, 64/128\n";
+}
 void processorBufferReceiptTests(bool& audioWatch){
     for(unsigned block:{64u,128u}){
         auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
@@ -960,6 +996,7 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     immediatePlayAdapterTests(audioWatch);
     clearDispatcherTests(audioWatch);
     processorBufferReceiptTests(audioWatch);
+    processorDueDeliveryTests(audioWatch);
     panicDispatcherTests(audioWatch);
     queuedAdapterTests(audioWatch);
     std::mutex mutex;std::condition_variable changed;bool finished=false;

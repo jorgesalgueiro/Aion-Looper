@@ -1,10 +1,10 @@
 # Current migration checkpoint
 
-Updated 2026-10-28. Current source baseline: `84601d7` (clean main at session start,
-seven local commits ahead of cached origin). This session captures the exact queued
-command callback and exposes an immutable counter deadline. Automatic callback
-scheduling stays unwired. Prior graph transaction, reference-oracle and STOP
-acceptance remain applicable.
+Updated 2026-10-28. Current source baseline: `fdcfab1` (clean main at session start,
+eight local commits ahead of cached origin). Current work adds guarded delivery of
+a retained due callback receipt. Automatic callback scheduling stays unwired.
+Prior command correlation, graph transaction, reference-oracle and STOP acceptance
+remain applicable.
 Continue the existing implementation; this is not a restart or release checklist.
 
 ## Reference and baseline
@@ -14,10 +14,10 @@ The available original is `.reference/Ascii-Looper` inside this repository.
 `tests/AssetTests.py` verifies embedded original UI bytes against that copy.
 Neither reference nor original UI files are modified by this repair.
 
-The baseline evidence is `build/queued-graph-evidence.json`: Windows/Ubuntu
+The baseline evidence is `build/queued-clock-evidence.json`: Windows/Ubuntu
 portable 28/28 each, native 2/2 each, core sanitizer 6/6, 96 queue-delay cases,
-126 committed-PCM cases. A fresh focused baseline passed before the new normal
-correlation tests were added. Historical
+288 counter cases / 864 reads, and 126 committed-PCM cases. A fresh Windows
+queued baseline passed before the guarded delivery changes. Historical
 STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 
 ## Compact parity checklist
@@ -35,9 +35,38 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Conditional raw reset reports its outcome without graph creation | Explicit request/result handshake, reserved tickets, typed outcomes and production routing; old graph/binding/cleanup retained | This is raw-window readiness only; graph acceptance, source timing and renderer remain separate |
 | Explicit queued callback creates a graph independently of old cleanup | Unchanged-source/component comparison: 72 scenarios, 1,278 additional observations; fresh analyser/data, retained old deadlines, cleanup before/after callback, repeated immediate/scheduled/panic stops | This oracle supplies explicit notifications; the real-ID transaction is checked separately, and audio/wall scheduling remains unwired |
 | Explicit graph callback owns subsequent stop routing | Real queue IDs, 120 core lifetime/stop combinations, prepared processor hook and twenty-track result/stop routing pass | Automatic timer delivery, overlap/envelopes and source phase are not accepted by this logical transaction phase |
+| Due callback retains its original intent and fires once | Guarded local-owner delivery checks deadline and stable receipt, preserves cleanup ordering, rejects stale replacement and retries FIFO failure | Automatic timer lifetime/instance binding and cleanup clock origins remain separate |
 | Full instruments/effects/controller/persistence/host parity | No new acceptance from this session; see PARITY.md and feature-specific validation notes | Do not infer suite completion from these looper/meter gates |
 
-## Current slice: queued command clock correlation
+## Current slice: guarded due callback delivery
+
+Acceptance: a retained callback receipt may request its graph at or after its
+original deadline, once successfully enqueued. Recompute timing from the owner's
+original fact and validate generation, track, full-width queue/clip, event/callback
+serials, clock origin, command time and deadline. The receipt's remaining time is
+an earlier observation, not authority to fire. Early/foreign/nonfinite clocks or
+altered stable receipt fields reject without request/graph/cleanup mutation. An
+old receipt must never retarget a newer queue on the same clip and track. FIFO failure permits retry;
+successful enqueue consumes the callback even if later cleanup retires its result.
+Preserve cleanup before delivery versus cleanup after enqueue, typed acceptance,
+prepared lifetime guards and zero tracked callback allocations at tracks 0/19,
+64/128. No timer, public JS operation or persisted field is added in this phase.
+
+The initial focused run reproduced duplicate enqueue after cleanup retired a
+pending result (`build/queued-due-lifetime-failure-{windows,linux}.txt`). Keep this
+regression; fixing it requires a delivered-event high-water mark independent of
+pending transaction status, not weakening cleanup retirement.
+
+`requestQueuedGraphDue` implements that gate on the existing message owner. The
+prepared cleanup adapter and `requestQueuedMeterGraphDueMessageThread(receipt)`
+expose it internally using the processor's configured counter. Successful enqueue
+records the delivered event serial independently of pending-result cleanup; FIFO
+failure does not consume it. Existing manual raw/graph hooks remain unchanged.
+Receipt values use the local Engine namespace: future timers must remain bound
+to their owner/processor lifetime, not transfer these readouts between instances.
+No new timer, JS/IPC operation, audio processing or persisted state is activated.
+
+## Previous slice: queued command clock correlation
 
 Each actual queuedPlay fact now carries the callback stamp captured before MIDI
 and command dispatch. The message owner retains that exact fact independently of
@@ -243,36 +272,35 @@ compiling sources or overlap CTests in a build tree.
 
 ## Next concrete step / validation still needed
 
-Current command-clock evidence: `build/queued-clock-evidence.json`.
-Windows/Ubuntu portable 28/28 (412.21s/665.68s), native 2/2 (11.61s/24.52s),
-core sanitizer 6/6 (473.37s), focused clock/queued regressions, unchanged 126-case PCM
+Current guarded-delivery evidence: `build/queued-due-evidence.json`.
+Windows/Ubuntu portable 28/28 (405.64s/671.27s), native 2/2 (11.68s/24.08s),
+core sanitizer 6/6 (453.38s), rebuilt focused queued regressions, unchanged 126-case PCM
 audit (965,826 samples, max error 7.394757495227111e-8 at 1e-6), and original UI
 byte/embedding/tamper checks pass. No unrelated failing gate, skipped check,
 sanitizer error, JUCE assertion or leaked-object report was found. Existing compiler
 warnings remain. The unchanged 72-case graph oracle retains all 1,655 observations
 at 1e-12; 96 original queue timings and the new 288 counter cases / 864 reads pass.
 
-The isolated receipt-time-rearm negative failed the exact immutable-deadline check
-in `build/queued-clock-negative.txt`. The correct header was restored with a fresh
-mtime, all affected Windows/Ubuntu objects rebuilt and focused positives rerun
-before broader gates. Initial fixture repairs replaced a private MIDI API call
-with actual public zero-frame MIDI input and drained the intentionally full lost
-event queue before prepare. Neither required weakening production guards.
+The initial duplicate-after-cleanup failure is retained in
+`build/queued-due-lifetime-failure-{windows,linux}.txt`. The delivered-event guard
+fixed it; affected objects were rebuilt and focused positives passed before broader
+gates. Prior correlation/graph/STOP evidence remains in VALIDATION.md and build/.
 
 Both Standalone development binaries and native test binaries rebuilt. Prior raw
 transaction/STOP evidence remains in VALIDATION.md and `build/`; its regression
 cases are retained. Application parameters, serialized state, original assets,
 dependency versions and target configuration remain unchanged.
 
-Next implement bounded explicit callback delivery using this command correlation
-and the full graph hook directly, with stored-identity guards at timer fire. Retain
-the fixed unrounded deadline and independent old cleanup; establish cleanup clock
-origins and distinguish callback after cleanup from cleanup retiring an already
-pending result. The raw-only hook and generic start must not become shortcuts to
-graph creation. Compare automatic delivery, late-source phase, outgoing/incoming
-audio overlap and cleanup sound against the original before enabling the renderer.
-Audible playing does not prove an automatic message callback occurred; no such
-timer was activated here.
+Next capture stop-command callback correlation and compare cleanup clock origins
+against the original, then connect bounded automatic delivery to the guarded due
+hook. Each timer must retain its receipt and owning processor
+lifetime, recompute remaining time without rearming the deadline, and service
+ordered cancellation/loss/prepare safely. Cleanup before callback remains distinct
+from cleanup retiring an already-pending result. The raw-only hook and generic
+start must not become shortcuts to graph creation. Compare automatic delivery,
+late-source phase, outgoing/incoming overlap and cleanup sound against the original
+before enabling the renderer. Audible playing does not prove an automatic message
+callback occurred; no such timer was activated here.
 
 Full transition sound/late-source alignment is still unaccepted. No REAPER/Ardour
 or physical-controller/device tests were added here. Rebuild the relevant current

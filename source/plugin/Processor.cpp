@@ -249,6 +249,14 @@ bool AionProcessor::readQueuedMeterCallbackTimeMessageThread(unsigned track,aion
         ||!meterPrepared()||candidate.generation!=preparedGeneration.load(std::memory_order_acquire))return false;
     output=candidate;return true;
 }
+bool AionProcessor::requestQueuedMeterGraphDueMessageThread(const aion::QueuedMeterCallbackTime& expected) noexcept {
+    JUCE_ASSERT_MESSAGE_THREAD
+    if(!meterPrepared()||expected.track>=aion::LoopBank::trackCount)return false;
+    serviceMeters();
+    if(!meterPrepared()||!meterTimers||!(*meterTimers)[expected.track])return false;
+    constexpr std::uint64_t counterOrigin=1;
+    return (*meterTimers)[expected.track]->requestQueuedGraphDue(expected,counterOrigin,{counterOrigin,processorClockReader()});
+}
 MeterServiceStatus AionProcessor::inspectMeterServiceMessageThread() const noexcept {
     JUCE_ASSERT_MESSAGE_THREAD
     auto result=meterServiceStatus;

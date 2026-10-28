@@ -7535,3 +7535,53 @@ Future timer fire must bind expected generation/queue/clip/event identities rath
 than retarget current state through bare track. No current plugin-format build,
 REAPER/Ardour, physical device/controller, listening or Apple validation was added.
 No package or push performed.
+
+### Guarded due callback delivery — 2026-10-28
+
+Baseline `fdcfab1`, clean main eight local commits ahead of cached origin at
+session start. The previous command-counter readout is now usable by an internal
+guarded delivery method. It recomputes from the retained original command fact,
+checks every stable receipt field and refuses delivery before its immutable due
+time. Caller remaining time is an earlier observation and cannot authorize fire.
+Successful enqueue records a delivered event serial independently of pending
+transaction status. Rejected FIFO enqueue permits retry; successful enqueue is
+one-shot even if old cleanup subsequently retires the result. No timer is activated.
+
+The initial focused Windows and Ubuntu runs failed `Duplicate late due receipt
+cannot create another graph`. Cleanup after enqueue had retired the result, leaving
+the original intent alive and permitting a second enqueue. The retained delivered
+serial fixes that new path without changing the existing explicit graph/raw hooks
+or weakening cleanup retirement. Original traces are retained in
+`build/queued-due-lifetime-failure-{windows,linux}.txt`; rebuilt focused tests pass.
+
+Core cases cover tracks 0/19, 64/128, exact deadline and late retry, each stable
+identity field, early/foreign/nonfinite input, older cleanup before delivery or
+after enqueue, duplicate delivery, replacement intent on the same clip/track,
+FIFO failure/retry, cancel/clear/prepare and stream loss. Paired Engines retain
+exact stereo PCM and zero tracked callback new/delete. The actual prepared
+processor uses an injected deterministic native counter to test early/exact due
+delivery, typed result routing, duplicate/stale/replacement and release rejection.
+This uses the existing native clock seam; no caller supplies a wall time over IPC.
+
+Readouts use the local Engine identity namespace. Future timers must be bound to
+their owner's processor lifetime, with no cross-instance transfer of these values.
+Full automatic timer lifetime, cleanup clock origin alignment and source sound
+remain separate. No DSP, UI, parameter/state schema, dependency or format change;
+no new DAW, physical device, listening or Apple validation. Development Standalone
+builds are validation artifacts; no package or push is produced for this phase.
+
+Final gates: Windows portable 28/28 (405.64s), Ubuntu portable 28/28 (671.27s),
+Windows native 2/2 (11.68s), Ubuntu native 2/2 (24.08s), core sanitizer selection
+6/6 (453.38s). Both development Standalone binaries rebuilt. No final skip,
+sanitizer error, JUCE assertion or leaked-object report; compiler warnings remain.
+Original 96 delay cases, 288 counter cases / 864 reads and unchanged 72-case /
+1,655-observation graph oracle pass. PCM remains 126 cases / 965,826 samples,
+max error 7.394757495227111e-8 at unchanged 1e-6. Original UI byte identity,
+deterministic embedding and tamper rejection pass.
+
+Reproduce with MIGRATION_CURRENT.md's existing build/--meter-queued/full CTest,
+native two-test, sanitizer six-test, PCM and asset commands. Logs use
+`build/queued-due-*`; `build/WriteQueuedDueEvidence.cjs` requires complete counts,
+new and retained markers, the original failing traces, stable existing processor
+and state code/oracles/enum files, scoped diff and logo, then hashes source/logs/
+binaries into `build/queued-due-evidence.json`. No unrelated failing gate found.

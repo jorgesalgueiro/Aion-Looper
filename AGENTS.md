@@ -1582,3 +1582,12 @@ readout regressions. The receipt-time-rearm negative is in
 build/queued-clock-negative.txt. Future automatic timer delivery must verify stored
 generation/queue/clip/event identities before requesting the graph; bare-track
 retargeting is unsafe. Cleanup origins and full source sound remain unaccepted.
+
+Guarded due delivery must recompute from the retained original fact and compare
+all stable receipt fields, including event/callback serial, command time and due
+time. Remaining time in a prior readout is not fire authority. Reject early/stale
+receipts without mutation; never retarget a new queue on the same track/clip.
+Reserve the delivered event serial only after successful enqueue, independently
+of pending-result lifetime: cleanup retiring a result must not permit the same
+one-shot callback to fire again. FIFO failure may retry. Preserve old explicit
+raw/graph hooks and cleanup before-delivery versus after-enqueue semantics.
