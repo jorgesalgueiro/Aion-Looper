@@ -185,20 +185,21 @@ physical round-trip latency or production readiness.
 
 ## Roadmap
 
-The order below reflects the migration priorities, not promised release dates.
-Each slice must pass its own reference, audio and interaction checks before the
-next one advances.
+✅ implemented for the stated scope · 🔜 next / in progress · ⬜ planned.
+Future version numbers are provisional milestones, not release dates or promises.
+Each feature must pass its reference, audio and interaction checks before the
+next slice advances. Every newly ported feature also gets CLI access.
 
-| Milestone | What it brings | Current status / next gate |
-| --- | --- | --- |
-| Native looper foundation | Default ten-loop workspace, capture/playback, OD/SUB, mixer, history, MULT/MERGE, WAV export | Implemented for documented preview scope; broader hardware and long-session acceptance remains |
-| Faithful performance and feedback | Original gestures, waveforms, live traces, timing and visual meters | Many controls verified; queued source transitions, overlap/late phase, remaining metering and full browser sound comparisons continue |
-| CLI coverage | The same musical actions available to scripts and terminal users | Running-Standalone development client implemented; extend alongside new ports and bundle later |
-| Projects, editing and routing | Save/reload audio sessions, remaining imports/exports and routing workflows | Pending; recorded audio currently remains session-only |
-| Full instrument workspace | Default ten-drone and ten-sampler banks, tracker/sequencing and effects | Pending native ports and reference parity checks |
-| Connected performance | Full host/MIDI-clock sync, wider MIDI Learn, controller workflows and HID/gamepad adapter | Looper MIDI and selected CC Learn implemented; clock, remaining targets and device coverage pending |
-| Windows and Linux releases | Reliable Standalone/plugins, real-device stress, host workflows, installers and distribution | Development builds and scoped checks exist; release acceptance and licensing work remain |
-| macOS and iOS | Standalone/AU on macOS; Standalone/AUv3 on iOS | Future phase; configuration prepared, Apple builds/devices/signing not accepted |
+| Version | Theme | Contents | Status |
+| --- | --- | --- | --- |
+| **0.4.3 + development** | Native looper preview | Capture/playback, OD/SUB, mixer, Undo/Redo, MULT/MERGE, WAV export, original gestures, waveforms, live recording trace, internal timing, selected MIDI Learn and running-Standalone development CLI | ✅ Preview scope; full application parity remains pending |
+| **0.4.4** | Faithful performance and feedback | Finish queued source transitions, overlap/late-phase comparisons and remaining visual metering; retain original controls, sound comparisons and 64/128-sample acceptance | 🔜 |
+| **0.5.0** | Projects, editing and routing | Save/reload recorded audio with sessions, remaining import/export paths and original routing workflows; shared GUI/CLI commands | ⬜ |
+| **0.6.0** | The full instrument workspace | Native ports for the default ten-drone and ten-sampler banks, tracker/sequencing and effects, preserving the original musical behavior | ⬜ |
+| **0.7.0** | Connected performance | Full host/MIDI-clock synchronization, remaining MIDI Learn targets, controller workflows and HID/gamepad mapping; wider physical-device coverage | ⬜ |
+| **0.8.0** | Windows and Linux hardening | Standalone, Windows VST3/CLAP and Linux CLAP/LV2; real-device stress, long sessions, REAPER/Ardour workflows, bundled CLI, installers and licensing checks | ⬜ |
+| **1.0.0** | Stable Windows and Linux release | Complete reference parity for the agreed scope, documented workflows, passing release gates and reproducible packages | ⬜ |
+| **Later — version TBD** | macOS and iOS | macOS Standalone/AU, iOS Standalone/AUv3, device/host lifecycle, permissions and signing; prepared configuration still needs platform acceptance | ⬜ |
 
 ## Follow the project
 
