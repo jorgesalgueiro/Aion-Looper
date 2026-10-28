@@ -34,7 +34,7 @@ bool Engine::enqueueLoop(LoopCommand command) noexcept {
     if (command.generation == 0 || command.generation != generation() || command.track >= LoopBank::trackCount
         || !std::isfinite(command.value)) return false;
     if(isMeterCommand(command.action)&&!command.meterGraphTicket)return false;
-    if(command.action==LoopAction::meterQueuedWindowStart
+    if((command.action==LoopAction::meterQueuedWindowStart||command.action==LoopAction::meterQueuedWindowRequest)
         &&(command.frame||!command.meterQueueId||!command.meterBufferId))return false;
     if(command.action==LoopAction::stutterStart)command.stutterRevision=stutterRevisions[command.track].load(std::memory_order_acquire);
     return loopCommands.push(command);
@@ -114,11 +114,14 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
         }
         if (!hasPendingLoop) hasPendingLoop = loopCommands.pop(pendingLoop);
         while (hasPendingLoop && (pendingLoop.frame <= frame||isMeterCommand(pendingLoop.action)) && loopApplied < 128) {
-            if(pendingLoop.action==LoopAction::meterQueuedWindowStart){
+            if(pendingLoop.action==LoopAction::meterQueuedWindowStart||pendingLoop.action==LoopAction::meterQueuedWindowRequest){
                 // The callback has already happened on the message owner.
                 // Validate against current audio ownership, not its old view.
-                if(pendingLoop.generation==generation()&&meterGraphEventsCurrent())
-                    (void)loops.startQueuedMeterWindow(pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId);
+                if(pendingLoop.generation==generation()&&meterGraphEventsCurrent()){
+                    const bool accepted=loops.startQueuedMeterWindow(pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId);
+                    if(pendingLoop.action==LoopAction::meterQueuedWindowRequest)
+                        loops.reportQueuedMeterWindow(accepted,pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId);
+                }
             }else if(pendingLoop.action==LoopAction::meterGraphStart){
                 // Internal telemetry must not acknowledge or reject a UI action.
                 if(pendingLoop.generation==generation()){

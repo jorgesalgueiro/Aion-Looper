@@ -7265,3 +7265,67 @@ STOP or rendering. Implement that explicit transaction next, preserving independ
 old cleanup and preventing cancellation/teardown from resurrecting pending graphs.
 Keep shared code portable for future Apple targets; actual Apple builds/device
 validation remain deferred. No package or push was performed.
+
+### Conditional queued raw-window request/result phase — 2026-10-28
+
+Baseline `c684ea9`, clean main with four local commits ahead of origin. The old
+focused binary passed before these additions (`build/queued-window-transaction-baseline.txt`).
+This phase adds one transient pending transaction per message owner: full-width
+queue/clip IDs and a separately reserved increasing integer ticket. The existing
+conditional raw reset remains unchanged. A new internal request action asks the
+audio owner for a typed accepted or rejected result on the existing bounded
+stream. Raw started notices cannot complete requests or create analysers.
+Public actions/event ordinals are preserved by appending internal values.
+
+Enqueue failure changes no transaction/ticket/graph state. Typed results require
+exact pending identity, serial and generation. Ready also requires current queue,
+clip, queued message state and raw token. A proven raw reset allows subsequent
+queued facts carrying quarantined ticket zero against an older attached graph;
+it does not rebind old analyser PCM or restore playback origins. Request, typed
+acceptance and rejection preserve analyser/data/history and old cleanup. Cancel,
+clear, replacement intent, cleanup and prepare retire pending work; stream loss
+fails closed until prepare. Unsolicited/retired results count as ignored metadata,
+not user performance errors. Internal processor and prepared-adapter hooks use
+the existing sole message consumer; no new JS/IPC operation or automatic timer.
+
+Focused core tests cover graphless/attached tracks 0/19, pre/post-grid, zero/64/128
+callbacks, wrong full-width identities, duplicate/raw/stale results, negative
+outcomes from already-consumed raw resets, clear/re-record recovery, monotonic
+reserved tickets, full FIFO failure and bounded result overflow/prepare recovery.
+Production tests cover the actual processor hook and all twenty prepared routes
+with 7/32/1 raw drains. Actual JUCE timers retain their original deadline and
+frozen-clock history; cleanup delivered before audio acceptance prevents later
+results from resurrecting a graph or timer. Actual paired PCM remains exact and
+callback instrumentation reports zero new/delete. Original JS reference cases,
+including 96 native queue-delay comparisons, remain unchanged and enabled.
+
+The isolated negative control suppressed typed rejection results and failed at
+`Typed rejection must terminate an invalid queued window request`
+(`build/queued-window-transaction-negative.txt`). The restored Engine object was
+rebuilt and focused positive tests passed before the full gates below.
+
+| Executed gate | Result |
+| --- | --- |
+| Windows portable | 28/28, 382.95s |
+| Ubuntu portable | 28/28, 598.63s |
+| Windows native processor / SDK generation | 2/2, 11.64s |
+| Ubuntu native processor / SDK generation | 2/2, 23.52s |
+| Core sanitizer selection | 6/6, 282.61s |
+| Committed PCM | 126 cases, 965826 samples, max error 7.394757495227111e-8, unchanged 1e-6 tolerance |
+| Original UI / embedding / tamper | Pass |
+
+Final logs contain no skips, JUCE assertions, leaks or sanitizer errors; existing
+native test compiler warnings remain. Both current Standalone development binaries
+rebuilt. Plugin formats were not rebuilt or newly tested in REAPER/Ardour. The
+ignored report `build/queued-window-transaction-evidence.json` verifies gate/log
+hashes, original reference counts, appended enum values, unchanged constructor/
+state methods, the limited source diff and source/binary hashes. Configure/build/
+test commands remain in BUILDING.md and MIGRATION_CURRENT.md.
+
+This is raw-window readiness, not callback graph creation or browser sound parity.
+Next implement explicit graph acceptance/binding with retired/negative/lost-result
+recovery and full repeated/scheduled STOP and STOP ALL policy; retain independent
+old cleanup. Establish wall/audio alignment before activating the 100ms callback.
+No timer, renderer, new control or distributable package is activated by this
+phase. No new hardware/device validation; shared code remains portable for future
+Apple targets, with actual Apple builds deferred. No package or push performed.

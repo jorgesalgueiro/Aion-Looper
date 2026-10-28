@@ -74,6 +74,13 @@ public:
         synchronise();return true;
     }
     bool consumeQueuedStop(const MeterGraphEvent& event) noexcept {return consumeStop(event,MeterGraphEventKind::queuedStop);}
+    bool requestQueuedWindow(std::uint64_t queue,std::uint64_t clip) noexcept {
+        assertMessageThread();return ready()&&owner.requestQueuedWindow(queue,clip);
+    }
+    bool consumeQueuedWindowResult(const MeterGraphEvent& event) noexcept {
+        assertMessageThread();if(!ready()||!owner.consumeQueuedWindowResult(event))return false;
+        synchronise();return true;
+    }
 private:
     bool consumeStop(const MeterGraphEvent& event,MeterGraphEventKind kind) noexcept {
         assertMessageThread();if(!ready())return false;

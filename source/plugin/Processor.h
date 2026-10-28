@@ -24,6 +24,8 @@ struct MeterServiceStatus {
     std::uint64_t plays=0,playApplied=0;
     std::uint64_t stops=0,stopApplied=0;
     std::uint64_t queued=0,queueApplied=0;
+    std::uint64_t windows=0,windowApplied=0,windowIgnored=0;
+    unsigned pendingWindows=0,readyWindows=0;
     bool current=false,timerRunning=false;
 };
 class AionProcessor final : private aion::ProcessorMessageLifetime, public juce::AudioProcessor, public aion::vst3::OverflowSink, private juce::Timer {
@@ -61,6 +63,7 @@ public:
     // supplied stamp. Reported-latency estimate; not xrun/DAC calibration or IPC.
     bool readDevicePlayback(DevicePlaybackObservation&) noexcept;
     MeterServiceStatus inspectMeterServiceMessageThread() const noexcept;
+    bool requestQueuedMeterWindowMessageThread(unsigned track) noexcept;
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:

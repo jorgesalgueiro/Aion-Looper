@@ -1519,3 +1519,16 @@ queued; keep twenty prepared routes and real JUCE timer retention at 64/128.
 Component starts without real queue IDs retain their contract. This closes a
 bypass; it does not implement the explicit conditional callback transaction,
 acceptance/rejection recovery, wall alignment or renderer.
+
+Queued raw-window transactions now reserve integer tickets and use the internal
+meterQueuedWindowRequest action with full-width queue/clip IDs. Preserve old raw
+primitive behavior and append enum values without renumbering public actions.
+Only matching typed accepted/rejected results complete pending work; raw started
+notices cannot impersonate acceptance. Successful reset remains quarantined, not
+graph birth or old-binding PCM readiness. Preserve old graph/history/cleanup;
+known raw rebases permit exact queued facts with ticket zero against old graphs.
+Keep single pending storage, stale/result guards, enqueue-without-mutation failure,
+zero-block behavior, FIFO/outcome-loss recovery, all twenty 7/32/1 routes and actual
+processor/JUCE timer cleanup-before-result tests. Retired results cannot resurrect
+graphs. No automatic 100ms timer or renderer yet; graph acceptance, wall alignment
+and post-reset/repeated/scheduled stop-origin policy remain unaccepted.

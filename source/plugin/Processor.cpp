@@ -219,12 +219,25 @@ void AionProcessor::serviceMeters() noexcept {
     meterServiceStatus.plays+=drained.plays;meterServiceStatus.playApplied+=drained.playApplied;
     meterServiceStatus.stops+=drained.stops;meterServiceStatus.stopApplied+=drained.stopApplied;
     meterServiceStatus.queued+=drained.queued;meterServiceStatus.queueApplied+=drained.queueApplied;
+    meterServiceStatus.windows+=drained.windows;meterServiceStatus.windowApplied+=drained.windowApplied;meterServiceStatus.windowIgnored+=drained.windowIgnored;
     meterServiceStatus.current=drained.current&&meterPrepared()&&engine.generation()==generation;
+}
+bool AionProcessor::requestQueuedMeterWindowMessageThread(unsigned track) noexcept {
+    JUCE_ASSERT_MESSAGE_THREAD
+    if(!meterPrepared()||track>=aion::LoopBank::trackCount)return false;
+    serviceMeters();
+    if(!meterPrepared()||!meterTimers||!(*meterTimers)[track]||!meterOwners)return false;
+    const auto& owner=*(*meterOwners)[track];
+    return (*meterTimers)[track]->requestQueuedWindow(owner.queuedIntentId(),owner.committedBuffer());
 }
 MeterServiceStatus AionProcessor::inspectMeterServiceMessageThread() const noexcept {
     JUCE_ASSERT_MESSAGE_THREAD
     auto result=meterServiceStatus;
-    if(meterOwners)for(const auto& owner:*meterOwners)if(owner&&owner->inspect().present)++result.attachedGraphs;
+    if(meterOwners)for(const auto& owner:*meterOwners)if(owner){
+        if(owner->inspect().present)++result.attachedGraphs;
+        if(owner->queuedWindowTransaction().status==aion::QueuedWindowStatus::pending)++result.pendingWindows;
+        if(owner->queuedWindowReady())++result.readyWindows;
+    }
     if(meterTimers)for(const auto& timer:*meterTimers){
         if(timer){++result.cleanupRoutes;if(timer->pending())++result.pendingCleanups;}
     }

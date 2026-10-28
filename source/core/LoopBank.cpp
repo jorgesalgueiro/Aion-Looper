@@ -477,7 +477,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             t.info.stutterStart=phase*rate;t.info.stutterEnd=end*rate;t.info.stuttering=t.info.stutterEnd>t.info.stutterStart;t.info.stutterClock=true;return true;
         }
         case LoopAction::meterGraphStart:
-        case LoopAction::meterQueuedWindowStart:return false; // Dedicated integer-identity entry points only.
+        case LoopAction::meterQueuedWindowStart:
+        case LoopAction::meterQueuedWindowRequest:return false; // Dedicated integer-identity entry points only.
         case LoopAction::sourceRestart:
             if(!t.clip||capturing(s)||s==LoopState::finalizing||s==LoopState::armed||s==LoopState::queued||s==LoopState::stopping)return false;
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);return true;

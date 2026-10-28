@@ -1,6 +1,6 @@
 # Current migration checkpoint
 
-Updated 2026-10-28. Current repair baseline: `02c4625` (clean main, three local
+Updated 2026-10-28. Current transaction baseline: `c684ea9` (clean main, four local
 commits ahead of origin). Prior STOP acceptance remains applicable.
 Continue the existing implementation; this is not a restart or release checklist.
 
@@ -11,10 +11,10 @@ The available original is `.reference/Ascii-Looper` inside this repository.
 `tests/AssetTests.py` verifies embedded original UI bytes against that copy.
 Neither reference nor original UI files are modified by this repair.
 
-The baseline evidence is `build/unsynced-stop-evidence.json`: Windows/Ubuntu
+The baseline evidence is `build/queued-start-guard-evidence.json`: Windows/Ubuntu
 portable 28/28 each, native 2/2 each, core sanitizer 6/6, 96 queue-delay cases,
 126 committed-PCM cases. A fresh focused baseline passed before the new normal
-start-guard regression was added; its reproduced failure is recorded below. Historical
+transaction tests were added. Historical
 STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 
 ## Compact parity checklist
@@ -29,31 +29,46 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Queued cancellation retains older analyser/data/history and cleanup | Existing owner/adapter policy retained, including original pre-grid test plus added post-grid frozen-clock test | If old cleanup already changed message state out of queued, existing rejection remains intentional pending full mapping |
 | Audible grid does not prove message graph birth | Graph origin remains quarantined; no new graph, reset or 65ms cleanup inferred | Visible meters, remaining capture/edit graph origins, overlap and continuity remain unfinished |
 | Pending intent requires its conditional callback transaction | Generic start now rejects real queued IDs before/after grid and after old teardown | Explicit callback transaction and binding/rejection recovery still need implementation |
+| Conditional raw reset reports its outcome without graph creation | Explicit request/result handshake, reserved tickets, typed outcomes and production routing; old graph/binding/cleanup retained | This is raw-window readiness only; graph acceptance, source timing and renderer remain separate |
 | Full instruments/effects/controller/persistence/host parity | No new acceptance from this session; see PARITY.md and feature-specific validation notes | Do not infer suite completion from these looper/meter gates |
 
 ## Current slice and acceptance
 
-Close the generic graph-start bypass before wiring a real queued callback.
-`LoopMeterLifecycle::start(frame)` could previously clear an accepted queue ID,
-create a graph and enqueue an unconditional raw reset. Reject while a real queue
-ID is pending, independently of native/message state. Component starts without
-a real queue ID retain their existing contract. No audio, UI, parameter, state,
-dependency or platform configuration changes are needed.
+Implement the conditional raw-window request/result stage. The message owner
+reserves a monotonically increasing ticket and sends full-width queue/clip IDs
+through the existing command FIFO. The audio owner revalidates against live
+queue/clip/state, performs the existing raw reset once, and publishes a typed
+accepted or rejected outcome. Raw started notices alone cannot complete it.
+The old low-level reset contract remains unchanged; new internal enum values
+are appended. No public parameter/state/IPC IDs or assets change.
 
-Acceptance: immediate/future generic starts reject before/after actual audible
-grid, retaining the full graph, binding, queue ID/delay, cleanup and history and
-emitting no raw reset. Include graphless/attached tracks 0/19 at 64/128, the
-old-teardown state boundary, all twenty prepared routes, real JUCE old timers
-with frozen audio clocks, exact paired stereo PCM and zero tracked callback
-new/delete. Retain all existing source lifecycle, conditional-window, STOP and
-component graph-start regressions. No new interface or disconnected control.
+Acceptance: exact-ID typed results complete once; malformed/raw/stale results
+cannot complete a request. Enqueue is not acceptance. Keep one pending request
+per owner, reserve tickets across rejection/clear, and expose ready only while
+its queue/clip/state/raw token are still current. Retain graph/analyser/binding,
+data/history and old cleanup. An explicitly proven raw rebase permits queued
+cancel/STOP facts with quarantined ticket zero against an older attached graph;
+it never restores playback origin or permits old-binding PCM observations.
+Test graphless/attached tracks 0/19, before/after grid, zero/64/128 callbacks,
+FIFO rejection, bounded outcome loss, fresh-generation recovery, twenty prepared
+routes with 7/32/1 raw drains, production processor requests and real JUCE timers.
 
-The focused baseline passed, then the new test reproduced
-`Generic graph start must reject a real pending queued intent` before the product
-edit (`build/queued-start-guard-before.txt`). The original source remains unchanged:
-its queued handler schedules an explicit callback that later invokes play(grid),
-rather than treating an audible state transition as graph creation. Native raw
-start receipts still do not prove that callback occurred.
+The original source remains unchanged: its queued handler schedules an explicit
+callback which invokes play(grid). This stage deliberately stops before that graph
+creation. Existing original-source comparisons remain enabled; no new browser
+sound acceptance is inferred from native protocol tests. The baseline focused
+binary passed (`build/queued-window-transaction-baseline.txt`). Suppressing typed
+negative results caused `Typed rejection must terminate an invalid queued window
+request` (`build/queued-window-transaction-negative.txt`). The Engine object was
+rebuilt after restoration and focused positive tests passed again.
+
+`requestQueuedMeterWindowMessageThread(track)` is an internal message-thread hook,
+not a new JS/IPC operation or automatic timer. The existing sole dispatcher handles
+outcomes; windowApplied counts handled results, including negative outcomes, while
+readyWindows counts current raw readiness. Retired/unsolicited results are ignored
+separately from user-action errors. Cancellation, clear, a new intent and old cleanup
+retire pending work. Lost streams fail closed until prepare. Old cleanup delivered
+before audio acceptance cannot resurrect a graph or timer.
 
 Previous STOP ALL acceptance remains in force: pending-ID cancellation before/
 after grid, stale/duplicate rejection, ordered delayed receipts, twenty bounded
@@ -92,12 +107,12 @@ compiling sources or overlap CTests in a build tree.
 
 ## Next concrete step / validation still needed
 
-This repair passed Windows/Ubuntu portable 28/28 each, native 2/2 each, core
+This transaction phase passed Windows/Ubuntu portable 28/28 each, native 2/2 each, core
 sanitizer 6/6, the unchanged-tolerance 126-case PCM audit and original UI byte/
 embedding/tamper checks. No unrelated failing checks were found in these runs.
-Current generic-start guard evidence is `build/queued-start-guard-evidence.json`:
-Windows portable 377.05s, Ubuntu portable 599.31s, native 11.42s/23.13s,
-sanitizer 280.84s. `build/unsynced-stop-evidence.json` and
+Current evidence is `build/queued-window-transaction-evidence.json`: Windows
+portable 382.95s, Ubuntu portable 598.63s, native 11.64s/23.52s, sanitizer 282.61s.
+`build/queued-start-guard-evidence.json`, `build/unsynced-stop-evidence.json` and
 `build/post-grid-stop-now-evidence.json` retain the preceding STOP acceptance;
 their original cases remain enabled.
 Both current Standalone binaries rebuilt. See VALIDATION.md for scoped results;
@@ -108,15 +123,16 @@ state boundary remain unaccepted. Original `scheduleStop()` requires message
 state playing and a graph; native audible playing with an undelivered callback
 does not prove those conditions. This generic-start guard does not cover
 that scheduled policy and must not change audible timing to guess it.
-The generic start guard is only a safety boundary, not that callback implementation.
-Implement the queued message callback as an explicit graph transaction with
-conditional raw-reset acceptance/rejection recovery. Establish a valid wall/audio
+The generic start guard remains. The raw-window transaction is not graph creation.
+Implement explicit queued graph acceptance and its lifetime/stop routing next.
+Establish a valid wall/audio
 clock relationship before wiring its 100ms timer; retain independent old cleanup
 and late-callback behavior. Do not infer birth from a raw receipt or audio state.
-Do not wire generic start to that timer: the callback must carry queue/clip IDs,
-handle accepted/rejected/lost reset work, and prevent old cleanup/cancel/clear
-from resurrecting a graph while binding is pending. Validate subsequent STOP/
-STOP ALL routing after callback acceptance before calling that lifecycle complete.
+Do not wire generic start or this raw-only hook to that timer yet. Graph creation
+must handle retired/negative/lost reset outcomes and prevent cleanup/cancel/clear
+from resurrecting a graph while binding is pending. Validate repeated/scheduled
+STOP and STOP ALL routing after real graph acceptance before claiming that
+lifecycle complete. Quarantined raw resets do not revive old immediate origins.
 Only then integrate meter observation and the renderer.
 
 Full transition sound/late-source alignment is still unaccepted. No REAPER/Ardour

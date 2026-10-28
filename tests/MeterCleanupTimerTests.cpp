@@ -260,6 +260,12 @@ void processorBufferReceiptTests(bool& audioWatch){
         check(s.stops==6&&s.stopApplied==6&&s.pendingCleanups==1&&!s.rejected,"Production repeated STOP ALL retains the message-owned stopping graph origin");
         command("play");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.queued==1&&s.queueApplied==1&&s.plays==3&&s.attachedGraphs==1&&s.pendingCleanups==1&&!s.rejected,"Production queued PLAY routes intent and retains old graph/cleanup without a birth");
+        check(!p->requestQueuedMeterWindowMessageThread(20)&&p->requestQueuedMeterWindowMessageThread(19)
+            &&!p->requestQueuedMeterWindowMessageThread(19),"Production stages one internal window request and rejects invalid/duplicate requests");
+        s=p->inspectMeterServiceMessageThread();check(s.pendingWindows==1&&!s.readyWindows&&s.attachedGraphs==1&&s.pendingCleanups==1,"Production enqueue does not create a graph or replace cleanup");
+        cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.windows==1&&s.windowApplied==1&&!s.windowIgnored&&!s.pendingWindows&&s.readyWindows==1
+            &&s.plays==3&&s.attachedGraphs==1&&s.pendingCleanups==1&&!s.rejected,"Sole production consumer routes typed window acceptance without graph birth");
         command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.queued==2&&s.queueApplied==2&&s.stops==6&&s.pendingCleanups==1&&!s.rejected,"Production queued panic cancels intent without new 65ms stop cleanup");
         command("play");cycle();rpc(R"({"operation":"snapshot"})");command("stopImmediate");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
@@ -301,6 +307,7 @@ void processorBufferReceiptTests(bool& audioWatch){
     std::cout<<"PASS: production post-grid queued panic cancellation at 64/128, retained old cleanup and no duplicate or inferred graph stop\n";
     std::cout<<"PASS: production post-grid STOP NOW consumes queued intent without orphan cancellation at 64/128\n";
     std::cout<<"PASS: production normal STOP after sync off consumes pending post-grid intent at 64/128\n";
+    std::cout<<"PASS: production internal queued-window request and typed result preserve graph/cleanup and subsequent quarantine routing at 64/128\n";
 }
 void panicDispatcherTests(bool& audioWatch){
     using namespace aion;
@@ -347,6 +354,11 @@ void panicDispatcherTests(bool& audioWatch){
             check(!ownerRoutes[id]->start(0)&&!ownerRoutes[id]->start(f.engine->clock()+4096),"Every prepared queued route rejects unconditional graph start before grid");
             routes[id]->synchronise();check(ownerRoutes[id]->queuedIntentId()==intent&&ownerRoutes[id]->binding().ticket==binding.ticket
                 &&ownerRoutes[id]->cleanupRequest()==old[id]&&routes[id]->pending(),"Rejected starts preserve all twenty queued identities, bindings and actual cleanup deadlines");}
+        for(unsigned id=0;id<20;++id)check(routes[id]->requestQueuedWindow(ownerRoutes[id]->queuedIntentId(),ownerRoutes[id]->committedBuffer()),"Request conditional windows on all twenty prepared routes");
+        f.cycle();result=dispatcher.drain(7);check(result.examined==7&&result.started==4&&result.windowApplied==3&&!result.rejected,"Typed result routing retains seven-entry raw work budget");
+        result=dispatcher.drain(32);check(result.examined==32&&result.windowApplied==16&&!result.rejected,"Typed result routing retains thirty-two-entry raw work budget");
+        result=dispatcher.drain(32);check(result.examined==1&&result.windowApplied==1&&!result.rejected,"Typed result routing consumes the final exact result");
+        for(unsigned id=0;id<20;++id)check(ownerRoutes[id]->queuedWindowReady()&&ownerRoutes[id]->cleanupRequest()==old[id]&&routes[id]->pending(),"All twenty accepted raw windows preserve old JUCE deadlines without a birth");
         panic();prepared.store(0,std::memory_order_release);check(!dispatcher.drain(32).examined,"Released queued-cancel batch remains unread");
         prepared.store(f.engine->generation(),std::memory_order_release);result=dispatcher.drain(7);
         check(result.examined==7&&result.queueApplied==7&&!result.stops,"Queued panic uses cancel receipts, never 65ms stop facts");
@@ -376,6 +388,7 @@ void panicDispatcherTests(bool& audioWatch){
     std::cout<<"PASS: actual twenty-track STOP ALL receipts route through prepared adapters with bounded 7/13 drains, nonzero PCM, readiness batch preservation, repeated replacement and Clear All cancellation at 64/128; exact paired stereo PCM\n";
     std::cout<<"PASS: twenty pending post-grid queued cancellations retain bounded 7/13 routing and original cleanup at 64/128\n";
     std::cout<<"PASS: twenty prepared queued routes reject generic starts before/after grid and retain original cleanup at 64/128\n";
+    std::cout<<"PASS: twenty prepared queued-window transactions route typed results with bounded 7/32/1 drains and retained cleanup at 64/128\n";
 }
 void queuedAdapterTests(bool& audioWatch){
     using namespace aion;
@@ -391,6 +404,11 @@ void queuedAdapterTests(bool& audioWatch){
             check(!f.timer->consumeQueuedPlay(event)&&!f.owner->queuedIntentId()&&!f.timer->pending(),"Unprepared/mismatched queue intent cannot mutate owner");}
         prepared.store(f.engine->generation(),std::memory_order_release);check(f.timer->consumeQueuedPlay(event)&&!f.owner->inspect().present&&!f.timer->pending(),"Prepared queue applies without a graph or timer");
         check(!f.owner->start(0)&&f.owner->queuedIntentId()==event.queueId&&!f.owner->inspect().present&&!f.timer->pending(),"Graphless prepared queued owner rejects unconditional graph start");
+        check(f.timer->requestQueuedWindow(event.queueId,event.bufferId),"Prepared adapter stages graphless transaction");f.cycle();
+        check(f.engine->popMeterGraphEvent(event)&&event.kind==MeterGraphEventKind::started&&!f.timer->consumeQueuedWindowResult(event),"Adapter cannot accept a raw notice as typed completion");
+        check(f.engine->popMeterGraphEvent(event)&&event.kind==MeterGraphEventKind::queuedWindowAccepted,"Actual typed adapter result");
+        prepared.store(0,std::memory_order_release);check(!f.timer->consumeQueuedWindowResult(event)&&f.owner->queuedWindowTransaction().status==QueuedWindowStatus::pending,"Released adapter retains pending result without mutation");
+        prepared.store(f.engine->generation(),std::memory_order_release);check(f.timer->consumeQueuedWindowResult(event)&&f.owner->queuedWindowReady()&&!f.timer->pending(),"Prepared adapter recovers exact typed receipt without a timer or graph");
         const auto queueId=f.owner->queuedIntentId();event=command(LoopAction::stopAll,MeterGraphEventKind::queuedCancel);
         for(auto invalid:{0u,f.engine->generation()+1}){prepared.store(invalid,std::memory_order_release);
             check(!f.timer->consumeQueuedCancel(event)&&f.owner->queuedIntentId()==queueId&&!f.timer->pending(),"Unprepared/mismatched queued cancel retains intent");}
@@ -814,6 +832,10 @@ private:
             {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&f->timer->consumeQueuedPlay(event)&&f->owner->cleanupRequest()==obsolete&&f->timer->pending(),"Accepted queue retains actual pending JUCE stop request");}
             check(!f->owner->start(0),"Generic start rejects before grid with a real old JUCE timer");f->timer->synchronise();
             check(f->owner->cleanupRequest()==obsolete&&f->timer->pending(),"Rejected generic start cannot cancel or replace the old timer");
+            check(f->timer->requestQueuedWindow(f->owner->queuedIntentId(),f->owner->committedBuffer()),"Real old timer retains an explicit window request");f->cycle();
+            {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&event.kind==aion::MeterGraphEventKind::started,"Real timer raw reset notice");
+                check(f->engine->popMeterGraphEvent(event)&&f->timer->consumeQueuedWindowResult(event)&&f->owner->queuedWindowReady()
+                    &&f->owner->cleanupRequest()==obsolete&&f->timer->pending(),"Typed acceptance retains the real original cleanup deadline");}
             for(auto* e:{f->engine.get(),f->control.get()})check(e->enqueueLoop({aion::LoopAction::stopAll,19,0,e->generation(),0,0}),"Cancel actual queued PLAY with panic");f->cycle();
             {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&f->timer->consumeQueuedCancel(event)&&f->owner->cleanupRequest()==obsolete&&f->timer->pending(),"Accepted queued panic preserves real old stop timer");}
             frame=f->engine->clock();stage=20;break;
@@ -868,6 +890,24 @@ private:
             check(wall()-started>=.025,"Late STOP NOW retains real 25ms cleanup minimum");stopped();
             check(!f->owner->queuedIntentId(),"Late STOP NOW clears intent before frozen-clock teardown");
             if(!lateStopSyncOff){lateStopSyncOff=true;stage=21;break;}
+            for(auto* e:{f->engine.get(),f->control.get()})e->configureSync({aion::SyncMode::off,120,1,4,4,false});
+            acceptedPlay();capture();check(f->timer->consumeImmediateStop(acceptedStop()),"Arm cleanup before a delayed window transaction");obsolete=f->owner->cleanupRequest();
+            for(auto* e:{f->engine.get(),f->control.get()}){
+                e->configureSync({aion::SyncMode::fixed,999,1,1,4,false});
+                check(e->enqueueLoop({aion::LoopAction::play,19,0,e->generation(),0,0}),"Queue before delayed result");
+            }
+            f->cycle();
+            {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&f->timer->consumeQueuedPlay(event),"Apply intent before delayed result");}
+            check(f->timer->requestQueuedWindow(f->owner->queuedIntentId(),f->owner->committedBuffer()),"Stage window without processing audio");
+            frame=f->engine->clock();stage=23;break;
+        case 23:
+            if(f->owner->inspect().present)return;
+            check(wall()-started>=.025,"Pending window cannot postpone the original old cleanup");stopped();
+            check(f->owner->queuedWindowTransaction().status==aion::QueuedWindowStatus::obsolete&&!f->owner->queuedWindowReady(),"Old JUCE cleanup retires pending transaction without queue cancellation");
+            f->cycle();
+            {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&event.kind==aion::MeterGraphEventKind::started,"Delayed audio accepts conditional reset after old cleanup");
+                check(f->engine->popMeterGraphEvent(event)&&event.kind==aion::MeterGraphEventKind::queuedWindowAccepted&&!f->timer->consumeQueuedWindowResult(event),"Retired typed acceptance cannot resurrect a graph or timer");}
+            check(!f->owner->inspect().present&&!f->timer->pending()&&f->owner->inspect().data==data&&reading(f->owner->value())==held,"Delayed acceptance retains detached data/history");
             if(f->block==64){begin(128);break;}
             stopTimer();juce::MessageManager::getInstance()->stopDispatchLoop();break;
         }
@@ -902,4 +942,5 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     std::cout<<"PASS: actual post-grid STOP NOW replaces real JUCE cleanup with 25ms, obsolete timer rejection and frozen-clock history at 64/128\n";
     std::cout<<"PASS: actual normal STOP after sync off replaces real JUCE cleanup with 25ms and frozen-clock history at 64/128\n";
     std::cout<<"PASS: generic queued start rejection retains real JUCE cleanup before/after grid and frozen-clock history at 64/128\n";
+    std::cout<<"PASS: queued window acceptance retains actual old JUCE deadline; cleanup-before-result prevents resurrection with frozen-clock history at 64/128\n";
 }

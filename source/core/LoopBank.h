@@ -14,8 +14,8 @@
 
 namespace aion {
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart }; // Source/reset primitives are core-only, never exposed by IPC.
-constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart;}
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest }; // Source/reset primitives are core-only, never exposed by IPC.
+constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart||action==LoopAction::meterQueuedWindowRequest;}
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
     LoopState state = LoopState::empty;
@@ -94,6 +94,9 @@ public:
         (*meterWindows)[id].reset();
         meterGraphEvents->publish(MeterGraphEventKind::started,id,ticket,frame,tracks[id].clearEpoch,bufferId,0,queueId);
         return true;
+    }
+    void reportQueuedMeterWindow(bool accepted,std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId) noexcept {
+        if(id<trackCount)meterGraphEvents->publish(accepted?MeterGraphEventKind::queuedWindowAccepted:MeterGraphEventKind::queuedWindowRejected,id,ticket,frame,tracks[id].clearEpoch,bufferId,0,queueId);
     }
     // Prepare barrier/audio producer; message owner consumes the same stream.
     void resetMeterGraphEvents(std::uint32_t generation) noexcept {

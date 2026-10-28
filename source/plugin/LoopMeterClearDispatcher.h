@@ -8,6 +8,7 @@ struct MeterClearDispatchResult {
     unsigned plays=0,playApplied=0;
     unsigned stops=0,stopApplied=0;
     unsigned queued=0,queueApplied=0;
+    unsigned windows=0,windowApplied=0,windowIgnored=0;
     bool current=false;
 };
 // Sole message consumer of Engine's shared raw-window stream. All twenty
@@ -36,6 +37,12 @@ public:
         while(engine.popMeterGraphEvent(event,generation,budget)){
             if(generation!=engine.generation())break;
             if(event.kind==MeterGraphEventKind::started)++result.started;
+            else if(event.kind==MeterGraphEventKind::queuedWindowAccepted||event.kind==MeterGraphEventKind::queuedWindowRejected){
+                if(event.queueId){++result.windows;
+                    if(event.track<routes.size()&&routes[event.track]->consumeQueuedWindowResult(event))++result.windowApplied;
+                    else ++result.windowIgnored; // Unsolicited/raw-only or retired request, never a graph birth.
+                }
+            }
             else if(event.kind==MeterGraphEventKind::queuedPlay||event.kind==MeterGraphEventKind::queuedCancel||event.kind==MeterGraphEventKind::queuedStop){
                 ++result.queued;
                 if(event.track<routes.size()&&(event.kind==MeterGraphEventKind::queuedPlay?routes[event.track]->consumeQueuedPlay(event):
