@@ -1,7 +1,9 @@
 # Current migration checkpoint
 
-Updated 2026-10-28. Current transaction baseline: `c684ea9` (clean main, four local
-commits ahead of origin). Prior STOP acceptance remains applicable.
+Updated 2026-10-28. Current source baseline: `cc6368f` (clean main at session start,
+five local commits ahead of cached origin). This session extends the queued graph
+callback acceptance oracle; it does not activate production graph callbacks.
+Prior transaction and STOP acceptance remain applicable.
 Continue the existing implementation; this is not a restart or release checklist.
 
 ## Reference and baseline
@@ -30,9 +32,50 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Audible grid does not prove message graph birth | Graph origin remains quarantined; no new graph, reset or 65ms cleanup inferred | Visible meters, remaining capture/edit graph origins, overlap and continuity remain unfinished |
 | Pending intent requires its conditional callback transaction | Generic start now rejects real queued IDs before/after grid and after old teardown | Explicit callback transaction and binding/rejection recovery still need implementation |
 | Conditional raw reset reports its outcome without graph creation | Explicit request/result handshake, reserved tickets, typed outcomes and production routing; old graph/binding/cleanup retained | This is raw-window readiness only; graph acceptance, source timing and renderer remain separate |
+| Explicit queued callback creates a graph independently of old cleanup | New unchanged-source/component comparison: 72 scenarios, 1,278 additional observations; fresh analyser/data, retained old deadlines, cleanup before/after callback, repeated immediate/scheduled/panic stops | Actual queue-ID graph acceptance and audio/wall scheduling remain unwired; the native comparison supplies explicit graph notifications |
 | Full instruments/effects/controller/persistence/host parity | No new acceptance from this session; see PARITY.md and feature-specific validation notes | Do not infer suite completion from these looper/meter gates |
 
-## Current slice and acceptance
+## Current slice: queued graph callback acceptance oracle
+
+Before changing production graph acceptance, make its original lifetime contract
+executable. `tests/MeterGraphParity.cjs` now invokes the actual original
+`handleAction` queue callback, `Loop.play`, `scheduleStop` and `stopAll`. Its 72
+scenarios cover tracks 0/19, early/late/frozen audio-clock delivery, graphless
+starts and old cleanup before/pending/after callback, with three stop policies.
+All original 377 observations remain; the complete trace now has 1,655.
+
+The reference proves two different events must remain distinct:
+
+- A still-pending original queue callback survives `_teardown`. If cleanup ran
+  first, that later explicit callback invokes `play(grid)` from stopped and
+  creates fresh analyser/data identities. Rejecting every callback whose current
+  state is not queued would lose this original behavior.
+- An older cleanup still pending when the callback creates a graph is retained.
+  If delivered next, it tears down the new graph too and retains its data/history.
+  A subsequent stop must not rearm a detached owner. Live repeated immediate and
+  panic stops replace deadlines; `scheduleStop` refuses an already-stopping graph.
+
+These are component acceptance facts, not new production origins. The retained
+graph/stopped precondition is supplied explicitly; no end-to-end UI path to it is
+claimed. Native graph/lifecycle probes receive explicit graph notifications and
+compare identities/state/delays plus the existing graph follower readings. They
+do not use real queued IDs, commit the raw-window transaction, or measure source
+PCM/device timing. The supplied source start time/offset is checked against the
+unchanged reference, not a native audible-source implementation.
+
+Keep the completed transaction's stale-result rule: cleanup before a pending raw
+result retires that result, which cannot resurrect a graph. A newly delivered
+explicit callback after cleanup needs its own provenance/acceptance path; do not
+turn an obsolete result into that callback or remove current queue guards.
+
+Acceptance: unchanged 1e-12 comparison tolerance, all old observations retained,
+fresh identities and exact old deadline retention, original callback delivery
+after old cleanup, repeated/detached stop rules, and an isolated negative control
+that rejects a queued-only callback guard. Logs use `build/queued-callback-oracle-*`.
+No application source, parameters/state, dependencies, original assets, or
+format/package configuration changed.
+
+## Previous slice: conditional raw-window transaction
 
 Implement the conditional raw-window request/result stage. The message owner
 reserves a monotonically increasing ticket and sends full-width queue/clip IDs
@@ -107,7 +150,17 @@ compiling sources or overlap CTests in a build tree.
 
 ## Next concrete step / validation still needed
 
-This transaction phase passed Windows/Ubuntu portable 28/28 each, native 2/2 each, core
+This session: Windows/Ubuntu reference selection 4/4 each (11.56s/18.78s), sanitized
+reference selection 4/4 (53.19s), focused actual queued Engine transactions on
+Windows/Ubuntu, 126-case committed-PCM audit (965,826 samples, maximum absolute
+error 7.394757495227111e-8 at unchanged 1e-6 tolerance), original UI byte/embedding/
+tamper checks, and the expected negative-control failure. The new graph trace
+passes all 1,655 observations at unchanged 1e-12 tolerance; maximum absolute error
+2.842170943040401e-14. Existing C++ binaries were reused because only tests/docs
+changed. No native processor build/test, DAW/device run or package was performed
+in this session. See the new VALIDATION.md section for exact commands/scope.
+
+Previous transaction phase passed Windows/Ubuntu portable 28/28 each, native 2/2 each, core
 sanitizer 6/6, the unchanged-tolerance 126-case PCM audit and original UI byte/
 embedding/tamper checks. No unrelated failing checks were found in these runs.
 Current evidence is `build/queued-window-transaction-evidence.json`: Windows
@@ -125,6 +178,12 @@ does not prove those conditions. This generic-start guard does not cover
 that scheduled policy and must not change audible timing to guess it.
 The generic start guard remains. The raw-window transaction is not graph creation.
 Implement explicit queued graph acceptance and its lifetime/stop routing next.
+Use the new 72-case oracle to distinguish a newly delivered explicit callback
+after cleanup from a retired raw result. Do not weaken the transaction's existing
+no-resurrection guards. Old cleanup may remain pending across graph creation and
+can detach that new graph; retain its deadline rather than treating birth as a
+blanket cancellation. The native callback/graph transaction must reproduce these
+facts with real queue IDs before component parity becomes production acceptance.
 Establish a valid wall/audio
 clock relationship before wiring its 100ms timer; retain independent old cleanup
 and late-callback behavior. Do not infer birth from a raw receipt or audio state.

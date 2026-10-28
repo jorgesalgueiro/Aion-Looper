@@ -7329,3 +7329,68 @@ old cleanup. Establish wall/audio alignment before activating the 100ms callback
 No timer, renderer, new control or distributable package is activated by this
 phase. No new hardware/device validation; shared code remains portable for future
 Apple targets, with actual Apple builds deferred. No package or push performed.
+
+### Queued graph callback lifetime oracle — 2026-10-28
+
+Source baseline `cc6368f`. Test/documentation change only; existing C++ binaries
+were reused. The existing MeterGraphParity gate now invokes the original
+handleAction callback, play, scheduleStop and stopAll with controlled audio-node
+and timer IO, then compares explicit native LoopMeterGraph and LoopMeterLifecycle
+notifications. It retains every previous observation (377) and adds 72 scenarios
+(1,278 observations): tracks 0/19, early/late/frozen audio-clock delivery,
+graphless callbacks and old cleanup before/pending/after callback, immediate/
+scheduled/panic stops, repeated stops and detached history. The retained-graph
+stopped precondition is explicit, not an asserted production UI workflow.
+
+Acceptance facts: fresh analyser/data at each callback, retained pending old
+cleanup, old teardown both before and after callback, 25ms immediate / 450ms
+fixture scheduled / 65ms panic delays, repeated scheduled no-op while stopping,
+replaced immediate/panic deadlines, retained detached data/history. Original
+source start time/offset is checked with IO stubs; native source PCM/phase is not
+compared here. All 1,655 graph observations pass the unchanged 1e-12 tolerance;
+maximum absolute error 2.842170943040401e-14. The owner comparison covers seven
+lifetime fields; the graph comparison also covers the existing follower fields.
+
+Fresh results:
+
+| Gate | Result |
+| --- | --- |
+| Windows reference selection | 4/4, 11.56s |
+| Ubuntu reference selection | 4/4, 18.78s |
+| Sanitized Ubuntu reference selection | 4/4, 53.19s; no sanitizer error |
+| Windows/Ubuntu focused queued Engine regressions | Both pass; actual paired stereo PCM at 64/128, zero tracked callback new/delete |
+| Committed-PCM audit | 126 cases / 965,826 samples, max error 7.394757495227111e-8, unchanged 1e-6 tolerance |
+| Original assets | Byte identity, deterministic embedding and tamper rejection pass |
+| Isolated negative | A queued-only original callback guard fails at the new cleanup-before-callback case (`stopped` versus required `playing`) |
+
+The negative control uses an in-memory copy of the original method through
+`build/QueuedCallbackOracleNegative.cjs`; no original/production file was mutated.
+Logs and the hashed evidence report use `build/queued-callback-oracle-*`.
+
+Reproduce from repository root (bundled CTest path as in MIGRATION_CURRENT.md
+if CTest is not on PATH):
+
+```powershell
+ctest --test-dir build/windows-core -C Release -V -R '^(js_native_meter_graph|original_meter_source_lifecycle|js_native_meter_window|js_native_meter)$'
+build/windows-core/Release/aion_core_tests.exe --meter-queued
+node tests/AudioParityAudit.cjs build/windows-core/Release/aion_reference_probe.exe
+python tests/AssetTests.py
+```
+
+In Ubuntu at `/mnt/d/Jorge/Documents/Codex/Aion-Looper`:
+
+```sh
+ctest --test-dir build/core -V -R '^(js_native_meter_graph|original_meter_source_lifecycle|js_native_meter_window|js_native_meter)$'
+ctest --test-dir build/core-asan -V -R '^(js_native_meter_graph|original_meter_source_lifecycle|js_native_meter_window|js_native_meter)$'
+build/core/aion_core_tests --meter-queued
+```
+
+This is an executable acceptance contract, not production queued graph acceptance.
+A still-pending original queue callback survives old teardown and can invoke
+play(grid) from stopped. That new explicit callback must be distinguished from a
+raw-window acknowledgement already retired by cleanup; keep the latter unable
+to resurrect a graph. The production queue-ID graph transaction, wall/audio
+alignment, source timing and renderer remain unfinished. No native processor/
+format rebuilds, DAW/hardware/listening tests, Apple validation, package or push
+were performed in this session. Previous full/native gates remain historical
+evidence, not newly executed acceptance.

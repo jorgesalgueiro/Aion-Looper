@@ -1532,3 +1532,16 @@ zero-block behavior, FIFO/outcome-loss recovery, all twenty 7/32/1 routes and ac
 processor/JUCE timer cleanup-before-result tests. Retired results cannot resurrect
 graphs. No automatic 100ms timer or renderer yet; graph acceptance, wall alignment
 and post-reset/repeated/scheduled stop-origin policy remain unaccepted.
+
+Queued graph acceptance must retain the original callback/cleanup distinction.
+The expanded MeterGraphParity oracle keeps the original 377 observations and
+adds 72 actual-original callback scenarios (1,278 observations): graphless,
+cleanup before/pending/after callback, early/late/frozen audio clocks, repeated
+immediate/scheduled/panic stops. A newly delivered explicit callback can invoke
+play(grid) from stopped after old teardown; a raw result retired by that teardown
+cannot resurrect a graph. Do not implement the former by weakening the latter's
+guards. Pending old cleanup survives queued graph creation and can tear down the
+new graph, retaining data/history. The native component probe supplies explicit
+graph notifications; real queued-ID graph acceptance and wall alignment remain
+unimplemented. The isolated queued-only callback negative fails in
+build/queued-callback-oracle-negative.txt without editing reference files.
