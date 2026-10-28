@@ -3,6 +3,25 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const root=path.resolve(__dirname,'..');
+// Run the actual production acknowledgment block. A CLI/other controller can
+// advance the global request ID before this editor observes its own outcome.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const from=source.indexOf('                if(pending) {');
+ const to=source.indexOf('                refresh();scheduler.pump();',from);
+ assert(from>=0&&to>from,'Locate the production pending-result policy');
+ const policy=source.slice(from,to);let cases=0;
+ for(const id of [1,2**32+17])for(const offset of [-1,0,1])for(const rejected of [false,true])for(const generation of [7,8]){
+  const calls=[],context={pending:{id,generation:7,deadline:100,resolve:()=>calls.push('success'),reject:e=>calls.push(e.message)},
+   reply:{generation,lastRequestId:id+offset,rejected},Date:{now:()=>0},error:''};
+  vm.runInNewContext(policy,context);++cases;
+  if(generation!==7)assert.deepEqual(calls,['Audio configuration changed']);
+  else if(offset<0){assert.deepEqual(calls,[]);assert(context.pending);}
+  else if(offset===0)assert.deepEqual(calls,[rejected?'Action is unavailable in the current loop state':'success']);
+  else {assert.equal(calls.length,1);assert.match(calls[0],/outcome.*superseded/i,'A later controller outcome cannot resolve or reject our action as its own');}
+ }
+ console.log(`PASS: production exact-request GUI acknowledgment across ${cases} generation/older/exact/superseded/full-width cases`);
+}
 {const native={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),native);const sync=new native.window.AionMidiMode();
  assert.equal(sync.observe({revision:0,modeRevision:0,mode:0}),'normal');
  const first=sync.begin(),second=sync.begin();sync.ack(first,1);assert.equal(sync.observe({revision:1,modeRevision:1,mode:1}),null,'Earlier mode reply cannot overwrite a newer keyboard gesture');

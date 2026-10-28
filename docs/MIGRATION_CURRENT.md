@@ -1,8 +1,8 @@
 # Current migration checkpoint
 
-Updated 2026-10-28. Current source baseline: `24df7e9` (clean main at session start,
-twelve local commits ahead of cached origin). Current work verifies zero-delay
-queued callbacks and cancellation behind a full message fact batch.
+Updated 2026-10-28. Current CLI source baseline: `21f9a32`. The session began at
+`24df7e9`, clean main twelve commits ahead of cached origin; the verified queued
+edge-case slice was committed separately before adding the running-app CLI.
 Configured cleanup deadlines retain the accepted command-counter integration.
 Continue the existing implementation; this is not a restart or release checklist.
 
@@ -38,7 +38,51 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Due callback retains its original intent and fires once | Guarded local-owner delivery checks deadline and stable receipt, preserves cleanup ordering, rejects stale replacement and retries FIFO failure | Existing processor timer supplies autonomous delivery below; zero-delay/backlog interactions and full source sound remain separate |
 | Full instruments/effects/controller/persistence/host parity | No new acceptance from this session; see PARITY.md and feature-specific validation notes | Do not infer suite completion from these looper/meter gates |
 
-## Current slice: zero-delay and full-batch queued callbacks
+## Current slice: running-Standalone development CLI
+
+The user chose control of the existing Standalone session/devices, not a second
+headless engine. `tools/aion.py` exposes the current native JSON handler through
+named status/parameter/loop/MIDI/name/metronome/export operations and raw `request`.
+See CLI.md for exact commands and the distinction between accepted actions and
+completed recording/finalization/export. Unported engines and remaining session/
+device setup operations remain unavailable; this is not full feature parity or
+a bundled release CLI. Every newly ported feature must extend command coverage.
+
+Only the desktop Standalone holder's own processor creates the local server,
+independently of editor lifetime. Private per-instance directories and tokens,
+kernel-held client locks, atomic request claim, expiry, explicit selection,
+bounded bytes/depth and one request per message tick keep ownership bounded.
+The immediately previous result can answer an immediate duplicate-ID reply retry;
+older results retire, and the client never blindly resubmits. No file, JSON,
+serialization, locks or CLI work enters processBlock. No TCP port is opened.
+
+Named loop commands wait for their exact native outcome. A later controller's
+result cannot establish success/failure of an earlier command. The GUI now uses
+the same exact-ID rule; a superseded outcome reports uncertainty and retains
+authoritative snapshot state. The regression first failed against the previous
+`>=` policy (`build/cli-gui-outcome-negative.txt`), then the actual production
+block passed all 24 older/exact/newer/generation/full-width cases. Original HTML,
+CSS, reference files, visible controls and ASCII logo bytes remain unchanged.
+
+External Python processes exercise actual native processors and synthetic PCM at
+64/128, including instance isolation, rejection after enqueue, names/Unicode,
+MIDI configuration, authentication, version/expiry/size/depth/UTF-8 guards, busy
+locks, timeout, duplicate reply and owned-file shutdown. Existing timer tests
+retain their own 30s watchdog after a separate 60s external CLI stage. Initial
+Windows reply-sharing and aggregate-watchdog failures are preserved in build/.
+Final native results: Windows 2/2 (33.39s), Ubuntu 2/2 (49.55s), both development
+Standalone builds. Actual Windows CLI registration/shared WebView roundtrip,
+NativeUiSmoke, browser audio-reference checks and full synthetic 64/128 mouse/
+export/merge/MIDI workflows pass. Windows frontend policy passes 24 new cases;
+Ubuntu affected frontend CTest passes 1/1 (8.90s). Original assets pass again.
+The earlier full portable 28/28 each and unchanged 126-case PCM audit are retained
+for unchanged core/oracles; affected frontend/native/UI checks are rerun after
+the CLI/acknowledgment change. No final skipped check, JUCE assertion or leaked
+object; existing compiler warnings remain. Evidence: `build/cli-evidence.json`.
+No new sanitizer, DAW/plugin-format, physical controller/device, listening or
+Apple validation. No package or push. See VALIDATION.md for commands and scope.
+
+## Previous slice: zero-delay and full-batch queued callbacks
 
 The real production message-loop runner now covers fourteen cases across tracks
 0/19 and 64/128. A 999 BPM, one-beat grid produces the original clipped delay of
@@ -57,9 +101,8 @@ The unchanged 126-case / 965,826-sample PCM audit remains within 1e-6 (maximum
 sanitizer rerun, plugin-format/DAW/hardware test, package or push in this slice.
 
 CLI decision: the user chose command-line control of the running Standalone app,
-sharing its existing session/devices and validated command handler, rather than
-a second headless engine. All newly ported features must have CLI access. Product
-CLI transport is not yet present; the existing console binaries are test probes.
+sharing its existing session/devices and validated command handler. The current
+slice above implements its development transport and existing handler access.
 
 ## Previous slice: autonomous queued graph callback delivery
 
@@ -423,8 +466,8 @@ transaction/STOP evidence remains in VALIDATION.md and `build/`; its regression
 cases are retained. Application parameters, serialized state, original assets,
 dependency versions and target configuration remain unchanged.
 
-Zero-delay and full-budget cancellation interaction checks now pass. Next add the
-user-selected running-Standalone CLI, then compare late-source phase,
+Zero-delay and full-budget cancellation interaction checks now pass. After the
+running-Standalone CLI, compare late-source phase,
 outgoing/incoming overlap and cleanup sound against the original before enabling
 the renderer. Preserve the original stopped-after-old-teardown state boundary:
 original STOP ALL cancels queueTimeout only while message state is queued. Do not

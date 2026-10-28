@@ -1,4 +1,5 @@
 #include "plugin/Processor.h"
+#include "plugin/LocalCommandServer.h"
 #include "core/DeviceCallbackScope.h"
 #include "plugin/DeviceOutputLatency.h"
 #include "ui/WebEditor.h"
@@ -126,6 +127,10 @@ void AionProcessor::cancelExport(){
     }
 }
 void AionProcessor::timerCallback(){
+   #if JucePlugin_Build_Standalone && ! JUCE_IOS && ! JUCE_ANDROID
+    if(!cliServer)if(auto* holder=juce::StandalonePluginHolder::getInstance())if(holder->processor.get()==this)
+        cliServer=std::make_unique<aion::LocalCommandServer>([this](const juce::var& command){return request({command});});
+   #endif
     serviceMidi();
     serviceMeters(true);
     const auto written=exportWriteResult->load(std::memory_order_acquire);

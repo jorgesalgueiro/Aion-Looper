@@ -1,5 +1,11 @@
 # Build and package
 
+Development CLI: start the current Standalone, then run
+`python tools/aion.py instances` / `python tools/aion.py status` from the repository.
+See [CLI.md](CLI.md) for commands, per-instance selection, limits and current
+coverage. This Python client is not yet bundled by the historical package tools;
+do not label those older packages CLI-enabled or release-ready.
+
 This is a foundation/preview. Only tests actually recorded in VALIDATION.md are
 verified; commands for other systems are setup instructions, not validation claims.
 CMake >=3.22, C++20 and Python >=3.8 are required. Dependencies are fetched at pinned

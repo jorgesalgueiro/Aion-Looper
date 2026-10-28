@@ -1642,3 +1642,16 @@ through the same validated production command/state layer as the GUI. Do not
 duplicate DSP, change parameter IDs, or imply control of arbitrary DAW plugin
 instances. Extend command access alongside each newly ported feature. Unported
 engines remain unported through the CLI as well; keep their gaps explicit.
+
+Running-app development CLI uses tools/aion.py and LocalCommandServer, created
+only by the desktop Standalone holder's own processor message Timer. Keep all
+mailbox files/JSON/locks off processBlock, fixed request/reply/depth limits,
+private instance/token ownership, expiry and atomic request claim. Do not add
+unbounded polling, blind action retry, another audio engine or plugin-host device
+ownership. The immediate previous native result has a bounded reply cache; older
+results retire. CLI loop actions and GUI pending actions require an exact request
+ID; a newer controller outcome is unconfirmed, not proof of success/rejection.
+Keep the production-block 24-case acknowledgment oracle, external CLI/native
+64/128 tests, and actual Standalone CLI/WebView plus mouse-workflow gates when
+changing this path. CLI and legacy timer watchdog stages are separate (60s/30s),
+preserving the old timer limit. Keep the original interface and ASCII logo.

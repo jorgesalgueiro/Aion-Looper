@@ -19,6 +19,16 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  let info;
  for(let n=0;n<60;++n){info=await evaluate(`({cards:document.querySelectorAll('#loopContainer > div').length,status:document.getElementById('native-status')?.textContent,native:typeof window.AionNative?.request})`);if(info.cards===20)break;await delay(150);}
  assert.equal(info.cards,20,JSON.stringify(info));assert.equal(info.native,'function');
+ if(process.env.AION_CLI_PYTHON&&process.env.AION_CLI_DIR){
+  const {execFileSync}=require('node:child_process');
+  const cli=(...args)=>JSON.parse(execFileSync(process.env.AION_CLI_PYTHON,
+   [path.resolve(__dirname,'../tools/aion.py'),'--root',process.env.AION_CLI_DIR,...args],{encoding:'utf8',timeout:15000}));
+  const instances=cli('instances');assert.equal(instances.length,1,'Actual Standalone owns one CLI endpoint');
+  const native=await evaluate(`window.AionNative.request({operation:'snapshot'})`),external=cli('status');
+  assert(external.ok&&external.generation===native.generation,'External CLI and actual WebView share the same processor generation');
+  assert(cli('parameter','masterGain',String(native.masterGain)).ok,'External CLI reaches the actual Standalone parameter handler');
+  console.log('PASS: actual Standalone automatic CLI registration, external instance/status/parameter roundtrip and shared WebView processor generation');
+ }
  // A centered marquee must still left-align its preformatted rows internally.
  for(const width of [800,1200]){
   await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});await delay(150);

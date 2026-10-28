@@ -7813,3 +7813,99 @@ logs use `build/queued-edge-*`. This accepts the scoped logical interactions, no
 full source sound, punctual timers, DAW/hardware or release readiness. No package
 or push. The user selected control of the running Standalone as the first CLI
 mode; its transport is the next slice, sharing the native command handler.
+
+## Running-Standalone development CLI — 2026-10-28
+
+Baseline `21f9a32`. The user selected running-app control, sharing its current
+devices/session rather than a second headless engine. `tools/aion.py` uses only
+Python's standard library and the new desktop Standalone message-thread mailbox.
+It exposes the existing native handler through named operations plus raw JSON
+`request`; unported engines and remaining session/device setup commands stay
+explicitly unavailable. No bundled/compiled CLI or release package is produced.
+See CLI.md for track indexing, native field conventions, exit codes, expiry,
+immediate reply caching and timeout/paused-audio behavior.
+
+The transport has one inbox and one claimed processing file per private random
+instance, a token, OS-held client lock, byte/depth/schema validation and fixed
+deadline. A single bounded request is handled per message tick. No work is added
+to processBlock. The production processor only gains Standalone-owned server
+creation; DSP/parameter/state functions are unchanged. CMake only adds test
+interpreter/script paths, without changing formats or dependency pins.
+
+External Python processes exercise two actual processors at 64/128 with synthetic
+PCM: discovery/ambiguous selection, per-instance gain/state isolation, actual
+record/finish/play/stop and rejection after enqueue, MIDI config, Unicode names,
+unknown/stale requests, kernel-lock contention, client oversize/timeout, malformed
+reply schemas, integer protocol version (including boolean rejection), token,
+expiry, byte/depth/UTF-8 guards, immediate duplicate-ID reply and owned shutdown.
+The callback new/delete audit remains enabled. These are not physical-device,
+MIDI Learn hardware or audio-driver latency tests.
+
+CLI concurrency exposed the GUI's old `lastRequestId >= pending.id` assumption.
+The production pending block now accepts/rejects only its exact ID; a newer
+outcome reports uncertainty and leaves authoritative snapshot state in control.
+The unchanged previous block fails the new production-block oracle in
+`build/cli-gui-outcome-negative.txt`; the fix passes all 24 full-width/older/exact/
+newer/generation cases. Original reference/HTML/CSS and ASCII logo are unchanged.
+Existing GUI workflows are retained and actually rerun after this change.
+
+The first Windows CLI run caught a transient reply-read sharing violation during
+file replacement. Reads now retry only within the original deadline, without
+resubmitting the operation (`build/cli-reply-permission-failure-windows.txt`).
+Adding two external-process workflows also exhausted the old aggregate 30s test
+watchdog after their assertions passed on both platforms. A separate 60s CLI
+stage now precedes the unchanged 30s timer stage. The failed aggregate runs are
+retained in `build/cli-combined-watchdog-{windows,linux}.txt`. No test or audio
+tolerance is removed or relaxed.
+
+Reproduce native builds/gates using the commands in the preceding sections.
+Additional affected frontend, UI and CLI gates:
+
+```powershell
+node tests/FrontendTests.cjs
+& $cmake --build build/windows --config Release --target aion_mouse_host --parallel 2
+& tools/TestCliUi.ps1 -PythonPath 'C:/Users/jorge/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe'
+& tools/TestMouseWorkflow.ps1
+python tests/AssetTests.py
+```
+
+```sh
+ctest --test-dir build/core -V -R '^native_frontend_commands$'
+```
+
+`TestCliUi.ps1` uses an isolated CLI root and the existing actual Standalone/UI
+smoke: automatic endpoint registration, external status/parameter commands and
+matching WebView processor generation pass. The original WebAudio count-in,
+nudge, live-input and STUT comparisons and NativeUiSmoke pass. Both actual
+64/128 synthetic mouse, export, merge and MIDI workflows pass. The owned app
+closes, and its isolated root contains zero remaining endpoints, recorded in
+`build/cli-ui-shutdown.json`. Only the CLI's own fixed files are removed.
+
+Portable 28/28 per platform passed earlier this session on unchanged core/oracle
+sources (Windows 416.03s, Ubuntu 668.92s). After the GUI fix, the full frontend
+script passes again on Windows and affected CTest passes 1/1 on Ubuntu (8.90s).
+The other portable checks retain the same source/binaries. The unchanged 126-case
+committed-PCM audit remains 965,826 samples, max error 7.394757495227111e-8 at 1e-6;
+fresh original asset/embedding/tamper validation passes. Native final results are
+recorded in the CLI evidence manifest. No new core or native CLI sanitizer run,
+REAPER/Ardour, plugin-format, physical controller/device, listening or Apple test
+is claimed. Future compiled/bundled CLI, remaining command coverage and full
+sound/source-lifetime parity remain open. No package or push.
+
+Final native CTest results: Windows 2/2 (33.39s), Ubuntu 2/2 (49.55s), against
+the strict version/credential/result-schema checks and current embedded assets.
+Both Standalone development builds and the Windows synthetic mouse host build.
+No final skipped check, JUCE assertion or leaked-object report; existing compiler
+warnings remain. Actual Standalone/WebView UI interaction was executed on Windows;
+Linux's CLI checks use the production processor/message loop with synthetic input,
+not a GTK/hardware session. No native CLI sanitizer run is inferred from older
+core sanitizer evidence.
+
+The ignored `build/WriteCliEvidence.cjs` checks the source allowlist, exact original
+processor source after removing the CLI include/Standalone timer hook, unchanged
+core/oracles/dependencies/formats, and the two-line-only native GUI acknowledgment
+change (including unchanged ASCII logo content). It requires native, affected
+frontend, actual Standalone CLI/UI, both mouse-workflow, asset and retained PCM
+gates and records source/log/binary hashes in `build/cli-evidence.json`. Older
+plugin-format binaries remain their earlier snapshots; rebuild them before
+future host validation. No release or full-feature acceptance is claimed.

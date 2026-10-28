@@ -1,6 +1,7 @@
 #include "plugin/LoopMeterCleanupTimer.h"
 #include "plugin/LoopMeterClearDispatcher.h"
 #include "plugin/Processor.h"
+#include "plugin/LocalCommandServer.h"
 #include <array>
 #include <atomic>
 #include <condition_variable>
@@ -839,14 +840,68 @@ private:
         advance();
     }
 };
+class CliControlRunner final : private juce::Timer {
+public:
+    explicit CliControlRunner(bool& watch):audioWatch(watch){begin();startTimer(5);}
+    bool finished() const noexcept {return complete;}
+    ~CliControlRunner() override {stopTimer();if(worker.joinable())worker.join();}
+private:
+    bool& audioWatch;bool complete=false;unsigned block=64;
+    std::array<std::unique_ptr<AionProcessor>,2> processors;
+    std::array<std::unique_ptr<aion::LocalCommandServer>,2> servers;
+    juce::AudioBuffer<float> audio;juce::MidiBuffer midi;
+    juce::File directory;
+    std::thread worker;std::atomic<bool> done{false};
+    int exitCode=-1;juce::String output;
+    void cycle(){for(auto& p:processors){
+        for(int channel=0;channel<2;++channel)for(unsigned sample=0;sample<block;++sample)
+            audio.setSample(channel,static_cast<int>(sample),.1f);
+        audioWatch=true;p->processBlock(audio,midi);audioWatch=false;
+    }}
+    void begin(){
+        directory=juce::File::getCurrentWorkingDirectory().getChildFile("cli-test-"+juce::Uuid().toString());
+        audio.setSize(2,static_cast<int>(block));midi.ensureSize(256);
+        for(unsigned id=0;id<2;++id){
+            processors[id]=std::make_unique<AionProcessor>();
+            auto& p=*processors[id];p.setPlayConfigDetails(2,2,48000,static_cast<int>(block));
+            p.prepareToPlay(48000,static_cast<int>(block));p.setNonRealtime(true);
+            servers[id]=std::make_unique<aion::LocalCommandServer>([processor=&p](const juce::var& command){return processor->request({command});},directory);
+            check(servers[id]->ready(),"Production CLI mailbox starts in isolated test directory");
+        }
+        cycle();done.store(false,std::memory_order_release);
+        const auto root=directory.getFullPathName(),first=servers[0]->id(),second=servers[1]->id();
+        worker=std::thread([this,root,first,second]{
+            juce::ChildProcess client;
+            if(client.start(juce::StringArray{AION_CLI_PYTHON,AION_CLI_TEST,root,first,second})){
+                output=client.readAllProcessOutput();client.waitForProcessToFinish(10000);exitCode=static_cast<int>(client.getExitCode());
+            }
+            done.store(true,std::memory_order_release);
+        });
+    }
+    void timerCallback() override {
+        cycle();if(!done.load(std::memory_order_acquire))return;
+        worker.join();std::cout<<output.toStdString()<<std::flush;
+        check(exitCode==0,"External CLI production processor test passed");
+        for(auto& server:servers)server.reset();
+        check(directory.findChildFiles(juce::File::findFilesAndDirectories,false).isEmpty(),"CLI instance shutdown removes only its owned fixed files");
+        directory.deleteFile();for(auto& p:processors)p.reset();
+        if(block==64){block=128;begin();return;}
+        complete=true;stopTimer();
+        std::cout<<"PASS: real external CLI drives isolated production processors at 64/128; bounded message-thread mailbox, cleanup, instance isolation and zero tracked audio callback new/delete\n";
+    }
+};
 class Runner final : private juce::Timer {
 public:
-    explicit Runner(bool& watch):audioWatch(watch){automatic=std::make_unique<AutomaticQueuedRunner>(watch);startTimer(5);}
+    Runner(bool& watch,std::function<void()> completed):audioWatch(watch),cliCompleted(std::move(completed)){
+        cli=std::make_unique<CliControlRunner>(watch);startTimer(5);
+    }
     ~Runner() override {stopTimer();check(!cleanupWorker.joinable(),"Cleanup worker must finish before owner destruction");}
 private:
     bool& audioWatch;std::atomic<std::uint32_t> cleanupPrepared{0}; // Outlives bound fixture adapters.
     std::unique_ptr<CorrelatedCleanupRunner> correlated;
     std::unique_ptr<AutomaticQueuedRunner> automatic;
+    std::unique_ptr<CliControlRunner> cli;
+    std::function<void()> cliCompleted;
     std::unique_ptr<Fixture> f;std::unique_ptr<ProcessorMeterFixture> processorMeters;
     std::unique_ptr<ProcessorShutdownFixture> shutdown;unsigned stage=0;bool lateStopSyncOff=false;
     double started=0,expectedDelay=0;std::uint64_t frame=0,data=0;std::array<double,7> held{};
@@ -904,6 +959,7 @@ private:
         check(f->owner->inspect().present,"Blocked message thread cannot deliver a timer callback");
     }
     void timerCallback() override {
+        if(cli){if(!cli->finished())return;cli.reset();cliCompleted();automatic=std::make_unique<AutomaticQueuedRunner>(audioWatch);return;}
         if(automatic){if(!automatic->finished())return;automatic.reset();correlated=std::make_unique<CorrelatedCleanupRunner>(audioWatch);return;}
         if(correlated){if(!correlated->finished())return;correlated.reset();begin(64);return;}
         shutdown->poll();
@@ -1163,10 +1219,17 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     processorDueDeliveryTests(audioWatch);
     panicDispatcherTests(audioWatch);
     queuedAdapterTests(audioWatch);
-    std::mutex mutex;std::condition_variable changed;bool finished=false;
-    std::thread watchdog([&]{std::unique_lock lock(mutex);if(!changed.wait_for(lock,std::chrono::seconds(30),[&]{return finished;})){
-        std::cerr<<"Native cleanup timer message-loop watchdog expired"<<std::endl;std::_Exit(1);}});
-    {Runner runner(audioWatch);juce::MessageManager::getInstance()->runDispatchLoop();}
+    std::mutex mutex;std::condition_variable changed;bool finished=false,cliFinished=false;
+    std::thread watchdog([&]{std::unique_lock lock(mutex);
+        if(!changed.wait_for(lock,std::chrono::seconds(60),[&]{return cliFinished||finished;})){
+            std::cerr<<"External CLI message-loop watchdog expired"<<std::endl;std::_Exit(1);}
+        // Preserve the original timer suite's own 30-second bound rather than
+        // charging its budget for both new external-process CLI workflows.
+        if(!changed.wait_for(lock,std::chrono::seconds(30),[&]{return finished;})){
+            std::cerr<<"Native cleanup timer message-loop watchdog expired"<<std::endl;std::_Exit(1);}
+    });
+    {Runner runner(audioWatch,[&]{{std::lock_guard lock(mutex);cliFinished=true;}changed.notify_one();});
+        juce::MessageManager::getInstance()->runDispatchLoop();}
     {std::lock_guard lock(mutex);finished=true;}changed.notify_one();watchdog.join();
     check(allocations.load()==0,"Native timer actual Engine callbacks have zero tracked new/delete");
     std::cout<<"PASS: real JUCE message-loop cleanup at 64/128, 25/50ms, late delivery, cancellation/replacement, queued-play retention, prepare/destruction and exact PCM; zero tracked callback new/delete\n";

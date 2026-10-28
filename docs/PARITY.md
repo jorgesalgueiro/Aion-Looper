@@ -3,6 +3,7 @@
 | Capability | Foundation status | Release acceptance |
 | --- | --- | --- |
 | Original runtime assets | 16 files preserved with SHA256 | Automated byte identity checks |
+| Running-Standalone CLI | Development Python client routes existing native operations to the same session/processor using bounded private local mailboxes; exact-ID outcomes and instance selection | Native 64/128 external-process and real Standalone/WebView checks are recorded in VALIDATION.md; unported engines, remaining session/device setup commands, compiled/bundled CLI and Apple remain separate |
 | Native build formats | CMake targets/platform guards configured | Compile/load/validate each OS+format |
 | Windows VST3 host interface | Actual compiled VST3 passes pinned pluginval 1.0.4 level 9: scan/load, GUI, parameter/state/thread/fuzz and rate/block matrix; opt-in reproducible CTest gate | Vendor build omits allocation tests; external Steinberg validator, active recorded-loop/MIDI workflows, actual DAWs/hardware and other formats/OS remain separate |
 | Windows CLAP host interface | Actual module passes all supported official validator 0.4.1 tests after state-restore host-rescan repair: 33 passes, 10 explicit skips, one retained JUCE void-load warning; opt-in CTest gate | GUI/allocation, actual DAW/MIDI/recorded-loop sessions, other OSes and unsupported extensions remain separate |

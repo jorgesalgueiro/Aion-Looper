@@ -9,7 +9,7 @@
 #include <mutex>
 static_assert(std::atomic<float>::is_always_lock_free, "Audio parameter loads must be lock-free");
 static_assert(std::atomic<bool>::is_always_lock_free, "MIDI input readiness must be lock-free");
-namespace aion {class DeviceCallbackBinding;}
+namespace aion {class DeviceCallbackBinding;class LocalCommandServer;}
 struct DevicePlaybackObservation {
     aion::CallbackClockStamp callback{};
     aion::CallbackAudibleTime time{};
@@ -111,6 +111,7 @@ private:
     using MeterTimers=std::array<std::optional<aion::LoopMeterCleanupTimer>,aion::LoopBank::trackCount>;
     std::unique_ptr<MeterTimers> meterTimers; // Construction heap; timer objects emplaced by message service.
     std::optional<aion::LoopMeterClearDispatcher> meterDispatcher; // Destroyed before its timer routes.
+    std::unique_ptr<aion::LocalCommandServer> cliServer; // Standalone only; message thread, destroyed before Engine.
     MeterServiceStatus meterServiceStatus{};
     bool meterPrepared() const noexcept;
     void serviceMeters(bool deliverQueued=false) noexcept;

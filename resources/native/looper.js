@@ -493,7 +493,8 @@
                 if(!rows.length){releaseStutter(20);createRows(reply);createLiveRows(reply);}
                 if(pending) {
                     if(reply.generation!==pending.generation){pending.reject(Error('Audio configuration changed'));pending=null;}
-                    else if(reply.lastRequestId>=pending.id){reply.rejected?pending.reject(Error('Action is unavailable in the current loop state')):pending.resolve();pending=null;}
+                    else if(reply.lastRequestId===pending.id){reply.rejected?pending.reject(Error('Action is unavailable in the current loop state')):pending.resolve();pending=null;}
+                    else if(reply.lastRequestId>pending.id){pending.reject(Error('Action outcome was superseded by another controller; check loop state before retrying'));pending=null;}
                     else if(Date.now()>pending.deadline){error='Audio is paused; the action remains queued until processing resumes.';}
                 }
                 refresh();scheduler.pump();
