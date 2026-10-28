@@ -1,9 +1,9 @@
 # Current migration checkpoint
 
-Updated 2026-10-28. Current source baseline: `cc6368f` (clean main at session start,
-five local commits ahead of cached origin). This session extends the queued graph
-callback acceptance oracle; it does not activate production graph callbacks.
-Prior transaction and STOP acceptance remain applicable.
+Updated 2026-10-28. Current source baseline: `ecf414b` (clean main at session start,
+six local commits ahead of cached origin). This session implements explicitly
+requested queued graph acceptance. Automatic callback scheduling stays unwired.
+Prior transaction, reference-oracle and STOP acceptance remain applicable.
 Continue the existing implementation; this is not a restart or release checklist.
 
 ## Reference and baseline
@@ -27,15 +27,62 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Queue callback uses max(0, grid delta minus 100ms) | Accepted unrounded metadata; 96 actual Engine/original grid+dispatcher cases retained | Actual message callback, graph transaction and wall alignment remain unwired |
 | STOP ALL cancels a still-queued intent even after its grid time | This repair routes queuedCancel by explicit pending ID; core, production processor, 20-route and real-timer regressions | This does not fix audible playback occurring before a late message callback |
 | STOP NOW clears pending queue before immediate graph cleanup, including after grid | Explicit queue-ID routing; graphless/attached, production requests and real 25ms timer checks | Normal synchronized STOP and old-teardown state boundary remain separate |
-| Normal STOP takes immediate path when sync is disabled | Pending-ID routing now also covers sync disabled after grid, with the same graphless/25ms rules | Scheduled STOP with sync still enabled remains outside this repair |
+| Normal STOP takes immediate path when sync is disabled | Pending-ID routing covers sync disabled after grid; accepted graph origins support immediate and synchronized stops before/after grid | Actual automatic callback delivery and full transition sound remain separate |
 | Queued cancellation retains older analyser/data/history and cleanup | Existing owner/adapter policy retained, including original pre-grid test plus added post-grid frozen-clock test | If old cleanup already changed message state out of queued, existing rejection remains intentional pending full mapping |
 | Audible grid does not prove message graph birth | Graph origin remains quarantined; no new graph, reset or 65ms cleanup inferred | Visible meters, remaining capture/edit graph origins, overlap and continuity remain unfinished |
-| Pending intent requires its conditional callback transaction | Generic start now rejects real queued IDs before/after grid and after old teardown | Explicit callback transaction and binding/rejection recovery still need implementation |
+| Pending intent requires its conditional callback transaction | Generic start rejects real queued IDs; explicit graph request/result now binds a fresh graph with rejection/loss/cleanup recovery | Automatic callback timing and full source lifetime remain unwired |
 | Conditional raw reset reports its outcome without graph creation | Explicit request/result handshake, reserved tickets, typed outcomes and production routing; old graph/binding/cleanup retained | This is raw-window readiness only; graph acceptance, source timing and renderer remain separate |
-| Explicit queued callback creates a graph independently of old cleanup | New unchanged-source/component comparison: 72 scenarios, 1,278 additional observations; fresh analyser/data, retained old deadlines, cleanup before/after callback, repeated immediate/scheduled/panic stops | Actual queue-ID graph acceptance and audio/wall scheduling remain unwired; the native comparison supplies explicit graph notifications |
+| Explicit queued callback creates a graph independently of old cleanup | Unchanged-source/component comparison: 72 scenarios, 1,278 additional observations; fresh analyser/data, retained old deadlines, cleanup before/after callback, repeated immediate/scheduled/panic stops | This oracle supplies explicit notifications; the real-ID transaction is checked separately, and audio/wall scheduling remains unwired |
+| Explicit graph callback owns subsequent stop routing | Real queue IDs, 120 core lifetime/stop combinations, prepared processor hook and twenty-track result/stop routing pass | Automatic timer delivery, overlap/envelopes and source phase are not accepted by this logical transaction phase |
 | Full instruments/effects/controller/persistence/host parity | No new acceptance from this session; see PARITY.md and feature-specific validation notes | Do not infer suite completion from these looper/meter gates |
 
-## Current slice: queued graph callback acceptance oracle
+## Current slice: explicit queued graph transaction
+
+The new core-only `meterQueuedGraphRequest` shares the bounded command FIFO,
+ticket reservation and full-width queue/clip validation. It is a distinct request
+from the existing raw-only reset. The audio owner resets the window once and
+publishes distinct graph accepted/rejected results. A successful explicit callback
+also establishes the audio-side origin for subsequent immediate/scheduled/panic
+stop facts; a raw reset alone still cannot do so. Enum values are appended.
+The callback must request graph acceptance directly. The retained raw-only hook
+is not a first step to promote afterward: one queue can reset its window once,
+so consuming that reset through the raw-only primitive makes a later graph
+request for the same intent reject safely. Its existing diagnostic contract stays.
+
+The message owner creates and binds a fresh graph only for its exact live graph
+request and matching accepted result. Enqueue/raw started/raw typed acceptance
+cannot create it. A newly requested callback may begin from stopped after older
+cleanup, provided its real queue/clip intent remains alive. Cleanup delivered
+after enqueue instead retires that pending result; it cannot resurrect a graph.
+Detached stop/new-queue routing validates the current audio token, and graph
+creation retains an existing independent cleanup deadline. No new timer is armed.
+
+For a synchronized stop after accepted graph creation but before source start,
+the audio owner keeps its queued gate and records the stop deadline separately.
+It transitions to stopping only at the original start deadline, then stops at the
+scheduled end. Setting stopping immediately would render audio early. Repeated
+normal STOP during this pending stop takes the immediate path.
+
+`requestQueuedMeterGraphMessageThread(track)` is an internal production hook.
+The existing sole prepared dispatcher and cleanup adapter route its result and
+later stops. It is not a new JS operation, parameter, device setting or automatic
+100ms timer. The existing `windows/windowApplied/windowIgnored/pendingWindows`
+diagnostics now include both transaction types; `readyWindows` remains raw-only.
+
+Acceptance: tracks 0/19 and 64/128, before/after source grid, graphless/attached,
+cleanup before request/before result/after result, fresh binding and real window
+observation, original cleanup retention, all three stop policies and repeated
+STOP/panic; typed rejection, cancellation/clear/prepare, zero callbacks, FIFO
+saturation, bounded outcome loss and fresh-generation recovery. Keep previous
+raw-only tests and the 72-case unchanged-source oracle without tolerance changes.
+The intentional pre-grid gate regression must fail before restored-source gates.
+
+Full source envelopes, old/new audible overlap and late-source phase remain
+unaccepted. These component windows do not establish browser sound parity.
+Establish valid wall/audio alignment before wiring automatic delivery; then
+validate actual callback delivery, cleanup/source sound and rendering end to end.
+
+## Previous slice: queued graph callback acceptance oracle
 
 Before changing production graph acceptance, make its original lifetime contract
 executable. `tests/MeterGraphParity.cjs` now invokes the actual original
@@ -150,49 +197,30 @@ compiling sources or overlap CTests in a build tree.
 
 ## Next concrete step / validation still needed
 
-This session: Windows/Ubuntu reference selection 4/4 each (11.56s/18.78s), sanitized
-reference selection 4/4 (53.19s), focused actual queued Engine transactions on
-Windows/Ubuntu, 126-case committed-PCM audit (965,826 samples, maximum absolute
-error 7.394757495227111e-8 at unchanged 1e-6 tolerance), original UI byte/embedding/
-tamper checks, and the expected negative-control failure. The new graph trace
-passes all 1,655 observations at unchanged 1e-12 tolerance; maximum absolute error
-2.842170943040401e-14. Existing C++ binaries were reused because only tests/docs
-changed. No native processor build/test, DAW/device run or package was performed
-in this session. See the new VALIDATION.md section for exact commands/scope.
+Current graph transaction evidence: `build/queued-graph-evidence.json`.
+Windows/Ubuntu portable 28/28 (389.63s/599.71s), native 2/2 (11.16s/23.38s),
+core sanitizer 6/6 (318.56s), focused queued regressions, unchanged 126-case PCM
+audit (965,826 samples, max error 7.394757495227111e-8 at 1e-6), and original UI
+byte/embedding/tamper checks all pass. No unrelated failing gate was found.
+The unchanged 72-case graph oracle retains all 1,655 observations at 1e-12.
+An intentional early-opening source gate failed at `Scheduled pre-grid stop
+retains audio gate`; restored source objects were rebuilt and focused positive
+tests passed before full gates. The first focused attempt also corrected a test
+which incorrectly requested analyser data after deliberately detaching its graph.
 
-Previous transaction phase passed Windows/Ubuntu portable 28/28 each, native 2/2 each, core
-sanitizer 6/6, the unchanged-tolerance 126-case PCM audit and original UI byte/
-embedding/tamper checks. No unrelated failing checks were found in these runs.
-Current evidence is `build/queued-window-transaction-evidence.json`: Windows
-portable 382.95s, Ubuntu portable 598.63s, native 11.64s/23.52s, sanitizer 282.61s.
-`build/queued-start-guard-evidence.json`, `build/unsynced-stop-evidence.json` and
-`build/post-grid-stop-now-evidence.json` retain the preceding STOP acceptance;
-their original cases remain enabled.
-Both current Standalone binaries rebuilt. See VALIDATION.md for scoped results;
-`build/post-grid-panic-evidence.json` retains the preceding STOP ALL evidence.
+Both Standalone development binaries and native test binaries rebuilt. Prior raw
+transaction/STOP evidence remains in VALIDATION.md and `build/`; its regression
+cases are retained. Application parameters, serialized state, original assets,
+dependency versions and target configuration remain unchanged.
 
-Normal synchronized STOP after audible grid and the old-teardown
-state boundary remain unaccepted. Original `scheduleStop()` requires message
-state playing and a graph; native audible playing with an undelivered callback
-does not prove those conditions. This generic-start guard does not cover
-that scheduled policy and must not change audible timing to guess it.
-The generic start guard remains. The raw-window transaction is not graph creation.
-Implement explicit queued graph acceptance and its lifetime/stop routing next.
-Use the new 72-case oracle to distinguish a newly delivered explicit callback
-after cleanup from a retired raw result. Do not weaken the transaction's existing
-no-resurrection guards. Old cleanup may remain pending across graph creation and
-can detach that new graph; retain its deadline rather than treating birth as a
-blanket cancellation. The native callback/graph transaction must reproduce these
-facts with real queue IDs before component parity becomes production acceptance.
-Establish a valid wall/audio
-clock relationship before wiring its 100ms timer; retain independent old cleanup
-and late-callback behavior. Do not infer birth from a raw receipt or audio state.
-Do not wire generic start or this raw-only hook to that timer yet. Graph creation
-must handle retired/negative/lost reset outcomes and prevent cleanup/cancel/clear
-from resurrecting a graph while binding is pending. Validate repeated/scheduled
-STOP and STOP ALL routing after real graph acceptance before claiming that
-lifecycle complete. Quarantined raw resets do not revive old immediate origins.
-Only then integrate meter observation and the renderer.
+Next establish valid wall/audio alignment and implement bounded explicit callback
+delivery, using the full graph hook directly. Retain original unrounded delay and
+independent old cleanup, and distinguish callback delivery after cleanup from
+cleanup retiring an already-pending result. The raw-only hook and generic start
+must not become shortcuts to graph creation. Then compare automatic delivery,
+late-source phase, outgoing/incoming audio overlap and cleanup sound against the
+original before enabling the renderer. Audible playing still does not prove that
+an automatic message callback has occurred; no such timer was activated here.
 
 Full transition sound/late-source alignment is still unaccepted. No REAPER/Ardour
 or physical-controller/device tests were added here. Rebuild the relevant current

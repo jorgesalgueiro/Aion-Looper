@@ -309,6 +309,111 @@ void meterPanicTests(){
     std::cout<<"PASS: post-grid pending queued panic cancellation, stale/duplicate/repeated rejection, delayed ordered message delivery and retained old cleanup/history at tracks 0/19 and 64/128\n";
 }
 namespace {
+void queuedGraphTransactionTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool late:{false,true})
+    for(unsigned order=0;order<5;++order)for(auto stop:{LoopAction::stopImmediate,LoopAction::stop,LoopAction::stopAll}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback);f.prepare();
+        LoopMeterLifecycle owner(*f.engine,id);f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Graph transaction installs actual clip");
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        if(order){
+            f.command(LoopAction::play,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Old graph has accepted playback provenance");
+            f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Old graph cleanup is explicit");
+        }
+        for(unsigned n=0;n<8;++n)f.cycle(); // Drain the old audible fade, not its independent message timer.
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,120,1,1,4,false});
+        f.command(LoopAction::play,id);f.cycle();const auto intent=f.next(MeterGraphEventKind::queuedPlay,id);
+        check(owner.consumeQueuedPlay(intent),"Graph transaction accepts real queued intent");
+        if(late)for(unsigned n=0;n<1000&&f.view->tracks[id].state==LoopState::queued;++n)f.cycle();
+        const auto old=owner.inspect();const auto cleanup=owner.cleanupRequest();
+        if(order==2)check(owner.deliverCleanup(cleanup)&&owner.queuedIntentId()==intent.queueId,"Old cleanup before callback retains intent");
+        check(!owner.requestQueuedGraph(intent.queueId+(1ull<<32),intent.bufferId),"Graph callback validates full-width queue before enqueue");
+        check(owner.requestQueuedGraph(intent.queueId,intent.bufferId)&&!owner.requestQueuedGraph(intent.queueId,intent.bufferId),"One explicit graph callback transaction");
+        const auto pending=owner.queuedWindowTransaction();check(pending.graph&&pending.status==QueuedWindowStatus::pending,"Graph enqueue is not graph acceptance");
+        LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};
+        mirror.meterGraphTicket=pending.ticket;mirror.meterQueueId=intent.queueId;mirror.meterBufferId=intent.bufferId;
+        check(f.control->enqueueLoop(mirror),"Mirror explicit callback for paired PCM");
+        if(order==3)check(owner.deliverCleanup(cleanup),"Old cleanup retires pending graph result");
+        f.cycle();check(!owner.consumeQueuedWindowResult(f.next(MeterGraphEventKind::started,id)),"Raw start cannot impersonate graph acceptance");
+        const auto accepted=f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+        if(order==3){
+            check(!owner.consumeQueuedWindowResult(accepted)&&!owner.inspect().present,"Retired graph acceptance cannot resurrect after old cleanup");
+            f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id))
+                &&!owner.inspect().present&&!owner.cleanupRequest().serial,"Retired accepted callback stop is a detached no-op, not a user error");
+            f.command(LoopAction::play,id);f.cycle();const auto next=f.next(MeterGraphEventKind::queuedPlay,id);
+            check(owner.consumeQueuedPlay(next)&&owner.requestQueuedGraph(next.queueId,next.bufferId),"Detached owner recovers a new explicit callback after retired accepted result");
+            mirror.generation=f.control->generation();mirror.meterGraphTicket=owner.queuedWindowTransaction().ticket;mirror.meterQueueId=next.queueId;mirror.meterBufferId=next.bufferId;
+            check(f.control->enqueueLoop(mirror),"Mirror recovered callback");f.cycle();(void)f.next(MeterGraphEventKind::started,id);
+            check(owner.consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id))&&owner.inspect().present,"New callback recovers graph without resurrecting old result");
+        }else{
+            auto wrong=accepted;wrong.kind=MeterGraphEventKind::queuedWindowAccepted;check(!owner.consumeQueuedWindowResult(wrong),"Raw typed acceptance cannot impersonate graph result");
+            wrong=accepted;++wrong.ticket;check(!owner.consumeQueuedWindowResult(wrong),"Wrong graph ticket rejects");
+            wrong=accepted;wrong.bufferId+=(1ull<<32);check(!owner.consumeQueuedWindowResult(wrong),"Wrong full-width graph clip rejects");
+            check(owner.consumeQueuedWindowResult(accepted)&&!owner.consumeQueuedWindowResult(accepted),"Exact graph acceptance commits once");
+            check(owner.inspect().present&&owner.inspect().state==MeterLoopState::playing&&owner.inspect().analyser!=old.analyser
+                &&owner.inspect().data!=old.data&&owner.binding().ticket==accepted.ticket&&!owner.queuedIntentId()&&!owner.queuedWindowReady(),"Accepted callback binds fresh graph and retires message intent");
+            check(owner.cleanupRequest()==(order==2?MeterCleanupRequest{}:cleanup),"Queued graph birth preserves exact independent old deadline");
+        }
+        check(owner.request(),"Fresh queued graph may request its bound window");f.cycle();check(f.engine->popLoopMeterWindow(*f.packet),"Receive actual queued graph PCM");
+        const double time=static_cast<double>(f.view->frame)/48000;
+        check(owner.observe(*f.packet,*f.view,f.view->callbackClock,{time,time}),"Actual queued graph binding observes its own window");
+        if(order==4)check(owner.deliverCleanup(cleanup)&&!owner.inspect().present,"Retained old cleanup tears down newly accepted graph");
+        f.command(stop,id);f.cycle();
+        const auto kind=stop==LoopAction::stopAll?MeterGraphEventKind::stopAll:stop==LoopAction::stop?MeterGraphEventKind::scheduledStop:MeterGraphEventKind::immediateStop;
+        const auto stopped=f.next(kind,id);
+        check(stop==LoopAction::stopAll?owner.consumeStopAll(stopped):stop==LoopAction::stop?owner.consumeScheduledStop(stopped):owner.consumeImmediateStop(stopped),"Post-callback stop routes to accepted graph origin");
+        if(order==4)check(!owner.cleanupRequest().serial&&!owner.inspect().present,"Detached graph stop does not rearm cleanup");
+        else check(owner.cleanupRequest().serial&&owner.cleanupRequest().delay==(stop==LoopAction::stopAll?.065:stop==LoopAction::stop?stopped.stopLeadSeconds+.05:.025),"Graph stop uses original deadline policy");
+        if(stop==LoopAction::stop&&!late&&order!=3&&order!=4){
+            const auto end=f.view->tracks[id].scheduledFrame;
+            check(f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].stopPending,"Scheduled pre-grid stop retains audio gate");
+            check(owner.request(),"Request scheduled queued silence");f.cycle();check(f.engine->popLoopMeterWindow(*f.packet)
+                &&std::all_of(f.packet->samples.begin(),f.packet->samples.end(),[](float sample){return sample==0;}),"Future graph stop never renders source early");
+            for(unsigned n=0;n<1000&&f.engine->clock()<=end;++n)f.cycle();
+            check(f.view->tracks[id].state==LoopState::stopped,"Queued scheduled stop completes at its grid");
+        }
+        f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Repeated STOP retains accepted callback origin");
+        f.command(LoopAction::stopAll,id);f.cycle();check(owner.consumeStopAll(f.next(MeterGraphEventKind::stopAll,id)),"Repeated panic retains accepted callback origin");
+    }
+    for(unsigned block:{64u,128u}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,19);
+        f.record();check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled)),"Negative graph fixture installs clip");f.command(LoopAction::stopImmediate);f.cycle();
+        const auto queue=[&]{for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,120,1,1,4,false});
+            f.command(LoopAction::play);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay);check(owner.consumeQueuedPlay(q),"Negative graph fixture queues actual intent");return q;};
+        auto q=queue();f.command(LoopAction::stopAll);
+        check(owner.requestQueuedGraph(q.queueId,q.bufferId),"Queue graph callback behind panic");f.cycle();
+        check(owner.consumeQueuedCancel(f.next(MeterGraphEventKind::queuedCancel))
+            &&!owner.consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphRejected))&&!owner.inspect().present,"Panic retires graph request before late typed rejection");
+        q=queue();LoopCommand prior{LoopAction::meterQueuedWindowStart,19,0,f.engine->generation(),0,0};
+        prior.meterGraphTicket=owner.queuedWindowTransaction().ticket+1;prior.meterQueueId=q.queueId;prior.meterBufferId=q.bufferId;
+        check(f.engine->enqueueLoop(prior)&&owner.requestQueuedGraph(q.queueId,q.bufferId),"Stage graph request behind consumed raw reset");f.cycle();
+        (void)f.next(MeterGraphEventKind::started);const auto rejected=f.next(MeterGraphEventKind::queuedGraphRejected);
+        check(owner.consumeQueuedWindowResult(rejected)&&owner.queuedWindowTransaction().status==QueuedWindowStatus::rejected&&!owner.inspect().present,"Typed negative graph result terminates without birth");
+        f.command(LoopAction::stopAll);f.cycle();check(owner.consumeQueuedCancel(f.next(MeterGraphEventKind::queuedCancel)),"Retire rejected graph intent");
+        q=queue();check(owner.requestQueuedGraph(q.queueId,q.bufferId),"Fresh graph callback after rejection");
+        watch=true;f.engine->process(nullptr,0,0);f.control->process(nullptr,0,0);watch=false;
+        MeterGraphEvent event;check(!f.engine->popMeterGraphEvent(event)&&owner.queuedWindowTransaction().status==QueuedWindowStatus::pending,"Zero callback does not accept graph");
+        f.command(LoopAction::clear);f.cycle();(void)f.next(MeterGraphEventKind::started);const auto retired=f.next(MeterGraphEventKind::queuedGraphAccepted);
+        check(owner.consumeQueuedWindowResult(retired)&&owner.queuedWindowTransaction().status==QueuedWindowStatus::obsolete&&!owner.inspect().present,"Clear before delivery prevents accepted graph birth");
+        check(owner.consumeClear(f.next(MeterGraphEventKind::cleared)),"Typed clear retires graph transaction");
+        f.prepare();check(owner.reset()&&!owner.consumeQueuedWindowResult(retired),"Prepare rejects stale graph outcome");
+        f.record();check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled)),"Record after graph prepare");f.command(LoopAction::stopImmediate);f.cycle();q=queue();
+        for(unsigned n=0;n<255;++n)for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::volume,19,0,e->generation(),f.engine->clock()+1000000,1}),"Fill command FIFO before graph callback");
+        check(!owner.requestQueuedGraph(q.queueId,q.bufferId)&&owner.queuedWindowTransaction().status==QueuedWindowStatus::idle&&!owner.inspect().present,"FIFO saturation leaves graph transaction unchanged");
+        f.prepare();check(owner.reset()&&owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled)),"Prepare recovers graph FIFO saturation");q=queue();
+        check(owner.requestQueuedGraph(q.queueId,q.bufferId),"Stage graph callback before outcome loss");
+        for(unsigned n=0;n<254;++n){auto bad=prior;bad.action=LoopAction::meterQueuedGraphRequest;bad.generation=f.engine->generation();bad.meterGraphTicket=n+2;bad.meterQueueId=q.queueId+(1ull<<32);bad.meterBufferId=q.bufferId;
+            check(f.engine->enqueueLoop(bad),"Fill graph outcome stream with real negative results");}
+        f.cycle();f.cycle();check(!f.engine->meterGraphEventsCurrent()&&!owner.inspect().present&&!owner.requestQueuedGraph(q.queueId,q.bufferId),"Lost graph outcomes fail closed without birth");
+        unsigned budget=255;check(!f.engine->popMeterGraphEvent(event,f.engine->generation(),budget)&&budget==0,"Lost graph stream drains bounded raw entries");
+        f.prepare();check(owner.reset()&&owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled)),"Prepare recovers lost graph stream");q=queue();
+        check(owner.requestQueuedGraph(q.queueId,q.bufferId),"Fresh generation requests graph after loss");f.cycle();(void)f.next(MeterGraphEventKind::started);
+        check(owner.consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted))&&owner.inspect().present,"Fresh generation accepts graph after loss");
+    }
+    check(allocations.load()==0,"Queued graph transaction has zero callback new/delete");
+    std::cout<<"PASS: explicit queued graph transactions, fresh bindings, late callback after cleanup, retired-result recovery, old timer retention, pre/post-grid stop policies and paired 64/128 PCM\n";
+}
 void queuedWindowTransactionTests(){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool attached:{false,true})for(bool late:{false,true}){
@@ -493,6 +598,7 @@ void queuedWindowTests(){
 }
 }
 void meterQueuedTests(){
+    queuedGraphTransactionTests();
     queuedWindowTransactionTests();
     queuedWindowTests();
     using namespace aion;

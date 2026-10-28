@@ -300,6 +300,19 @@ void processorBufferReceiptTests(bool& audioWatch){
             "Production normal STOP after sync off retires queue through prepared cleanup route");
         command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.queued==10&&s.stops==6&&!s.rejected,"Production sync-off STOP leaves no orphan queue cancellation");
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":1})");cycle();
+        command("play");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        const auto beforeGraph=s;
+        check(!p->requestQueuedMeterGraphMessageThread(20)&&p->requestQueuedMeterGraphMessageThread(19)
+            &&!p->requestQueuedMeterGraphMessageThread(19),"Production stages one explicit queued graph callback");
+        check(p->inspectMeterServiceMessageThread().pendingWindows==1,"Production graph enqueue remains pending");
+        cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.windows==beforeGraph.windows+1&&s.windowApplied==beforeGraph.windowApplied+1&&!s.pendingWindows&&!s.readyWindows
+            &&s.attachedGraphs==1&&s.pendingCleanups==beforeGraph.pendingCleanups&&!s.rejected,"Production graph acceptance binds through sole prepared route and preserves old cleanup");
+        command("stopImmediate");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.stops==beforeGraph.stops+1&&s.stopApplied==beforeGraph.stopApplied+1&&s.pendingCleanups==1&&!s.rejected,"Production STOP NOW uses accepted queued graph origin");
+        command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.stops==beforeGraph.stops+2&&s.stopApplied==beforeGraph.stopApplied+2&&!s.rejected,"Production repeated panic retains queued graph origin");
         command("clear");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(!s.attachedGraphs&&s.applied==1&&!s.rejected,"Production typed clear detaches accepted playback graph");
     }
@@ -381,6 +394,21 @@ void panicDispatcherTests(bool& audioWatch){
         result=dispatcher.drain(32);check(result.examined==13&&result.queueApplied==13&&!result.rejected,"Post-grid cancellation routes remaining thirteen exact identities");
         for(unsigned id=0;id<20;++id)check(!ownerRoutes[id]->queuedIntentId()&&ownerRoutes[id]->cleanupRequest()==old[id]&&routes[id]->pending(),"Post-grid cancellation leaves every original JUCE cleanup deadline untouched");
         panic();check(!dispatcher.drain(32).examined,"Repeated global late panic has no remaining queued facts or inferred graph births");
+        for(auto* e:{f.engine.get(),f.control.get()})for(unsigned id=0;id<20;++id)
+            check(e->enqueueLoop({LoopAction::play,id,0,e->generation(),0,0}),"Queue twenty explicit graph callbacks");
+        f.cycle();result=dispatcher.drain(32);check(result.queueApplied==20&&!result.rejected,"Route all explicit graph intents");
+        for(unsigned id=0;id<20;++id)check(routes[id]->requestQueuedGraph(ownerRoutes[id]->queuedIntentId(),ownerRoutes[id]->committedBuffer()),"Request graph acceptance on every prepared route");
+        f.cycle();prepared.store(0,std::memory_order_release);check(!dispatcher.drain(32).examined,"Released graph routes retain pending accepted results");
+        prepared.store(f.engine->generation(),std::memory_order_release);
+        result=dispatcher.drain(7);check(result.examined==7&&result.started==4&&result.windowApplied==3&&!result.rejected,"Graph result batch retains seven-entry raw budget");
+        result=dispatcher.drain(32);check(result.examined==32&&result.windowApplied==16&&!result.rejected,"Graph result batch retains thirty-two-entry raw budget");
+        result=dispatcher.drain(32);check(result.examined==1&&result.windowApplied==1&&!result.rejected,"Graph result batch consumes final exact acceptance");
+        for(unsigned id=0;id<20;++id)check(ownerRoutes[id]->inspect().present&&ownerRoutes[id]->inspect().state==MeterLoopState::playing
+            &&ownerRoutes[id]->binding().ticket==ownerRoutes[id]->queuedWindowTransaction().ticket&&!ownerRoutes[id]->queuedIntentId()
+            &&ownerRoutes[id]->cleanupRequest()==old[id]&&routes[id]->pending(),"All twenty graph acceptances bind fresh identities and retain exact old cleanup");
+        panic();result=dispatcher.drain(7);check(result.examined==7&&result.stopApplied==7&&!result.queued&&!result.rejected,"Accepted graph panic batch uses seven exact stop origins");
+        result=dispatcher.drain(32);check(result.examined==13&&result.stopApplied==13&&!result.queued&&!result.rejected,"Accepted graph panic batch routes remaining thirteen origins");
+        for(unsigned id=0;id<20;++id)check(ownerRoutes[id]->cleanupRequest()!=old[id]&&ownerRoutes[id]->cleanupRequest().delay==.065&&routes[id]->pending(),"Graph panic replaces every old deadline with original 65ms policy");
         for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::clearAll,0,0,e->generation(),0,0}),"Clear all armed panic graphs");f.cycle();
         result=dispatcher.drain(32);check(result.applied==20&&!result.rejected,"Clear All routes after twenty panic facts");
         for(unsigned id=0;id<20;++id)check(!routes[id]->pending()&&!ownerRoutes[id]->inspect().data,"Clear All cancels every panic timer and attached history");
@@ -389,6 +417,7 @@ void panicDispatcherTests(bool& audioWatch){
     std::cout<<"PASS: twenty pending post-grid queued cancellations retain bounded 7/13 routing and original cleanup at 64/128\n";
     std::cout<<"PASS: twenty prepared queued routes reject generic starts before/after grid and retain original cleanup at 64/128\n";
     std::cout<<"PASS: twenty prepared queued-window transactions route typed results with bounded 7/32/1 drains and retained cleanup at 64/128\n";
+    std::cout<<"PASS: twenty prepared queued-graph transactions bind through bounded 7/32/1 drains, preserve old deadlines and route panic stops in 7/13 batches at 64/128\n";
 }
 void queuedAdapterTests(bool& audioWatch){
     using namespace aion;

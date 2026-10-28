@@ -399,9 +399,14 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(meterQueuedIds[id])publishMeterQueueEnd(id,MeterGraphEventKind::queuedStop);else publishImmediateMeterStop(id);
             stop(t);return true;
         case LoopAction::stop:
-            if(s==LoopState::playing&&sync.settings.mode!=SyncMode::off){
+            if((s==LoopState::playing||(s==LoopState::queued&&!t.info.stopPending&&!meterQueuedIds[id]&&meterImmediateTickets[id]
+                &&meterImmediateTickets[id]==meterGraphTickets[id]))&&sync.settings.mode!=SyncMode::off){
                 const double target=sync.nextGridSeconds(frame);
-                ++t.phaseEpoch;t.info.phaseApplyFrame=0;s=LoopState::stopping;t.endAt=SyncClock::deadline(target*rate);
+                ++t.phaseEpoch;t.info.phaseApplyFrame=0;
+                // A graph can exist before its future source starts. Keep the
+                // queued audio gate until startAt; stopping would render early.
+                if(s==LoopState::queued)t.info.stopPending=true;else s=LoopState::stopping;
+                t.endAt=SyncClock::deadline(target*rate);
                 publishMeterStop(id,MeterGraphEventKind::scheduledStop,target-static_cast<double>(frame)/rate);return true;
             }
             // Sync may be disabled after the audio grid but before message birth.
@@ -478,7 +483,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         }
         case LoopAction::meterGraphStart:
         case LoopAction::meterQueuedWindowStart:
-        case LoopAction::meterQueuedWindowRequest:return false; // Dedicated integer-identity entry points only.
+        case LoopAction::meterQueuedWindowRequest:
+        case LoopAction::meterQueuedGraphRequest:return false; // Dedicated integer-identity entry points only.
         case LoopAction::sourceRestart:
             if(!t.clip||capturing(s)||s==LoopState::finalizing||s==LoopState::armed||s==LoopState::queued||s==LoopState::stopping)return false;
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);return true;
@@ -729,7 +735,7 @@ void LoopBank::schedules(Track& track) noexcept {
             }
             track.recordPrefix=0;
         }
-        else if(state==LoopState::queued){state=LoopState::playing;track.tailRemaining=0;restartSource(track);blend(track);}
+        else if(state==LoopState::queued){state=track.info.stopPending?LoopState::stopping:LoopState::playing;track.tailRemaining=0;restartSource(track);blend(track);}
     }
     if(track.endAt&&frame>=track.endAt){
         track.endAt=0;

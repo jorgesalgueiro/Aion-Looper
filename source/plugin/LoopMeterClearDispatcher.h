@@ -37,10 +37,11 @@ public:
         while(engine.popMeterGraphEvent(event,generation,budget)){
             if(generation!=engine.generation())break;
             if(event.kind==MeterGraphEventKind::started)++result.started;
-            else if(event.kind==MeterGraphEventKind::queuedWindowAccepted||event.kind==MeterGraphEventKind::queuedWindowRejected){
+            else if(event.kind==MeterGraphEventKind::queuedWindowAccepted||event.kind==MeterGraphEventKind::queuedWindowRejected
+                ||event.kind==MeterGraphEventKind::queuedGraphAccepted||event.kind==MeterGraphEventKind::queuedGraphRejected){
                 if(event.queueId){++result.windows;
                     if(event.track<routes.size()&&routes[event.track]->consumeQueuedWindowResult(event))++result.windowApplied;
-                    else ++result.windowIgnored; // Unsolicited/raw-only or retired request, never a graph birth.
+                    else ++result.windowIgnored; // Unsolicited or retired result cannot create a graph.
                 }
             }
             else if(event.kind==MeterGraphEventKind::queuedPlay||event.kind==MeterGraphEventKind::queuedCancel||event.kind==MeterGraphEventKind::queuedStop){

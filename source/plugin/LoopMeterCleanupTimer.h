@@ -77,6 +77,9 @@ public:
     bool requestQueuedWindow(std::uint64_t queue,std::uint64_t clip) noexcept {
         assertMessageThread();return ready()&&owner.requestQueuedWindow(queue,clip);
     }
+    bool requestQueuedGraph(std::uint64_t queue,std::uint64_t clip) noexcept {
+        assertMessageThread();return ready()&&owner.requestQueuedGraph(queue,clip);
+    }
     bool consumeQueuedWindowResult(const MeterGraphEvent& event) noexcept {
         assertMessageThread();if(!ready()||!owner.consumeQueuedWindowResult(event))return false;
         synchronise();return true;

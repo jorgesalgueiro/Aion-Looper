@@ -1545,3 +1545,22 @@ new graph, retaining data/history. The native component probe supplies explicit
 graph notifications; real queued-ID graph acceptance and wall alignment remain
 unimplemented. The isolated queued-only callback negative fails in
 build/queued-callback-oracle-negative.txt without editing reference files.
+
+Explicit queued graph callbacks now use meterQueuedGraphRequest and distinct
+typed graph results through the existing bounded FIFO/sole prepared consumer.
+Append enums; preserve old raw-only behavior. Request the graph directly: a
+raw-only reset already consumes that queue's one reset and cannot be promoted
+by a second graph request. Enqueue/raw notices/raw typed results are not births.
+Commit a fresh binding only for a matching live graph result; retain exact old
+cleanup. A new explicit callback may begin after old cleanup from stopped with
+its real intent; cleanup after enqueue retires that pending result. Detached
+subsequent stops/new queues require proven current identity and cannot rearm or
+resurrect a graph. Accepted graph origins, unlike raw-only resets, own later
+STOP/STOP ALL facts. Synchronized STOP before grid must keep the audio queued
+gate until source start, storing its end independently; setting stopping early
+renders early. Preserve the failing gate negative in build/queued-graph-negative.txt.
+Keep 120 core before/after-grid lifetime/stop combinations, negative/zero/FIFO/
+loss/prepare recovery, actual processor hooks, twenty prepared 7/32/1 graph-result
+and 7/13 panic batches, prior raw cases and unchanged 72-case oracle. No automatic
+callback timer or renderer yet. Wall alignment and full overlap/envelopes/late
+source sound remain unaccepted; do not package this logical phase as complete.

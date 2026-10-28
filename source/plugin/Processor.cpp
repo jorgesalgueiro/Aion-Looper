@@ -230,6 +230,14 @@ bool AionProcessor::requestQueuedMeterWindowMessageThread(unsigned track) noexce
     const auto& owner=*(*meterOwners)[track];
     return (*meterTimers)[track]->requestQueuedWindow(owner.queuedIntentId(),owner.committedBuffer());
 }
+bool AionProcessor::requestQueuedMeterGraphMessageThread(unsigned track) noexcept {
+    JUCE_ASSERT_MESSAGE_THREAD
+    if(!meterPrepared()||track>=aion::LoopBank::trackCount)return false;
+    serviceMeters();
+    if(!meterPrepared()||!meterTimers||!(*meterTimers)[track]||!meterOwners)return false;
+    const auto& owner=*(*meterOwners)[track];
+    return (*meterTimers)[track]->requestQueuedGraph(owner.queuedIntentId(),owner.committedBuffer());
+}
 MeterServiceStatus AionProcessor::inspectMeterServiceMessageThread() const noexcept {
     JUCE_ASSERT_MESSAGE_THREAD
     auto result=meterServiceStatus;

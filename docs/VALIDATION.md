@@ -7394,3 +7394,77 @@ alignment, source timing and renderer remain unfinished. No native processor/
 format rebuilds, DAW/hardware/listening tests, Apple validation, package or push
 were performed in this session. Previous full/native gates remain historical
 evidence, not newly executed acceptance.
+
+### Explicit queued graph transaction — 2026-10-28
+
+Baseline `ecf414b`. Added a core-only graph request and distinct typed graph
+accepted/rejected results, reusing the bounded raw-window transaction machinery.
+The audio owner validates generation, increasing integer ticket, full-width live
+queue/clip and queued/playing state, resets once, and establishes the accepted
+graph stop origin. The message owner commits fresh graph/analyser/data binding
+only for its matching live graph request. Raw-only notices/results cannot do so.
+Old raw-only APIs retain their contract; request the graph directly rather than
+consuming a raw-only reset and trying to promote the same intent afterward.
+
+A newly requested callback can begin after old cleanup, from stopped with a live
+intent. Cleanup after enqueue retires that pending result and prevents revival.
+Old pending cleanup survives successful graph creation. Detached subsequent
+stops validate current provenance and remain no-ops; new explicit callbacks can
+recover. Pre-grid synchronized STOP preserves the source gate and independent
+end deadline, avoiding early audio. Immediate, scheduled and panic stop origins
+and repeated STOP/panic work after graph acceptance. No automatic timer is wired.
+
+Fresh gates (final application source; final native test binaries include the
+added all-track regression):
+
+| Gate | Result |
+| --- | --- |
+| Windows portable | 28/28, 389.63s |
+| Ubuntu portable | 28/28, 599.71s |
+| Windows native processor / SDK generation | 2/2, 11.16s |
+| Ubuntu native processor / SDK generation | 2/2, 23.38s |
+| Core sanitizer selection | 6/6, 318.56s |
+| Focused queued regressions | Windows/Ubuntu pass after restored-object rebuild |
+| Committed-PCM audit | 126 cases, 965,826 samples, max error 7.394757495227111e-8, unchanged 1e-6 tolerance |
+| Original assets | Byte identity, deterministic embedding, tamper rejection pass |
+| Pre-grid negative control | Removing the queued source gate fails `Scheduled pre-grid stop retains audio gate` |
+
+Core coverage adds 120 block/track/grid/lifetime/stop combinations: 64/128,
+tracks 0/19, before/after grid, graphless/attached and cleanup before request,
+before result or after result, with all three stop policies. It checks actual
+bound windows, fresh identities, retained old cleanup, no early source PCM,
+retired-result detached stop/new-callback recovery and repeated STOP/panic.
+Additional actual Engine cases cover typed negative graph results, a consumed
+raw reset refusing promotion, panic/clear/prepare, zero callbacks, FIFO failure,
+bounded result overflow/loss and fresh-generation recovery. Callback new/delete
+tracking remains zero; paired stereo PCM is exact in those fixtures.
+
+The production message-thread hook is tested with the real processor/sole
+prepared route. All twenty adapters additionally accept graph results with
+bounded 7/32/1 drains, preserve exact old cleanup, reject released routing and
+route subsequent panic origins in 7/13 batches with the original 65ms policy.
+The unchanged original 72-case / 1,655-observation oracle and prior raw-window,
+STOP, cleanup timer and callback-clock regressions remain enabled.
+
+The initial focused attempt had a fixture error: it requested a window from an
+intentionally detached graph. That assertion was corrected; detached-stop checks
+remain and live pre-grid graphs still assert zero source PCM. The deliberate
+negative control was then built separately. After restoring via apply_patch
+(fresh mtime), the LoopBank object was rebuilt and focused positive gates passed
+before the full runs. No deliberately broken object remains in final binaries.
+
+Reproduction commands remain in MIGRATION_CURRENT.md and BUILDING.md. Current
+logs/build logs/report use `build/queued-graph-*`; the ignored
+`build/WriteQueuedGraphEvidence.cjs` verifies complete counts, new/retained test
+markers, stable appended enums, unchanged existing processor/state methods and
+original oracle, scoped diff, custom-logo identity and source/binary hashes.
+Both Standalone development binaries rebuilt (Windows Release, Ubuntu Debug).
+Existing compiler warnings remain; no final gate had a skip, JUCE assertion,
+leaked-object report or sanitizer error.
+
+This accepts the explicit logical graph transaction, not automatic callback
+timing or full browser audio parity. Wall/audio alignment, late-source phase,
+outgoing/incoming overlap/envelopes, cleanup sound and renderer integration remain
+unaccepted. No frontend/parameter/state schema, dependency or format configuration
+changed. No current plugin-format build, REAPER/Ardour, physical controller/device,
+listening or Apple validation was added. No package or push performed.

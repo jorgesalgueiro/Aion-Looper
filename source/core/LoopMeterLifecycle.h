@@ -14,6 +14,7 @@ struct QueuedWindowTransaction {
     QueuedWindowStatus status=QueuedWindowStatus::idle;
     std::uint32_t ticket=0;
     std::uint64_t queueId=0,bufferId=0;
+    bool graph=false,afterCleanup=false;
 };
 // One message owner per track, sharing Engine's existing single command producer.
 // Keep this owner for the Engine lifetime; do not recreate it per editor.
@@ -68,36 +69,58 @@ public:
     // Explicit message callback step, not a graph birth or an automatic timer.
     // The audio owner revalidates integer identities before resetting its window.
     bool requestQueuedWindow(std::uint64_t queue,std::uint64_t clip) noexcept {
+        return requestQueuedCallback(queue,clip,false);
+    }
+    // Explicit callback delivery, never inferred from audio playing or a raw
+    // result. May arrive after older cleanup, which leaves the intent alive.
+    bool requestQueuedGraph(std::uint64_t queue,std::uint64_t clip) noexcept {
+        return requestQueuedCallback(queue,clip,true);
+    }
+private:
+    bool requestQueuedCallback(std::uint64_t queue,std::uint64_t clip,bool createGraph) noexcept {
         const auto high=std::max(ticket,issuedTicket);
-        if(!observable()||!queue||queue!=queuedId||!clip||clip!=bufferId||graph.inspect().state!=MeterLoopState::queued
+        const auto identity=graph.inspect();
+        const bool afterCleanup=createGraph&&identity.state==MeterLoopState::stopped&&!identity.present&&!identity.analyser&&!cleanup.serial;
+        if(!observable()||!queue||queue!=queuedId||!clip||clip!=bufferId||(identity.state!=MeterLoopState::queued&&!afterCleanup)
             ||queuedWindow.status==QueuedWindowStatus::pending||high==std::numeric_limits<std::uint32_t>::max()
             ||(queuedWindow.status==QueuedWindowStatus::accepted&&queuedWindow.queueId==queue))return false;
-        LoopCommand command{LoopAction::meterQueuedWindowRequest,id,0,generation,0,0};
+        LoopCommand command{createGraph?LoopAction::meterQueuedGraphRequest:LoopAction::meterQueuedWindowRequest,id,0,generation,0,0};
         command.meterGraphTicket=high+1;command.meterQueueId=queue;command.meterBufferId=clip;
         if(!engine.enqueueLoop(command))return false;
         issuedTicket=command.meterGraphTicket;
-        queuedWindow={QueuedWindowStatus::pending,issuedTicket,queue,clip};return true;
+        queuedWindow={QueuedWindowStatus::pending,issuedTicket,queue,clip,createGraph,afterCleanup};return true;
     }
+public:
     bool consumeQueuedWindowResult(const MeterGraphEvent& event) noexcept {
         if(!observable()||queuedWindow.status!=QueuedWindowStatus::pending||event.generation!=generation||event.track!=id
             ||event.serial<=lastSerial()||event.ticket!=queuedWindow.ticket||event.queueId!=queuedWindow.queueId
             ||event.bufferId!=queuedWindow.bufferId||event.retiredTicket||event.stopLeadSeconds!=0||event.queueDelaySeconds!=0
-            ||(event.kind!=MeterGraphEventKind::queuedWindowAccepted&&event.kind!=MeterGraphEventKind::queuedWindowRejected))return false;
-        const bool accepted=event.kind==MeterGraphEventKind::queuedWindowAccepted;
+            ||(queuedWindow.graph?(event.kind!=MeterGraphEventKind::queuedGraphAccepted&&event.kind!=MeterGraphEventKind::queuedGraphRejected):
+                (event.kind!=MeterGraphEventKind::queuedWindowAccepted&&event.kind!=MeterGraphEventKind::queuedWindowRejected)))return false;
+        const bool accepted=event.kind==MeterGraphEventKind::queuedWindowAccepted||event.kind==MeterGraphEventKind::queuedGraphAccepted;
         const bool owned=accepted&&engine.loopMeterGraphCurrent(generation,id,event.ticket);
         const auto outcome=!accepted?QueuedWindowStatus::rejected:
-            owned&&queuedId==event.queueId&&bufferId==event.bufferId&&graph.inspect().state==MeterLoopState::queued
+            owned&&queuedId==event.queueId&&bufferId==event.bufferId&&(graph.inspect().state==MeterLoopState::queued
+                ||(queuedWindow.afterCleanup&&graph.inspect().state==MeterLoopState::stopped&&!graph.inspect().present))
                 ?QueuedWindowStatus::accepted:QueuedWindowStatus::obsolete;
         if(!observable())return false;
         queuedWindow.status=outcome;
-        // Explicit proof of this requested raw reset permits later queued
-        // facts with a quarantined ticket, but never binds/creates an analyser.
+        // Raw-only acceptance proves a rebase, not analyser creation. Only the
+        // separately requested graph result below may bind a fresh analyser.
         if(owned&&bufferId==event.bufferId){rebasedTicket=event.ticket;rebasedBuffer=event.bufferId;}
+        if(outcome==QueuedWindowStatus::accepted&&queuedWindow.graph){
+            auto candidate=graph;
+            if(!candidate.startGraph()){queuedWindow.status=QueuedWindowStatus::obsolete;lastWindowSerial=event.serial;return true;}
+            if(!observable()){queuedWindow.status=QueuedWindowStatus::obsolete;return false;}
+            graph=candidate;ticket=event.ticket;queuedId=0;bufferNoticeSinceStart=false;rebasedTicket=0;
+            const auto identity=graph.inspect();receipt={generation,id,ticket,identity.analyser,identity.data};
+            if(identity.teardownDelay<0)cleanup={};
+        }
         lastWindowSerial=event.serial;return true;
     }
     QueuedWindowTransaction queuedWindowTransaction() const noexcept {return queuedWindow;}
     bool queuedWindowReady() const noexcept {
-        return observable()&&queuedWindow.status==QueuedWindowStatus::accepted&&queuedWindow.queueId==queuedId
+        return observable()&&!queuedWindow.graph&&queuedWindow.status==QueuedWindowStatus::accepted&&queuedWindow.queueId==queuedId
             &&queuedWindow.bufferId==bufferId&&graph.inspect().state==MeterLoopState::queued
             &&engine.loopMeterGraphCurrent(generation,id,queuedWindow.ticket);
     }
@@ -201,7 +224,7 @@ private:
     bool queueMatches(const MeterGraphEvent& event,MeterGraphEventKind kind) const noexcept {
         return observable()&&event.kind==kind&&event.generation==generation&&event.track==id
             &&event.serial>lastSerial()&&event.bufferId&&event.bufferId==bufferId
-            &&(event.ticket?event.ticket==ticket:(!graph.inspect().present&&!receipt.ticket)
+            &&(event.ticket?(event.ticket==ticket||(!graph.inspect().present&&!receipt.ticket&&engine.loopMeterGraphCurrent(generation,id,event.ticket))):(!graph.inspect().present&&!receipt.ticket)
                 ||(rebasedTicket&&rebasedBuffer==bufferId&&engine.loopMeterGraphCurrent(generation,id,rebasedTicket)))
             &&!event.retiredTicket&&event.stopLeadSeconds==0&&event.queueId
             &&std::isfinite(event.queueDelaySeconds)&&event.queueDelaySeconds>=0
@@ -211,7 +234,9 @@ private:
         const auto matches=[&]() noexcept {
             return observable()&&event.kind==kind&&event.generation==generation
                 &&event.track==id&&event.serial>lastSerial()&&event.bufferId&&event.bufferId==bufferId
-                &&event.ticket&&event.ticket==ticket&&!event.retiredTicket;
+                &&event.ticket&&(event.ticket==ticket||(!graph.inspect().present&&!receipt.ticket&&queuedWindow.graph
+                    &&queuedWindow.status==QueuedWindowStatus::obsolete&&event.ticket==queuedWindow.ticket
+                    &&engine.loopMeterGraphCurrent(generation,id,event.ticket)))&&!event.retiredTicket;
         };
         bool arm=false;
         if(!commitLoopMeterObservation(graph,matches,[&](LoopMeterGraph& candidate) noexcept {

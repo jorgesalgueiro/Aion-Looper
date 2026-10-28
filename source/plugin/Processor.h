@@ -64,6 +64,7 @@ public:
     bool readDevicePlayback(DevicePlaybackObservation&) noexcept;
     MeterServiceStatus inspectMeterServiceMessageThread() const noexcept;
     bool requestQueuedMeterWindowMessageThread(unsigned track) noexcept;
+    bool requestQueuedMeterGraphMessageThread(unsigned track) noexcept;
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:
