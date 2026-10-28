@@ -7171,3 +7171,50 @@ and acceptance/rejection recovery. Old teardown changing message state, late
 source sound, remaining graph origins/continuity and renderer remain unaccepted.
 No new hardware, REAPER or Ardour acceptance; macOS/iOS are explicitly deferred.
 No package or push was performed for this repair.
+
+### Normal STOP with sync disabled after audible grid — 2026-10-28
+
+Baseline `c6bce80`, clean main with two local commits ahead of origin. The existing
+focused gate passed, then an extended core regression failed before the product
+edit: `Pending unsynced STOP must emit queuedStop after audible grid`
+(`build/unsynced-stop-before.txt`). Normal STOP's immediate fallback still selected
+queuedStop from audio state rather than the independent pending meter queue ID.
+Its correction retires that ID, using the existing graphless teardown or attached
+25ms cleanup. The synchronized scheduled branch and generic audio stop remain
+unchanged; no DSP, UI, dependency, parameter, bridge-schema or state-format changes.
+
+The previous STOP NOW cases remain, now paired with normal STOP after switching
+sync off. Both use real queued-to-playing audio transitions, tracks 0/19, 64/128,
+exact paired stereo PCM, queue/clip identities, stale/duplicate and obsolete timer
+rejection, retained analyser/data/history and subsequent panic without orphan
+cancellation. Actual production bridge requests and real JUCE timers also cover
+the new path with frozen audio clocks and a 25ms minimum. Existing callback
+instrumentation reports zero tracked new/delete. Four added original stop() cases
+disable sync after grid; all prior reference counts, including four STOP NOW
+cases and 96 actual native queue-delay comparisons, remain enabled.
+
+| Executed gate | Result |
+| --- | --- |
+| Windows portable | 28/28, 377.14s |
+| Ubuntu portable | 28/28, 597.64s |
+| Windows native processor / SDK generation | 2/2, 12.46s |
+| Ubuntu native processor / SDK generation | 2/2, 22.81s |
+| Core sanitizer selection | 6/6, 277.79s |
+| Committed PCM | 126 cases, 965826 samples, max error 7.394757495227111e-8, unchanged 1e-6 tolerance |
+| Original UI / embedding / tamper | Pass |
+
+Final logs contain no skips, JUCE assertions, leak reports or sanitizer errors;
+existing native test compiler warnings remain. Current Standalone development
+binaries rebuilt on both platforms. Plugin formats were not rebuilt or tested
+in a DAW. Commands are in MIGRATION_CURRENT.md and BUILDING.md. Ignored report
+`build/unsynced-stop-evidence.json` verifies counts/markers, exact product diff,
+reference-case counts, original logo and source/binary hashes.
+
+This is explicit immediate stop() acceptance, not complete UI-dispatch or late
+queued-source sound parity. Original scheduleStop() requires playing message state
+and a graph; audible native playing does not prove those conditions while a
+callback is pending. Keep that scheduled policy and the old-teardown state
+boundary unaccepted until the queued callback transaction is mapped. Next resolve
+that transaction, conditional raw reset/recovery and wall/audio alignment before
+observation/rendering. No new REAPER/Ardour or hardware/device acceptance. Apple
+targets remain explicitly deferred. No package or push was performed.

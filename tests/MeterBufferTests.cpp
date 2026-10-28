@@ -401,7 +401,7 @@ void queuedWindowTests(){
 void meterQueuedTests(){
     queuedWindowTests();
     using namespace aion;
-    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool attached:{false,true}){
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool attached:{false,true})for(auto action:{LoopAction::stopImmediate,LoopAction::stop}){
         Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,id);
         f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Late STOP NOW commits actual clip");
         f.command(LoopAction::stopImmediate,id);f.cycle();
@@ -418,8 +418,11 @@ void meterQueuedTests(){
         check(owner.consumeQueuedPlay(queued),"Accept pending intent before late STOP NOW");
         for(unsigned n=0;n<1000&&f.view->tracks[id].state==LoopState::queued;++n)f.cycle();
         check(f.view->tracks[id].state==LoopState::playing&&owner.inspect().state==MeterLoopState::queued,"Audible grid leaves message intent pending");
-        f.command(LoopAction::stopImmediate,id);f.cycle();MeterGraphEvent stopped;
-        check(f.engine->popMeterGraphEvent(stopped)&&stopped.kind==MeterGraphEventKind::queuedStop,"Late STOP NOW must emit queuedStop for the pending intent after audible grid");
+        if(action==LoopAction::stop)for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::off,999,1,1,4,false});
+        f.command(action,id);f.cycle();MeterGraphEvent stopped;
+        check(f.engine->popMeterGraphEvent(stopped)&&stopped.kind==MeterGraphEventKind::queuedStop,
+            action==LoopAction::stop?"Pending unsynced STOP must emit queuedStop after audible grid":"Late STOP NOW must emit queuedStop for the pending intent after audible grid");
+        check(f.view->tracks[id].state==LoopState::stopped,"Both immediate STOP paths stop actual playback after the grid");
         check(stopped.queueId==queued.queueId&&stopped.bufferId==queued.bufferId,"Late STOP NOW retains exact queue and clip identity");
         auto wrong=stopped;++wrong.queueId;check(!owner.consumeQueuedStop(wrong)&&owner.queuedIntentId()==queued.queueId,"Wrong late STOP NOW cannot retire pending intent");
         check(owner.consumeQueuedStop(stopped)&&!owner.queuedIntentId()&&owner.queuedCallbackDelay()==-1&&!owner.consumeQueuedStop(stopped),"Late STOP NOW retires pending intent exactly once");
@@ -429,6 +432,7 @@ void meterQueuedTests(){
         f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(stopped),"STOP ALL after late STOP NOW must not emit orphan queued cancellation");
     }
     std::cout<<"PASS: post-grid pending STOP NOW, graphless teardown and attached 25ms replacement, exact identities and no orphan cancellation at tracks 0/19, 64/128\n";
+    std::cout<<"PASS: post-grid pending normal STOP after sync off, graphless/attached cleanup and no orphan cancellation at tracks 0/19, 64/128\n";
     auto stream=std::make_unique<MeterGraphEvents>();stream->reset(3);
     stream->publish(MeterGraphEventKind::queuedPlay,19,0,42,7,9007199254740993ull,0,0xffffffffffffffffull);
     MeterGraphEvent wide;check(stream->pop(wide,3)&&wide.queueId==0xffffffffffffffffull&&wide.bufferId==9007199254740993ull&&wide.frame==42,"Queued identity remains full-width in the actual bounded stream");

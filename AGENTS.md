@@ -1502,3 +1502,11 @@ the post-grid core, original stop() characterization, production request and rea
 JUCE frozen-clock tests at 64/128. Normal synchronized STOP, message state changed
 by old teardown, full queued callback transaction and late source sound remain
 unaccepted. This narrow metadata repair does not enable rendering or packaging.
+
+Normal STOP's immediate fallback also selects queuedStop by pending ID: sync can
+be disabled after audible grid while the message owner remains queued. Keep the
+scheduled-stop branch and audible stop unchanged. Retain both STOP NOW and normal
+sync-off cases, original stop() reference counts, production bridge requests,
+25ms JUCE timers, old-timer rejection and no-orphan-panic checks at 64/128. The
+original scheduleStop() guard requires playing plus graph; audio playing alone
+does not establish that message condition while callback mapping is unfinished.

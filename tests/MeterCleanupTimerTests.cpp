@@ -285,12 +285,22 @@ void processorBufferReceiptTests(bool& audioWatch){
         check(s.queued==8&&s.queueApplied==8&&s.stops==6&&s.pendingCleanups==1&&!s.rejected,"Production late STOP NOW retires queue through prepared cleanup route");
         command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.queued==8&&s.stops==6&&!s.rejected,"Production late STOP NOW leaves no orphan queue cancellation");
+        command("play");cycle();snapshot=rpc(R"({"operation":"snapshot"})");
+        for(unsigned n=0;n<1000&&snapshot["tracks"][19]["state"].toString()=="queued";++n){cycle();snapshot=rpc(R"({"operation":"snapshot"})");}
+        check(snapshot["tracks"][19]["state"].toString()=="playing","Production sync-off STOP fixture crosses audio grid");
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");cycle();
+        command("stop");cycle();snapshot=rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(snapshot["tracks"][19]["state"].toString()=="stopped"&&s.queued==10&&s.queueApplied==10&&s.stops==6&&s.pendingCleanups==1&&!s.rejected,
+            "Production normal STOP after sync off retires queue through prepared cleanup route");
+        command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        check(s.queued==10&&s.stops==6&&!s.rejected,"Production sync-off STOP leaves no orphan queue cancellation");
         command("clear");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(!s.attachedGraphs&&s.applied==1&&!s.rejected,"Production typed clear detaches accepted playback graph");
     }
     std::cout<<"PASS: production committed-buffer subscription consumes actual captured clips, typed clear without graph tickets and retained prepare handoff at 64/128; no inferred graph creation or callback new/delete\n";
     std::cout<<"PASS: production post-grid queued panic cancellation at 64/128, retained old cleanup and no duplicate or inferred graph stop\n";
     std::cout<<"PASS: production post-grid STOP NOW consumes queued intent without orphan cancellation at 64/128\n";
+    std::cout<<"PASS: production normal STOP after sync off consumes pending post-grid intent at 64/128\n";
 }
 void panicDispatcherTests(bool& audioWatch){
     using namespace aion;
@@ -573,7 +583,7 @@ public:
 private:
     bool& audioWatch;std::atomic<std::uint32_t> cleanupPrepared{0}; // Outlives bound fixture adapters.
     std::unique_ptr<Fixture> f;std::unique_ptr<ProcessorMeterFixture> processorMeters;
-    std::unique_ptr<ProcessorShutdownFixture> shutdown;unsigned stage=0;
+    std::unique_ptr<ProcessorShutdownFixture> shutdown;unsigned stage=0;bool lateStopSyncOff=false;
     double started=0,expectedDelay=0;std::uint64_t frame=0,data=0;std::array<double,7> held{};
     aion::MeterCleanupRequest obsolete{};
     std::thread cleanupWorker;
@@ -616,6 +626,7 @@ private:
         check(f->timer->consumeImmediateStop(event),"Accepted immediate stop arms actual JUCE cleanup");capture();stage=12;
     }
     void begin(unsigned block){
+        lateStopSyncOff=false;
         shutdown=std::make_unique<ProcessorShutdownFixture>(block,audioWatch);
         processorMeters=std::make_unique<ProcessorMeterFixture>(block,audioWatch);
         f=std::make_unique<Fixture>(block,audioWatch);f->play();capture();
@@ -829,7 +840,11 @@ private:
             {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&f->timer->consumeQueuedPlay(event),"Deliver pending STOP NOW intent to real adapter");}
             for(unsigned n=0;n<1000&&f->view->tracks[19].state==aion::LoopState::queued;++n)f->cycle();
             check(f->view->tracks[19].state==aion::LoopState::playing&&f->owner->inspect().state==aion::MeterLoopState::queued,"Real STOP NOW fixture crosses grid without message birth");
-            for(auto* e:{f->engine.get(),f->control.get()})check(e->enqueueLoop({aion::LoopAction::stopImmediate,19,0,e->generation(),0,0}),"Stop pending intent after grid");
+            for(auto* e:{f->engine.get(),f->control.get()}){
+                if(lateStopSyncOff)e->configureSync({aion::SyncMode::off,999,1,1,4,false});
+                const auto action=lateStopSyncOff?aion::LoopAction::stop:aion::LoopAction::stopImmediate;
+                check(e->enqueueLoop({action,19,0,e->generation(),0,0}),"Stop pending intent after grid");
+            }
             f->cycle();
             started=wall();
             {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&f->timer->consumeQueuedStop(event)
@@ -839,6 +854,7 @@ private:
             if(f->owner->inspect().present)return;
             check(wall()-started>=.025,"Late STOP NOW retains real 25ms cleanup minimum");stopped();
             check(!f->owner->queuedIntentId(),"Late STOP NOW clears intent before frozen-clock teardown");
+            if(!lateStopSyncOff){lateStopSyncOff=true;stage=21;break;}
             if(f->block==64){begin(128);break;}
             stopTimer();juce::MessageManager::getInstance()->stopDispatchLoop();break;
         }
@@ -871,4 +887,5 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     std::cout<<"PASS: actual queued PLAY and queued panic retain the real old JUCE stop timer until frozen-clock teardown at 64/128; no analyser birth and zero tracked callback new/delete\n";
     std::cout<<"PASS: actual post-grid queued panic preserves the original real 25ms JUCE cleanup and frozen-clock data/history at 64/128\n";
     std::cout<<"PASS: actual post-grid STOP NOW replaces real JUCE cleanup with 25ms, obsolete timer rejection and frozen-clock history at 64/128\n";
+    std::cout<<"PASS: actual normal STOP after sync off replaces real JUCE cleanup with 25ms and frozen-clock history at 64/128\n";
 }

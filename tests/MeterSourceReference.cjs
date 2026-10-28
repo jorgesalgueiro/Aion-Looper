@@ -151,18 +151,20 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   if(attached)assert.equal(timers.get(cleanup).ms,25);else noGraph(loop);
   ctx.panic();assert.equal(loop.stopTimeout,cleanup);assert.equal(loop.state,'stopped');++latePanicCases;
  }
- let lateStopNowCases=0;
- for(const id of [0,19])for(const attached of [false,true]){
+ let lateStopNowCases=0,lateSyncOffStopCases=0;
+ for(const id of [0,19])for(const attached of [false,true])for(const syncOff of [false,true]){
   timers.clear();audio.state='running';audio.currentTime=1;grid=1.2;const loop=ctx.fresh(id,true);
   if(attached){await loop.play(1);loop.stop();loop.state='queued';loop.queueTimeout=ctx.setTimeout(()=>{},100);}
   else await ctx.action(id);
   const pending=loop.queueTimeout,old=loop.stopTimeout,analyser=loop.analyser,data=loop.analyserData;
-  audio.currentTime=1.23;assert.equal(loop.state,'queued');assert(timers.has(pending));loop.stop();
+  audio.currentTime=1.23;assert.equal(loop.state,'queued');assert(timers.has(pending));
+  if(syncOff)vm.runInContext('state.syncEnabled=false',ctx);
+  loop.stop();
   assert.equal(loop.queueTimeout,null);assert(!timers.has(pending));assert.equal(loop.analyser,analyser);assert.equal(loop.analyserData,data);
   if(attached){assert.equal(loop.state,'stopping');assert(!timers.has(old));assert.notEqual(loop.stopTimeout,old);
    const current=timers.get(loop.stopTimeout);assert.equal(current.ms,25);current.fn();assert.equal(loop.analyser,null);assert.equal(loop.analyserData,data);}
   else{assert.equal(loop.state,'stopped');assert.equal(loop.stopTimeout,null);noGraph(loop);}
-  ++lateStopNowCases;
+  if(syncOff)++lateSyncOffStopCases;else ++lateStopNowCases;
  }
  let nativeQueueTimingCases=0,zeroLeadCases=0,positiveLeadCases=0;
  if(process.argv[2]){
@@ -188,6 +190,6 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   }
   assert.equal(nativeQueueTimingCases,96);assert.equal(zeroLeadCases,48);assert.equal(positiveLeadCases,48);
  }
- console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,latePanicCases,lateStopNowCases,nativeQueueTimingCases,zeroLeadCases,positiveLeadCases,
+ console.log(JSON.stringify({passed:true,cases,schedulingCases,resumeCases,panicCases,queuedStopCases,latePanicCases,lateStopNowCases,lateSyncOffStopCases,nativeQueueTimingCases,zeroLeadCases,positiveLeadCases,
   scope:'Unchanged Loop/AudioGraph methods, handleAction/grid scheduling/cancellation and AudioEngine.resume with controlled timer IO. Native comparison covers only accepted queue delay and unchanged grid deadline, not message delivery/birth, browser PCM or renderer acceptance.'},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});

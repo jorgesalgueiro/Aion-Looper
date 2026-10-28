@@ -404,7 +404,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
                 ++t.phaseEpoch;t.info.phaseApplyFrame=0;s=LoopState::stopping;t.endAt=SyncClock::deadline(target*rate);
                 publishMeterStop(id,MeterGraphEventKind::scheduledStop,target-static_cast<double>(frame)/rate);return true;
             }
-            if(s==LoopState::queued)publishMeterQueueEnd(id,MeterGraphEventKind::queuedStop);else publishImmediateMeterStop(id);
+            // Sync may be disabled after the audio grid but before message birth.
+            if(meterQueuedIds[id])publishMeterQueueEnd(id,MeterGraphEventKind::queuedStop);else publishImmediateMeterStop(id);
             stop(t);return true;
         case LoopAction::clear:++t.clearEpoch;clear(t);return true;
         case LoopAction::play:
