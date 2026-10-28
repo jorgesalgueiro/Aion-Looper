@@ -1,8 +1,8 @@
 # Current migration checkpoint
 
-Updated 2026-10-28. Current source baseline: `5f6279a` (clean main at session start,
-eleven local commits ahead of cached origin). Current work delivers due queued
-graph callbacks from the existing editor-independent processor message timer.
+Updated 2026-10-28. Current source baseline: `24df7e9` (clean main at session start,
+twelve local commits ahead of cached origin). Current work verifies zero-delay
+queued callbacks and cancellation behind a full message fact batch.
 Configured cleanup deadlines retain the accepted command-counter integration.
 Continue the existing implementation; this is not a restart or release checklist.
 
@@ -38,7 +38,30 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Due callback retains its original intent and fires once | Guarded local-owner delivery checks deadline and stable receipt, preserves cleanup ordering, rejects stale replacement and retries FIFO failure | Existing processor timer supplies autonomous delivery below; zero-delay/backlog interactions and full source sound remain separate |
 | Full instruments/effects/controller/persistence/host parity | No new acceptance from this session; see PARITY.md and feature-specific validation notes | Do not infer suite completion from these looper/meter gates |
 
-## Current slice: autonomous queued graph callback delivery
+## Current slice: zero-delay and full-batch queued callbacks
+
+The real production message-loop runner now covers fourteen cases across tracks
+0/19 and 64/128. A 999 BPM, one-beat grid produces the original clipped delay of
+exactly zero: RPC/readout leaves it pending, the autonomous message tick enqueues
+it once, and only typed acceptance creates graphs. Another case generates 34
+actual ordered facts in one audio block, with track 0's already-due cancellation
+last. A full 32-fact tick defers; the trailing cancellation is consumed before any
+graph request. An internal message-only `queuedDeferredPasses` counter verifies
+that the production deferral path was exercised. No DSP, UI, parameter or state
+schema changes. Existing positive-delay, old-cleanup, loss and lifetime tests stay.
+
+Verification: Windows/Ubuntu portable 28/28 (416.03s/668.92s), native 2/2
+(15.05s/28.73s), development Standalone builds and original assets pass.
+The unchanged 126-case / 965,826-sample PCM audit remains within 1e-6 (maximum
+7.394757495227111e-8). Logs: `build/queued-edge-*`. No core/DSP changes,
+sanitizer rerun, plugin-format/DAW/hardware test, package or push in this slice.
+
+CLI decision: the user chose command-line control of the running Standalone app,
+sharing its existing session/devices and validated command handler, rather than
+a second headless engine. All newly ported features must have CLI access. Product
+CLI transport is not yet present; the existing console binaries are test probes.
+
+## Previous slice: autonomous queued graph callback delivery
 
 Only the existing processor Timer tick enables automatic delivery. RPC, inspection
 and manual diagnostic service remain synchronous fact-draining operations without
@@ -400,8 +423,8 @@ transaction/STOP evidence remains in VALIDATION.md and `build/`; its regression
 cases are retained. Application parameters, serialized state, original assets,
 dependency versions and target configuration remain unchanged.
 
-Next extend the automatic-delivery interaction checks to zero-delay queues and
-cancellation behind a full receipt budget, then compare late-source phase,
+Zero-delay and full-budget cancellation interaction checks now pass. Next add the
+user-selected running-Standalone CLI, then compare late-source phase,
 outgoing/incoming overlap and cleanup sound against the original before enabling
 the renderer. Preserve the original stopped-after-old-teardown state boundary:
 original STOP ALL cancels queueTimeout only while message state is queued. Do not

@@ -25,6 +25,7 @@ struct MeterServiceStatus {
     std::uint64_t stops=0,stopApplied=0;
     std::uint64_t queued=0,queueApplied=0;
     std::uint64_t windows=0,windowApplied=0,windowIgnored=0;
+    std::uint64_t queuedDeferredPasses=0; // Full fact-batch deferrals, message thread only.
     unsigned pendingWindows=0,readyWindows=0;
     bool current=false,timerRunning=false;
 };

@@ -226,7 +226,8 @@ void AionProcessor::serviceMeters(bool deliverQueued) noexcept {
     // later in the FIFO: defer until a subsequent bounded drain reaches its end.
     // The retained command fact is the timer record; never infer a birth from
     // audio playing, a newer view, or a bare-track manual request.
-    if(deliverQueued&&drained.examined<32&&meterServiceStatus.current){
+    if(deliverQueued&&meterServiceStatus.current){
+        if(drained.examined==32){++meterServiceStatus.queuedDeferredPasses;return;}
         const double now=processorClockReader();
         for(unsigned id=0;id<meterOwners->size();++id){
             if(!meterPrepared()||engine.generation()!=generation)break;

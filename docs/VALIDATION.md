@@ -7791,3 +7791,25 @@ platform, automatic real-timer markers, exact PCM scope and original assets/logo
 It checks the six-file diff allowlist against baseline and records source, binary
 and test-log hashes in `build/automatic-queued-evidence.json`. This scoped result
 does not establish full feature parity or release readiness.
+
+## Zero-delay and full-batch queued callback gates — 2026-10-28
+
+Baseline `24df7e9`. Retain the original ten autonomous cases and add four real
+production message-loop cases (two per block size). A 999 BPM one-beat grid
+clamps the original delay to exactly zero; RPC/readout remains asynchronous and
+typed results create graphs exactly once. A 34-fact batch places the original
+already-due track's cancellation beyond the first 32-fact drain. The new internal
+message-only deferral counter confirms a full production tick, then all trailing
+cancellations apply without a pending request, graph result or rejected receipt.
+Both cases exercise tracks 0/19 at 64/128. No source/audio/UI/state model changes.
+
+Windows/Ubuntu native 2/2 (15.05s/28.73s), portable 28/28 (416.03s/668.92s), both
+development Standalone builds, original assets/embedding/tamper gate and unchanged
+126-case PCM audit pass. PCM: 965,826 samples, max error 7.394757495227111e-8,
+tolerance 1e-6. No final skip, JUCE assertion or leaked object; existing compiler
+warnings remain. Core sanitizers are not rerun: core/audio sources are unchanged.
+Commands are the same native/core/PCM/asset commands in the preceding section;
+logs use `build/queued-edge-*`. This accepts the scoped logical interactions, not
+full source sound, punctual timers, DAW/hardware or release readiness. No package
+or push. The user selected control of the running Standalone as the first CLI
+mode; its transport is the next slice, sharing the native command handler.

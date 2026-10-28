@@ -1634,3 +1634,11 @@ cleanup survival. Test fixture clips must be recorded sequentially: only one
 capture is accepted at a time. The 25ms service cadence is not punctual original
 setTimeout delivery or full source sound acceptance; zero-delay/backlog interaction
 coverage and source overlap/late-phase comparison remain follow-up work.
+
+User requirement (2026-10-28): every feature must have CLI access. The user chose
+control of the running Standalone app first, using its existing session and audio/
+MIDI devices, rather than a separate headless audio engine. Route CLI operations
+through the same validated production command/state layer as the GUI. Do not
+duplicate DSP, change parameter IDs, or imply control of arbitrary DAW plugin
+instances. Extend command access alongside each newly ported feature. Unported
+engines remain unported through the CLI as well; keep their gaps explicit.

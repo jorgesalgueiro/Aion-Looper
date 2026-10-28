@@ -757,6 +757,7 @@ public:
 private:
     bool& audioWatch;bool done=false;unsigned index=0,phase=0,block=64,mode=0;
     double started=0,due=0;
+    std::uint64_t deferredBefore=0,examinedBefore=0;
     std::unique_ptr<AionProcessor> p;
     juce::AudioBuffer<float> audio;juce::MidiBuffer midi;
     void rpc(const char* text){check(static_cast<bool>(p->request({juce::JSON::parse(text)})["ok"]),"Automatic queued RPC");}
@@ -768,7 +769,7 @@ private:
         check(static_cast<bool>(p->request({request})["ok"]),"Automatic queued command");}
     void both(const char* action){command(action,0);command(action,19);cycle();}
     void begin(){
-        mode=index%5;block=index<5?64:128;phase=0;queuedDueCounter=100;
+        mode=index%7;block=index<7?64:128;phase=0;queuedDueCounter=100;
         p=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},AionProcessor::OutputLatencyReader{},&queuedDueClock);
         p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
         audio.setSize(2,static_cast<int>(block));midi.ensureSize(256);
@@ -782,6 +783,11 @@ private:
         if(mode==4){both("play");rpc(R"({"operation":"snapshot"})");
             check(p->inspectMeterServiceMessageThread().attachedGraphs==2,"Automatic fixture attaches old graphs");}
         rpc(R"({"operation":"setParameter","id":"syncMode","value":1})");cycle();
+        if(mode==5){
+            rpc(R"({"operation":"setParameter","id":"syncBpm","value":999})");
+            rpc(R"({"operation":"setParameter","id":"syncBars","value":1})");
+            rpc(R"({"operation":"setParameter","id":"syncNum","value":1})");cycle();
+        }
         p->setNonRealtime(mode==3);
         if(mode==4)both("stopImmediate");
         both("play");rpc(R"({"operation":"snapshot"})");
@@ -789,15 +795,27 @@ private:
         if(mode==3){check(!p->readQueuedMeterCallbackTimeMessageThread(0,receipt),"Offline queue cannot borrow live counter");due=101;}
         else {check(p->readQueuedMeterCallbackTimeMessageThread(0,receipt),"Automatic queue retains actual command deadline");due=receipt.deadlineSeconds;
             check(p->readQueuedMeterCallbackTimeMessageThread(19,receipt),"Second track has independent retained queue");due=std::max(due,receipt.deadlineSeconds);
-            check(due>100.026,"Automatic fixture has positive original grid delay");}
+            if(mode==5){check(due==100&&receipt.commandSeconds==due,"Original clipped queue delay is exactly zero");
+                check(!p->inspectMeterServiceMessageThread().pendingWindows,"Zero-delay callback is asynchronous, never fired by RPC");phase=1;}
+            else check(due>100.026,"Automatic fixture has positive original grid delay");}
         started=wall();
     }
-    void advance(){p.reset();if(++index==10){done=true;stopTimer();
+    void advance(){p.reset();if(++index==14){done=true;stopTimer();
             std::cout<<"PASS: autonomous production queued callbacks at 64/128 on tracks 0/19, immutable early/late counter deadlines, one-shot result, cancellation, release, offline exclusion and old-cleanup survival without editor or manual requests\n";
+            std::cout<<"PASS: automatic zero-delay callbacks remain asynchronous and one-shot; full 32-fact batches defer due callbacks until trailing cancellation, tracks 0/19 at 64/128\n";
         }else begin();}
     void timerCallback() override {
         if(phase==0){if(wall()-started<.06)return;
             auto status=p->inspectMeterServiceMessageThread();check(!status.pendingWindows&&!status.windowApplied,"Frozen counter cannot fire early queued callback");
+            if(mode==6){
+                deferredBefore=status.queuedDeferredPasses;examinedBefore=status.examined;
+                // RPCs drain no facts here: all 34 facts are produced together
+                // by the final audio block. Track 0 cancellation is last, beyond
+                // the first batch, while its original callback is already due.
+                queuedDueCounter=due+1;command("stopImmediate",19);
+                for(unsigned n=0;n<16;++n){command("play",19);command("stopImmediate",19);}
+                command("stopAll",0);cycle();phase=6;started=wall();return;
+            }
             if(mode==1)both("stopAll");
             if(mode==2)p->releaseResources();
             if(mode==4){queuedDueCounter=100.026;phase=4;started=wall();return;}
@@ -809,6 +827,12 @@ private:
             check(!status.attachedGraphs,"Automatic enqueue is not a graph birth");cycle();phase=2;started=wall();return;}
         if(wall()-started<.07)return;
         const auto status=p->inspectMeterServiceMessageThread();
+        if(phase==6){
+            if(status.examined-examinedBefore<34)return;
+            check(status.queuedDeferredPasses>deferredBefore,"Production timer really encountered a full fact batch");
+            check(!status.pendingWindows&&!status.windowApplied&&!status.rejected,"Trailing cancellation prevents every due graph request without rejected receipts");
+            advance();return;
+        }
         if(phase==2){check(status.attachedGraphs==2&&status.windowApplied==2&&!status.pendingWindows&&!status.rejected,"Automatic typed results bind both exact graph identities once");
             cycle();check(p->inspectMeterServiceMessageThread().windowApplied==2,"Later service cannot repeat consumed callback");}
         else check(!status.pendingWindows&&!status.windowApplied,"Cancelled, released and offline callbacks never enqueue");
