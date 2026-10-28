@@ -401,6 +401,34 @@ void queuedWindowTests(){
 void meterQueuedTests(){
     queuedWindowTests();
     using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool attached:{false,true}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);LoopMeterLifecycle owner(*f.engine,id);
+        f.record(id);check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Late STOP NOW commits actual clip");
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        if(attached){
+            f.command(LoopAction::play,id);f.cycle();check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Late STOP NOW establishes an actual old graph");
+            check(owner.request(),"Request old graph PCM before queued STOP NOW");f.cycle();
+            const double t=static_cast<double>(f.view->frame)/48000;
+            check(f.engine->popLoopMeterWindow(*f.packet)&&owner.observe(*f.packet,*f.view,f.view->callbackClock,{t,t}),"Observe actual old graph PCM");
+            f.command(LoopAction::stopImmediate,id);f.cycle();check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Arm cleanup before queued STOP NOW");
+        }
+        const auto old=owner.cleanupRequest();const auto identity=owner.inspect();const auto held=reading(owner.value());
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,999,1,1,4,false});
+        f.command(LoopAction::play,id);f.cycle();const auto queued=f.next(MeterGraphEventKind::queuedPlay,id);
+        check(owner.consumeQueuedPlay(queued),"Accept pending intent before late STOP NOW");
+        for(unsigned n=0;n<1000&&f.view->tracks[id].state==LoopState::queued;++n)f.cycle();
+        check(f.view->tracks[id].state==LoopState::playing&&owner.inspect().state==MeterLoopState::queued,"Audible grid leaves message intent pending");
+        f.command(LoopAction::stopImmediate,id);f.cycle();MeterGraphEvent stopped;
+        check(f.engine->popMeterGraphEvent(stopped)&&stopped.kind==MeterGraphEventKind::queuedStop,"Late STOP NOW must emit queuedStop for the pending intent after audible grid");
+        check(stopped.queueId==queued.queueId&&stopped.bufferId==queued.bufferId,"Late STOP NOW retains exact queue and clip identity");
+        auto wrong=stopped;++wrong.queueId;check(!owner.consumeQueuedStop(wrong)&&owner.queuedIntentId()==queued.queueId,"Wrong late STOP NOW cannot retire pending intent");
+        check(owner.consumeQueuedStop(stopped)&&!owner.queuedIntentId()&&owner.queuedCallbackDelay()==-1&&!owner.consumeQueuedStop(stopped),"Late STOP NOW retires pending intent exactly once");
+        check(owner.inspect().analyser==identity.analyser&&owner.inspect().data==identity.data&&reading(owner.value())==held,"Late STOP NOW retains original analyser/data/history");
+        if(attached){const auto current=owner.cleanupRequest();check(current.serial&&current.serial!=old.serial&&current.delay==.025&&!owner.deliverCleanup(old),"Late STOP NOW replaces old cleanup with 25ms and rejects obsolete timer");}
+        else check(!owner.inspect().present&&!owner.cleanupRequest().serial,"Graphless late STOP NOW tears down without a timer");
+        f.command(LoopAction::stopAll,id);f.cycle();check(!f.engine->popMeterGraphEvent(stopped),"STOP ALL after late STOP NOW must not emit orphan queued cancellation");
+    }
+    std::cout<<"PASS: post-grid pending STOP NOW, graphless teardown and attached 25ms replacement, exact identities and no orphan cancellation at tracks 0/19, 64/128\n";
     auto stream=std::make_unique<MeterGraphEvents>();stream->reset(3);
     stream->publish(MeterGraphEventKind::queuedPlay,19,0,42,7,9007199254740993ull,0,0xffffffffffffffffull);
     MeterGraphEvent wide;check(stream->pop(wide,3)&&wide.queueId==0xffffffffffffffffull&&wide.bufferId==9007199254740993ull&&wide.frame==42,"Queued identity remains full-width in the actual bounded stream");

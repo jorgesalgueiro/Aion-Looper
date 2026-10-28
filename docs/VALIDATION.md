@@ -7128,3 +7128,46 @@ and committed logo remain unchanged. The report verifies the exact source diff,
 retained pre-fix failure, scoped markers and source/binary/log hashes. Full
 configure/build/platform instructions remain in BUILDING.md; the compact resume
 note contains the focused and full commands actually used here.
+
+### Pending STOP NOW after audible grid — 2026-10-28
+
+Baseline `3ad30bc`. The new core regression first failed on the existing code:
+`Late STOP NOW must emit queuedStop for the pending intent after audible grid`
+(`build/post-grid-stop-now-before.txt`). The production change selects the existing
+queuedStop route from the pending queue ID instead of native queued state, and
+thereby retires the audio-side ID before a later STOP ALL. Generic audible stop,
+scheduled STOP, parameters, persistence, frontend/reference and dependencies are
+unchanged. This adds no allocation, loop, timer or lock to the audio callback.
+
+Added graphless/attached cases at tracks 0/19, 64/128 with actual queued-to-playing
+transitions and exact paired stereo PCM; wrong/duplicate queue receipt and obsolete
+timer rejection; retained analyser/data/history; no orphan cancellation. Production
+processor bridge requests and actual JUCE timers verify fresh 25ms cleanup and
+frozen-clock history. Four unchanged-original stop() cases supplement all previous
+136 lifecycle, 14 scheduling, 22 resume, 14 panic, 4 queued-stop, 4 late-panic and
+96 native queue-delay comparisons. Attached reference fixtures explicitly supply
+pending state; they do not establish queued graph-origin or browser sound parity.
+
+| Executed gate | Result |
+| --- | --- |
+| Windows portable | 28/28, 371.82s |
+| Ubuntu portable | 28/28, 619.28s |
+| Windows native processor / SDK generation | 2/2, 11.16s |
+| Ubuntu native processor / SDK generation | 2/2, 23.92s |
+| Core sanitizer selection | 6/6, 290.04s |
+| Committed PCM | 126 cases, 965826 samples, max error 7.394757495227111e-8, unchanged 1e-6 tolerance |
+| Original UI / embedding / tamper | Pass |
+
+No skips, JUCE assertions, leak reports or sanitizer errors occurred in these
+runs; existing native test compiler warnings remain. Both current Standalone
+development binaries rebuilt; plugin formats were not rebuilt or DAW-tested.
+The actual callback checks retain zero tracked new/delete. Commands are in
+MIGRATION_CURRENT.md, with configure/platform instructions in BUILDING.md.
+Ignored report `build/post-grid-stop-now-evidence.json` verifies gate counts,
+markers, exact production diff, original logo and source/binary hashes.
+
+Next: normal synchronized STOP after grid, then the queued callback transaction
+and acceptance/rejection recovery. Old teardown changing message state, late
+source sound, remaining graph origins/continuity and renderer remain unaccepted.
+No new hardware, REAPER or Ardour acceptance; macOS/iOS are explicitly deferred.
+No package or push was performed for this repair.

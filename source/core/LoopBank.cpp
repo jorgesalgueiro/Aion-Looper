@@ -395,7 +395,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             }
             return finish(t);
         case LoopAction::stopImmediate:
-            if(s==LoopState::queued)publishMeterQueueEnd(id,MeterGraphEventKind::queuedStop);else publishImmediateMeterStop(id);
+            // The audible grid does not deliver the independent message callback.
+            if(meterQueuedIds[id])publishMeterQueueEnd(id,MeterGraphEventKind::queuedStop);else publishImmediateMeterStop(id);
             stop(t);return true;
         case LoopAction::stop:
             if(s==LoopState::playing&&sync.settings.mode!=SyncMode::off){

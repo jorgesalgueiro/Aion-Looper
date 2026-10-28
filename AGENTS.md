@@ -1493,3 +1493,12 @@ pre/post-grid frozen-clock cleanup tests at 64/128. Generic audible stop remains
 unchanged. If old teardown already changed message state, retain the existing
 fail-closed boundary until full callback mapping. See docs/MIGRATION_CURRENT.md and
 post-grid-panic-before.txt for the source/state distinction and reproduced failure.
+
+STOP NOW (stopImmediate) likewise selects queuedStop by explicit pending queue ID,
+including after audible grid. Retire the audio-side ID through publishMeterQueueEnd
+so later STOP ALL cannot emit an orphan cancellation. Keep graphless teardown,
+attached fresh 25ms cleanup, old-timer rejection and analyser/data/history. Retain
+the post-grid core, original stop() characterization, production request and real
+JUCE frozen-clock tests at 64/128. Normal synchronized STOP, message state changed
+by old teardown, full queued callback transaction and late source sound remain
+unaccepted. This narrow metadata repair does not enable rendering or packaging.
