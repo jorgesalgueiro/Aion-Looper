@@ -102,7 +102,8 @@ cmake --install build/macos --config Release --prefix dist/macos
 cpack --config build/macos/CPackConfig.cmake -C Release -B dist -G ZIP
 ```
 
-Targets include Standalone, VST3, CLAP, AU and AUv3. Add
+The future macOS preset selects Standalone + AU. VST3, CLAP and AUv3 are explicit
+opt-ins, not current acceptance targets. Add
 `-DAION_BUILD_LV2=ON` if a macOS LV2 target is wanted. Product signing, hardened
 runtime settings and notarization must be configured with the owner's identities;
 this source does not embed certificates or disable release security to fake signing.

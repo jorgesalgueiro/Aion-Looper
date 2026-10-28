@@ -11,12 +11,36 @@ applicable full selected-format gates at integration/release. Observable sound,
 timing, controls/state and real-time ownership stay strict; identical internal
 browser graph machinery is not a product requirement. Do not weaken regressions.
 
-Native WSL mirror setup/measurement is being completed at
-`/home/jorge/projects/Aion-Looper`. Windows remains the editing/publishing owner;
-SetupWslWorkspace.sh mirrors committed main and pristine dependency/reference
-caches without resetting dirty work. Do not copy Windows build caches or silently
-assume uncommitted Windows edits exist in WSL. Evidence will be recorded below.
-No DSP/parameter/UI implementation is changed by this workflow update.
+Native WSL mirror is at `/home/jorge/projects/Aion-Looper`, with independent JUCE,
+reference and build directories. Windows remains the editing/publishing owner.
+SetupWslWorkspace.sh mirrors committed main, handles CRLF-normalized caches and
+refuses dirty/unrelated destinations; guard probes passed without changing HEAD
+or protected files. Uncommitted Windows edits are not copied. Missing historical
+Git blob 7542c2300d1c793a942ee91a0c2eb093e1910347 (an older CMakeLists.txt) was
+restored by `git fetch --refetch origin main`; connectivity fsck now passes. No
+working files or branch history were rewritten for that repair.
+
+Verification so far: Windows preset configuration + Standalone-only build passed;
+CLAP is absent from the regenerated solution despite an existing cached validator
+path. Four focused Windows infrastructure tests passed in 7.98s; a subsequent
+Standalone incremental build took 5.05s. Native WSL core build and three focused
+infrastructure tests passed in 10.12s, including exact original UI bytes. This is
+not a new full audio/DAW/hardware acceptance run.
+
+Matched configure comparison at source f0c1264 / pinned JUCE 9.0.4, Release,
+Standalone/LV2 ON, CLAP/VST3 OFF, BUILD_TESTING OFF: fresh setup 288.21s mounted
+versus 46.22s native; warm configure 176.15s versus 1.87s (~94x in this one run).
+Evidence/commands: `build/wsl-configure-benchmark.json`, with each tree's
+`build/workflow-benchmark` logs. Configure timing is not build/runtime timing.
+Native Linux preset configuration passed in 48.71s; its first Standalone-only
+build passed in 280.47s and LV2 in 12.39s. Windows VST3 also rebuilt successfully.
+Native target inventory contains Standalone/LV2 and no CLAP/VST3. Detailed native
+phase commands/results are in `build/wsl-native-build.json` and native
+`build/workflow-{configure,standalone,lv2}.log`. These builds are not new DAW,
+hardware or full audio acceptance. No DSP/parameter/UI implementation changed
+and no packages were generated. Native Standalone incremental no-op took 0.75s.
+Next: sync committed main with the helper, then
+resume the current migration slice under the new focused workflow.
 
 ## Documentation, target and license decision — 2026-10-28
 

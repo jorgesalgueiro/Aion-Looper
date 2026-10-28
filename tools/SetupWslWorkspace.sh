@@ -11,7 +11,7 @@ destination=$(realpath -m "${2:-$HOME/projects/Aion-Looper}")
 case "$destination" in
     /mnt/*|/|"$source_repo") printf 'Destination must be a separate native Linux directory.\n' >&2; exit 2 ;;
 esac
-git_source() { git -c safe.directory="$source_repo" -C "$source_repo" "$@"; }
+git_source() { git --no-optional-locks -c safe.directory="$source_repo" -C "$source_repo" "$@"; }
 if [[ $(git_source rev-parse --show-toplevel) != "$source_repo" ]]; then
     printf 'Source must be the repository root.\n' >&2; exit 2
 fi
@@ -27,7 +27,7 @@ if [[ -e "$destination" ]]; then
     git -C "$destination" merge --ff-only FETCH_HEAD
 else
     mkdir -p "$(dirname "$destination")"
-    git -c safe.directory="$source_repo" clone --no-local -c core.autocrlf=false --branch main --origin windows "$source_repo" "$destination"
+    git --no-optional-locks -c safe.directory="$source_repo" clone --no-local -c core.autocrlf=false --branch main --origin windows "$source_repo" "$destination"
     upstream=$(git_source remote get-url origin)
     git -C "$destination" remote add origin "$upstream"
 fi
@@ -42,17 +42,24 @@ for relative in .deps/JUCE .reference/Ascii-Looper; do
         printf 'Optional cache absent: %s (normal dependency fetching remains available).\n' "$relative"
         continue
     fi
-    expected=$(git -c safe.directory="$cached" -C "$cached" rev-parse HEAD)
+    expected=$(git --no-optional-locks -c safe.directory="$cached" -C "$cached" rev-parse HEAD)
+    # Windows Git may normalize CRLF via its global config, unavailable to WSL.
+    # Accept only an actually clean index under one explicit mode; never discard edits.
+    cache_autocrlf=false
+    if [[ -n $(git --no-optional-locks -c safe.directory="$cached" -c core.autocrlf=false -C "$cached" status --porcelain) ]]; then
+        if [[ -z $(git --no-optional-locks -c safe.directory="$cached" -c core.autocrlf=true -C "$cached" status --porcelain) ]]; then
+            cache_autocrlf=true
+        else
+            printf 'Source cache is dirty: %s; no partial copy attempted.\n' "$cached" >&2; exit 2
+        fi
+    fi
     if [[ -e "$native" ]]; then
         if [[ ! -d "$native/.git" ]] || [[ $(git -C "$native" rev-parse HEAD) != "$expected" ]] || [[ -n $(git -C "$native" status --porcelain) ]]; then
             printf 'Existing native cache differs or is dirty: %s; no reset attempted.\n' "$native" >&2; exit 2
         fi
     else
-        if [[ -n $(git -c safe.directory="$cached" -C "$cached" status --porcelain) ]]; then
-            printf 'Source cache is dirty: %s; no partial copy attempted.\n' "$cached" >&2; exit 2
-        fi
         mkdir -p "$(dirname "$native")"
-        git -c safe.directory="$cached" clone --no-local --no-checkout -c core.autocrlf=false "$cached" "$native"
+        git --no-optional-locks -c safe.directory="$cached" clone --no-local --no-checkout -c core.autocrlf="$cache_autocrlf" "$cached" "$native"
         git -C "$native" checkout --detach "$expected"
     fi
 done

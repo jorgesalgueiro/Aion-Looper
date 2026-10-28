@@ -39,5 +39,6 @@ Primary sources:
   dependency notices under `share/licenses`. Notice inclusion is not a completed
   rights/dependency audit or a certification of release readiness.
 
-Linux delivery is Standalone, CLAP and LV2; Windows retains VST3. Signing,
+Active Linux delivery is Standalone/LV2; Windows is Standalone/VST3. CLAP is
+opt-in/deferred and its notices apply when included. Signing,
 installer work and dependency compatibility remain distribution acceptance gates.

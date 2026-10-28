@@ -82,8 +82,10 @@ wsl -d Ubuntu --exec bash /mnt/d/Jorge/Documents/Codex/Aion-Looper/tools/SetupWs
 
 The helper clones/fast-forwards committed `main`, configures a local `windows`
 remote and a GitHub `origin`, and reuses pristine pinned JUCE/reference Git caches
-as independent native checkouts. It refuses dirty, divergent or unrelated
-existing destinations; it never resets, force-updates or deletes them. It warns
+as independent native checkouts. Cache checks account for Windows Git CRLF
+normalization and reproduce the reference checkout bytes without changing the
+source. Transfers use Git protocol instead of direct NTFS object-directory copies.
+It refuses dirty, divergent or unrelated existing destinations; it never resets, force-updates or deletes them. It warns
 about uncommitted Windows work, which is not copied. Source/dependency/reference
 files are read only. CLAP is deferred, so its cache is fetched normally only if
 explicitly enabled later. Do not edit and publish competing histories from both
@@ -127,3 +129,34 @@ Keep JUCE + offline embedded ASCII UI. No Qt/Tauri/CEF switch now. Default produ
 workspace: 10 loops, 10 drones, 10 samplers; preserve expanded native capacity and
 stable IDs. All new feature ports need shared GUI/CLI access. AGPL-3.0-only covers
 project-owned code; third-party licenses and asset-permission checks remain.
+
+## Measured storage comparison — 28 October 2026
+
+One matched CMake comparison at source `f0c1264`, pinned JUCE 9.0.4, Release,
+Standalone/LV2 enabled, CLAP/VST3 disabled and BUILD_TESTING=OFF:
+
+| Configure phase | Windows-mounted `/mnt/d` | Native WSL `/home/jorge/projects` |
+| --- | --- | --- |
+| Fresh build-tree setup, including JUCE helper compilation | 288.21 s | 46.22 s |
+| Subsequent warmed configure | 176.15 s | 1.87 s |
+
+This run's warmed configure was about 94x faster. This is configure-only evidence,
+not a repeated statistical study, full application build benchmark or runtime
+performance claim. Keep configure calls out of unchanged incremental loops.
+Commands and source/JUCE revisions are in the local ignored evidence file
+`build/wsl-configure-benchmark.json`; both trees use `build/workflow-benchmark`.
+The initial storage transfer also exposed a missing historical CMakeLists.txt Git
+blob; `git fetch --refetch origin main` restored it and connectivity fsck passed.
+That repair changed no working files or branch history. Reference caches required
+explicit CRLF normalization detection; native exact-asset checks passed afterward.
+
+The new native Linux Standalone-only build preset and LV2 target both built
+successfully after setup (first app build 280.47s, LV2 12.39s). Windows
+Standalone/VST3 builds passed too. Focused infrastructure checks passed 4/4 on
+Windows and 3/3 in native WSL, including original asset identity. These are
+workflow checks, not a new full DSP/DAW/device acceptance run. Dirty-mirror and
+unrelated-destination probes both refused changes while preserving files/HEAD.
+
+A subsequent native Standalone incremental no-op build took 0.75s (/usr/bin/time);
+the Windows incremental build took 5.05s including its command startup. These
+single runs are separate observations, not matched full-build benchmarks.

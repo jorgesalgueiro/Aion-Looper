@@ -8,7 +8,7 @@ and installed tools are excluded from Git; the source build pins its dependencie
 | JUCE 9.0.4 | `.deps/JUCE`, pinned CMake FetchContent | Common framework and platform adapters |
 | VST3 SDK | JUCE `modules/juce_audio_processors_headless/format_types/VST3_SDK` | Windows VST3; Linux target removed |
 | LV2 SDK | JUCE `modules/juce_audio_processors_headless/format_types/LV2_SDK` | Native JUCE LV2 wrapper |
-| CLAP SDK + extension | `.deps/clap-juce-extensions`, including recursive submodules | Desktop CLAP |
+| CLAP SDK + extension | `.deps/clap-juce-extensions`, including recursive submodules | Opt-in/deferred desktop CLAP |
 | ASIO interface headers | JUCE `modules/juce_audio_devices/native/asio` | Windows ASIO build; device driver is separate |
 | WebView2 SDK 1.0.3485.44 | `.deps/nuget/Microsoft.Web.WebView2.1.0.3485.44` | Windows embedded editor |
 | WebView2 runtime | Existing Windows installation | Browser execution; separate from SDK |
