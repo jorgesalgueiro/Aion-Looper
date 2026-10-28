@@ -127,7 +127,7 @@ void AionProcessor::cancelExport(){
 }
 void AionProcessor::timerCallback(){
     serviceMidi();
-    serviceMeters();
+    serviceMeters(true);
     const auto written=exportWriteResult->load(std::memory_order_acquire);
     if(written>0){exportWriteResult->store(0);exportBusy=false;exportStatus=written==1?"WAV saved":"WAV export failed: could not write the selected file";}
     // This shared service also owns meter generations. Keep it scheduled until
@@ -194,7 +194,7 @@ bool AionProcessor::meterPrepared() const noexcept {
     const auto prepared=preparedGeneration.load(std::memory_order_acquire);
     return prepared&&prepared==engine.generation()&&preparedGeneration.load(std::memory_order_acquire)==prepared;
 }
-void AionProcessor::serviceMeters() noexcept {
+void AionProcessor::serviceMeters(bool deliverQueued) noexcept {
     JUCE_ASSERT_MESSAGE_THREAD
     meterServiceStatus.current=false;
     const auto generation=preparedGeneration.load(std::memory_order_acquire);
@@ -221,6 +221,22 @@ void AionProcessor::serviceMeters() noexcept {
     meterServiceStatus.queued+=drained.queued;meterServiceStatus.queueApplied+=drained.queueApplied;
     meterServiceStatus.windows+=drained.windows;meterServiceStatus.windowApplied+=drained.windowApplied;meterServiceStatus.windowIgnored+=drained.windowIgnored;
     meterServiceStatus.current=drained.current&&meterPrepared()&&engine.generation()==generation;
+    // Only the autonomous message tick delivers callbacks. RPC/readout service
+    // must not fire them synchronously. A full raw budget may hide a cancellation
+    // later in the FIFO: defer until a subsequent bounded drain reaches its end.
+    // The retained command fact is the timer record; never infer a birth from
+    // audio playing, a newer view, or a bare-track manual request.
+    if(deliverQueued&&drained.examined<32&&meterServiceStatus.current){
+        const double now=processorClockReader();
+        for(unsigned id=0;id<meterOwners->size();++id){
+            if(!meterPrepared()||engine.generation()!=generation)break;
+            aion::QueuedMeterCallbackTime due;
+            if((*meterOwners)[id]->readQueuedCallbackTime(1,{1,now},due)&&due.remainingSeconds==0)
+                (*meterTimers)[id]->requestQueuedGraphDue(due,1,{1,now});
+            // Successful enqueue consumes this exact event once. FIFO failure
+            // leaves it retryable on the next tick; no spin or deadline rearm.
+        }
+    }
 }
 bool AionProcessor::requestQueuedMeterWindowMessageThread(unsigned track) noexcept {
     JUCE_ASSERT_MESSAGE_THREAD

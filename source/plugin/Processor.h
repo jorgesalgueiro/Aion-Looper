@@ -112,7 +112,7 @@ private:
     std::optional<aion::LoopMeterClearDispatcher> meterDispatcher; // Destroyed before its timer routes.
     MeterServiceStatus meterServiceStatus{};
     bool meterPrepared() const noexcept;
-    void serviceMeters() noexcept;
+    void serviceMeters(bool deliverQueued=false) noexcept;
     std::atomic<float>* master = nullptr;
     std::atomic<float>* monitor = nullptr;
     std::atomic<float>* autoPlay = nullptr;

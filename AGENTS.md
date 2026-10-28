@@ -1618,3 +1618,19 @@ Keep real JUCE configured-clock tests for all four overdue stop kinds, future
 offset/early wake, missing/offline fallback and malformed rejection at 64/128,
 paired PCM and tracked callback allocations. Fixed deadlines do not guarantee
 event-loop punctuality or establish physical latency/full sound parity.
+
+The processor's existing editor-independent Timer now delivers due queued graph
+requests after its sole bounded fact drain. RPC/readout service must not fire
+callbacks synchronously. A full 32-fact budget defers automatic delivery until
+the ordered stream is exhausted; never bypass unseen cancellation facts. Read
+the retained original command deadline and use requestQueuedGraphDue with its
+full identity, not the bare-track diagnostic hook. At most twenty owners are
+examined per tick; failed enqueue retries later without spinning or rearming.
+Offline/missing correlation remains explicit-only. Old cleanup may detach before
+callback while retaining that queued fact; cleanup after enqueue still retires
+the pending result. Keep production editor-free automatic tests at tracks 0/19,
+64/128 for early/late, one-shot, cancellation, release, offline exclusion and old
+cleanup survival. Test fixture clips must be recorded sequentially: only one
+capture is accepted at a time. The 25ms service cadence is not punctual original
+setTimeout delivery or full source sound acceptance; zero-delay/backlog interaction
+coverage and source overlap/late-phase comparison remain follow-up work.

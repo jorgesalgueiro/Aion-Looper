@@ -1,9 +1,9 @@
 # Current migration checkpoint
 
-Updated 2026-10-28. Current source baseline: `692c773` (clean main at session start,
-ten local commits ahead of cached origin). Current work integrates command-counter
-cleanup deadlines into configured JUCE timers. Manual/missing/offline compatibility
-remains receipt-based. Automatic queued callback scheduling stays unwired.
+Updated 2026-10-28. Current source baseline: `5f6279a` (clean main at session start,
+eleven local commits ahead of cached origin). Current work delivers due queued
+graph callbacks from the existing editor-independent processor message timer.
+Configured cleanup deadlines retain the accepted command-counter integration.
 Continue the existing implementation; this is not a restart or release checklist.
 
 ## Reference and baseline
@@ -24,21 +24,57 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Reference behavior | Native status / evidence | Remaining gap |
 | --- | --- | --- |
 | Capture and accepted loop edits preserve committed PCM | Existing scoped audit: 126 capture/OD/SUB cases at 1e-6; other loop-edit gates retained | Full browser envelopes/resampling and physical input timing are separate |
-| Queue callback uses max(0, grid delta minus 100ms) | Exact accepting callback retained; immutable command-counter deadline; 96 original delay cases plus 288 offset cases / 864 deadline reads at 1e-12 | Automatic delivery, cleanup origin alignment and full source sound remain unaccepted |
+| Queue callback uses max(0, grid delta minus 100ms) | Exact accepting callback retained; immutable command-counter deadline; 96 original delay cases plus 288 offset cases / 864 deadline reads at 1e-12 | Delivery is now automatic on the existing 25ms service tick; punctual event-loop timing and full source sound remain unaccepted |
 | Stop cleanup uses 25ms / unrounded lead+50ms / 65ms | Configured live JUCE timers now retain command-origin deadlines; original 144 stop cases / 432 reads retained | Event-loop jitter, UI/physical timing and full teardown sound remain unaccepted; explicit compatibility paths stay receipt-based |
 | STOP ALL cancels a still-queued intent even after its grid time | This repair routes queuedCancel by explicit pending ID; core, production processor, 20-route and real-timer regressions | This does not fix audible playback occurring before a late message callback |
 | STOP NOW clears pending queue before immediate graph cleanup, including after grid | Explicit queue-ID routing; graphless/attached, production requests and real 25ms timer checks | Normal synchronized STOP and old-teardown state boundary remain separate |
 | Normal STOP takes immediate path when sync is disabled | Pending-ID routing covers sync disabled after grid; accepted graph origins support immediate and synchronized stops before/after grid | Actual automatic callback delivery and full transition sound remain separate |
 | Queued cancellation retains older analyser/data/history and cleanup | Existing owner/adapter policy retained, including original pre-grid test plus added post-grid frozen-clock test | If old cleanup already changed message state out of queued, existing rejection remains intentional pending full mapping |
 | Audible grid does not prove message graph birth | Graph origin remains quarantined; no new graph, reset or 65ms cleanup inferred | Visible meters, remaining capture/edit graph origins, overlap and continuity remain unfinished |
-| Pending intent requires its conditional callback transaction | Generic start rejects real queued IDs; explicit graph request/result now binds a fresh graph with rejection/loss/cleanup recovery | Automatic callback timing and full source lifetime remain unwired |
+| Pending intent requires its conditional callback transaction | Generic start rejects real queued IDs; explicit graph request/result now binds a fresh graph with rejection/loss/cleanup recovery | Default timer now requests due real-ID callbacks; full source lifetime remains unaccepted |
 | Conditional raw reset reports its outcome without graph creation | Explicit request/result handshake, reserved tickets, typed outcomes and production routing; old graph/binding/cleanup retained | This is raw-window readiness only; graph acceptance, source timing and renderer remain separate |
 | Explicit queued callback creates a graph independently of old cleanup | Unchanged-source/component comparison: 72 scenarios, 1,278 additional observations; fresh analyser/data, retained old deadlines, cleanup before/after callback, repeated immediate/scheduled/panic stops | This oracle supplies explicit notifications; the real-ID transaction is checked separately, and audio/wall scheduling remains unwired |
-| Explicit graph callback owns subsequent stop routing | Real queue IDs, 120 core lifetime/stop combinations, prepared processor hook and twenty-track result/stop routing pass | Automatic timer delivery, overlap/envelopes and source phase are not accepted by this logical transaction phase |
-| Due callback retains its original intent and fires once | Guarded local-owner delivery checks deadline and stable receipt, preserves cleanup ordering, rejects stale replacement and retries FIFO failure | Automatic timer lifetime/instance binding and cleanup clock origins remain separate |
+| Explicit graph callback owns subsequent stop routing | Real queue IDs, 120 core lifetime/stop combinations, prepared processor hook and twenty-track result/stop routing pass | Automatic service delivery is covered below; overlap/envelopes and source phase remain unaccepted |
+| Due callback retains its original intent and fires once | Guarded local-owner delivery checks deadline and stable receipt, preserves cleanup ordering, rejects stale replacement and retries FIFO failure | Existing processor timer supplies autonomous delivery below; zero-delay/backlog interactions and full source sound remain separate |
 | Full instruments/effects/controller/persistence/host parity | No new acceptance from this session; see PARITY.md and feature-specific validation notes | Do not infer suite completion from these looper/meter gates |
 
-## Current slice: configured-counter cleanup timers
+## Current slice: autonomous queued graph callback delivery
+
+Only the existing processor Timer tick enables automatic delivery. RPC, inspection
+and manual diagnostic service remain synchronous fact-draining operations without
+automatic callback delivery. Each tick drains at most 32 raw facts first. A full
+budget defers delivery until another tick reaches the end of the ordered stream,
+so a queued cancellation cannot be overtaken behind an unfinished receipt batch.
+Healthy prepared owners then read their retained original command fact and request
+its exact due graph through the existing guarded one-shot transaction. Work is
+bounded to twenty owners; failed FIFO enqueue retries on a later tick, without
+spinning or changing the deadline. Result acceptance still owns graph creation.
+
+There is no second fact consumer, timer allocation, audio callback change, new
+parameter, JS operation or persistence schema. Missing/offline clock observations
+remain explicit-only. Old independent cleanup may detach before callback delivery;
+it must not erase the original still-pending queued fact. Release, generation and
+loss guards remain in force. This uses the existing 25ms message-service cadence;
+it does not promise a punctual OS timer or implement audible source-phase changes.
+
+Acceptance: actual editor-free production timer, tracks 0/19 at 64/128, frozen
+counter/early and overdue delivery, one-shot typed result, cancellation, release,
+offline exclusion and old cleanup before callback; retain existing FIFO, stale
+receipt, generation/loss and cleanup-after-enqueue guards and unchanged-JS gates.
+Initial Windows run rejected an invalid test setup attempting simultaneous loop
+recordings. LoopBank permits one capture; record each fixture clip separately.
+Final verification: Windows/Ubuntu portable CTest 28/28 each (409.83s/664.45s),
+native 2/2 each (13.89s/27.71s), both development Standalone builds, original
+UI/embedding/tamper checks, and the unchanged 126-case PCM audit pass. PCM remains
+965,826 samples, maximum error 7.394757495227111e-8 at 1e-6. No final skipped test,
+JUCE assertion or leaked-object report; existing compiler warnings remain. Core
+sanitizers are not rerun because core/audio sources are unchanged. Logs use
+`build/automatic-queued-*`; the checked local manifest is
+`build/automatic-queued-evidence.json`. See VALIDATION.md for exact commands and
+scope. No new plugin-format, DAW/hardware, listening or Apple validation; no package
+or push.
+
+## Previous slice: configured-counter cleanup timers
 
 Production adapters receive the same immutable counter reader as processBlock.
 Valid live stop facts use their captured entry + sample offset + original delay.
@@ -364,17 +400,16 @@ transaction/STOP evidence remains in VALIDATION.md and `build/`; its regression
 cases are retained. Application parameters, serialized state, original assets,
 dependency versions and target configuration remain unchanged.
 
-Next connect bounded automatic queued delivery to the guarded due hook, using the
-same configured counter and retaining the original fixed unrounded deadline.
-Each timer must retain its receipt and owning processor lifetime and service
-ordered cancellation/loss/prepare safely. Cleanup before callback remains distinct
-from cleanup retiring an already-pending result. The raw-only hook and generic
-start must not become shortcuts to graph creation. Compare automatic delivery,
-late-source phase, outgoing/incoming overlap and cleanup sound against the original
-before enabling the renderer. Audible playing does not prove an automatic message
-callback occurred; no such timer was activated here.
+Next extend the automatic-delivery interaction checks to zero-delay queues and
+cancellation behind a full receipt budget, then compare late-source phase,
+outgoing/incoming overlap and cleanup sound against the original before enabling
+the renderer. Preserve the original stopped-after-old-teardown state boundary:
+original STOP ALL cancels queueTimeout only while message state is queued. Do not
+silently broaden cancellation or weaken pending-result retirement. The raw-only
+hook and generic start must not become shortcuts to graph creation. A native
+audible source still does not prove a message callback or graph result occurred.
 
-For this session's portable gates, run `aion_core_tests` without arguments, then
+For the previous cleanup slice's portable gates, run `aion_core_tests` without arguments, then
 `ctest --test-dir build/windows-core -C Release -V -E '^core_realtime_contract$'`
 or Ubuntu `ctest --test-dir build/core -V -E '^core_realtime_contract$'`.
 This is one complete direct core audit plus 27 remaining CTest checks per platform.

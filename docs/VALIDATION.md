@@ -7724,3 +7724,70 @@ source/log/binary hashes in `build/correlated-cleanup-evidence.json`.
 Reproduction commands are in MIGRATION_CURRENT.md and BUILDING.md. Existing
 preview/plugin binaries keep their original source snapshots until rebuilt;
 this session builds development Standalone targets and tests, not release packages.
+
+## Automatic queued graph service — 2026-10-28
+
+Baseline `5f6279a`; pinned dependencies, parameter IDs, persistence, audio engine,
+reference/UI bytes and approved logo unchanged. The existing 25ms processor Timer
+now calls the meter service with automatic delivery enabled. Synchronous RPC and
+diagnostic calls retain explicit-only delivery. After a healthy prepared drain
+examines fewer than its 32-fact budget, at most twenty owners can request their
+retained exact due receipt. A full budget defers to another tick, preserving the
+ordered cancellation frontier. The existing guarded due request consumes an event
+only after successful enqueue and permits bounded later-tick retry on FIFO failure.
+Only a matching audio-side typed result can create a graph.
+
+The new real JUCE message-loop runner uses the production processor, no editor and
+no manual graph request. Both tracks 0/19 run at 64/128 through frozen-counter
+early checks, overdue requests, one-shot typed acceptance, cancellation, release,
+offline exclusion and independent old cleanup before callback delivery. Existing
+manual due, FIFO/loss/prepare, result retirement and twenty-route checks remain.
+An initial fixture attempted simultaneous captures, violating LoopBank's existing
+single-capture rule; both initial failures are retained in
+`build/automatic-queued-fixture-failure-{windows,linux}.txt`. Sequentially recording
+the two clips repairs the fixture without changing production capture behavior.
+
+Reproduce from the repository with the already configured pinned build trees:
+
+```powershell
+$cmake = '.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+$ctest = '.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe'
+& $cmake --build build/windows --config Release --target aion_midi_processor_tests AionLooper_Standalone --parallel 2
+& $ctest --test-dir build/windows -C Release -V -R '^(native_midi_processor|standalone_clock_sdk_generation)$'
+& $ctest --test-dir build/windows-core -C Release --output-on-failure
+node tests/AudioParityAudit.cjs build/windows-core/Release/aion_reference_probe.exe
+python tests/AssetTests.py
+```
+
+```sh
+cmake --build build/linux --target aion_midi_processor_tests AionLooper_Standalone --parallel 2
+DISPLAY=:0 ctest --test-dir build/linux -V -R '^(native_midi_processor|standalone_clock_sdk_generation)$'
+ctest --test-dir build/core --output-on-failure
+```
+
+No native audio processing changed. Core sanitizers are not rerun for this
+message-thread-only slice; earlier sanitizer evidence remains scoped to its
+recorded source. The message service cadence adds up to one nominal 25ms tick of
+delivery quantization before event-loop delays; it does not reproduce punctual
+setTimeout delivery or establish late-source/overlap/envelope sound parity. Actual
+zero-delay and full-budget cancellation interactions remain the next focused
+checks. No REAPER/Ardour, physical devices/controllers, listening, plugin-format
+builds, Apple validation, package or push are performed in this session.
+
+Final results: Windows/Ubuntu portable CTest 28/28 each (409.83s/664.45s), native
+2/2 each (13.89s/27.71s). The new automatic-delivery marker and all retained native
+guards pass on both platforms; tracked callback new/delete stays zero. Both
+development Standalone targets build. Original UI byte identity, deterministic
+embedding and tamper rejection pass. Committed-PCM comparison remains 126 cases,
+965,826 samples, maximum absolute error 7.394757495227111e-8 at unchanged 1e-6.
+No final skipped test, JUCE assertion or leaked-object report; existing compiler
+warnings remain. The initial invalid fixture is corrected and no failing gate
+remains in these runs. The portable core objects are unchanged from baseline;
+this session reruns their full 28-test suites without rebuilding unrelated code.
+
+Logs use `build/automatic-queued-*`. The ignored evidence generator
+`build/WriteAutomaticQueuedEvidence.cjs` requires final 28/28 and 2/2 markers per
+platform, automatic real-timer markers, exact PCM scope and original assets/logo.
+It checks the six-file diff allowlist against baseline and records source, binary
+and test-log hashes in `build/automatic-queued-evidence.json`. This scoped result
+does not establish full feature parity or release readiness.

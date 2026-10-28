@@ -748,13 +748,81 @@ private:
         if(f->owner->inspect().present)return;detached();advance();
     }
 };
+// Exercise the default production timer, with no editor and no explicit graph
+// request. The audio clock is frozen while the configured counter advances.
+class AutomaticQueuedRunner final : private juce::Timer {
+public:
+    explicit AutomaticQueuedRunner(bool& watch):audioWatch(watch){begin();startTimer(5);}
+    bool finished() const noexcept {return done;}
+private:
+    bool& audioWatch;bool done=false;unsigned index=0,phase=0,block=64,mode=0;
+    double started=0,due=0;
+    std::unique_ptr<AionProcessor> p;
+    juce::AudioBuffer<float> audio;juce::MidiBuffer midi;
+    void rpc(const char* text){check(static_cast<bool>(p->request({juce::JSON::parse(text)})["ok"]),"Automatic queued RPC");}
+    void cycle(){audio.clear();audioWatch=true;p->processBlock(audio,midi);audioWatch=false;}
+    void command(const char* action,unsigned track){auto* data=new juce::DynamicObject();juce::var request(data);
+        data->setProperty("operation","loop");data->setProperty("action",action);data->setProperty("track",static_cast<int>(track));
+        data->setProperty("generation",static_cast<int>(p->inspectCallbackClockAudioThread().generation));
+        data->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis())+4000);
+        check(static_cast<bool>(p->request({request})["ok"]),"Automatic queued command");}
+    void both(const char* action){command(action,0);command(action,19);cycle();}
+    void begin(){
+        mode=index%5;block=index<5?64:128;phase=0;queuedDueCounter=100;
+        p=std::make_unique<AionProcessor>(AionProcessor::ExportDestination{},AionProcessor::OutputLatencyReader{},&queuedDueClock);
+        p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
+        audio.setSize(2,static_cast<int>(block));midi.ensureSize(256);
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");cycle();
+        for(unsigned track:{0u,19u}){
+            command("record",track);cycle();for(unsigned n=0;n<512/block;++n)cycle();
+            command("finish",track);cycle();cycle();
+        }
+        both("stopImmediate");
+        rpc(R"({"operation":"snapshot"})");
+        if(mode==4){both("play");rpc(R"({"operation":"snapshot"})");
+            check(p->inspectMeterServiceMessageThread().attachedGraphs==2,"Automatic fixture attaches old graphs");}
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":1})");cycle();
+        p->setNonRealtime(mode==3);
+        if(mode==4)both("stopImmediate");
+        both("play");rpc(R"({"operation":"snapshot"})");
+        aion::QueuedMeterCallbackTime receipt;
+        if(mode==3){check(!p->readQueuedMeterCallbackTimeMessageThread(0,receipt),"Offline queue cannot borrow live counter");due=101;}
+        else {check(p->readQueuedMeterCallbackTimeMessageThread(0,receipt),"Automatic queue retains actual command deadline");due=receipt.deadlineSeconds;
+            check(p->readQueuedMeterCallbackTimeMessageThread(19,receipt),"Second track has independent retained queue");due=std::max(due,receipt.deadlineSeconds);
+            check(due>100.026,"Automatic fixture has positive original grid delay");}
+        started=wall();
+    }
+    void advance(){p.reset();if(++index==10){done=true;stopTimer();
+            std::cout<<"PASS: autonomous production queued callbacks at 64/128 on tracks 0/19, immutable early/late counter deadlines, one-shot result, cancellation, release, offline exclusion and old-cleanup survival without editor or manual requests\n";
+        }else begin();}
+    void timerCallback() override {
+        if(phase==0){if(wall()-started<.06)return;
+            auto status=p->inspectMeterServiceMessageThread();check(!status.pendingWindows&&!status.windowApplied,"Frozen counter cannot fire early queued callback");
+            if(mode==1)both("stopAll");
+            if(mode==2)p->releaseResources();
+            if(mode==4){queuedDueCounter=100.026;phase=4;started=wall();return;}
+            queuedDueCounter=due+1;phase=mode==1||mode==2||mode==3?3:1;started=wall();return;}
+        if(phase==4){if(wall()-started<.07)return;
+            const auto status=p->inspectMeterServiceMessageThread();check(!status.attachedGraphs&&!status.pendingCleanups&&!status.pendingWindows,"Old cleanup detaches before still-pending queued callback");
+            queuedDueCounter=due+1;phase=1;started=wall();return;}
+        if(phase==1){const auto status=p->inspectMeterServiceMessageThread();if(status.pendingWindows!=2)return;
+            check(!status.attachedGraphs,"Automatic enqueue is not a graph birth");cycle();phase=2;started=wall();return;}
+        if(wall()-started<.07)return;
+        const auto status=p->inspectMeterServiceMessageThread();
+        if(phase==2){check(status.attachedGraphs==2&&status.windowApplied==2&&!status.pendingWindows&&!status.rejected,"Automatic typed results bind both exact graph identities once");
+            cycle();check(p->inspectMeterServiceMessageThread().windowApplied==2,"Later service cannot repeat consumed callback");}
+        else check(!status.pendingWindows&&!status.windowApplied,"Cancelled, released and offline callbacks never enqueue");
+        advance();
+    }
+};
 class Runner final : private juce::Timer {
 public:
-    explicit Runner(bool& watch):audioWatch(watch){correlated=std::make_unique<CorrelatedCleanupRunner>(watch);startTimer(5);}
+    explicit Runner(bool& watch):audioWatch(watch){automatic=std::make_unique<AutomaticQueuedRunner>(watch);startTimer(5);}
     ~Runner() override {stopTimer();check(!cleanupWorker.joinable(),"Cleanup worker must finish before owner destruction");}
 private:
     bool& audioWatch;std::atomic<std::uint32_t> cleanupPrepared{0}; // Outlives bound fixture adapters.
     std::unique_ptr<CorrelatedCleanupRunner> correlated;
+    std::unique_ptr<AutomaticQueuedRunner> automatic;
     std::unique_ptr<Fixture> f;std::unique_ptr<ProcessorMeterFixture> processorMeters;
     std::unique_ptr<ProcessorShutdownFixture> shutdown;unsigned stage=0;bool lateStopSyncOff=false;
     double started=0,expectedDelay=0;std::uint64_t frame=0,data=0;std::array<double,7> held{};
@@ -812,6 +880,7 @@ private:
         check(f->owner->inspect().present,"Blocked message thread cannot deliver a timer callback");
     }
     void timerCallback() override {
+        if(automatic){if(!automatic->finished())return;automatic.reset();correlated=std::make_unique<CorrelatedCleanupRunner>(audioWatch);return;}
         if(correlated){if(!correlated->finished())return;correlated.reset();begin(64);return;}
         shutdown->poll();
         processorMeters->poll();
