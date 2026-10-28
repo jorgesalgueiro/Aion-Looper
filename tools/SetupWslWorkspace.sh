@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Non-destructive committed-snapshot mirror; run inside WSL.
+# --no-local uses Git transport, avoiding NTFS loose-object enumeration/hardlinks.
 set -euo pipefail
 if (( $# < 1 || $# > 2 )); then
     printf 'Usage: bash tools/SetupWslWorkspace.sh WINDOWS_REPO [NATIVE_DEST]\n' >&2
@@ -26,7 +27,7 @@ if [[ -e "$destination" ]]; then
     git -C "$destination" merge --ff-only FETCH_HEAD
 else
     mkdir -p "$(dirname "$destination")"
-    git -c safe.directory="$source_repo" clone --no-hardlinks -c core.autocrlf=false --branch main --origin windows "$source_repo" "$destination"
+    git -c safe.directory="$source_repo" clone --no-local -c core.autocrlf=false --branch main --origin windows "$source_repo" "$destination"
     upstream=$(git_source remote get-url origin)
     git -C "$destination" remote add origin "$upstream"
 fi
@@ -51,7 +52,7 @@ for relative in .deps/JUCE .reference/Ascii-Looper; do
             printf 'Source cache is dirty: %s; no partial copy attempted.\n' "$cached" >&2; exit 2
         fi
         mkdir -p "$(dirname "$native")"
-        git -c safe.directory="$cached" clone --no-hardlinks --no-checkout -c core.autocrlf=false "$cached" "$native"
+        git -c safe.directory="$cached" clone --no-local --no-checkout -c core.autocrlf=false "$cached" "$native"
         git -C "$native" checkout --detach "$expected"
     fi
 done
