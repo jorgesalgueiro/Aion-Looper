@@ -1510,3 +1510,12 @@ sync-off cases, original stop() reference counts, production bridge requests,
 25ms JUCE timers, old-timer rejection and no-orphan-panic checks at 64/128. The
 original scheduleStop() guard requires playing plus graph; audio playing alone
 does not establish that message condition while callback mapping is unfinished.
+
+Generic LoopMeterLifecycle::start must reject any real pending queued ID before
+candidate graph creation, ticket changes or enqueue. Test immediate/future frames,
+before/after audible grid, graphless/attached owners and old teardown retaining
+the queue ID. Preserve all fields/history/old cleanup and prove no raw reset is
+queued; keep twenty prepared routes and real JUCE timer retention at 64/128.
+Component starts without real queue IDs retain their contract. This closes a
+bypass; it does not implement the explicit conditional callback transaction,
+acceptance/rejection recovery, wall alignment or renderer.

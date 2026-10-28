@@ -416,8 +416,25 @@ void meterQueuedTests(){
         for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,999,1,1,4,false});
         f.command(LoopAction::play,id);f.cycle();const auto queued=f.next(MeterGraphEventKind::queuedPlay,id);
         check(owner.consumeQueuedPlay(queued),"Accept pending intent before late STOP NOW");
+        const auto rejectGenericStart=[&]{
+            const auto graph=owner.inspect();const auto binding=owner.binding();const auto cleanup=owner.cleanupRequest();
+            const auto history=reading(owner.value());const auto delay=owner.queuedCallbackDelay();
+            check(!owner.start(0)&&!owner.start(f.engine->clock()+4096),"Generic graph start must reject a real pending queued intent");
+            const auto after=owner.inspect();const auto bound=owner.binding();
+            check(after.state==graph.state&&after.present==graph.present&&after.destroyed==graph.destroyed&&after.buffer==graph.buffer
+                &&after.analyser==graph.analyser&&after.data==graph.data&&after.teardownDelay==graph.teardownDelay
+                &&bound.generation==binding.generation&&bound.track==binding.track&&bound.ticket==binding.ticket
+                &&bound.analyser==binding.analyser&&bound.data==binding.data&&owner.cleanupRequest()==cleanup
+                &&owner.queuedIntentId()==queued.queueId&&owner.queuedCallbackDelay()==delay&&reading(owner.value())==history,
+                "Rejected unconditional start preserves the complete queued owner and cleanup");
+            f.cycle();MeterGraphEvent extra;
+            check(!f.engine->popMeterGraphEvent(extra),"Rejected generic start must not enqueue an unconditional raw reset");
+            if(binding.ticket)check(f.engine->loopMeterGraphCurrent(binding.generation,id,binding.ticket),"Rejected generic start preserves the old raw window token");
+        };
+        rejectGenericStart();
         for(unsigned n=0;n<1000&&f.view->tracks[id].state==LoopState::queued;++n)f.cycle();
         check(f.view->tracks[id].state==LoopState::playing&&owner.inspect().state==MeterLoopState::queued,"Audible grid leaves message intent pending");
+        rejectGenericStart();
         if(action==LoopAction::stop)for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::off,999,1,1,4,false});
         f.command(action,id);f.cycle();MeterGraphEvent stopped;
         check(f.engine->popMeterGraphEvent(stopped)&&stopped.kind==MeterGraphEventKind::queuedStop,
@@ -433,6 +450,7 @@ void meterQueuedTests(){
     }
     std::cout<<"PASS: post-grid pending STOP NOW, graphless teardown and attached 25ms replacement, exact identities and no orphan cancellation at tracks 0/19, 64/128\n";
     std::cout<<"PASS: post-grid pending normal STOP after sync off, graphless/attached cleanup and no orphan cancellation at tracks 0/19, 64/128\n";
+    std::cout<<"PASS: generic graph start rejects pending queue before/after grid without mutation or raw reset at tracks 0/19, 64/128\n";
     auto stream=std::make_unique<MeterGraphEvents>();stream->reset(3);
     stream->publish(MeterGraphEventKind::queuedPlay,19,0,42,7,9007199254740993ull,0,0xffffffffffffffffull);
     MeterGraphEvent wide;check(stream->pop(wide,3)&&wide.queueId==0xffffffffffffffffull&&wide.bufferId==9007199254740993ull&&wide.frame==42,"Queued identity remains full-width in the actual bounded stream");
@@ -477,6 +495,8 @@ void meterQueuedTests(){
         f.command(LoopAction::stop,id);f.cycle();auto stopped=f.next(MeterGraphEventKind::queuedStop,id);
         check(owner.consumeQueuedStop(stopped)&&owner.cleanupRequest().serial!=old.serial&&owner.cleanupRequest().delay==.025&&!owner.deliverCleanup(old)&&owner.inspect().analyser==identity.analyser,"Queued explicit STOP replaces an attached old timer with fresh 25ms policy");
         const auto current=owner.cleanupRequest();queued=queue();check(owner.consumeQueuedPlay(queued)&&owner.deliverCleanup(current)&&owner.queuedIntentId()==queued.queueId&&!owner.inspect().present&&owner.inspect().data==identity.data,"Old cleanup does not infer cancellation of the separate queued intent");
+        check(!owner.start(0)&&owner.queuedIntentId()==queued.queueId&&!owner.inspect().present&&owner.inspect().data==identity.data,
+            "Generic start cannot bypass pending identity after old teardown changes message state");
         f.command(LoopAction::stopAll,id);f.cycle();cancel=f.next(MeterGraphEventKind::queuedCancel,id);
         check(!owner.consumeQueuedCancel(cancel)&&owner.queuedIntentId()==queued.queueId&&!owner.cleanupRequest().serial,"After old teardown changed state, queued-cancel mapping fails closed until graph-lead lifecycle is implemented");
         f.command(LoopAction::clear,id);f.cycle();check(owner.consumeClear(f.next(MeterGraphEventKind::cleared,id))&&!owner.queuedIntentId()&&owner.inspect().data==identity.data&&!owner.consumeQueuedPlay(queued),"Clear invalidates queue while retaining detached original history");

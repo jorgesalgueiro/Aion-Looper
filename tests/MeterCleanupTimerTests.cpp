@@ -343,6 +343,10 @@ void panicDispatcherTests(bool& audioWatch){
         f.cycle();result=dispatcher.drain(7);check(result.examined==7&&result.queued==7&&result.queueApplied==7&&!result.plays,"Seven queued facts apply without graph births");
         for(unsigned id=0;id<20;++id)check((ownerRoutes[id]->queuedIntentId()!=0)==(id<7),"Partial queue dispatch leaves undelivered owners unchanged");
         result=dispatcher.drain(32);check(result.examined==13&&result.queueApplied==13,"Remaining thirteen queued intents route through prepared bank");
+        for(unsigned id=0;id<20;++id){const auto intent=ownerRoutes[id]->queuedIntentId();const auto binding=ownerRoutes[id]->binding();
+            check(!ownerRoutes[id]->start(0)&&!ownerRoutes[id]->start(f.engine->clock()+4096),"Every prepared queued route rejects unconditional graph start before grid");
+            routes[id]->synchronise();check(ownerRoutes[id]->queuedIntentId()==intent&&ownerRoutes[id]->binding().ticket==binding.ticket
+                &&ownerRoutes[id]->cleanupRequest()==old[id]&&routes[id]->pending(),"Rejected starts preserve all twenty queued identities, bindings and actual cleanup deadlines");}
         panic();prepared.store(0,std::memory_order_release);check(!dispatcher.drain(32).examined,"Released queued-cancel batch remains unread");
         prepared.store(f.engine->generation(),std::memory_order_release);result=dispatcher.drain(7);
         check(result.examined==7&&result.queueApplied==7&&!result.stops,"Queued panic uses cancel receipts, never 65ms stop facts");
@@ -357,6 +361,9 @@ void panicDispatcherTests(bool& audioWatch){
         for(unsigned n=0;n<1000&&f.view->tracks[19].state==LoopState::queued;++n)f.cycle();
         for(unsigned id=0;id<20;++id)check(f.view->tracks[id].state==LoopState::playing&&ownerRoutes[id]->queuedIntentId()
             &&ownerRoutes[id]->inspect().state==MeterLoopState::queued&&ownerRoutes[id]->cleanupRequest()==old[id],"All twenty audio sources cross grid while independent message intents and cleanup remain pending");
+        for(unsigned id=0;id<20;++id){const auto intent=ownerRoutes[id]->queuedIntentId();
+            check(!ownerRoutes[id]->start(0),"Every prepared queued route rejects unconditional start after grid");routes[id]->synchronise();
+            check(ownerRoutes[id]->queuedIntentId()==intent&&ownerRoutes[id]->cleanupRequest()==old[id]&&routes[id]->pending(),"Post-grid rejection retains every old cleanup and queue identity");}
         panic();result=dispatcher.drain(7);check(result.examined==7&&result.queueApplied==7&&!result.stops&&!result.rejected,"Post-grid global cancellation retains seven-entry raw budget");
         for(unsigned id=0;id<20;++id)check((ownerRoutes[id]->queuedIntentId()!=0)==(id>=7),"Late partial cancellation retains undelivered queue identities");
         result=dispatcher.drain(32);check(result.examined==13&&result.queueApplied==13&&!result.rejected,"Post-grid cancellation routes remaining thirteen exact identities");
@@ -368,6 +375,7 @@ void panicDispatcherTests(bool& audioWatch){
     }
     std::cout<<"PASS: actual twenty-track STOP ALL receipts route through prepared adapters with bounded 7/13 drains, nonzero PCM, readiness batch preservation, repeated replacement and Clear All cancellation at 64/128; exact paired stereo PCM\n";
     std::cout<<"PASS: twenty pending post-grid queued cancellations retain bounded 7/13 routing and original cleanup at 64/128\n";
+    std::cout<<"PASS: twenty prepared queued routes reject generic starts before/after grid and retain original cleanup at 64/128\n";
 }
 void queuedAdapterTests(bool& audioWatch){
     using namespace aion;
@@ -382,6 +390,7 @@ void queuedAdapterTests(bool& audioWatch){
         for(auto invalid:{0u,f.engine->generation()+1}){prepared.store(invalid,std::memory_order_release);
             check(!f.timer->consumeQueuedPlay(event)&&!f.owner->queuedIntentId()&&!f.timer->pending(),"Unprepared/mismatched queue intent cannot mutate owner");}
         prepared.store(f.engine->generation(),std::memory_order_release);check(f.timer->consumeQueuedPlay(event)&&!f.owner->inspect().present&&!f.timer->pending(),"Prepared queue applies without a graph or timer");
+        check(!f.owner->start(0)&&f.owner->queuedIntentId()==event.queueId&&!f.owner->inspect().present&&!f.timer->pending(),"Graphless prepared queued owner rejects unconditional graph start");
         const auto queueId=f.owner->queuedIntentId();event=command(LoopAction::stopAll,MeterGraphEventKind::queuedCancel);
         for(auto invalid:{0u,f.engine->generation()+1}){prepared.store(invalid,std::memory_order_release);
             check(!f.timer->consumeQueuedCancel(event)&&f.owner->queuedIntentId()==queueId&&!f.timer->pending(),"Unprepared/mismatched queued cancel retains intent");}
@@ -803,6 +812,8 @@ private:
             for(auto* e:{f->engine.get(),f->control.get()}){e->configureSync({aion::SyncMode::fixed,999,1,1,4,false});
                 check(e->enqueueLoop({aion::LoopAction::play,19,0,e->generation(),0,0}),"Queue actual synced play with old timer");}f->cycle();
             {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&f->timer->consumeQueuedPlay(event)&&f->owner->cleanupRequest()==obsolete&&f->timer->pending(),"Accepted queue retains actual pending JUCE stop request");}
+            check(!f->owner->start(0),"Generic start rejects before grid with a real old JUCE timer");f->timer->synchronise();
+            check(f->owner->cleanupRequest()==obsolete&&f->timer->pending(),"Rejected generic start cannot cancel or replace the old timer");
             for(auto* e:{f->engine.get(),f->control.get()})check(e->enqueueLoop({aion::LoopAction::stopAll,19,0,e->generation(),0,0}),"Cancel actual queued PLAY with panic");f->cycle();
             {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&f->timer->consumeQueuedCancel(event)&&f->owner->cleanupRequest()==obsolete&&f->timer->pending(),"Accepted queued panic preserves real old stop timer");}
             frame=f->engine->clock();stage=20;break;
@@ -821,6 +832,8 @@ private:
             for(unsigned n=0;n<1000&&f->view->tracks[19].state==aion::LoopState::queued;++n)f->cycle();
             check(f->view->tracks[19].state==aion::LoopState::playing&&f->owner->inspect().state==aion::MeterLoopState::queued
                 &&f->owner->cleanupRequest()==obsolete&&f->timer->pending(),"Real old JUCE timer remains independent of pending intent after audio grid");
+            check(!f->owner->start(0),"Generic start rejects after grid with a real old JUCE timer");f->timer->synchronise();
+            check(f->owner->cleanupRequest()==obsolete&&f->timer->pending(),"Post-grid rejection leaves the original real deadline intact");
             for(auto* e:{f->engine.get(),f->control.get()})check(e->enqueueLoop({aion::LoopAction::stopAll,19,0,e->generation(),0,0}),"Cancel late queued intent without graph callback");
             f->cycle();
             {aion::MeterGraphEvent event;check(f->engine->popMeterGraphEvent(event)&&f->timer->consumeQueuedCancel(event)
@@ -888,4 +901,5 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     std::cout<<"PASS: actual post-grid queued panic preserves the original real 25ms JUCE cleanup and frozen-clock data/history at 64/128\n";
     std::cout<<"PASS: actual post-grid STOP NOW replaces real JUCE cleanup with 25ms, obsolete timer rejection and frozen-clock history at 64/128\n";
     std::cout<<"PASS: actual normal STOP after sync off replaces real JUCE cleanup with 25ms and frozen-clock history at 64/128\n";
+    std::cout<<"PASS: generic queued start rejection retains real JUCE cleanup before/after grid and frozen-clock history at 64/128\n";
 }

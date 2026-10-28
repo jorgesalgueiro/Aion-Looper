@@ -7218,3 +7218,50 @@ boundary unaccepted until the queued callback transaction is mapped. Next resolv
 that transaction, conditional raw reset/recovery and wall/audio alignment before
 observation/rendering. No new REAPER/Ardour or hardware/device acceptance. Apple
 targets remain explicitly deferred. No package or push was performed.
+
+### Generic graph-start bypass of pending queue — 2026-10-28
+
+Baseline `02c4625`, clean main with three local commits ahead of origin. The
+existing focused queued gate passed, then the new regression reproduced
+`Generic graph start must reject a real pending queued intent` on the old code
+(`build/queued-start-guard-before.txt`). LoopMeterLifecycle::start could create a
+graph, clear the accepted queue ID and enqueue an unconditional raw reset without
+the required conditional callback transaction. It now rejects any pending real
+queue ID before candidate/ticket/enqueue mutation, including after old cleanup
+has changed message state to stopped. Component starts without queue IDs retain
+their old contract. No audio-thread, UI, parameter/state, dependency or platform
+configuration changes; the production diff is one condition plus explanation.
+
+Core checks cover immediate/future generic starts before/after actual audible
+grid, graphless/attached tracks 0/19 at 64/128, all graph/binding/queue/delay/cleanup/
+history fields, no raw reset, the old-teardown boundary and exact paired stereo
+PCM. Native checks retain all twenty prepared bindings and actual old cleanup
+deadlines before/after grid; real JUCE timers verify frozen-clock teardown and
+history after rejected starts. Existing component starts, conditional raw resets,
+STOP NOW/normal STOP/panic and all original source cases remain enabled. This
+native-only API guard adds no new JS comparison case or user-facing control.
+
+| Executed gate | Result |
+| --- | --- |
+| Windows portable | 28/28, 377.05s |
+| Ubuntu portable | 28/28, 599.31s |
+| Windows native processor / SDK generation | 2/2, 11.42s |
+| Ubuntu native processor / SDK generation | 2/2, 23.13s |
+| Core sanitizer selection | 6/6, 280.84s |
+| Committed PCM | 126 cases, 965826 samples, max error 7.394757495227111e-8, unchanged 1e-6 tolerance |
+| Original UI / embedding / tamper | Pass |
+
+Actual callback checks retain zero tracked new/delete. Final logs contain no
+skips, JUCE assertions, leak reports or sanitizer errors; pre-existing native test
+compiler warnings remain. Both current Standalone development binaries rebuilt.
+Plugin formats and REAPER/Ardour/hardware were not newly validated. The ignored
+`build/queued-start-guard-evidence.json` verifies counts/markers, exact production
+diff, retained reference counts, original logo and source/binary hashes. Commands
+remain in MIGRATION_CURRENT.md and BUILDING.md.
+
+This closes an unsafe entry point; it does not implement callback graph creation,
+conditional binding/rejection recovery, wall alignment, post-callback synchronized
+STOP or rendering. Implement that explicit transaction next, preserving independent
+old cleanup and preventing cancellation/teardown from resurrecting pending graphs.
+Keep shared code portable for future Apple targets; actual Apple builds/device
+validation remain deferred. No package or push was performed.

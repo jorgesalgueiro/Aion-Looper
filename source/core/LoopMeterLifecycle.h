@@ -42,7 +42,10 @@ public:
         graph.setState(state);return true;
     }
     bool start(std::uint64_t frame) noexcept {
-        if(!observable()||ticket==std::numeric_limits<std::uint32_t>::max())return false;
+        // A real queued callback needs its conditional queue/clip transaction.
+        // Never retire that intent or enqueue an unconditional reset here, even
+        // if old cleanup has already changed the message state to stopped.
+        if(queuedId||!observable()||ticket==std::numeric_limits<std::uint32_t>::max())return false;
         auto candidate=graph;
         if(!candidate.startGraph())return false;
         LoopCommand command{LoopAction::meterGraphStart,id,0,generation,frame,0};
