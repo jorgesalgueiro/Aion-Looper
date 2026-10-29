@@ -2,15 +2,18 @@
 
 ## Latest implementation — 29 October 2026
 
-Two pending same-action replacement / speed sequences meet the scoped acceptance
-below. Regression snapshot `5c5edf2` adds unchanged-JS comparisons for two Apply
-or two RTRG sources with interleaved .5x/.25x writes, plus exact stereo Engine
-and cancellation cases at 64/128. Windows/Linux focused tests pass; existing
-production DSP needs no change. Earlier rate/timestamp implementation at
-`80bf816` / `e222753` and its processor/UI/active-format evidence remain applicable.
-Assets, IDs, saved state, capacity and dependencies are unchanged. No package or
-push created. Next: mixed Apply/RTRG deadline overtaking with rate writes, then
-early-source tempo/clock changes. Full renderer/device/DAW release gates stay open.
+Chronological mixed RTRG-to-Apply / speed sequences meet the scoped acceptance
+below. Regression snapshot `3b3e45e` adds 120 unchanged-JS queued sequences and
+16 paired stereo Engine playback / 20 cancellation cases at 64/128. It also
+strengthens the prior two-source comparison horizon through the second deadline.
+Windows/Linux focused CTests and Engine suites pass; production DSP needs no
+change for this chronological sequence. Earlier implementation and processor/UI/
+active-format evidence remain applicable to unchanged code. Assets, IDs, saved
+state, capacity and dependencies are unchanged. No package/push created.
+Next: Apply-to-RTRG deadline overtaking and overlapping older sources. Source
+inspection identifies a possible audible difference in the one-source native
+renderer; do not treat chronological tests as overlap acceptance or advance to
+tempo work before resolving it. Full renderer/device/DAW release gates stay open.
 See the final acceptance evidence below.
 
 ## Owner-approved faster development workflow — 28 October 2026
@@ -1684,3 +1687,48 @@ and the committed native WSL mirror. Run CTest on each with:
 `-R '^(original_ui_bytes|js_native_queued_multiple_replacement_speed|js_native_queued_rtrg_apply_speed)$'`
 (and `-C Release` on Windows), `--parallel 2 --no-tests=error --output-on-failure`.
 No package or push requested. Results and final checkpoint follow.
+
+
+Windows final results for `3b3e45e`:
+
+- Affected core/probe build PASS; expanded `aion_core_tests --meter-queued` PASS,
+  including 16 new mixed-order playback and 20 new mixed-order cancellation
+  cases. All previous queued tests remain enabled; zero tracked callback
+  allocation/deallocation. Output: `build/rtrg-apply-windows-engine.log` (local).
+- Three focused CTests PASS, 57.84s with parallel 2: original UI bytes, strengthened
+  two-same-action oracle (54.00s) and new RTRG-to-Apply oracle (56.27s).
+- New mixed-order oracle: 30 configurations, 120 queued sequences / 120 RTRG,
+  2,940,238 compared frames including 2,541,836 silent frames; maximum absolute
+  error 5.696890131856591e-8, unchanged 1e-6 tolerance.
+- Strengthened previous oracle: 30 configurations / 120 sequences / 96 RTRG,
+  2,901,934 compared frames including 2,580,140 silent frames; maximum absolute
+  error 6.3772108371829e-8, unchanged tolerance. The slightly changed totals follow
+  the longer horizon and subsequent fixtures' grid alignment, not removed cases.
+- `git diff --check` PASS. No reference/preserved-asset, production callback,
+  GUI/CLI/MIDI/bridge or state-model changes. No new host/device/UI acceptance
+  claimed; prior evidence remains scoped to its original tests.
+
+The initial exploratory Windows run used the shorter horizon and is superseded
+by the final three CTests above. The final snapshot changes the printed scope
+label only after that run to also explicitly exclude envelopes/resampling;
+test logic and tolerances are the same. Linux uses that committed final snapshot.
+
+
+Final Linux results: affected core/probe build PASS; `--meter-queued` PASS with
+all 16 new chronological mixed-order playback and 20 cancellation cases, previous
+queued cases and zero tracked callback new/delete. Three focused CTests PASS
+(156.14s, parallel 2): original UI bytes, strengthened previous oracle (149.54s),
+new RTRG-to-Apply oracle (155.28s). Both Linux oracle metrics exactly match the
+Windows final metrics above. Cached Linux core is Debug; test wall times are
+not comparable runtime/build performance. No production code changed, so no
+new callback performance benchmark, wrapper rebuild, UI/bridge test or DAW/device
+run is claimed. No validators/sanitizers/long-session release gate was rerun.
+
+Diff review and `git diff --check` PASS. Prior cases and tolerances are preserved;
+new horizons add post-second-start observations. Original reference, embedded
+UI/logo, parameter/action IDs, capacities, schema and dependencies are unchanged.
+The next slice must model all actually live sources and their independent stop
+times for Apply then RTRG (including original-grid silence and cancellation),
+then compare actual summed PCM and establish bounded ownership/overflow. The
+source-inspection concern is pending that explicit oracle, not a fabricated
+claim of measured mismatch. Keep tempo/clock work behind this overlap gate.
