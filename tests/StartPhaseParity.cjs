@@ -4,7 +4,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
 (async()=>{
  const root=path.resolve(__dirname,'..');
  const makeBuffer=(data,rate)=>{const channels=data.map(c=>Float32Array.from(c));return {length:channels[0].length,duration:channels[0].length/rate,sampleRate:rate,numberOfChannels:channels.length,getChannelData:c=>channels[c]};};
- const param=()=>({value:1,setValueAtTime(){},linearRampToValueAtTime(){},cancelScheduledValues(){}});
+ const param=()=>({value:1,events:[],setValueAtTime(value,time){this.events.push({value,time});},linearRampToValueAtTime(){},cancelScheduledValues(){}});
  const node=()=>({connect(){},disconnect(){this.disconnected=true;},start(time,offset){this.started={time,offset};},stop(time){this.stopped=true;this.stoppedAt=time;},gain:param(),playbackRate:param()});
  class BufferSource {constructor(){Object.assign(this,node());}}
  const audio={state:'running',currentTime:0,createBuffer:(count,length,rate)=>makeBuffer(Array.from({length:count},()=>Array(length).fill(0)),rate),createBufferSource:()=>new BufferSource(),createGain:node,createChannelMerger:node,createAnalyser:node};
@@ -25,6 +25,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  globalThis.stored=()=>state.loops[0].audioBuffer;
  globalThis.source=()=>state.loops[0].graph.source.buffer;
  globalThis.sourceNode=()=>state.loops[0].graph.source;
+ globalThis.volumeEvents=()=>state.loops[0].graph.nodes.volume.gain.events;
  globalThis.normalize=()=>state.loops[0].normalize();
  globalThis.edit=async(take,offset,feedback)=>{const finalBuffer=take;${loops.slice(start,end)};AudioEngine.seamlessLoopCrossfade(take,0.008);await AudioEngine.mixBuffersCircular(state.loops[0].audioBuffer,take,offset,feedback);};`,context);
 
@@ -106,6 +107,11 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
      assert.equal(oldNode.stoppedAt,targetTime,'Original retrigger schedules old source stop at replacement start');
      assert.equal(context.sourceNode().started.time,targetTime,'Original replacement starts 50ms after action');
      const replacement=context.source(),newOffset=context.offset();
+     let followingStop=0;
+     if(!beforeGrid&&length===20003){
+      context.scheduleStop();commands.push('stopgrid 0 0');followingStop=context.stopTime();
+      assert(followingStop>grid,'Original scheduled STOP retains a replacement scheduled before it');
+     }
      if(beforeGrid){
       assert(restartDeadline<deadline);silence(restartDeadline);
      }else{
@@ -113,7 +119,11 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
       render(restartDeadline-frame);
      }
      pending.push({source:replacement,at:restartDeadline,phase:((newOffset*sampleRate+(restartDeadline-restartTarget)*context.rate())%length+length)%length});
-     render(Math.max(deadline+147-frame,147));queuedStarts++;continue;
+     assert(context.volumeEvents().some(e=>e.value===0&&e.time===grid),'Unchanged graph retains its zero-volume scheduled start at original grid');
+     if(beforeGrid){const gated=deadline-frame;excluded=true;render(gated);excluded=false;queuedSilentFrames+=gated;}
+     render(Math.max(deadline+147-frame,147));
+     if(followingStop){const stopDeadline=Math.ceil(followingStop*sampleRate);render(stopDeadline-frame);silence(frame+147);}
+     queuedStarts++;continue;
     }
     if(queuedEarlyOnly){
      // Start and reverse are metadata edits, not a replacement source. Build
@@ -262,5 +272,5 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   for(const check of checks){const row=rows[check.row].split(' ').map(Number);for(const value of row.slice(6)){const error=Math.abs(value-check.expected);maximum=Math.max(maximum,error);assert(error<=1e-6,`Start phase ${mono}/${sampleRate}/${length}, frame ${row[1]}: ${value} vs ${check.expected}`);}samples++;}
   cases++;
  }
- console.log(JSON.stringify({result:'PASS',cases,queuedStarts,queuedSilentFrames,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:queuedRestartOnly?'Unchanged early-source Apply/Q/nudge replacement at 50ms before/after original grid, reverse/source phase and no old-grid resurrection; envelopes/resampling excluded':queuedEarlyOnly?'Unchanged Start/Reverse edits after early source birth preserve scheduled source phase/direction until next play; pre-grid silence; browser envelopes/resampling excluded':queuedCleanupOnly?'Unchanged Loop._teardown/AudioGraph.cleanup stops and disconnects replacement source; native cutoff has no residual tail; original source phase/PCM before cleanup; browser envelopes/resampling excluded':queuedLateOnly?'Queued source is silent through late callback admission, then matches original Loop.play/AudioGraph.build source phase/PCM; browser envelopes/resampling excluded':queuedStopOnly?'Queued source PCM after accepted early graph birth and STOP inside the 30ms minimum lead; original grid/play/build/scheduleStop; envelopes/resampling excluded':'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing and early-callback queued grid starts; linear interpolation, browser playback envelopes/resampling excluded'}));
+ console.log(JSON.stringify({result:'PASS',cases,queuedStarts,queuedSilentFrames,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:queuedRestartOnly?'Unchanged early-source Apply/Q/nudge replacement at 50ms before/after original grid, reverse/source phase, original volume silence gate and no old-source resurrection; fade shapes/resampling excluded':queuedEarlyOnly?'Unchanged Start/Reverse edits after early source birth preserve scheduled source phase/direction until next play; pre-grid silence; browser envelopes/resampling excluded':queuedCleanupOnly?'Unchanged Loop._teardown/AudioGraph.cleanup stops and disconnects replacement source; native cutoff has no residual tail; original source phase/PCM before cleanup; browser envelopes/resampling excluded':queuedLateOnly?'Queued source is silent through late callback admission, then matches original Loop.play/AudioGraph.build source phase/PCM; browser envelopes/resampling excluded':queuedStopOnly?'Queued source PCM after accepted early graph birth and STOP inside the 30ms minimum lead; original grid/play/build/scheduleStop; envelopes/resampling excluded':'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing and early-callback queued grid starts; linear interpolation, browser playback envelopes/resampling excluded'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

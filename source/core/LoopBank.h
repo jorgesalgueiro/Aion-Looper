@@ -136,7 +136,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){track.queuedSourceTicket=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     void setMeterCallbackClock(const CallbackClockStamp& callback) noexcept {meterCallbackClock=callback;}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
@@ -221,6 +221,7 @@ private:
         double recordBarFrames=0,recordOrigin=0,recordStartSeconds=0;
         std::uint32_t plannedFrames=0,recordPrefix=0;
         std::uint64_t startAt=0,endAt=0;
+        std::uint64_t queuedGainAt=0; // Retained graph volume start while a replacement source runs early.
         std::array<std::uint16_t, maxBlocks> blocks{};
         std::uint32_t blockCount = 0, blendRemaining = 0, tailRemaining = 0;
         Stereo last{}, blendFrom{}, tail{};
@@ -283,9 +284,9 @@ private:
     static bool hasPlaybackSource(const Track& t) noexcept {
         const auto s=t.info.state;return t.clip&&!t.queuedSourcePending&&(s==LoopState::playing||s==LoopState::stopping||s==LoopState::overdubbing||s==LoopState::substituting||s==LoopState::multiplying||(s==LoopState::finalizing&&t.playWhileFinalizing));
     }
-    bool hasPreparedQueuedSource(const Track& t) const noexcept {
+    bool hasPreparedQueuedSource(const Track& t,bool includeStopping=false) const noexcept {
         return queuedStartMode==QueuedStartMode::messageCallback&&t.info.state==LoopState::queued
-            &&!t.queuedSourcePending&&t.queuedSourceTicket&&!t.info.stopPending;
+            &&!t.queuedSourcePending&&t.queuedSourceTicket&&(includeStopping||!t.info.stopPending);
     }
     void stop(Track&) noexcept;
     void clear(Track&) noexcept;

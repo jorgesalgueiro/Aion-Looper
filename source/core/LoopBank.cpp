@@ -302,6 +302,7 @@ void LoopBank::stop(Track& track) noexcept {
     track.info.stuttering=track.info.stutterClock=false;
     if(track.info.state==LoopState::armed){clear(track);return;}
     track.queuedSourceTicket=0;
+    track.queuedGainAt=0;
     track.queuedSourcePending=false;track.startAt=track.endAt=0;++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stopPending=false;
     if(capturing(track.info.state))(void)finish(track);
     if(track.info.state==LoopState::finalizing){track.finalPlay=false;track.playWhileFinalizing=false;}
@@ -319,6 +320,7 @@ void LoopBank::clear(Track& track) noexcept {
     ++track.sourceRevision;
     track.queuedSourcePending=false;
     track.queuedSourceTicket=0;
+    track.queuedGainAt=0;
     ++track.phaseEpoch;++track.revision;track.startAt=track.endAt=0;track.plannedFrames=0;
     for(std::uint32_t i=0;i<track.info.undoCount;++i)retire(track.undo[i]);
     for(std::uint32_t i=0;i<track.info.redoCount;++i)retire(track.redo[i]);
@@ -433,7 +435,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if((s==LoopState::playing||(s==LoopState::queued&&!t.info.stopPending&&!meterQueuedIds[id]&&meterImmediateTickets[id]
                 &&meterImmediateTickets[id]==meterGraphTickets[id]))&&sync.settings.mode!=SyncMode::off){
                 const double target=sync.nextGridSeconds(frame);
-                ++t.phaseEpoch;t.info.phaseApplyFrame=0;
+                // A replacement already scheduled by the healthy graph still
+                // starts before its STOP deadline. stop() retires later events.
                 // A graph can exist before its future source starts. Keep the
                 // queued audio gate until startAt; stopping would render early.
                 if(s==LoopState::queued)t.info.stopPending=true;else s=LoopState::stopping;
@@ -663,11 +666,12 @@ void LoopBank::applyPhaseEvents() noexcept {
         const bool valid=event.epoch==track.phaseEpoch;
         if(valid&&event.frame>frame)break;
         phaseRead=(phaseRead+1)%phaseCapacity;
-        if(!valid||!track.clip||(track.info.state!=LoopState::playing&&!hasPreparedQueuedSource(track)))continue;
+        if(!valid||!track.clip||(track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopping&&!hasPreparedQueuedSource(track,true)))continue;
         if(track.info.state==LoopState::queued){
             // The replacement can start before the original grid. Retire that
             // old activation deadline so it cannot restart this source again.
-            track.info.state=LoopState::playing;track.startAt=0;track.tailRemaining=0;
+            track.queuedGainAt=track.startAt;
+            track.info.state=track.info.stopPending?LoopState::stopping:LoopState::playing;track.startAt=0;track.tailRemaining=0;
         }
         ++track.sourceRevision;
         retire(track.reverseHold);track.reverseHold=nullptr;
@@ -727,6 +731,16 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
             v.position=static_cast<std::uint32_t>(t.phase>=t.clip->length?std::fmod(t.phase,static_cast<double>(t.clip->length)):t.phase);
         }else if(t.tailRemaining){const float progress=static_cast<float>(--t.tailRemaining)/fadeLength;out={t.tail.left*progress,t.tail.right*progress};t.last=out;}
         else t.last={};
+        if(t.queuedGainAt){
+            if(frame<t.queuedGainAt)out={};
+            else if(fadeLength&&frame-t.queuedGainAt<fadeLength){
+                const auto gain=static_cast<float>(frame-t.queuedGainAt+1)/fadeLength;
+                out={out.left*gain,out.right*gain};
+            }else t.queuedGainAt=0;
+            // STOP/clear tails and replacements must use the audible value,
+            // never leak a source that was advancing behind a closed graph gate.
+            t.last=out;
+        }
         const bool excluded=soloTrack>=0&&soloTrack!=static_cast<int>(&t-tracks.data());
         const float desired=v.muted||excluded?0:v.volume;
         const float step=fadeLength?1.0f/static_cast<float>(fadeLength*4):2;

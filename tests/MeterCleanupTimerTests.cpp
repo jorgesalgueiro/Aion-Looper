@@ -296,7 +296,9 @@ void processorEarlyStartTests(bool& audioWatch){
             const auto target=clock()+2400;command("startDelay",.731);command("reverse",1);command(action,std::string_view(action)=="nudgeStart"?1:0);cycle();
             state=rpc(R"({"operation":"snapshot"})");
             check(state["tracks"][19]["state"].toString()=="queued"&&static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])==static_cast<juce::int64>(target),"Shared GUI/CLI command schedules the actual early source replacement");
-            bool audible=false;while(clock()<std::max(grid,target)+2048){cycle();if(clock()>target+960)audible=audible||audio.getMagnitude(0,static_cast<int>(block))>0;}
+            bool audible=false;while(clock()<std::max(grid,target)+2048){cycle();
+                if(clock()<=grid)check(audio.getMagnitude(0,static_cast<int>(block))==0,"Production early replacement respects the original graph volume start");
+                if(clock()>std::max(grid,target)+960)audible=audible||audio.getMagnitude(0,static_cast<int>(block))>0;}
             state=rpc(R"({"operation":"snapshot"})");
             if(!audible||state["tracks"][19]["state"].toString()!="playing"||static_cast<int>(state["tracks"][19]["length"])!=8192||static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])!=0||static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"])!=0||static_cast<bool>(state["rejected"]))
                 std::cerr<<"Early production case "<<block<<"/"<<beforeGrid<<"/"<<action<<", audible "<<audible<<", target "<<target<<", grid "<<grid<<", now "<<clock()<<", rejected "<<static_cast<bool>(state["rejected"])<<", state "<<state["tracks"][19]["state"].toString()<<", phase "<<static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])<<", scheduled "<<static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"])<<", length "<<static_cast<int>(state["tracks"][19]["length"])<<std::endl;
