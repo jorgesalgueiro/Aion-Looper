@@ -817,6 +817,7 @@ void queuedLateSourceTests(){
         // The control creates a fresh source only at the late callback, through
         // the existing immediate-source primitive, independently of the gate.
         check(f.control->enqueueLoop({LoopAction::stopImmediate,id,0,f.control->generation(),0,0}),"Keep comparison source stopped until callback");
+        if(outcome==0)check(f.control->enqueueLoop({LoopAction::speed,id,0,f.control->generation(),0,.37f}),"Set fresh comparison source rate before callback");
         while(f.engine->clock()<grid+1104)f.cycle();
         check(f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].sourceRevision==revision,"Passing grid cannot create source or change queued state before callback");
         LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,f.engine->generation(),0,0};
@@ -825,6 +826,7 @@ void queuedLateSourceTests(){
             auto bad=birth;++bad.meterBufferId;check(f.engine->enqueueLoop(bad),"Deliver wrong late clip identity");f.cycle();
             (void)f.next(MeterGraphEventKind::queuedGraphRejected,id);
             check(f.view->tracks[id].state==LoopState::queued,"Rejected graph cannot admit queued audio");
+            check(f.engine->enqueueLoop({LoopAction::speed,id,0,f.engine->generation(),0,.37f}),"Change rate immediately before fresh source construction");
             birth.meterGraphTicket=2;check(f.engine->enqueueLoop(birth),"Deliver valid late source callback");
             check(f.control->enqueueLoop({LoopAction::sourceRestart,id,0,f.control->generation(),0,0}),"Create comparison source at actual late frame");
             f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);

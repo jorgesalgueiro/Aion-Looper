@@ -64,6 +64,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
     context.stopped();commands.push('stop 0 0');
     const nextBpm=137.3;origin=frame-(frame-origin)*bpm/nextBpm;bpm=nextBpm;
     commands.push(`sync 1 ${bpm} 1 1`);context.configure(1,bpm,origin/sampleRate,1);
+    context.phaseSpeed(1);commands.push('speed 0 1');
     if(reverse)context.toggle();commands.push(`reverse 0 ${reverse?1:0}`);
     context.setDelay(0.217);commands.push('delay 0 0.217');
     audio.currentTime=frame/sampleRate;const grid=context.grid();
@@ -78,6 +79,13 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
      // Delivery after the grid creates a source now, not in the past. Keep
      // every intervening native sample silent, including post-grid samples.
      silence(deadline+Math.ceil(sampleRate*.023));audio.currentTime=frame/sampleRate;
+     // A newly created source takes current controls, not a stale smoothing
+     // ramp from the inaudible queued source. Preserve the original deadline.
+     if(length===17){context.configure(0,bpm,origin/sampleRate,1);commands.push(`sync 0 ${bpm} 1 1`);}
+     if(length===512){const next=211.7;origin=frame-(frame-origin)*bpm/next;bpm=next;
+      context.configure(1,bpm,origin/sampleRate,1);commands.push(`sync 1 ${bpm} 1 1`);}
+     if(length===4097){const speed=Math.fround(.37);context.phaseSpeed(speed);commands.push(`speed 0 ${speed}`);}
+     if(length===20003){context.setDelay(.731);commands.push('delay 0 0.731');}
      await context.scheduledPlay(grid);commands.push('birth 0 0');
      pending.push({source:context.source(),at:frame,phase:((context.offset()*sampleRate)%length+length)%length});
      render(Math.min(length+3,147));queuedStarts++;continue;

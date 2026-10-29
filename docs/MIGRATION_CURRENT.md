@@ -724,3 +724,23 @@ and a future grid; complete wall/audio delivery alignment and DAW/device listeni
 acceptance. Offline autonomous callbacks retain their existing exclusion and
 require explicit callback delivery in these deterministic offline fixtures; this
 is not offline MIDI-render acceptance. No package or release-readiness claim.
+
+Late-source edge follow-up (same slice): extended the oracle with sync-off,
+tempo, speed and Start edits before late construction. The fade-free source
+oracle passes 60 starts / 1272982 silent frames / 1278562 compared frames,
+maximum error 4.034987166612325e-8 (same 1e-6 tolerance). The actual smoothed Engine
+then reproduced a distinct mismatch when speed changed just before admission:
+its new source continued an old source's rate ramp. Admission now initializes
+rate from current target and clears that stale ramp, as a fresh original source
+sets its playbackRate immediately. This happens only while the source is still
+inaudible; subsequent running-source control smoothing is unchanged. Strict
+64/128 stereo comparison now passes that edit for both directions/tracks, along
+with all `--meter-queued` identity/cancel/overflow gates. Final affected Processor,
+source-oracle and Linux checks follow for this small refinement.
+
+The preceding `f3a5fa1` snapshot completed Linux `--meter-queued`, `--meter-stops`,
+the production Processor suite, Standalone/LV2 builds and all six focused CTests
+(262.18s). Windows five focused CTests passed (70.85s); its native Processor test
+passed (32.88s), and `tools/TestMouseWorkflow.ps1 -SkipMidi` passed the actual
+64/128 pointer/keyboard/PCM, queued playback/STOP, WAV export and MERGE workflows
+using the synthetic test host (no audio device opened). These are not DAW tests.

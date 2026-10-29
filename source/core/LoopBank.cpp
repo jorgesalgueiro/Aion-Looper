@@ -249,6 +249,8 @@ void LoopBank::restartSource(Track& track) noexcept {
 void LoopBank::admitQueuedSource(Track& track) noexcept {
     if(!track.queuedSourcePending)return;
     track.queuedSourcePending=false;
+    // A fresh source takes the current AudioParam value, not an old source ramp.
+    track.rate=track.targetRate;track.rateRemaining=0;track.rateIncrement=0;
     if(track.info.state==LoopState::queued&&track.startAt&&frame>=track.startAt){
         track.info.state=LoopState::playing;track.startAt=0;
         track.tailRemaining=0;restartSource(track);blend(track);
