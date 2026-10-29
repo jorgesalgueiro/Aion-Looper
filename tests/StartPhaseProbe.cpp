@@ -48,6 +48,7 @@ int main(int argc,char** argv){
    while(bank.popMeterGraphEvent(event,7))if(event.kind==aion::MeterGraphEventKind::queuedPlay)queues[event.track]=event;
   }
   else if(op=="birth")ok=id<queues.size()&&bank.startQueuedMeterGraph(id,++ticket,queues[id].queueId,queues[id].bufferId);
+  else if(op=="cleanup")bank.retireQueuedSourceThrough(id,ticket);
   else if(op=="stopgrid")ok=bank.apply(A::stop,id);
   else if(op=="retrigger")ok=bank.apply(A::sourceRestart,id);
   else if(op=="speed")ok=bank.apply(A::speed,id,static_cast<float>(value));

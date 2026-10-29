@@ -291,6 +291,7 @@ void LoopBank::stop(Track& track) noexcept {
     if(track.info.state==LoopState::finalizing&&job.merge&&job.track==static_cast<std::uint32_t>(&track-tracks.data()))job.mergeNotify=false;
     track.info.stuttering=track.info.stutterClock=false;
     if(track.info.state==LoopState::armed){clear(track);return;}
+    track.queuedSourceTicket=0;
     track.queuedSourcePending=false;track.startAt=track.endAt=0;++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stopPending=false;
     if(capturing(track.info.state))(void)finish(track);
     if(track.info.state==LoopState::finalizing){track.finalPlay=false;track.playWhileFinalizing=false;}
@@ -298,10 +299,16 @@ void LoopBank::stop(Track& track) noexcept {
     retire(track.reverseHold);track.reverseHold=nullptr;track.activeReverse=false;
     track.tail=track.last;track.tailRemaining=fadeLength;track.phase=0;track.info.position=0;
 }
+void LoopBank::cutQueuedSource(Track& track) noexcept {
+    stop(track);
+    // AudioGraph.cleanup disconnects its nodes immediately, without STOP's tail.
+    track.last=track.tail=track.blendFrom={};track.tailRemaining=track.blendRemaining=0;
+}
 void LoopBank::clear(Track& track) noexcept {
     const auto removedBuffer=track.clip?track.clip->waveformId:0;
     ++track.sourceRevision;
     track.queuedSourcePending=false;
+    track.queuedSourceTicket=0;
     ++track.phaseEpoch;++track.revision;track.startAt=track.endAt=0;track.plannedFrames=0;
     for(std::uint32_t i=0;i<track.info.undoCount;++i)retire(track.undo[i]);
     for(std::uint32_t i=0;i<track.info.redoCount;++i)retire(track.redo[i]);

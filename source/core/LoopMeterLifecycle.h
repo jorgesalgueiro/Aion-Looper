@@ -159,6 +159,10 @@ public:
     }
     bool teardown() noexcept {
         if(!current())return false;
+        // Include a callback already issued but not yet acknowledged by audio.
+        // A callback issued AFTER cleanup receives a higher ticket and survives.
+        const auto through=queuedWindow.graph?std::max(ticket,queuedWindow.ticket):ticket;
+        if(through&&!engine.retireQueuedSourceThrough(generation,id,through))return false;
         graph.teardown();invalidateQueuedWindow();receipt={};cleanup={};return true;
     }
     bool clear() noexcept {

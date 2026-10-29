@@ -68,6 +68,15 @@ public:
     void setMetronome(bool enabled,float volume) noexcept {metronome.setEnabled(enabled);metronome.setVolume(volume);}
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
+    // Single message owner publishes a cumulative source-retirement fence.
+    // Independent of the performance FIFO, so cleanup cannot be lost on overflow.
+    bool retireQueuedSourceThrough(std::uint32_t requestedGeneration,unsigned track,std::uint32_t ticket) noexcept {
+        if(!requestedGeneration||!ticket||track>=LoopBank::trackCount||requestedGeneration!=generation())return false;
+        const auto previous=sourceRetirements[track].load(std::memory_order_relaxed);
+        if(static_cast<std::uint32_t>(previous>>32)!=requestedGeneration||static_cast<std::uint32_t>(previous)<ticket)
+            sourceRetirements[track].store((static_cast<std::uint64_t>(requestedGeneration)<<32)|ticket,std::memory_order_release);
+        return requestedGeneration==generation();
+    }
     bool enqueueExport(ExportRequest request) noexcept; // Message owner, separate from performance FIFO.
     bool popExport(WavExport& output) noexcept;
     void cancelStutter(std::uint32_t track = LoopBank::trackCount) noexcept {
@@ -132,6 +141,8 @@ private:
     bool exportOutstanding=false; // Message thread only, retained across prepare.
     std::array<std::atomic<std::uint32_t>,LoopBank::trackCount> stutterRevisions{};
     std::array<std::uint32_t,LoopBank::trackCount> seenStutterRevisions{};
+    static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
+    std::array<std::atomic<std::uint64_t>,LoopBank::trackCount> sourceRetirements{};
     std::unique_ptr<LiveInput> liveInput=std::make_unique<LiveInput>();
     static_assert(LoopBank::trackCount==MeterTransfer::trackCount);
     std::unique_ptr<MeterTransfer> meterTransfer=std::make_unique<MeterTransfer>();

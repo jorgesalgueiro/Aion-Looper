@@ -5,9 +5,10 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  const root=path.resolve(__dirname,'..');
  const makeBuffer=(data,rate)=>{const channels=data.map(c=>Float32Array.from(c));return {length:channels[0].length,duration:channels[0].length/rate,sampleRate:rate,numberOfChannels:channels.length,getChannelData:c=>channels[c]};};
  const param=()=>({value:1,setValueAtTime(){},linearRampToValueAtTime(){},cancelScheduledValues(){}});
- const node=()=>({connect(){},disconnect(){},start(time,offset){this.started={time,offset};},stop(time){this.stoppedAt=time;},gain:param(),playbackRate:param()});
- const audio={state:'running',currentTime:0,createBuffer:(count,length,rate)=>makeBuffer(Array.from({length:count},()=>Array(length).fill(0)),rate),createBufferSource:node,createGain:node,createChannelMerger:node,createAnalyser:node};
- const context={window:{},document:{getElementById:()=>null,createElement:()=>({}),head:{appendChild(){}}},effects:{},FACTORY_EFFECTS:{},console,setTimeout:()=>0,clearTimeout(){},audio};vm.createContext(context);
+ const node=()=>({connect(){},disconnect(){this.disconnected=true;},start(time,offset){this.started={time,offset};},stop(time){this.stopped=true;this.stoppedAt=time;},gain:param(),playbackRate:param()});
+ class BufferSource {constructor(){Object.assign(this,node());}}
+ const audio={state:'running',currentTime:0,createBuffer:(count,length,rate)=>makeBuffer(Array.from({length:count},()=>Array(length).fill(0)),rate),createBufferSource:()=>new BufferSource(),createGain:node,createChannelMerger:node,createAnalyser:node};
+ const context={window:{},document:{getElementById:()=>null,createElement:()=>({}),head:{appendChild(){}}},AudioBufferSourceNode:BufferSource,effects:{},FACTORY_EFFECTS:{},console,setTimeout:()=>0,clearTimeout(){},audio};vm.createContext(context);
  vm.runInContext(fs.readFileSync(path.join(root,'resources/ui/Modules/audioEngine.js'),'utf8'),context);
  vm.runInContext(fs.readFileSync(path.join(root,'resources/ui/Modules/scales.js'),'utf8'),context);
  const loops=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');vm.runInContext(loops,context);
@@ -37,6 +38,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  globalThis.scheduledPlay=time=>state.loops[0].play(time);
  globalThis.scheduleStop=()=>state.loops[0].scheduleStop();
  globalThis.stopTime=()=>state.loops[0].graph.source.stoppedAt;
+ globalThis.cleanup=()=>{const source=state.loops[0].graph.source;state.loops[0]._teardown();return {source,stopped:state.loops[0].state==='stopped',detached:state.loops[0].graph===null};};
  globalThis.applyPhase=()=>state.loops[0].restart(audio.currentTime+0.05);
  globalThis.rate=()=>Math.fround(state.loops[0].effectivePlaybackRate);
  globalThis.offset=()=>state.loops[0].graph.startOffset;
@@ -44,7 +46,8 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  globalThis.phaseSpeed=value=>{state.loops[0].playbackRate=value;};
  `,context);
  const queuedStopOnly=process.argv[3]==='--queued-stop';
- const queuedLateOnly=process.argv[3]==='--queued-late';
+ const queuedCleanupOnly=process.argv[3]==='--queued-cleanup';
+ const queuedLateOnly=process.argv[3]==='--queued-late'||queuedCleanupOnly;
  let cases=0,samples=0,maximum=0,nudges=0,tinyWraps=0,retriggers=0,queuedStarts=0,queuedSilentFrames=0;
  for(const mono of [true,false])for(const sampleRate of [8000,48000,96000])for(const length of [1,17,512,4097,20003]){
   audio.currentTime=0;vm.runInContext('state.syncEnabled=false;state.bpm=120;',context);
@@ -88,7 +91,13 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
      if(length===20003){context.setDelay(.731);commands.push('delay 0 0.731');}
      await context.scheduledPlay(grid);commands.push('birth 0 0');
      pending.push({source:context.source(),at:frame,phase:((context.offset()*sampleRate)%length+length)%length});
-     render(Math.min(length+3,147));queuedStarts++;continue;
+     render(Math.min(length+3,147));queuedStarts++;
+     if(queuedCleanupOnly){
+      audio.currentTime=frame/sampleRate;const retired=context.cleanup();
+      assert(retired.source.stopped&&retired.source.disconnected&&retired.stopped&&retired.detached,'Unchanged teardown stops and disconnects the replacement source');
+      commands.push('cleanup 0 0');silence(frame+147);
+     }
+     continue;
     }
     silence(stopFrame);audio.currentTime=frame/sampleRate;
     context.scheduleStop();commands.push('stopgrid 0 0');
@@ -195,5 +204,5 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   for(const check of checks){const row=rows[check.row].split(' ').map(Number);for(const value of row.slice(6)){const error=Math.abs(value-check.expected);maximum=Math.max(maximum,error);assert(error<=1e-6,`Start phase ${mono}/${sampleRate}/${length}, frame ${row[1]}: ${value} vs ${check.expected}`);}samples++;}
   cases++;
  }
- console.log(JSON.stringify({result:'PASS',cases,queuedStarts,queuedSilentFrames,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:queuedLateOnly?'Queued source is silent through late callback admission, then matches original Loop.play/AudioGraph.build source phase/PCM; browser envelopes/resampling excluded':queuedStopOnly?'Queued source PCM after accepted early graph birth and STOP inside the 30ms minimum lead; original grid/play/build/scheduleStop; envelopes/resampling excluded':'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing and early-callback queued grid starts; linear interpolation, browser playback envelopes/resampling excluded'}));
+ console.log(JSON.stringify({result:'PASS',cases,queuedStarts,queuedSilentFrames,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:queuedCleanupOnly?'Unchanged Loop._teardown/AudioGraph.cleanup stops and disconnects replacement source; native cutoff has no residual tail; original source phase/PCM before cleanup; browser envelopes/resampling excluded':queuedLateOnly?'Queued source is silent through late callback admission, then matches original Loop.play/AudioGraph.build source phase/PCM; browser envelopes/resampling excluded':queuedStopOnly?'Queued source PCM after accepted early graph birth and STOP inside the 30ms minimum lead; original grid/play/build/scheduleStop; envelopes/resampling excluded':'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing and early-callback queued grid starts; linear interpolation, browser playback envelopes/resampling excluded'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

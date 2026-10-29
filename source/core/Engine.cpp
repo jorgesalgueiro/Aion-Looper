@@ -80,6 +80,11 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
     if(nonRealtime)loops.completeOfflineEdits();
     loops.beginBlock();
+    for(unsigned id=0;id<LoopBank::trackCount;++id){
+        const auto retired=sourceRetirements[id].load(std::memory_order_acquire);
+        if(static_cast<std::uint32_t>(retired>>32)==thisCallback.generation)
+            loops.retireQueuedSourceThrough(id,static_cast<std::uint32_t>(retired));
+    }
     auto midiContext=midiDispatch();midi->begin(midiContext);
     const auto midiRevision=midiCancellation.load(std::memory_order_acquire);
     if(midiRevision!=seenMidiCancellation){midi->cancel(midiContext);seenMidiCancellation=midiRevision;}

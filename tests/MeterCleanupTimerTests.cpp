@@ -25,7 +25,7 @@ struct Fixture {
     std::unique_ptr<aion::EngineView> view=std::make_unique<aion::EngineView>();
     std::unique_ptr<aion::MeterWindowEvent> packet=std::make_unique<aion::MeterWindowEvent>();
     unsigned block;bool& watch;
-    Fixture(unsigned size,bool& audioWatch,aion::MeterEventScope scope=aion::MeterEventScope::rawWindows):engine(std::make_unique<aion::Engine>(scope)),block(size),watch(audioWatch){prepare();owner=std::make_unique<aion::LoopMeterLifecycle>(*engine,19);owner->setBuffer(true);timer=std::make_unique<aion::LoopMeterCleanupTimer>(*owner);}
+    Fixture(unsigned size,bool& audioWatch,aion::MeterEventScope scope=aion::MeterEventScope::rawWindows,aion::QueuedStartMode mode=aion::QueuedStartMode::sampleGrid):engine(std::make_unique<aion::Engine>(scope,mode)),control(std::make_unique<aion::Engine>(mode==aion::QueuedStartMode::messageCallback?scope:aion::MeterEventScope::rawWindows,mode)),block(size),watch(audioWatch){prepare();owner=std::make_unique<aion::LoopMeterLifecycle>(*engine,19);owner->setBuffer(true);timer=std::make_unique<aion::LoopMeterCleanupTimer>(*owner);}
     void cycle(bool offline=false,aion::ProcessorClockObservation entry={}){
         std::array<float,128> l{},r{},cl{},cr{};
         for(unsigned i=0;i<block;++i)l[i]=r[i]=1.8f*static_cast<float>(std::sin((engine->clock()+i)*.037));
@@ -700,6 +700,54 @@ private:
 };
 double cleanupCounter=0;
 double readCleanupCounter() noexcept {return cleanupCounter;}
+class ReplacementCleanupRunner final : private juce::Timer {
+public:
+    explicit ReplacementCleanupRunner(bool& watch):audioWatch(watch){begin();startTimer(5);}
+    bool finished() const noexcept {return done;}
+private:
+    bool& audioWatch;bool done=false;unsigned block=64;
+    std::unique_ptr<Fixture> f;aion::MeterCleanupRequest old{};
+    aion::MeterGraphEvent next(aion::MeterGraphEventKind kind){aion::MeterGraphEvent event;
+        check(f->engine->popMeterGraphEvent(event)&&event.kind==kind,"Replacement cleanup actual event kind");return event;}
+    void command(aion::LoopAction action){for(auto* e:{f->engine.get(),f->control.get()})
+        check(e->enqueueLoop({action,19,0,e->generation(),0,0}),"Replacement cleanup actual command");f->cycle(false,{100,true});}
+    void render(bool silent){
+        std::array<float,128> l{},r{};float* channels[]={l.data(),r.data()};
+        audioWatch=true;f->engine->process(channels,2,static_cast<int>(block));audioWatch=false;
+        check((std::all_of(l.begin(),l.end(),[](float v){return v==0;})&&std::all_of(r.begin(),r.end(),[](float v){return v==0;}))==silent,
+            "Real JUCE cleanup delivers exact replacement-source PCM cutoff");
+    }
+    void begin(){using namespace aion;
+        cleanupCounter=100;f=std::make_unique<Fixture>(block,audioWatch,MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f->timer=std::make_unique<LoopMeterCleanupTimer>(*f->owner,nullptr,&readCleanupCounter);
+        check(f->timer->consumeBuffer(next(MeterGraphEventKind::bufferInstalled)),"Replacement cleanup installs actual clip");
+        command(LoopAction::stopImmediate);command(LoopAction::play);
+        check(f->timer->consumeImmediatePlay(next(MeterGraphEventKind::immediatePlay)),"Replacement cleanup binds original graph");
+        command(LoopAction::stopImmediate);
+        check(f->timer->consumeImmediateStop(next(MeterGraphEventKind::immediateStop)),"Replacement cleanup arms actual JUCE timer");old=f->owner->cleanupRequest();
+        for(auto* e:{f->engine.get(),f->control.get()})e->configureSync({SyncMode::fixed,120,1,1,4,false});
+        command(LoopAction::play);const auto q=next(MeterGraphEventKind::queuedPlay);
+        check(f->timer->consumeQueuedPlay(q),"Replacement intent retains timer");
+        while(f->engine->clock()<f->view->tracks[19].scheduledFrame+512)f->cycle();
+        check(f->owner->requestQueuedGraph(q.queueId,q.bufferId),"Replacement callback requested");
+        const auto ticket=f->owner->queuedWindowTransaction().ticket;
+        LoopCommand mirror{LoopAction::meterQueuedGraphRequest,19,0,f->control->generation(),0,0};
+        mirror.meterGraphTicket=ticket;mirror.meterQueueId=q.queueId;mirror.meterBufferId=q.bufferId;
+        check(f->control->enqueueLoop(mirror),"Mirror replacement callback PCM");f->cycle();(void)next(MeterGraphEventKind::started);
+        check(f->owner->consumeQueuedWindowResult(next(MeterGraphEventKind::queuedGraphAccepted))&&f->owner->cleanupRequest()==old,
+            "Replacement graph retains original JUCE cleanup identity");render(false);cleanupCounter=100.026;
+    }
+    void timerCallback() override {using namespace aion;
+        if(f->owner->inspect().present)return;
+        check(!f->timer->pending(),"Actual retained timer delivered before audio cutoff check");
+        render(true);check(f->engine->inspectAudioThread(19).track.state==LoopState::stopped,"Actual timer stops replacement at next callback");
+        f->engine->configureSync({SyncMode::off,120,1,1,4,false});
+        check(f->engine->enqueueLoop({LoopAction::play,19,0,f->engine->generation(),0,0}),"Fresh play after actual timer");render(false);
+        check(!f->owner->deliverCleanup(old),"Delivered timer cannot kill later playback");render(false);
+        f.reset();if(block==64){block=128;begin();return;}
+        done=true;stopTimer();std::cout<<"PASS: actual retained JUCE cleanup cuts nonzero replacement source at next 64/128 callback, no tail; fresh playback survives\n";
+    }
+};
 class CorrelatedCleanupRunner final : private juce::Timer {
 public:
     explicit CorrelatedCleanupRunner(bool& watch):audioWatch(watch){begin();startTimer(5);}
@@ -908,6 +956,7 @@ public:
 private:
     bool& audioWatch;std::atomic<std::uint32_t> cleanupPrepared{0}; // Outlives bound fixture adapters.
     std::unique_ptr<CorrelatedCleanupRunner> correlated;
+    std::unique_ptr<ReplacementCleanupRunner> replacement;
     std::unique_ptr<AutomaticQueuedRunner> automatic;
     std::unique_ptr<CliControlRunner> cli;
     std::function<void()> cliCompleted;
@@ -970,7 +1019,8 @@ private:
     void timerCallback() override {
         if(cli){if(!cli->finished())return;cli.reset();cliCompleted();automatic=std::make_unique<AutomaticQueuedRunner>(audioWatch);return;}
         if(automatic){if(!automatic->finished())return;automatic.reset();correlated=std::make_unique<CorrelatedCleanupRunner>(audioWatch);return;}
-        if(correlated){if(!correlated->finished())return;correlated.reset();begin(64);return;}
+        if(correlated){if(!correlated->finished())return;correlated.reset();replacement=std::make_unique<ReplacementCleanupRunner>(audioWatch);return;}
+        if(replacement){if(!replacement->finished())return;replacement.reset();begin(64);return;}
         shutdown->poll();
         processorMeters->poll();
         switch(stage){

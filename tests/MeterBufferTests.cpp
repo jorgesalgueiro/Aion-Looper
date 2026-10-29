@@ -848,7 +848,93 @@ void queuedLateSourceTests(){
     check(allocations.load()==0,"Late-source processing performs zero tracked callback new/delete");
     std::cout<<"PASS: callback-controlled late source silence/state/phase/reverse, wrong/raw/cancel/clear/prepare guards at tracks 0/19 and 64/128; exact stereo comparison and no callback new/delete\n";
 }
+void queuedCleanupSourceTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned order=0;order<7;++order){
+        Fixture f(block,MeterEventScope::acceptedPlayback);
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        LoopMeterLifecycle owner(*f.engine,id);f.record(id);
+        check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Cleanup source installs actual clip");
+        f.command(LoopAction::stopImmediate,id);f.command(LoopAction::play,id);f.cycle();
+        check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Cleanup source binds original immediate graph");
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        check(owner.consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Cleanup source retains real old STOP timer");
+        const auto cleanup=owner.cleanupRequest();
+        for(unsigned n=0;n<8;++n)f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,120,1,1,4,false});
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);
+        check(owner.consumeQueuedPlay(q),"Cleanup source queues replacement without cancelling old timer");
+        const auto grid=f.view->tracks[id].scheduledFrame;
+        if(order!=1)while(f.engine->clock()<grid+512)f.cycle();
+        if(order==3)check(owner.deliverCleanup(cleanup),"Cleanup before callback keeps future callback alive");
+        check(owner.requestQueuedGraph(q.queueId,q.bufferId),"Cleanup source requests explicit replacement callback");
+        const auto pending=owner.queuedWindowTransaction();
+        LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};
+        mirror.meterGraphTicket=pending.ticket;mirror.meterQueueId=q.queueId;mirror.meterBufferId=q.bufferId;
+        check(f.control->enqueueLoop(mirror),"Mirror source callback before cleanup");
+        if(order==2)check(owner.deliverCleanup(cleanup),"Cleanup fences callback still in FIFO");
+        // From this boundary audio intentionally differs from the unretired control.
+        const auto render=[&](bool silent){
+            std::array<float,128> l{},r{};float* channels[]={l.data(),r.data()};
+            watch=true;f.engine->process(channels,2,static_cast<int>(block));watch=false;
+            while(f.engine->popView(*f.view)){}
+            const bool zero=std::all_of(l.begin(),l.end(),[](float v){return v==0;})&&std::all_of(r.begin(),r.end(),[](float v){return v==0;});
+            if(zero!=silent)std::cerr<<"Cleanup case "<<order<<", block "<<block<<", track "<<id<<", frame "<<f.engine->clock()<<", expected silence "<<silent<<", state "<<static_cast<unsigned>(f.view->tracks[id].state)<<'\n';
+            check(zero==silent,"Cleanup cuts exact stereo PCM without residual STOP tail or source resurrection");
+        };
+        render(order==1||order==2);(void)f.next(MeterGraphEventKind::started,id);
+        const auto accepted=f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+        if(order==2)check(!owner.consumeQueuedWindowResult(accepted),"Cleanup retires pending typed result");
+        else check(owner.consumeQueuedWindowResult(accepted),"Cleanup source accepts graph before retained timer");
+        const auto length=f.view->tracks[id].length,undo=f.view->tracks[id].undoCount;
+        if(order==3){
+            check(!owner.deliverCleanup(cleanup),"Already delivered timer cannot cut a later fresh callback");render(false);
+        }else if(order==5){
+            const auto oldGeneration=f.engine->generation();
+            check(owner.deliverCleanup(cleanup),"Publish retirement immediately before prepare");
+            f.engine->prepare(48000,81920,{true,48000,0});
+            check(!owner.deliverCleanup(cleanup)&&!f.engine->retireQueuedSourceThrough(oldGeneration,id,pending.ticket),"Prepare rejects old owner and retirement generation");
+            check(owner.reset(),"Cleanup owner resets after prepare");render(true);
+            check(owner.consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Prepare retains clip through typed buffer receipt");
+            // Prepare resets master gain to zero; drain its existing stop tail
+            // before restoring gain to isolate the new generation's source.
+            for(unsigned n=0;n<8;++n)render(true);
+            f.engine->configureSync({SyncMode::fixed,120,1,1,4,false});f.engine->setTarget(1);
+            check(f.engine->enqueueLoop({LoopAction::play,id,0,f.engine->generation(),0,0}),"New-generation queued PLAY reuses low graph tickets safely");render(true);
+            const auto fresh=f.next(MeterGraphEventKind::queuedPlay,id);
+            check(owner.consumeQueuedPlay(fresh)&&owner.requestQueuedGraph(fresh.queueId,fresh.bufferId),"New generation callback after stale retirement mailbox");
+            render(true);(void)f.next(MeterGraphEventKind::started,id);
+            check(owner.consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"New-generation source accepted");
+            while(f.engine->clock()+block<f.view->tracks[id].scheduledFrame)render(true);
+            // The grid may be inside this callback; test steady playback after it.
+            std::array<float,128> l{},r{};float* channels[]={l.data(),r.data()};
+            watch=true;f.engine->process(channels,2,static_cast<int>(block));watch=false;render(false);
+        }else{
+            if(order==4){
+                for(unsigned n=0;n<255;++n)check(f.engine->enqueueLoop({LoopAction::volume,id,0,f.engine->generation(),f.engine->clock()+1000000,1}),"Fill performance FIFO before cleanup");
+                check(!f.engine->enqueueLoop({LoopAction::volume,id,0,f.engine->generation(),0,1}),"Cleanup tests a genuinely full FIFO");
+            }
+            if(order==6){
+                LoopCommand raw{LoopAction::meterGraphStart,id,0,f.engine->generation(),0,0};raw.meterGraphTicket=pending.ticket+1;
+                check(f.engine->enqueueLoop(raw),"Raw reset must not hide source identity from cleanup");render(false);(void)f.next(MeterGraphEventKind::started,id);
+            }
+            if(order!=2)check(owner.deliverCleanup(cleanup),"Retained old timer retires replacement source");
+            check(!owner.deliverCleanup(cleanup),"Duplicate cleanup is rejected");
+            for(unsigned n=0;n<(order==1?400u:8u);++n)render(true);
+            check(f.view->tracks[id].state==LoopState::stopped&&f.view->tracks[id].length==length&&f.view->tracks[id].undoCount==undo,"Cleanup stops pending/playing source while preserving clip and edit history");
+            if(order!=4){
+                f.engine->configureSync({SyncMode::off,120,1,1,4,false});
+                check(f.engine->enqueueLoop({LoopAction::play,id,0,f.engine->generation(),0,0}),"Fresh immediate PLAY after cleanup");render(false);
+                check(owner.consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id))&&!owner.deliverCleanup(cleanup),"Fresh graph supersedes stale timer");render(false);
+            }
+        }
+    }
+    check(allocations.load()==0,"Cleanup retirement uses no callback new/delete");
+    std::cout<<"PASS: retained cleanup cuts replacement source PCM, pending/future callback retirement, fresh callback survival, raw-reset identity, FIFO overflow and prepare guards at tracks 0/19, 64/128; no callback new/delete\n";
+}
 void meterQueuedTests(){
+    queuedCleanupSourceTests();
     queuedLateSourceTests();
     queuedScheduledSourceTests();
     stopCallbackClockTests();

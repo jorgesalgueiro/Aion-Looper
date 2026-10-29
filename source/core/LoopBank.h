@@ -104,7 +104,16 @@ public:
         if(!startQueuedMeterWindow(id,ticket,queueId,bufferId))return false;
         // This explicit callback origin, unlike a raw reset, owns later stops.
         meterImmediateTickets[id]=ticket;meterPanicKnown[id]=true;meterQueuedIds[id]=0;
-        admitQueuedSource(tracks[id]);return true;
+        tracks[id].queuedSourceTicket=ticket;
+        if(queuedStartMode==QueuedStartMode::messageCallback&&ticket<=retiredSourceTickets[id])cutQueuedSource(tracks[id]);
+        else admitQueuedSource(tracks[id]);
+        return true;
+    }
+    void retireQueuedSourceThrough(unsigned id,std::uint32_t ticket) noexcept {
+        if(queuedStartMode!=QueuedStartMode::messageCallback||id>=trackCount||!ticket)return;
+        retiredSourceTickets[id]=std::max(retiredSourceTickets[id],ticket);
+        auto& track=tracks[id];
+        if(track.queuedSourceTicket&&track.queuedSourceTicket<=retiredSourceTickets[id])cutQueuedSource(track);
     }
     void reportQueuedMeterGraph(bool accepted,std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId) noexcept {
         if(id<trackCount)meterGraphEvents->publish(accepted?MeterGraphEventKind::queuedGraphAccepted:MeterGraphEventKind::queuedGraphRejected,id,ticket,frame,tracks[id].clearEpoch,bufferId,0,queueId);
@@ -127,7 +136,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { meterCallbackClock={};for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){track.queuedSourceTicket=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     void setMeterCallbackClock(const CallbackClockStamp& callback) noexcept {meterCallbackClock=callback;}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
@@ -142,6 +151,7 @@ private:
     // Only successful immediate Loop.play origins call this. A raw-window reset,
     // buffer install, healthy retrigger or queued grid transition is not a birth.
     void publishImmediateMeterPlay(unsigned id) noexcept {
+        tracks[id].queuedSourceTicket=0;
         if(meterScope!=MeterEventScope::acceptedPlayback)return;
         if(meterGraphHighWater[id]==std::numeric_limits<std::uint32_t>::max()){meterGraphEvents->invalidate();return;}
         const auto ticket=++meterGraphHighWater[id];
@@ -201,6 +211,7 @@ private:
         Clip* reverseHold = nullptr; // Old raw clip backing a playing reversed source after NORM.
         bool activeReverse = false;
         bool queuedSourcePending = false; // Audio-owned source admission, independent of raw meter resets.
+        std::uint32_t queuedSourceTicket=0; // Explicit graph callback identity; raw window resets never replace it.
         std::uint64_t revision = 0, clearEpoch = 0, sourceRevision = 0;
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
@@ -275,6 +286,7 @@ private:
     void blend(Track&) noexcept;
     void restartSource(Track&) noexcept;
     void admitQueuedSource(Track&) noexcept;
+    void cutQueuedSource(Track&) noexcept;
     void saveUndo(Track&,std::uint32_t,bool global = true) noexcept;
     bool restore(Track&,std::uint32_t,bool redo) noexcept;
     std::array<std::uint8_t,50> undoOrder{},redoOrder{};
@@ -283,6 +295,7 @@ private:
     std::uint32_t growthRoom(const Track&) const noexcept;
     // Construction-time heap storage; never grow the Windows audio stack.
     std::array<std::uint32_t,trackCount> meterGraphTickets{},meterGraphHighWater{},meterImmediateTickets{};
+    std::array<std::uint32_t,trackCount> retiredSourceTickets{};
     std::array<bool,trackCount> meterPanicKnown{};
     std::array<std::uint64_t,trackCount> meterQueuedIds{};
     std::array<std::uint64_t,trackCount> meterQueuedWindowIds{};
