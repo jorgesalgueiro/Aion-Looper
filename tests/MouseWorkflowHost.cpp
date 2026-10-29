@@ -28,6 +28,7 @@ public:
         AionProcessor::ExportDestination picker=[this,exportDirectory](const juce::String& filename,std::function<void(juce::File)> done){
             choices.push_back({exportDirectory,filename,std::move(done)});
         };
+        (void)pcmDirectory.getChildFile("early-source-start").deleteFile();
         processor = std::make_unique<AionProcessor>(nativePicker?AionProcessor::ExportDestination{}:std::move(picker));
         processor->setPlayConfigDetails(2, 2, 48000, blockSize);
         processor->prepareToPlay(48000, blockSize);
@@ -115,6 +116,11 @@ private:
     struct Choice {juce::File directory;juce::String filename;std::function<void(juce::File)> done;};
     std::vector<Choice> choices;
     void timerCallback() override {
+        // Test-host IO only: exercise an early callback through the production
+        // message-thread adapter without adding a public/debug RPC operation.
+        const auto early=pcmDirectory.getChildFile("early-source-start");
+        if(early.existsAsFile()){(void)early.deleteFile();(void)processor->requestQueuedMeterGraphMessageThread(0);}
+
         const auto startNavigation=pcmDirectory.getChildFile("navigation-probe-start");if(startNavigation.existsAsFile()){(void)startNavigation.deleteFile();navigationActive.store(true,std::memory_order_release);}
         const auto stopNavigation=pcmDirectory.getChildFile("navigation-probe-stop");if(stopNavigation.existsAsFile()){(void)stopNavigation.deleteFile();navigationActive.store(false,std::memory_order_release);}
         NavigationEvidence navigation{},nextNavigation{};bool navigationChanged=false;

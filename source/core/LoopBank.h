@@ -34,6 +34,7 @@ struct LoopView {
     std::uint64_t phaseApplyFrame = 0;
     float effectiveRate = 1;
     bool dynamicRecorded = false, stopPending = false;
+    bool queuedSourceReady = false; // Transient audio-owned readiness, never persisted.
     float volume = 1, feedback = 0.8f, peak = 0, pan = 5, playbackRate = 1;
     bool muted = false, solo = false, finalizationFailed = false, reverse = false;
 };

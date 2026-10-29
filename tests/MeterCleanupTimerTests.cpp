@@ -291,7 +291,8 @@ void processorEarlyStartTests(bool& audioWatch){
             auto state=rpc(R"({"operation":"snapshot"})");auto grid=static_cast<std::uint64_t>(static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"]));
             if(grid<=clock()+5000){command("stopImmediate");cycle();rpc(R"({"operation":"snapshot"})");while(clock()<=grid+block)cycle();command("play");cycle();
                 state=rpc(R"({"operation":"snapshot"})");grid=static_cast<std::uint64_t>(static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"]));}
-            check(p->requestQueuedMeterGraphMessageThread(19),"Early Start production explicit callback");cycle();rpc(R"({"operation":"snapshot"})");
+            check(p->requestQueuedMeterGraphMessageThread(19),"Early Start production explicit callback");cycle();
+            check(static_cast<bool>(rpc(R"({"operation":"snapshot"})")["tracks"][19]["queuedSourceReady"]),"Validated early source exposes audio-owned GUI readiness");
             const auto edit=grid-(beforeGrid?3840:(std::string_view(action)=="retrigger"?1:960));while(clock()+block<edit)cycle();
             const auto target=clock()+(std::string_view(action)=="retrigger"?240:2400);command("startDelay",.731);command("reverse",1);command(action,std::string_view(action)=="nudgeStart"?1:0);cycle();
             state=rpc(R"({"operation":"snapshot"})");

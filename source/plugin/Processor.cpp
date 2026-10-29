@@ -523,7 +523,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             }
             object->setProperty("clearEpoch",static_cast<juce::int64>(t.clearEpoch));object->setProperty("stuttering",t.stuttering);object->setProperty("stutterClock",t.stutterClock);object->setProperty("clockProgress",t.clockProgress);object->setProperty("stutterStart",t.stutterStart);object->setProperty("stutterEnd",t.stutterEnd);
             object->setProperty("startDelay",t.startDelay);object->setProperty("phaseApplyFrame",static_cast<juce::int64>(t.phaseApplyFrame));
-            object->setProperty("scheduledFrame",static_cast<juce::int64>(t.scheduledFrame));object->setProperty("stopPending",t.stopPending);
+            object->setProperty("scheduledFrame",static_cast<juce::int64>(t.scheduledFrame));object->setProperty("stopPending",t.stopPending);object->setProperty("queuedSourceReady",t.queuedSourceReady);
             object->setProperty("effectiveRate",t.effectiveRate);object->setProperty("dynamicRecorded",t.dynamicRecorded);
             object->setProperty("pan", t.pan); object->setProperty("playbackRate", t.playbackRate);
             object->setProperty("volume", t.volume); object->setProperty("feedback", t.feedback);

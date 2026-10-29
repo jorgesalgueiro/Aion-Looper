@@ -1,10 +1,10 @@
 # Current migration checkpoint
 
-## Latest implementation — 29 October 2026
+## Latest implementation â€” 29 October 2026
 
 Early 5ms RTRG now accepts an explicitly validated future source, using the
 existing bounded phase scheduler and original-grid volume gate. No callback
-validation bypass, new IDs/state version, asset changes or dependency upgrade.
+validation bypass, new IDs/state version, preserved-asset changes or dependency upgrade.
 Windows reference/processor checks pass; final Engine overflow and Linux checks
 are in progress. Do not treat this checkpoint as completed release acceptance.
 Next after this slice: speed/tempo edits during the early-source interval;
@@ -1152,7 +1152,7 @@ browser gain curves, resampling, source overlap and wall/audio alignment remain
 release/sound gates. Next: unchanged-JS early 5ms RTRG comparisons, then playback
 speed/tempo/clock-source edits during the early interval. Keep meters disabled.
 
-## Early 5ms RTRG — 29 October 2026
+## Early 5ms RTRG â€” 29 October 2026
 
 Acceptance: a validated early queued graph accepts the existing GUI/CLI RTRG
 command, captures Start reset/quantization and direction at the tap, schedules
@@ -1161,9 +1161,11 @@ and does not resurrect the original source. Unadmitted/stopping sources remain
 guarded; STOP, panic, clear, prepare, retained cleanup and full-queue metadata
 rollback retain their existing ownership guarantees.
 
-Implementation changes only the RTRG guard and playing-branch selection;
+Implementation extends the RTRG guard and playing-branch selection;
 `hasPreparedQueuedSource` excludes unvalidated/stop-pending sources. No new audio
-storage, queue, persistence field or GUI/CLI command is introduced. The existing
+storage, queue, persistence field or GUI/CLI command is introduced. Transient
+`queuedSourceReady` snapshot telemetry enables the existing RTRG button only after
+validated source admission, keeping unadmitted/stopping sources disabled. The existing
 bounded phase-event execution and original volume gate own the replacement.
 
 Tests extend the prior slice rather than replace its cases: 64 paired Engine
@@ -1171,7 +1173,10 @@ positive cases, 64 cancellation/overflow cases and 32 silent advancing-source
 tail cancellations at tracks 0/19 and 64/128. Production RPC adds four RTRG
 cases. The unchanged-JS source oracle adds 120 early RTRG starts across mono/
 stereo, 8/48/96kHz and five clip lengths. PCM tolerance stays 1e-6; metadata
-stays 1e-14. Oracle setup now preserves origin on an unchanged tempo instead
+stays 1e-14. A hardware-free pointer case uses a test-host file marker to call
+the existing message-thread queued-graph adapter; production gains no test RPC.
+It checks disabled/unadmitted versus enabled/validated RTRG, exactly one trusted
+button command, pre-grid zero PCM and subsequent audible playback. Oracle setup now preserves origin on an unchanged tempo instead
 of accumulating redundant floating-point conversion drift. The processor test
 allows initial grid activation inside the host block while keeping the exact
 pending 5ms deadline; PCM silence and subsequent source assertions are retained.
@@ -1185,3 +1190,9 @@ Windows commands/evidence so far:
 
 No REAPER/Ardour listening, physical controller or full WebAudio envelope/
 resampling acceptance is claimed. No package or push requested for this slice.
+
+Intermediate verification before GUI readiness follow-up:
+- Windows `aion_core_tests --meter-queued`: PASS, all 160 early restart/control-safety cases plus retained queued ownership regressions, zero tracked callback new/delete.
+- Windows eight affected CTests: PASS (150.69s, parallel 2), including original UI bytes, normal Start, queued STOP/late/cleanup/metadata/Apply and early RTRG.
+- Linux core and production Standalone/LV2 builds: PASS; Engine queued suite and production processor executable: PASS at 64/128. These precede the additive readiness telemetry; rerun affected compiled tests on the final snapshot.
+- `node tests/FrontendTests.cjs`: PASS after GUI readiness wiring.
