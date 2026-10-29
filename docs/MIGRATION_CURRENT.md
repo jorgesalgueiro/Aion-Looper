@@ -5,8 +5,11 @@
 Early 5ms RTRG now accepts an explicitly validated future source, using the
 existing bounded phase scheduler and original-grid volume gate. No callback
 validation bypass, new IDs/state version, preserved-asset changes or dependency upgrade.
-Windows reference/processor checks pass; final Engine overflow and Linux checks
-are in progress. Do not treat this checkpoint as completed release acceptance.
+Implementation `3f510b4`, completed GUI readiness wiring `c249f2e`: Windows/Linux
+reference, Engine and processor checks pass, including 64/128 callback safety.
+The real Windows pointer/keyboard/PCM workflow passes at both block sizes.
+The early-RTRG slice meets its documented acceptance; full release acceptance
+remains open. Both source mirrors are synchronized; no package or push created.
 Next after this slice: speed/tempo edits during the early-source interval;
 full browser envelopes/resampling, DAW listening and device gates remain open.
 
@@ -1186,7 +1189,7 @@ Windows commands/evidence so far:
 - Build preset `windows` targets `aion_midi_processor_tests AionLooper_Standalone AionLooper_VST3`.
 - `node tests/StartPhaseParity.cjs build/windows-core/Release/aion_start_probe.exe --queued-early-rtrg`: PASS, 120 starts, 2,885,470 compared frames, 2,596,604 silent frames; max absolute error 6.183482287314135e-8.
 - `build/windows/Release/aion_midi_processor_tests.exe`: PASS, including actual shared GUI/CLI RPC and zero tracked processBlock new/delete.
-- Final Engine overflow/reference suite and Linux validation remain in progress at this snapshot; append results before marking the slice complete.
+- At the intermediate source snapshot these final gates were pending; their completed results are recorded below.
 
 No REAPER/Ardour listening, physical controller or full WebAudio envelope/
 resampling acceptance is claimed. No package or push requested for this slice.
@@ -1196,3 +1199,88 @@ Intermediate verification before GUI readiness follow-up:
 - Windows eight affected CTests: PASS (150.69s, parallel 2), including original UI bytes, normal Start, queued STOP/late/cleanup/metadata/Apply and early RTRG.
 - Linux core and production Standalone/LV2 builds: PASS; Engine queued suite and production processor executable: PASS at 64/128. These precede the additive readiness telemetry; rerun affected compiled tests on the final snapshot.
 - `node tests/FrontendTests.cjs`: PASS after GUI readiness wiring.
+
+Final-snapshot checklist (`c249f2e`, readiness wiring included):
+
+| Reference behavior | Native status | Evidence | Remaining limit |
+| --- | --- | --- | --- |
+| RTRG on a healthy future graph replaces source at +5ms | Shared GUI/CLI action accepts only validated queued source | Strict unchanged-JS 120-start oracle; exact deadlines through actual processor RPC | Full WebAudio envelope/resampler comparison |
+| Start reset/quantization and Reverse belong to replacement | Existing phase scheduler captures controls at action time | Mono/stereo, 8/48/96kHz and five lengths; 1e-14 metadata / 1e-6 source PCM tolerances unchanged | Speed/tempo changes during this interval are next |
+| Retained graph volume stays silent until original grid | Existing gain gate retained through RTRG | Exact pre-grid zero PCM; real Windows early-source button test | Physical device/DAW listening |
+| Stop/cleanup must retire pending and hidden advancing sources | Existing bounded cancellation and ownership paths reused | Paired Engine 64/128, tracks 0/19, full FIFO rollback, real JUCE lifecycle; zero tracked callback new/delete | Full integration sanitizers and long-session/max-load gates |
+| Existing RTRG control reaches shared command after graph birth | Additive transient readiness telemetry enables button | Actual shared RPC and trusted Windows pointer test; no public test/debug operation | Linux WebKit pointer pass not executed this session |
+
+Exact focused commands (existing configured caches; no dependencies upgraded):
+
+```powershell
+# Windows; resolve bundled CMake/CTest as in DEVELOPMENT_WORKFLOW.md.
+& $cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+& build/windows-core/Release/aion_core_tests.exe --meter-queued
+& $ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_start_phase|js_native_queued_stop_phase|js_native_queued_late_phase|js_native_queued_cleanup|js_native_queued_early_edits|js_native_queued_early_restart|js_native_queued_early_rtrg)$'
+& $cmake --build --preset windows --target aion_midi_processor_tests AionLooper_Standalone AionLooper_VST3 aion_mouse_host --parallel 2
+& build/windows/Release/aion_midi_processor_tests.exe
+node tests/FrontendTests.cjs
+& tools/TestMouseWorkflow.ps1 -SkipMidi
+# WSL; after local commit and SetupWslWorkspace.sh sync, native storage only.
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake --build build/core --target aion_core_tests aion_start_probe --parallel 2
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec build/core/aion_core_tests --meter-queued
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec ctest --test-dir build/core --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_start_phase|js_native_queued_stop_phase|js_native_queued_late_phase|js_native_queued_cleanup|js_native_queued_early_edits|js_native_queued_early_restart|js_native_queued_early_rtrg)$'
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake --build build/linux --target aion_midi_processor_tests AionLooper_Standalone AionLooper_LV2 --parallel 2
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec build/linux/aion_midi_processor_tests
+```
+
+The readiness follow-up rebuilds affected compiled targets and reruns Engine,
+processor and early-RTRG PCM tests; unchanged passing broader source tests are
+reused. No host routing/state/transport behavior changed, so REAPER/Ardour listening
+and selected-format full validators remain integration/release work, not claimed
+here. No physical MIDI/device tests, Linux WebKit pointer tests, sanitizers or
+long-session/max-load tests were executed for this slice. Full browser fade curves,
+resampling and complete feature parity remain pending. Build warnings include
+existing alignment padding and test misleading-indentation warnings; they are
+tracked separately from passing functional checks, without unrelated refactoring.
+
+Final acceptance results (`c249f2e` code; documentation-only handoff follows):
+
+- Windows and Linux final `aion_core_tests --meter-queued`: PASS. All 160 early restart/cancel/overflow/tail cases and retained queued ownership tests pass, with zero tracked callback new/delete.
+- Both final production `aion_midi_processor_tests` executables: PASS, including 16 shared GUI/CLI early-start RPC cases (four new RTRG cases), readiness telemetry, MIDI/state, real JUCE message-loop lifecycle and zero tracked processBlock new/delete.
+- Eight affected reference CTests: PASS Windows (150.69s) and Linux (446.41s), including preserved UI bytes. Linux `build/core` is cached Debug; these are test wall times under concurrent validation, not comparable build/runtime performance claims.
+- Final rebuilt Windows/Linux probes, `StartPhaseParity.cjs ... --queued-early-rtrg`: PASS, identical 120 starts / 2,885,470 compared frames / 2,596,604 silent frames; maximum absolute PCM error 6.183482287314135e-8 versus unchanged 1e-6 tolerance.
+- `FrontendTests.cjs`: PASS. Final `TestMouseWorkflow.ps1 -SkipMidi`: PASS at 64 and 128, including the new actual early callback/readiness/button/zero-before-grid/audible-after-grid case. Existing pointer/keyboard, Start/Q/nudge, RTRG repeat, STUT, LIVE, export, MERGE/Undo/Redo PCM checks also pass. No audio/MIDI device opened by the synthetic host.
+- Final Windows Standalone/VST3/test host and Linux Standalone/LV2 builds: PASS. Existing warnings noted above remain; no new dependency or format added.
+- `git diff --check`: PASS. Reference checkout, preserved resources/ui and logo remain untouched; parameter/action IDs, expanded capacity and persisted state format unchanged.
+
+Warmed callback observations (isolated ignored `build/early-rtrg-bench-src`
+harness, same source on both OSes): one stereo 512-frame clip, 48kHz, 512 idle
+warm-up blocks, early validated source, one RTRG before/after the original grid,
+128 playing warm-up blocks then 2,048 measured Engine.process calls. Input
+creation, view draining and timing storage are outside the measured callback.
+Windows uses the Release core in `build/windows-core/Release/aion_core.lib`;
+Linux uses the production Release core in `build/linux/libaion_core.a`. The
+initial Linux Debug-core observations are retained separately and not compared
+to these Release results. Runs were sequential after test processes completed.
+
+| OS / block / replacement | Schedule us | Replacement us | Steady mean us | p99 us | Observed max us | Callback budget us |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Windows / 64 / before grid | 39.300 | 27.500 | 28.905 | 61.100 | 84.800 | 1333.333 |
+| Windows / 64 / after grid | 29.200 | 27.400 | 28.600 | 48.400 | 81.900 | 1333.333 |
+| Windows / 128 / before grid | 55.300 | 53.900 | 56.599 | 92.100 | 137.400 | 2666.667 |
+| Windows / 128 / after grid | 55.400 | 54.100 | 55.752 | 93.000 | 117.800 | 2666.667 |
+| Linux / 64 / before grid | 22.406 | 21.606 | 22.989 | 53.915 | 119.432 | 1333.333 |
+| Linux / 64 / after grid | 20.806 | 18.405 | 21.731 | 53.214 | 134.535 | 1333.333 |
+| Linux / 128 / before grid | 74.920 | 40.110 | 41.300 | 85.922 | 139.537 | 2666.667 |
+| Linux / 128 / after grid | 42.611 | 40.610 | 41.444 | 83.222 | 126.734 | 2666.667 |
+
+Reproduce the local harness with the CMakeLists/bench.cpp in the named ignored
+source folder, passing `AION_SOURCE` and `AION_CORE_LIBRARY` above, then build
+Release and run `queued_bench` after other tests stop. Outputs:
+`build/early-rtrg-bench-windows.jsonl` and
+`build/early-rtrg-bench-linux-release.jsonl`; Debug-core output is explicitly
+`build/early-rtrg-bench-linux-debug-core.jsonl`. These are synthetic one-loop
+callback observations, not worst-case/max-capacity scheduling, hardware round-trip
+latency or an OS speed comparison. Full load/long-session measurements remain
+release work. No tolerance was changed, failing case removed or sanitizer/DAW/
+device pass inferred from these results.
+
+Next concrete slice: compare speed/tempo/clock-source edits after early source
+birth and before the original grid against unchanged JavaScript. Keep full browser
+fade/resampling and physical device/selected-DAW release gates explicitly open.
