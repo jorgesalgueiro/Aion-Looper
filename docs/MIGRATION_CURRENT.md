@@ -2,15 +2,15 @@
 
 ## Latest implementation � 29 October 2026
 
-Code snapshot `82c3a53` adds replacement-source retirement to the late-callback
-admission work in `27063ed`. A retained old cleanup now cuts the replacement
-queued source at the next audio callback, without a residual STOP tail. Pending
-callbacks cannot resurrect a retired source; callbacks issued after cleanup and
-fresh playback survive. Full command queues cannot lose cleanup. Reference assets,
-parameter/action IDs, capacity and session format are unchanged.
-See the latest source-cleanup evidence below. Next: early graph-birth control
-edits before the future grid, then remaining overlap/envelope sound gates. Full
-looper sound/renderer, DAW/device and offline MIDI-render acceptance remain open.
+Code snapshot `1542e01` completes the narrow early-source Start/Reverse slice.
+An early validated callback now captures the future source's phase and direction.
+Start-slider metadata edits before its grid update the controls without changing
+that source; the next play uses the edited values. Pre-grid silence, following-grid STOP,
+late admission and retained cleanup guards remain intact. Source assets, IDs,
+capacity and persistence formats are unchanged. See the latest evidence below.
+Next: explicit Start restart actions during the early-source interval, then
+speed/tempo edits and remaining source-overlap/envelope gates. Full looper/DAW/
+device release acceptance remains open.
 
 ## Owner-approved faster development workflow — 28 October 2026
 
@@ -910,3 +910,109 @@ Apple or offline MIDI-render acceptance is claimed. No distributable or push.
 Next concrete slice: compare controls edited after an early source callback but
 before its grid against the unchanged JS source; then remaining overlap/envelope
 sound gates. Keep visible meters disabled until their separate acceptance.
+
+## Early source Start/Reverse edits — 29 October 2026
+
+Implementation `1542e01`; baseline `502bf68` / cleanup code `82c3a53` above.
+The sibling reference remains absent; use unchanged `.reference/Ascii-Looper`
+and the preserved `resources/ui` assets, plus the independent native WSL mirror.
+
+Acceptance chosen before editing: Start-slider metadata/Reverse edits after a valid early source
+callback must preserve that source's scheduled phase/direction and pre-grid
+silence, update visible metadata, and apply on the next play. Controls changed
+between queue intent and actual source birth must belong to that source.
+Following-grid STOP and existing cancellation/cleanup/overflow guards must hold.
+
+Reference: `UIManager.setLoopStartDelay` edits metadata only; Reverse explicitly
+applies on next play. `AudioGraph.build` selects buffer/startOffset at source
+creation. Native code previously selected them again at the audible grid.
+The new oracle failed on the unchanged baseline (mono, 8kHz, 17 frames: native
+0.0207093153 versus reference 0.0455965891; tolerance 1e-6).
+
+| Behavior | Native result | Evidence | Still pending |
+| --- | --- | --- | --- |
+| Start/Reverse edits after early birth | Existing source retains captured phase/direction | Unchanged-JS source oracle and independent paired Engine PCM | Speed/tempo edits in this interval |
+| Metadata changes before birth and on later play | Current controls belong to the newly created source | 48 Engine cases; 120 reference-comparison starts including replay | Capture/edit graph origins |
+| Future start and following-grid STOP | Silent before grid; exact normal/stopping source PCM | Both blocks, tracks 0/19, both directions, separate/combined edits | Broader overlap and browser envelopes/resampling |
+| Cleanup/cancel/prepare/overflow | Existing safety tests retained and passing | Focused Engine and actual JUCE processor/timer suites | DAW/hardware/integration release gates |
+
+Only two transient values per track are added: prepared source phase/direction.
+The callback captures them; the grid consumes them only for an admitted queued
+source in production callback mode. Legacy sample-grid component mode and fresh
+immediate/late sources retain their existing paths. Stop/clear/prepare invalidate
+source ownership through the existing ticket/generation rules. No new allocation,
+queue, parameter/action ID, saved-state field, dependency or product command.
+Existing GUI/CLI Start/Reverse commands share the same DSP implementation.
+This result applies to metadata edits, not explicit Apply/Q/nudge/RTRG restarts.
+Those actions need a separate early-interval comparison: the native queued-state
+restart guard differs from the reference, which is already marked playing after
+graph birth. Do not treat the new metadata tests as their acceptance.
+
+Executed verification:
+- Windows and Linux `aion_core_tests --meter-queued` passed: 48 new paired stereo
+  cases, plus unchanged late-source, retained-cleanup, cancellation, full FIFO,
+  raw-reset, stale-result and prepare guards; zero tracked callback new/delete.
+- Windows four source CTests passed in 111.46s. New oracle: 30 buffer cases,
+  120 starts (mono/stereo, forward/reverse, 8/48/96kHz, lengths 1/17/512/4097/20003),
+  2,572,556 compared frames, 2,561,396 silent future-source frames; maximum source
+  error 5.669010411102349e-8 at unchanged tolerance 1e-6. IO-node stubs exclude
+  browser envelopes/resampling; unchanged reference methods choose source/offset.
+- Linux five focused CTests passed in 326.39s, including all four source
+  comparisons and exact original UI bytes.
+- Actual Windows and Linux `aion_midi_processor_tests` passed, including real JUCE
+  timers, production processors, external CLI/isolation, MIDI/state and zero
+  tracked processBlock new/delete at 64/128. Active Windows Standalone/VST3 and
+  Linux Standalone/LV2 rebuilt successfully.
+- No frontend/bridge code changed. Previous 82c3a53 pointer/keyboard/PCM evidence
+  remains the UI baseline; no new actual pointer, DAW listening or hardware test
+  is claimed for this binary. No sanitizer/full-suite/Apple/offline MIDI-render
+  acceptance, distributor or push. Existing compiler warnings remain separate.
+
+Reproduce in the existing configured Windows tree (use the VS bundled CMake if
+not on PATH, as documented in DEVELOPMENT_WORKFLOW.md):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+build/windows-core/Release/aion_core_tests.exe --meter-queued
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(js_native_queued_early_edits|js_native_queued_cleanup|js_native_queued_late_phase|js_native_queued_stop_phase)$'
+cmake --build --preset windows --target aion_midi_processor_tests AionLooper_Standalone AionLooper_VST3 --parallel 2
+build/windows/Release/aion_midi_processor_tests.exe
+# Commit a coherent snapshot before using the non-destructive WSL sync helper.
+wsl -d Ubuntu --exec bash /mnt/d/Jorge/Documents/Codex/Aion-Looper/tools/SetupWslWorkspace.sh /mnt/d/Jorge/Documents/Codex/Aion-Looper
+```
+
+In `/home/jorge/projects/Aion-Looper`:
+
+```sh
+cmake --build build/core --target aion_core_tests aion_start_probe --parallel 2
+build/core/aion_core_tests --meter-queued
+ctest --test-dir build/core --no-tests=error --output-on-failure -R '^(js_native_queued_early_edits|js_native_queued_cleanup|js_native_queued_late_phase|js_native_queued_stop_phase|original_ui_bytes)$'
+cmake --build build/linux --target aion_midi_processor_tests AionLooper_Standalone AionLooper_LV2 --parallel 2
+build/linux/aion_midi_processor_tests
+```
+
+The ignored `build/early-bench-src` harness imports the existing Release core:
+512 idle warm blocks, a single early admission observation, Start/Reverse edits,
+a single grid-start callback observation, then 128 playing warm blocks and 2,048
+measured callbacks. One stereo 512-frame loop at 48kHz; input/view/timing storage
+outside `Engine::process`. No new permanent build target/dependency.
+
+| Release core | Block | Admission us | Grid start us | Mean us | p99 us | Max observed us | Budget us |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Windows | 64 | 30.2 | 30.4 | 30.93 | 47.6 | 80.8 | 1333.33 |
+| Windows | 128 | 74.3 | 86.0 | 60.93 | 79.4 | 109.6 | 2666.67 |
+| Linux/WSL | 64 | 19.07 | 20.08 | 19.95 | 35.48 | 85.8 | 1333.33 |
+| Linux/WSL | 128 | 66.46 | 36.12 | 39.29 | 65.36 | 114.31 | 2666.67 |
+
+Data: local ignored `build/early-bench-{windows,linux}.jsonl`. Rebuild/re-run the
+corresponding `build/early-bench-windows` (Release config) or native
+`build/early-bench-linux` harness; executable is `queued_bench`. These are small
+synthetic main-thread observations, not maximum-load/host scheduling guarantees,
+round-trip latency, or a cross-OS speed comparison. Do not compare their warm-up
+setup directly with the older late-admission harness.
+
+Next concrete slice: compare explicit Apply/Q/nudge after early graph birth but
+before its grid, including the reference restart before the original future
+source time. Then compare speed/tempo/clock-source edits, distinguishing source
+offset from display anchors and AudioParam updates. Keep remaining sound,
+DAW/device and asset-rights acceptance explicit; keep visible meters disabled.
