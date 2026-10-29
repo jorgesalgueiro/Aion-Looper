@@ -1562,3 +1562,37 @@ validate early-source tempo/clock changes against their actual unchanged JS
 handlers. Keep the accepted direct-speed, same-value write, fractional-tie,
 cancellation/overflow and source-lifetime regressions intact. Do not infer full
 browser/device/DAW acceptance from the passing source-event and RPC tests.
+
+
+## Two pending same-action replacements / speed — 29 October 2026
+
+Acceptance defined before extending the tests: schedule two Apply sources or two
+RTRG sources before either starts; write .5x between creations and .25x after
+source two exists. Earlier nodes must retain their own AudioParam events; source
+two must capture .5x at birth despite the later .25x control metadata. Both source
+starts must remain ordered, with the original grid volume gate, reverse PCM and
+fresh-play/cancellation behavior intact. This slice adds evidence, not a new
+control or a DSP rewrite. Different-action deadline overtaking remains separate.
+
+| Reference behavior | Native status / evidence | Remaining limit |
+| --- | --- | --- |
+| Speed targets graph.nodes.source, the newest scheduled node | Existing implementation; new unchanged-JS two-source PCM oracle | Full browser AudioParam quantum/envelopes/resampling excluded |
+| First and second future sources keep their own initial rates | Two Apply or two RTRG events, before/after grid, mono/stereo, 8/48/96kHz, five clip lengths and both directions | Mixed Apply/RTRG overtaking and tempo changes are not claimed |
+| Original volume gate survives early replacements | Oracle checks silence through original grid and phase after both starts | Existing native fade shape is retained |
+| Explicit later speed / fresh PLAY and cancellation remain safe | Paired Engine extension at tracks 0/19 and 64/128, StopNow/panic/clear/prepare/retirement fence | Full-load, device, DAW and renderer release acceptance stays open |
+
+New CTest: `js_native_queued_multiple_replacement_speed` invokes
+`node tests/StartPhaseParity.cjs <aion_start_probe> --queued-multiple-replacement-speed`.
+Existing source cases and their 1e-6 PCM / 1e-14 metadata tolerances are retained.
+The new mode executes unchanged original handlers, asserts source stop/start and
+rate-event ownership, and evaluates each source's captured rate independently.
+Engine tests retain all 32 single-source and 20 single-source cancellation cases,
+adding 32 two-source and 20 two-source cancellation cases. Paired stereo checks
+and callback allocation/deallocation tracking remain enabled.
+
+Windows new oracle PASS: 30 configurations, 120 queued sequences (96 RTRG calls),
+2,901,886 compared frames including 2,580,188 silent frames; maximum error
+6.3772108371829e-8 at unchanged tolerance 1e-6. Further results recorded below.
+No production DSP/parameters/commands/CLI/MIDI/bridge/UI/state or dependencies
+changed. Prior source/RPC/active-format evidence at e222753 remains applicable;
+unchanged suites and wrappers are not rebuilt solely for regression additions.
