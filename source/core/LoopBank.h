@@ -283,6 +283,10 @@ private:
     static bool hasPlaybackSource(const Track& t) noexcept {
         const auto s=t.info.state;return t.clip&&!t.queuedSourcePending&&(s==LoopState::playing||s==LoopState::stopping||s==LoopState::overdubbing||s==LoopState::substituting||s==LoopState::multiplying||(s==LoopState::finalizing&&t.playWhileFinalizing));
     }
+    bool hasPreparedQueuedSource(const Track& t) const noexcept {
+        return queuedStartMode==QueuedStartMode::messageCallback&&t.info.state==LoopState::queued
+            &&!t.queuedSourcePending&&t.queuedSourceTicket&&!t.info.stopPending;
+    }
     void stop(Track&) noexcept;
     void clear(Track&) noexcept;
     void blend(Track&) noexcept;

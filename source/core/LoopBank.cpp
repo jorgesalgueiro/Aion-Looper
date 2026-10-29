@@ -232,7 +232,10 @@ bool LoopBank::clearMergedSource(std::uint32_t id,double serial) noexcept {
 }
 void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     if(hasPlaybackSource(track))++track.sourceRevision;
-    ++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stuttering=track.info.stutterClock=false;
+    // Activating an already constructed source at its grid must not cancel a
+    // Start replacement scheduled while that source was still inaudible.
+    if(!preparedQueue){++track.phaseEpoch;track.info.phaseApplyFrame=0;}
+    track.info.stuttering=track.info.stutterClock=false;
     retire(track.reverseHold);track.reverseHold=nullptr;
     // A queued source can reach its start grid with a later STOP already armed.
     // It still needs the same initial phase and reverse buffer as a playing source.
@@ -559,7 +562,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             t.info.startDelay=previous;return false; // FIFO rejection preserves accepted state.
         }
         case LoopAction::applyStart: {
-            if(s!=LoopState::playing||!t.clip)return true; // Original restart guard.
+            if((s!=LoopState::playing&&!hasPreparedQueuedSource(t))||!t.clip)return true;
             const bool master=sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(id));
             return schedulePhase(t,id,static_cast<double>(frame)/rate+0.05,master);
         }
@@ -660,7 +663,12 @@ void LoopBank::applyPhaseEvents() noexcept {
         const bool valid=event.epoch==track.phaseEpoch;
         if(valid&&event.frame>frame)break;
         phaseRead=(phaseRead+1)%phaseCapacity;
-        if(!valid||track.info.state!=LoopState::playing||!track.clip)continue;
+        if(!valid||!track.clip||(track.info.state!=LoopState::playing&&!hasPreparedQueuedSource(track)))continue;
+        if(track.info.state==LoopState::queued){
+            // The replacement can start before the original grid. Retire that
+            // old activation deadline so it cannot restart this source again.
+            track.info.state=LoopState::playing;track.startAt=0;track.tailRemaining=0;
+        }
         ++track.sourceRevision;
         retire(track.reverseHold);track.reverseHold=nullptr;
         track.phase=event.phase;track.activeReverse=event.reverse;track.info.stuttering=track.info.stutterClock=false;
