@@ -2,14 +2,16 @@
 
 ## Latest implementation — 29 October 2026
 
-Active slice: speed edits after a queued Apply/RTRG replacement has already been
-created. Baseline `ff78df8` was clean. The unchanged source schedules an initial
-AudioParam rate at its future start, which overrides an earlier speed write to
-that newest source. Native scheduled events now capture that rate separately
-from current control metadata. Focused Windows source/Engine tests pass; final
-production RPC, regression and Linux gates are pending. Do not advance to tempo/
-clock changes before this slice is accepted. No asset, ID, capacity, persistence
-or dependency changes; no package/push created.
+Scheduled replacement / speed ordering meets the scoped acceptance below.
+Implementation `80bf816`, precision follow-up `e222753`: scheduled sources retain
+their own initial rates and original seconds timestamps. Current control metadata
+is independent of the source AudioParam; explicit same-value writes and fresh
+plays use current controls. Windows/Linux source, Engine and production shared-RPC
+gates pass, including 64/128 and fractional timestamp ties. Active-format builds
+pass. UI bindings/assets, IDs, capacity, persisted format and dependencies are
+unchanged. No package/push created; full renderer/device/DAW release gates remain
+open. Next: expand multiple-pending-source rate sequences, then early-source
+tempo/clock changes. See the final acceptance evidence below.
 
 ## Owner-approved faster development workflow — 28 October 2026
 
@@ -1459,3 +1461,104 @@ while rate-event ordering compares the original seconds. No additional storage
 or tolerance change beyond the captured float rate. Final tie/platform gates are
 pending this snapshot; reuse the prior passing ten Windows source gates and
 32 + 20 Engine cases only for the behavior they actually covered.
+
+Final-code parity checklist (source-rate implementation `80bf816`, timestamp
+precision follow-up `e222753`):
+
+| Reference behavior | Native status | Evidence | Remaining limit |
+| --- | --- | --- | --- |
+| A source's future initial rate event wins over an earlier speed write | Capture rate in each bounded phase record; activate from that rate independently of displayed control | 120 mixed starts, Apply/RTRG, before/after grid; original node rate-event assertions and <=1e-6 source PCM | Full rendered WebAudio automation quantum/envelope/resampler comparison |
+| Original timestamps order two writes even if they round to one native frame | Retain original seconds; later same-time writes win, sub-sample future events stay later | Independent 24-start deadline-tie oracle; no earlier case removed | Multiple pending replacements with rate edits need expanded sequence coverage |
+| Older source is not the target of the newest node's speed edit | Current audio rate is separate from metadata; unchanged clock polls do not replay metadata | 32 exact paired Engine cases at tracks 0/19, reverse, 64/128, plus real processor callbacks | Early-source tempo/clock changes remain next |
+| Same displayed speed after start still writes the live AudioParam; fresh plays use current controls | Direct writes are not discarded solely for equal metadata; STOP/fresh source reset uses current rate | Exact paired live-rate edit and fresh-play PCM in all 32 Engine cases | Full project/audio persistence remains separately unported |
+| Pending source state must retire on stop/clear/panic/prepare/cleanup | Keep existing epoch, source-ticket and fixed-queue ownership; no new heap or lease | 20 added cancellation cases plus all prior overflow/cleanup guards; zero tracked callback new/delete | Long-session/max-load/sanitizer and device/selected-DAW release gates |
+| GUI and CLI keep one action/state path | Existing commands/bindings and presentation unchanged | Eight added actual mixed shared-RPC cases, 28 early-start cases total, Windows/Linux processor suites | No new real-pointer timing pass this session; reuse `ff78df8` unchanged-control evidence |
+
+Executed commands (existing caches, automatic regeneration only for added tests):
+
+```powershell
+& $cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+& build/windows-core/Release/aion_core_tests.exe --meter-queued
+& $ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_start_phase|js_native_queued_stop_phase|js_native_queued_late_phase|js_native_queued_cleanup|js_native_queued_early_edits|js_native_queued_early_restart|js_native_queued_early_rtrg|js_native_queued_early_speed|js_native_queued_replacement_speed)$'
+# Final precision follow-up: rerun affected mixed/tie cases and Engine/RPC;
+# reuse unchanged passing wider source cases from the source-rate snapshot.
+& $ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(js_native_queued_replacement_speed|js_native_queued_replacement_speed_tie)$'
+& $cmake --build --preset windows --target aion_midi_processor_tests AionLooper_Standalone AionLooper_VST3 --parallel 2
+& build/windows/Release/aion_midi_processor_tests.exe
+# Commit/sync via SetupWslWorkspace.sh before WSL tests, as in DEVELOPMENT_WORKFLOW.md.
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake --build build/core --target aion_core_tests aion_start_probe --parallel 2
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec build/core/aion_core_tests --meter-queued
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec ctest --test-dir build/core --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_start_phase|js_native_queued_stop_phase|js_native_queued_late_phase|js_native_queued_cleanup|js_native_queued_early_edits|js_native_queued_early_restart|js_native_queued_early_rtrg|js_native_queued_early_speed|js_native_queued_replacement_speed|js_native_queued_replacement_speed_tie)$'
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake --build build/linux --target aion_midi_processor_tests AionLooper_Standalone AionLooper_LV2 --parallel 2
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec build/linux/aion_midi_processor_tests
+```
+
+Windows source snapshot's ten CTests PASS (224.98s, parallel 2); final mixed/tie
+checks PASS (55.16s). Final Windows and Linux Engine/RPC tests and active-format
+builds PASS. Linux final eleven-source gate was still finishing at this note;
+record its final result below. Existing test indentation and alignment warnings
+are unchanged. No production UI/bridge or CLI code changed; actual shared RPC
+coverage is new, prior pointer evidence is reused rather than claimed rerun.
+No REAPER/Ardour listening, physical controllers, Linux WebKit pointer tests,
+Apple/CLAP validation, full validators, sanitizers or long-session/max-load tests
+were performed. No host routing/state/transport precedence was changed.
+Original reference, preserved resources/ui and logo, parameter/action IDs, expanded
+capacity, saved-state format and pinned dependencies remain unchanged.
+
+Final acceptance — 29 October 2026:
+
+- Linux all eleven relevant source CTests PASS (752.38s, parallel 2). Windows source-rate snapshot's ten gates PASS (224.98s), followed by final affected mixed/tie gates PASS (55.16s). The precision follow-up only retains seconds instead of the pre-multiplied frame scalar and fixes the tie ordering; unchanged passing broader Windows comparisons are reused, not claimed rerun. Linux core is cached Debug: these are test wall times, not comparable runtime/build performance measurements.
+- Final mixed-source oracle on both OSes: 120 starts, 48 RTRG, 2,901,886 compared / 2,580,188 silent frames; max absolute error 6.3772108371829e-8, tolerance unchanged at 1e-6. Independent tie oracle on both OSes: 24 starts, 12 RTRG, 530,390 compared / 526,862 silent frames; max error 3.664825914961867e-8. Original script files and prior cases/metadata tolerances remain unchanged.
+- Final Engine queued suites PASS Windows/Linux: 32 new exact paired stereo mixed-rate cases, explicit same-value live writes and fresh plays, plus 20 pending cancellation/clear/panic/prepare/retained-cleanup cases at tracks 0/19, reverse and 64/128. Existing direct-speed, Apply/Q/nudge/RTRG, STOP, source-retirement, overflow/loss/generation and raw-not-birth cases remain enabled and PASS; zero tracked callback new/delete.
+- Final production processor executables PASS Windows/Linux: 28 early-start shared GUI/CLI RPC cases including eight new mixed cases, real JUCE message-loop lifecycle, external CLI, MIDI/state and zero tracked processBlock new/delete. Actual UI/bridge bindings are unchanged, so prior trusted pointer coverage at `ff78df8` is reused; no new actual pointer timing or Linux WebKit run is claimed.
+- Final Windows Standalone/VST3 and Linux Standalone/LV2 builds PASS, with existing alignment-padding/test-indentation warnings retained separately. No additional format/dependency/version introduced. `git diff --check` PASS.
+
+These source tests execute unchanged JS scheduling/DSP with IO node stubs and a
+sample-deadline AudioParam-event model. They do not establish full browser-rendered
+rate automation quantum, resampling or envelope parity. Physical devices, selected
+DAW listening, full validators, sanitizers and long-session/max-load gates remain
+open. No release-ready package or push was requested or created.
+
+Isolated warmed Release callback observations:
+
+Ignored harness `build/replacement-speed-bench-src` uses one stereo 512-frame clip
+at 48kHz, 512 idle warm-up blocks, explicit queued-source admission, an Apply
+replacement created roughly 80ms or one block before the original grid, then a
+.5x speed write in the next callback before its 50ms replacement. It measures
+speed-edit and replacement callbacks separately. After replacement, 128 playing
+warm-up blocks precede 2,048 steady Engine.process measurements. Input generation,
+view draining and timing storage are outside the measured callback. Runs were
+sequential after all acceptance processes ended. Windows links
+`build/windows-core/Release/aion_core.lib`; Linux links the production Release
+`build/linux/libaion_core.a`, not the cached Debug test core.
+
+| OS / block / Apply creation | Speed callback us | Replacement callback us | Steady mean us | p99 us | Observed max us | Callback budget us |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Windows / 64 / ~80ms early | 47.100 | 32.100 | 31.691 | 62.400 | 68.900 | 1333.333 |
+| Windows / 64 / last block | 30.400 | 30.900 | 30.249 | 61.300 | 84.000 | 1333.333 |
+| Windows / 128 / ~80ms early | 54.200 | 54.500 | 60.058 | 96.200 | 126.600 | 2666.667 |
+| Windows / 128 / last block | 55.200 | 54.900 | 59.935 | 95.400 | 124.500 | 2666.667 |
+| Linux / 64 / ~80ms early | 21.749 | 22.042 | 23.877 | 53.685 | 99.337 | 1333.333 |
+| Linux / 64 / last block | 22.140 | 21.650 | 24.206 | 54.762 | 95.908 | 1333.333 |
+| Linux / 128 / ~80ms early | 42.713 | 43.987 | 47.042 | 90.128 | 115.599 | 2666.667 |
+| Linux / 128 / last block | 43.888 | 44.378 | 47.262 | 88.267 | 152.336 | 2666.667 |
+
+Local harness commands: configure the named ignored source folder with CMake,
+`AION_SOURCE` set to the corresponding checkout and `AION_CORE_LIBRARY` to the
+Release library above; build Release, then run
+`build/replacement-speed-bench-windows/Release/queued_bench.exe` and, separately
+in native WSL storage, `build/replacement-speed-bench-linux/queued_bench`.
+Raw outputs: `build/replacement-speed-bench-windows.jsonl` and
+`build/replacement-speed-bench-linux-release.jsonl`. Only speed-edit, actual
+replacement and steady measurements are reported; the auxiliary grid marker is
+not used for performance conclusions. These one-loop observations are not
+worst-case/full-queue/max-capacity deadlines, hardware round-trip latency or an
+OS speed comparison. The exact timestamp-tie queue scan remains bounded by the
+existing 128 entries; full-load/long-session performance remains release work.
+
+Next concrete slice: multiple pending Apply/RTRG sources interleaved with rate
+writes, using the now-captured per-source rate and original timestamp. Then
+validate early-source tempo/clock changes against their actual unchanged JS
+handlers. Keep the accepted direct-speed, same-value write, fractional-tie,
+cancellation/overflow and source-lifetime regressions intact. Do not infer full
+browser/device/DAW acceptance from the passing source-event and RPC tests.
