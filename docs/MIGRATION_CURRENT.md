@@ -2,16 +2,14 @@
 
 ## Latest implementation — 29 October 2026
 
-Early-source direct speed edits meet the scoped acceptance below. Implementation
-`eaf0eca`, regression follow-up `8329704`: future sources keep their captured
-start offset across user speed changes, including fractional grids; no inaudible
-rate ramp leaks into playback. Windows/Linux source, Engine and production RPC
-gates pass, as does the Windows 64/128 trusted WebView workflow. No preserved
-assets, IDs, capacity, state format or dependencies changed. Callback measurements
-are recorded below; no package or push created.
-Next: speed edits interleaved with already-scheduled Apply/RTRG replacements,
-then early-source tempo/clock changes. Browser renderer/envelope, selected-DAW,
-physical-device and complete migration release gates remain open.
+Active slice: speed edits after a queued Apply/RTRG replacement has already been
+created. Baseline `ff78df8` was clean. The unchanged source schedules an initial
+AudioParam rate at its future start, which overrides an earlier speed write to
+that newest source. Native scheduled events now capture that rate separately
+from current control metadata. Focused Windows source/Engine tests pass; final
+production RPC, regression and Linux gates are pending. Do not advance to tempo/
+clock changes before this slice is accepted. No asset, ID, capacity, persistence
+or dependency changes; no package/push created.
 
 ## Owner-approved faster development workflow — 28 October 2026
 
@@ -1412,3 +1410,40 @@ has already scheduled a replacement. Do not infer that multiple future sources
 receive identical rate changes. Then validate early-source tempo/clock changes;
 this patch deliberately leaves their updateRate path unchanged. Keep normal
 playing-source smoothing and the accepted queued cancellation/ownership coverage.
+
+## Scheduled replacement then speed — 29 October 2026
+
+Acceptance: Apply (50ms) / RTRG (5ms) creates a new source immediately with its
+initial rate event at future actualT. A speed edit before actualT targets that
+newest node only: the old source continues at its rate and the future rate event
+wins at source start. Control metadata nevertheless takes the new value for a
+later source. Explicitly writing the same displayed speed after start must update
+the live AudioParam rather than no-op. Preserve original grid silence, captured
+source phase/direction, queue deadlines, stop/cleanup/prepare/overflow safety,
+normal audible smoothing and fixed storage. GUI/CLI keep the existing commands.
+
+Baseline reproduced: new unchanged-JS oracle failed at mono / 8000Hz / 17-frame
+clip, native frame 3500: 0.0872587338089943 versus 0.04236931274822469 (unchanged
+1e-6 tolerance). Reference AudioGraph.retrigger schedules the initial source
+rate at actualT; UIManager.setLoopSpeed writes only nodes.source at now. The
+model now evaluates those actual AudioParam events chronologically, with the
+same existing sample-deadline normalization used for source starts. This fixes
+test model timestamp consistency at near-integer floating-point boundaries,
+without changing any PCM/metadata tolerance or reference code.
+
+Implementation: add one float to each fixed phase-event record for its source
+initial rate. Source activation snaps to that captured rate; control metadata
+(phaseRate) and current source rate/target are intentionally separate. Unchanged
+clock polls no longer replay an old control edit over the future rate event.
+Direct same-value speed writes remain real writes. STOP/fresh source creation
+restore current control rate for later playback. Effective-rate telemetry still
+reports the original control calculation, as the JS property does. The timestamp
+tie path scans at most the existing 128-entry phase queue, respecting a sub-sample
+future initial event that rounds to the current native frame. No dynamic queue,
+source allocation, ownership transfer, parameter/action ID or state-version change.
+
+Initial focused evidence:
+- `StartPhaseParity.cjs ... --queued-replacement-speed`: PASS, 120 starts (48 RTRG), 2,901,886 compared frames / 2,580,188 silent frames; max absolute error 6.3772108371829e-8 versus unchanged 1e-6 tolerance. Mono/stereo, 8/48/96kHz, five clip lengths and both source directions, replacements before/after original grid.
+- Windows paired Engine tests: initial 32 Apply/RTRG/speed cases PASS at tracks 0/19 and 64/128, exact old/replacement stereo PCM, same-value live write and fresh play, zero tracked callback new/delete. Added 20 pending cancellation/clear/panic/prepare/retained-cleanup cases are under the final gate.
+- Existing UI/CLI bindings, native frontend and preserved resources/ui are unchanged. Reuse the prior `ff78df8` real Windows pointer/keyboard evidence for Start/Apply, RTRG and speed controls. This slice adds eight actual mixed shared-RPC cases to the processor fixture; it does not claim an unexecuted new pointer timing test or physical-device check.
+- Final relevant source/regression, active-format builds and production RPC tests are in progress before WSL acceptance.

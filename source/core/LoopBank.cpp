@@ -242,6 +242,7 @@ void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     const bool starting=track.info.state==LoopState::playing||track.info.state==LoopState::stopping;
     track.activeReverse=starting&&(preparedQueue?track.queuedSourceReverse:track.info.reverse);
     if(track.clip&&starting){
+        if(!preparedQueue){track.rate=track.targetRate=static_cast<float>(track.phaseRate);track.rateRemaining=0;track.rateIncrement=0;}
         const double length=track.clip->length,shift=track.info.startDelay*length;
         const double offset=sync.settings.mode!=SyncMode::off?(static_cast<double>(frame)-sync.origin)*track.phaseRate-shift:shift;
         track.phase=preparedQueue?track.queuedSourcePhase:std::fmod(offset,length);if(track.phase<0)track.phase+=length;
@@ -302,6 +303,7 @@ void LoopBank::stop(Track& track) noexcept {
     track.info.stuttering=track.info.stutterClock=false;
     if(track.info.state==LoopState::armed){clear(track);return;}
     track.queuedSourceTicket=0;
+    track.rate=track.targetRate=static_cast<float>(track.phaseRate);track.rateRemaining=0;track.rateIncrement=0;
     track.queuedGainAt=0;
     track.queuedSourcePending=false;track.startAt=track.endAt=0;++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stopPending=false;
     if(capturing(track.info.state))(void)finish(track);
@@ -573,9 +575,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::speed: {
             if (!std::isfinite(value) || value < 0.25f || value > 2 || s == LoopState::recording
                 || s == LoopState::overdubbing || s == LoopState::substituting || s == LoopState::multiplying || s == LoopState::finalizing) return false;
-            if (value == t.info.playbackRate) return true;
             const auto previous=t.targetRate;
-            t.info.playbackRate = value;updateRate(t);
+            t.info.playbackRate = value;updateRate(t,true);
             if(hasPreparedQueuedSource(t,true)&&t.targetRate!=previous){
                 // Direct speed edits update the existing unstarted AudioParam.
                 // Keep its captured offset, correcting only the sub-sample
@@ -669,7 +670,7 @@ bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool ma
         phaseEvents[at]=phaseEvents[before];at=before;
     }
     double sourceOffset=std::fmod(offset,length);if(sourceOffset<0)sourceOffset+=length;
-    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending,target*rate,sourceOffset};phaseWrite=next;
+    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending,target*rate,sourceOffset,static_cast<float>(track.phaseRate)};phaseWrite=next;
     track.info.phaseApplyFrame=std::max(track.info.phaseApplyFrame,deadline);return true;
 }
 void LoopBank::applyPhaseEvents() noexcept {
@@ -687,6 +688,7 @@ void LoopBank::applyPhaseEvents() noexcept {
         }
         ++track.sourceRevision;
         retire(track.reverseHold);track.reverseHold=nullptr;
+        track.rate=track.targetRate=event.rate;track.rateRemaining=0;track.rateIncrement=0;
         track.phase=event.phase;track.activeReverse=event.reverse;track.info.stuttering=track.info.stutterClock=false;
         track.sourceStartFrame=event.sourceStartFrame;track.sourceOffset=event.sourceOffset;
         track.info.position=static_cast<std::uint32_t>(track.phase);
@@ -767,8 +769,9 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
 void LoopBank::configureSync(SyncSettings settings) noexcept {
     sync.configure(settings,frame);for(auto& track:tracks)updateRate(track);
 }
-void LoopBank::updateRate(Track& track) noexcept {
+void LoopBank::updateRate(Track& track,bool directSpeedEdit) noexcept {
     if(!track.clip)return;
+    const auto previousControl=static_cast<float>(track.phaseRate);
     double target=track.info.playbackRate;
     if(sync.settings.mode!=SyncMode::off&&!track.info.dynamicRecorded&&track.info.originalBpm>0&&track.info.length){
         const double duration=static_cast<double>(track.info.length)/rate;
@@ -779,6 +782,21 @@ void LoopBank::updateRate(Track& track) noexcept {
     }
     track.phaseRate=std::max(0.001,target); // JS source offset uses Number before AudioParam float conversion.
     const auto next=static_cast<float>(track.phaseRate);
+    // Metadata and the current source AudioParam can differ: a future source
+    // retains its initial-rate event at its start time. Unchanged clock polls
+    // must not replay an older user control into that source after it starts.
+    if(next==previousControl&&!directSpeedEdit)return;
+    if(directSpeedEdit&&track.info.phaseApplyFrame>frame)return;
+    if(directSpeedEdit&&track.info.phaseApplyFrame==frame){
+        // A later AudioParam write at the same start timestamp wins.
+        for(unsigned at=phaseRead;at!=phaseWrite;at=(at+1)%phaseCapacity){auto& e=phaseEvents[at];
+            if(e.track!=static_cast<std::uint32_t>(&track-tracks.data())||e.epoch!=track.phaseEpoch||e.frame!=frame)continue;
+            // A sub-sample future event can round to this native frame while
+            // still following the user's write on the AudioParam timeline.
+            if(e.sourceStartFrame>static_cast<double>(frame))return;
+            e.rate=next;
+        }
+    }
     if(next==track.targetRate)return;
     track.targetRate=next;track.rateRemaining=fadeLength*4;
     if(track.rateRemaining)track.rateIncrement=(next-track.rate)/track.rateRemaining;else track.rate=next;
@@ -815,7 +833,7 @@ bool LoopBank::copyWaveform(std::uint32_t id,std::uint64_t expected,std::array<f
 }
 std::array<LoopView,LoopBank::trackCount> LoopBank::view() const noexcept {
     std::array<LoopView,trackCount> views{};
-    for(std::uint32_t i=0;i<trackCount;++i){views[i]=tracks[i].info;views[i].waveformId=tracks[i].clip?tracks[i].clip->waveformId:0;views[i].solo=soloTrack==static_cast<int>(i);views[i].effectiveRate=tracks[i].targetRate;
+    for(std::uint32_t i=0;i<trackCount;++i){views[i]=tracks[i].info;views[i].waveformId=tracks[i].clip?tracks[i].clip->waveformId:0;views[i].solo=soloTrack==static_cast<int>(i);views[i].effectiveRate=static_cast<float>(tracks[i].phaseRate);
         views[i].clearEpoch=tracks[i].clearEpoch;views[i].sourceRevision=tracks[i].sourceRevision;views[i].scheduledFrame=tracks[i].startAt?tracks[i].startAt:tracks[i].endAt;
         const auto& t=tracks[i];auto& v=views[i];v.queuedSourceReady=hasPreparedQueuedSource(t);
         v.stutterClock=v.stutterClock&&t.clip&&(v.state==LoopState::playing||v.state==LoopState::stopping);
