@@ -1,5 +1,17 @@
 # Current migration checkpoint
 
+## Latest implementation � 29 October 2026
+
+Code snapshot `27063ed` completes the narrow late-callback source-admission slice:
+production queued playback stays silent/queued until its validated callback,
+then starts with current phase, direction and rate. No raw reset can admit audio;
+cancel/clear/prepare guards are retained. Both platforms' focused Engine/source
+and actual Processor checks pass; Windows admission-snapshot pointer/PCM workflows passed at
+64/128. Active Standalone/VST3 (Windows) and Standalone/LV2 (Linux) rebuilt.
+See the final evidence/measurement section below. Next: old/new cleanup overlap
+and source lifetime sound, then early-callback control edits and envelopes. Full
+looper sound/renderer, DAW/device and offline MIDI-render acceptance remain open.
+
 ## Owner-approved faster development workflow — 28 October 2026
 
 Active delivery is Windows Standalone/VST3 and Linux Standalone/LV2. CLAP is
@@ -90,19 +102,19 @@ STOP ALL and STOP NOW failures/evidence remain in VALIDATION.md and `build/`.
 | Capture and accepted loop edits preserve committed PCM | Existing scoped audit: 126 capture/OD/SUB cases at 1e-6; other loop-edit gates retained | Full browser envelopes/resampling and physical input timing are separate |
 | Queue callback uses max(0, grid delta minus 100ms) | Exact accepting callback retained; immutable command-counter deadline; 96 original delay cases plus 288 offset cases / 864 deadline reads at 1e-12 | Delivery is now automatic on the existing 25ms service tick; punctual event-loop timing and full source sound remain unaccepted |
 | Stop cleanup uses 25ms / unrounded lead+50ms / 65ms | Configured live JUCE timers now retain command-origin deadlines; original 144 stop cases / 432 reads retained | Event-loop jitter, UI/physical timing and full teardown sound remain unaccepted; explicit compatibility paths stay receipt-based |
-| STOP ALL cancels a still-queued intent even after its grid time | This repair routes queuedCancel by explicit pending ID; core, production processor, 20-route and real-timer regressions | This does not fix audible playback occurring before a late message callback |
+| STOP ALL cancels a still-queued intent even after its grid time | This repair routes queuedCancel by explicit pending ID; core, production processor, 20-route and real-timer regressions | Late-source admission now prevents pre-callback audio; old-cleanup source lifetime sound remains separate |
 | STOP NOW clears pending queue before immediate graph cleanup, including after grid | Explicit queue-ID routing; graphless/attached, production requests and real 25ms timer checks | Normal synchronized STOP and old-teardown state boundary remain separate |
 | Normal STOP takes immediate path when sync is disabled | Pending-ID routing covers sync disabled after grid; accepted graph origins support immediate and synchronized stops before/after grid | Actual automatic callback delivery and full transition sound remain separate |
 | Queued cancellation retains older analyser/data/history and cleanup | Existing owner/adapter policy retained, including original pre-grid test plus added post-grid frozen-clock test | If old cleanup already changed message state out of queued, existing rejection remains intentional pending full mapping |
-| Audible grid does not prove message graph birth | Graph origin remains quarantined; no new graph, reset or 65ms cleanup inferred | Visible meters, remaining capture/edit graph origins, overlap and continuity remain unfinished |
+| Grid deadline does not prove source/graph birth | Production keeps queued state and silence until validated callback; raw resets cannot admit audio | Visible meters, remaining capture/edit graph origins, overlap and continuity remain unfinished |
 | Pending intent requires its conditional callback transaction | Generic start rejects real queued IDs; explicit graph request/result now binds a fresh graph with rejection/loss/cleanup recovery | Default timer now requests due real-ID callbacks; full source lifetime remains unaccepted |
 | Conditional raw reset reports its outcome without graph creation | Explicit request/result handshake, reserved tickets, typed outcomes and production routing; old graph/binding/cleanup retained | This is raw-window readiness only; graph acceptance, source timing and renderer remain separate |
-| Explicit queued callback creates a graph independently of old cleanup | Unchanged-source/component comparison: 72 scenarios, 1,278 additional observations; fresh analyser/data, retained old deadlines, cleanup before/after callback, repeated immediate/scheduled/panic stops | This oracle supplies explicit notifications; the real-ID transaction is checked separately, and audio/wall scheduling remains unwired |
-| Explicit graph callback owns subsequent stop routing | Real queue IDs, 120 core lifetime/stop combinations, prepared processor hook and twenty-track result/stop routing pass | Automatic service delivery is covered below; overlap/envelopes and source phase remain unaccepted |
+| Explicit queued callback creates a graph independently of old cleanup | Unchanged-source/component comparison: 72 scenarios, 1,278 additional observations; fresh analyser/data, retained old deadlines, cleanup before/after callback, repeated immediate/scheduled/panic stops | This oracle supplies explicit notifications; the real-ID transaction is checked separately, and late source admission now has PCM/Engine/Processor coverage; wall/audio alignment and full cleanup sound remain open |
+| Explicit graph callback owns subsequent stop routing | Real queue IDs, 120 core lifetime/stop combinations, prepared processor hook and twenty-track result/stop routing pass | Automatic service delivery is covered below; late source phase is validated below; overlap/envelopes and wall/audio alignment remain unaccepted |
 | Due callback retains its original intent and fires once | Guarded local-owner delivery checks deadline and stable receipt, preserves cleanup ordering, rejects stale replacement and retries FIFO failure | Existing processor timer supplies autonomous delivery below; zero-delay/backlog interactions and full source sound remain separate |
 | Full instruments/effects/controller/persistence/host parity | No new acceptance from this session; see PARITY.md and feature-specific validation notes | Do not infer suite completion from these looper/meter gates |
 
-## Current slice: running-Standalone development CLI
+## Previous slice: running-Standalone development CLI
 
 The user chose control of the existing Standalone session/devices, not a second
 headless engine. `tools/aion.py` exposes the current native JSON handler through
@@ -744,3 +756,52 @@ the production Processor suite, Standalone/LV2 builds and all six focused CTests
 passed (32.88s), and `tools/TestMouseWorkflow.ps1 -SkipMidi` passed the actual
 64/128 pointer/keyboard/PCM, queued playback/STOP, WAV export and MERGE workflows
 using the synthetic test host (no audio device opened). These are not DAW tests.
+
+## Final evidence and next step — code 27063ed
+
+Final Windows Release: `aion_core_tests --meter-queued` passed after the rate
+refinement; direct `StartPhaseParity.cjs ... --queued-late` passed the extended
+60-start oracle above. Rebuilt `aion_midi_processor_tests`, `AionLooper_Standalone`
+and `AionLooper_VST3`; `ctest --test-dir build/windows -C Release --output-on-failure --no-tests=error -R '^native_midi_processor$'`
+passed 1/1 in 34.02s. The source-rate refinement does not alter running-source
+smoothing or the preceding unchanged UI/bridge/asset code. Full Windows 64/128
+pointer/export/MERGE workflow evidence is from admission snapshot f3a5fa1; it
+was not redundantly rerun for the two-field fresh-rate initialization refinement.
+
+Final native WSL: built `aion_core_tests` / `aion_start_probe`, then passed
+`build/core/aion_core_tests --meter-queued` and
+`ctest --test-dir build/core --output-on-failure --no-tests=error -R '^js_native_queued_late_phase$'`
+(1/1, 69.14s; same 4.034987166612325e-8 max error). Rebuilt
+`aion_midi_processor_tests AionLooper_Standalone AionLooper_LV2` in build/linux,
+then ran `build/linux/aion_midi_processor_tests` directly: PASS, including actual
+Processor late source silence/admission, autonomous timers, CLI, MIDI, state and
+zero tracked audio-thread new/delete. Build logs retain the WSL EGL/DRI3 warning;
+no hardware acceleration or physical audio-device validation is inferred.
+
+Measured the linked Release core with a local ignored harness in
+`build/queued-bench-src` (CMake targets under queued-bench-windows / queued-bench-linux).
+One stereo loop, 48kHz, warm caches; 2048 steady callbacks per block size;
+input generation/view consumption/timing storage outside the measured process call.
+Late admission is a separate single observation, not a worst-case statistic.
+
+| Release core | Block | Admission us | Mean us | p99 us | Observed max us | Block budget us |
+| --- | --- | --- | --- | --- | --- | --- |
+| Windows | 64 | 27.3 | 27.90 | 48.5 | 81.2 | 1333.33 |
+| Windows | 128 | 53.9 | 59.18 | 90.9 | 130.5 | 2666.67 |
+| Linux/WSL | 64 | 20.0 | 21.75 | 40.8 | 100.7 | 1333.33 |
+| Linux/WSL | 128 | 58.8 | 46.18 | 89.2 | 125.5 | 2666.67 |
+
+Local benchmark data: `build/queued-bench-windows.jsonl` and
+`build/queued-bench-linux.jsonl`. The generated harness uses the existing core
+library; no project dependency or permanent target was added. These are synthetic
+main-thread processing observations, not device round-trip latency, maximum
+track/FX load, host scheduling guarantees or a cross-OS speed comparison.
+
+Reviewed final source/command/state diff; `git diff --check` passed. No reference
+or preserved resource changed, no parameter/action/session format changed, and
+no distributor/package/push was produced. No new REAPER/Ardour listening,
+physical controller/device, sanitizer/full-suite, Apple or offline MIDI-render
+acceptance is claimed. Next concrete slice: map independent old/new cleanup to
+actual source lifetime/overlap sound, retaining retired-result/cancel/overflow
+safety. Early graph-birth control edits, exact browser envelopes/resampling and
+wall/audio alignment remain separate sound gates; keep visible meters disabled.
