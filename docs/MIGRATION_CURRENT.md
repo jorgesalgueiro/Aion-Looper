@@ -2,14 +2,14 @@
 
 ## Latest implementation � 29 October 2026
 
-Code snapshot `27063ed` completes the narrow late-callback source-admission slice:
-production queued playback stays silent/queued until its validated callback,
-then starts with current phase, direction and rate. No raw reset can admit audio;
-cancel/clear/prepare guards are retained. Both platforms' focused Engine/source
-and actual Processor checks pass; Windows admission-snapshot pointer/PCM workflows passed at
-64/128. Active Standalone/VST3 (Windows) and Standalone/LV2 (Linux) rebuilt.
-See the final evidence/measurement section below. Next: old/new cleanup overlap
-and source lifetime sound, then early-callback control edits and envelopes. Full
+Code snapshot `82c3a53` adds replacement-source retirement to the late-callback
+admission work in `27063ed`. A retained old cleanup now cuts the replacement
+queued source at the next audio callback, without a residual STOP tail. Pending
+callbacks cannot resurrect a retired source; callbacks issued after cleanup and
+fresh playback survive. Full command queues cannot lose cleanup. Reference assets,
+parameter/action IDs, capacity and session format are unchanged.
+See the latest source-cleanup evidence below. Next: early graph-birth control
+edits before the future grid, then remaining overlap/envelope sound gates. Full
 looper sound/renderer, DAW/device and offline MIDI-render acceptance remain open.
 
 ## Owner-approved faster development workflow — 28 October 2026
@@ -805,3 +805,108 @@ acceptance is claimed. Next concrete slice: map independent old/new cleanup to
 actual source lifetime/overlap sound, retaining retired-result/cancel/overflow
 safety. Early graph-birth control edits, exact browser envelopes/resampling and
 wall/audio alignment remain separate sound gates; keep visible meters disabled.
+## Replacement queued source cleanup — 29 October 2026
+
+Implementation snapshot: `82c3a53` (built/tested on both Windows and native WSL).
+Baseline reused: the `27063ed` late-admission evidence above; no dependency,
+framework, parameter, action, persistence or preserved UI/reference change.
+
+Acceptance established before editing: a retained old `_teardown` must stop its
+replacement source; cleanup must cover an already-issued pending callback and
+an accepted future source, reject stale generation/timer identities, preserve
+clip/history, and allow later fresh playback. No callback allocation or FIFO-loss
+path is permitted. The original `Loop._teardown` calls `AudioGraph.cleanup`,
+which immediately stops and disconnects the current source. The old native path
+only detached message-side metadata, leaving replacement audio alive.
+
+| Reference behavior | Native status | Evidence | Remaining gap |
+| --- | --- | --- | --- |
+| Cleanup stops/disconnects the replacement graph/source | Source cut at next callback, with no extra native STOP tail | Unchanged-JS cleanup oracle; exact zero post-cleanup PCM | Browser resampling/envelopes and wall/audio correlation |
+| Old cleanup before a callback leaves that later callback alive | Higher source ticket survives prior retirement | Engine identity/order cases; actual JUCE timer fresh-play check | Broader retired-source overlap sound |
+| Cleanup after callback issuance must not resurrect its source | Cumulative generation/ticket retirement also covers requests still in FIFO | Pending/future/raw-reset cases at tracks 0/19, 64/128 | Capture/edit graph origins remain separate |
+| Clip and history survive teardown | Existing stopped state/clip/history retained | Exact length/undo preservation, fresh PLAY and prepare recovery | Full project/DAW release acceptance |
+
+Implementation: one fixed lock-free 64-bit retirement mailbox per track, tagged
+with prepare generation and a monotonic source ticket. Message owner publishes
+without the ordinary command FIFO. Audio polls a fixed twenty entries per
+callback and retains a per-generation ticket high-water mark, preventing a queued
+request from reviving audio after cleanup. Raw meter resets cannot replace source
+identity. Normal user STOP fades are unchanged; graph disconnect cuts its tail.
+The default sample-grid component mode retains its historical meter-only contract;
+production uses callback-controlled source lifetime. Existing GUI/CLI PLAY/STOP
+routes share the fix; there is no new product command or second DSP engine.
+
+Executed verification:
+- Windows and Linux: `aion_core_tests --meter-queued` and `--meter-stops` passed.
+  New cleanup cases cover two blocks, two tracks and seven orderings (28 cases),
+  including a full ordinary command FIFO and old-generation mailbox recovery.
+  Existing cancellation/overflow/retired-result checks are retained. Zero tracked
+  callback new/delete. Prepare recovery explicitly drains the existing prepare
+  stop tail at reset master gain before isolating the new source.
+- Windows and Linux: actual `aion_midi_processor_tests` passed, including the new
+  real JUCE retained-timer test with nonzero PCM, exact next-callback cutoff and
+  later playback survival at 64/128. Existing production processor, external CLI,
+  isolation, MIDI/state/lifecycle tests passed; no physical device IO is asserted.
+- Windows: three source CTests passed in 71.97s; separate UI asset/frontend/bridge
+  CTests passed in 5.77s. New cleanup oracle covers 60 starts (mono/stereo,
+  forward/reverse, 8/48/96kHz, five lengths including 1 frame), including 8,820
+  explicit post-cleanup silent frames. Maximum source PCM error was
+  4.034987166612325e-8 against unchanged tolerance 1e-6; browser gain envelopes and
+  resampling remain excluded. Reference files and preserved UI bytes are unchanged.
+- Linux: six focused source/UI-contract CTests passed in 201.18s, including the
+  new unchanged-JS cleanup oracle.
+- Windows: rebuilt actual embedded-UI pointer/keyboard workflow passed with
+  `tools/TestMouseWorkflow.ps1 -SkipMidi` at 64/128, including queued STOP,
+  recording, Start/STUT, LIVE controls, exact stereo WAV export and MERGE/Undo/Redo.
+  The synthetic host opens no audio/MIDI device; MIDI hardware was skipped.
+- Active wrappers built: Windows Standalone/VST3 and Linux Standalone/LV2.
+
+Reproduce from the existing configured trees (Windows uses the VS bundled CMake
+where `cmake`/`ctest` are not on PATH; see DEVELOPMENT_WORKFLOW.md):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+build/windows-core/Release/aion_core_tests.exe --meter-queued
+build/windows-core/Release/aion_core_tests.exe --meter-stops
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(js_native_queued_cleanup|js_native_queued_late_phase|js_native_queued_stop_phase|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle)$'
+cmake --build --preset windows --target aion_midi_processor_tests AionLooper_Standalone AionLooper_VST3 --parallel 2
+build/windows/Release/aion_midi_processor_tests.exe
+cmake --build --preset windows --target aion_mouse_host --parallel 2
+tools/TestMouseWorkflow.ps1 -SkipMidi
+# Commit the coherent snapshot before sync; never reset a dirty mirror.
+wsl -d Ubuntu --exec bash /mnt/d/Jorge/Documents/Codex/Aion-Looper/tools/SetupWslWorkspace.sh /mnt/d/Jorge/Documents/Codex/Aion-Looper
+```
+
+Inside the native `/home/jorge/projects/Aion-Looper` mirror:
+
+```sh
+cmake --build build/core --target aion_core_tests aion_start_probe --parallel 2
+build/core/aion_core_tests --meter-queued
+build/core/aion_core_tests --meter-stops
+ctest --test-dir build/core --no-tests=error --output-on-failure -R '^(js_native_queued_cleanup|js_native_queued_late_phase|js_native_queued_stop_phase|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle)$'
+cmake --build build/linux --target aion_midi_processor_tests AionLooper_Standalone AionLooper_LV2 --parallel 2
+build/linux/aion_midi_processor_tests
+```
+
+Warmed callback measurements reuse the previous generated single-stereo-loop,
+48kHz Release harness, 512 pending warm blocks, one admission observation,
+128 playing warm blocks and 2,048 measured blocks. Fixed input/view work remains
+outside the measured `Engine::process` call.
+
+| Release core | Block | Admission us | Mean us | p99 us | Observed max us | Block budget us |
+| --- | --- | --- | --- | --- | --- | --- |
+| Windows | 64 | 31.1 | 29.68 | 61.8 | 115.6 | 1333.33 |
+| Windows | 128 | 55.3 | 58.54 | 92.7 | 134.5 | 2666.67 |
+| Linux/WSL | 64 | 20.81 | 20.05 | 36.03 | 70.77 | 1333.33 |
+| Linux/WSL | 128 | 39.88 | 39.07 | 63.8 | 104.23 | 2666.67 |
+
+Data: local ignored `build/cleanup-bench-{windows,linux}.jsonl`; harness rebuilds
+in `build/queued-bench-windows` / native `build/queued-bench-linux`. These small
+synthetic main-thread observations are not worst-case scheduling guarantees,
+maximum track/FX loads, cross-OS speed comparisons or round-trip device latency.
+
+No new REAPER/Ardour listening, physical controller/device, sanitizer/full-suite,
+Apple or offline MIDI-render acceptance is claimed. No distributable or push.
+Next concrete slice: compare controls edited after an early source callback but
+before its grid against the unchanged JS source; then remaining overlap/envelope
+sound gates. Keep visible meters disabled until their separate acceptance.
