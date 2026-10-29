@@ -848,6 +848,61 @@ void queuedLateSourceTests(){
     check(allocations.load()==0,"Late-source processing performs zero tracked callback new/delete");
     std::cout<<"PASS: callback-controlled late source silence/state/phase/reverse, wrong/raw/cancel/clear/prepare guards at tracks 0/19 and 64/128; exact stereo comparison and no callback new/delete\n";
 }
+void queuedEarlyControlTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})
+    for(unsigned edit=0;edit<3;++edit)for(bool scheduledStop:{false,true}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        f.record(id);(void)f.next(MeterGraphEventKind::bufferInstalled,id);
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            check(e->enqueueLoop({LoopAction::startDelay,id,0,e->generation(),0,.111}),"Initial queued Start metadata");
+        }
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);
+        const auto grid=f.view->tracks[id].scheduledFrame;
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            // Controls changed before birth belong to this new source.
+            check(e->enqueueLoop({LoopAction::startDelay,id,0,e->generation(),0,.217}),"Set Start between intent and actual source birth");
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Set direction at actual source birth");
+            LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,e->generation(),0,0};
+            birth.meterGraphTicket=1;birth.meterQueueId=q.queueId;birth.meterBufferId=q.bufferId;
+            check(e->enqueueLoop(birth),"Create explicit early source");
+        }
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+        while(f.engine->clock()+block<grid-960)f.cycle();
+        const double nextDelay=edit==1?.217:.731;const bool nextReverse=edit==0?reverse:!reverse;
+        check(f.engine->enqueueLoop({LoopAction::startDelay,id,0,f.engine->generation(),0,nextDelay}),"Edit Start after source construction");
+        check(f.engine->enqueueLoop({LoopAction::reverse,id,0,f.engine->generation(),0,nextReverse?1.:0.}),"Edit Reverse after source construction");
+        if(scheduledStop)f.command(LoopAction::stop,id);
+        f.cycle();
+        if(scheduledStop)(void)f.next(MeterGraphEventKind::scheduledStop,id);
+        check(f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].startDelay==nextDelay&&f.view->tracks[id].reverse==nextReverse,
+            "Early edits update visible metadata while keeping the future-source gate");
+        while(f.engine->clock()<grid+2048)f.cycle();
+        check(f.view->tracks[id].state==(scheduledStop?LoopState::stopping:LoopState::playing),"Early source starts with optional following-grid STOP intact");
+        // Pair against an unedited source through the grid, then give the control
+        // the new metadata only for the next source. Neither timing nor PCM may
+        // differ from either independent baseline.
+        check(f.control->enqueueLoop({LoopAction::startDelay,id,0,f.control->generation(),0,nextDelay}),"Apply next-source Start to comparison");
+        check(f.control->enqueueLoop({LoopAction::reverse,id,0,f.control->generation(),0,nextReverse?1.:0.}),"Apply next-source direction to comparison");
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        MeterGraphEvent event;while(f.engine->popMeterGraphEvent(event)){}
+        f.command(LoopAction::play,id);f.cycle();const auto fresh=f.next(MeterGraphEventKind::queuedPlay,id);
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,e->generation(),0,0};
+            birth.meterGraphTicket=2;birth.meterQueueId=fresh.queueId;birth.meterBufferId=fresh.bufferId;
+            check(e->enqueueLoop(birth),"Next source captures newly accepted controls");
+        }
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+        const auto nextGrid=f.view->tracks[id].scheduledFrame;
+        while(f.engine->clock()<nextGrid+1024)f.cycle();
+    }
+    check(allocations.load()==0,"Early source control snapshots use no callback new/delete");
+    std::cout<<"PASS: early callback captures Start/direction, pre-grid metadata edits preserve exact current stereo PCM and apply on next play, following-grid STOP intact; 48 cases at tracks 0/19 and 64/128, no callback new/delete\n";
+}
 void queuedCleanupSourceTests(){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned order=0;order<7;++order){
@@ -934,6 +989,7 @@ void queuedCleanupSourceTests(){
     std::cout<<"PASS: retained cleanup cuts replacement source PCM, pending/future callback retirement, fresh callback survival, raw-reset identity, FIFO overflow and prepare guards at tracks 0/19, 64/128; no callback new/delete\n";
 }
 void meterQueuedTests(){
+    queuedEarlyControlTests();
     queuedCleanupSourceTests();
     queuedLateSourceTests();
     queuedScheduledSourceTests();

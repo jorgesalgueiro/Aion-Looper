@@ -230,18 +230,18 @@ bool LoopBank::clearMergedSource(std::uint32_t id,double serial) noexcept {
        (source.info.state!=LoopState::playing&&source.info.state!=LoopState::stopped))return false;
     ++source.clearEpoch;clear(source);return true;
 }
-void LoopBank::restartSource(Track& track) noexcept {
+void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     if(hasPlaybackSource(track))++track.sourceRevision;
     ++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stuttering=track.info.stutterClock=false;
     retire(track.reverseHold);track.reverseHold=nullptr;
     // A queued source can reach its start grid with a later STOP already armed.
     // It still needs the same initial phase and reverse buffer as a playing source.
     const bool starting=track.info.state==LoopState::playing||track.info.state==LoopState::stopping;
-    track.activeReverse=starting&&track.info.reverse;
+    track.activeReverse=starting&&(preparedQueue?track.queuedSourceReverse:track.info.reverse);
     if(track.clip&&starting){
         const double length=track.clip->length,shift=track.info.startDelay*length;
         const double offset=sync.settings.mode!=SyncMode::off?(static_cast<double>(frame)-sync.origin)*track.phaseRate-shift:shift;
-        track.phase=std::fmod(offset,length);if(track.phase<0)track.phase+=length;
+        track.phase=preparedQueue?track.queuedSourcePhase:std::fmod(offset,length);if(track.phase<0)track.phase+=length;
         track.info.position=static_cast<std::uint32_t>(track.phase);
         track.sourceStartFrame=static_cast<double>(frame);track.sourceOffset=track.phase;
     }
@@ -254,6 +254,13 @@ void LoopBank::admitQueuedSource(Track& track) noexcept {
     if(track.info.state==LoopState::queued&&track.startAt&&frame>=track.startAt){
         track.info.state=LoopState::playing;track.startAt=0;
         track.tailRemaining=0;restartSource(track);blend(track);
+    }else if(track.info.state==LoopState::queued&&track.startAt&&track.clip){
+        // WebAudio constructs the future source now. Metadata-only Start and
+        // Reverse edits cannot rewrite that source when its grid arrives.
+        const double length=track.clip->length,shift=track.info.startDelay*length;
+        const double offset=sync.settings.mode!=SyncMode::off?(static_cast<double>(track.startAt)-sync.origin)*track.phaseRate-shift:shift;
+        track.queuedSourcePhase=std::fmod(offset,length);if(track.queuedSourcePhase<0)track.queuedSourcePhase+=length;
+        track.queuedSourceReverse=track.info.reverse;
     }
 }
 void LoopBank::saveUndo(Track& track,std::uint32_t id,bool global) noexcept {
@@ -760,7 +767,7 @@ void LoopBank::schedules(Track& track) noexcept {
             }
             track.recordPrefix=0;
         }
-        else if(state==LoopState::queued){state=track.info.stopPending?LoopState::stopping:LoopState::playing;track.tailRemaining=0;restartSource(track);blend(track);}
+        else if(state==LoopState::queued){state=track.info.stopPending?LoopState::stopping:LoopState::playing;track.tailRemaining=0;restartSource(track,queuedStartMode==QueuedStartMode::messageCallback&&track.queuedSourceTicket);blend(track);}
     }
     if(track.endAt&&frame>=track.endAt){
         track.endAt=0;
