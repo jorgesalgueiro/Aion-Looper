@@ -2,15 +2,16 @@
 
 ## Latest implementation � 29 October 2026
 
-Code snapshot `1542e01` completes the narrow early-source Start/Reverse slice.
-An early validated callback now captures the future source's phase and direction.
-Start-slider metadata edits before its grid update the controls without changing
-that source; the next play uses the edited values. Pre-grid silence, following-grid STOP,
-late admission and retained cleanup guards remain intact. Source assets, IDs,
-capacity and persistence formats are unchanged. See the latest evidence below.
-Next: explicit Start restart actions during the early-source interval, then
-speed/tempo edits and remaining source-overlap/envelope gates. Full looper/DAW/
-device release acceptance remains open.
+Code snapshot `4f0f8b9` completes the source/gain-gate implementation for early
+Apply/Q/nudge, following `1542e01` metadata capture. A proven future source can
+schedule its 50ms replacement before or after the original grid. The replacement
+advances silently until the retained graph-volume start; a later scheduled STOP
+preserves it until its stop deadline. Panic/Stop Now/clear/cleanup retire pending
+work without a hidden-source tail. Final Windows/Linux Engine, reference and
+processor tests pass, as does the final Windows 64/128 pointer/PCM workflow.
+No reference/UI assets, parameter/action IDs, capacity or state format changed.
+Next: early 5ms RTRG, then speed/tempo edits and remaining envelope/renderer gates.
+Full looper/DAW/device release acceptance remains open.
 
 ## Owner-approved faster development workflow — 28 October 2026
 
@@ -1016,3 +1017,140 @@ before its grid, including the reference restart before the original future
 source time. Then compare speed/tempo/clock-source edits, distinguishing source
 offset from display anchors and AudioParam updates. Keep remaining sound,
 DAW/device and asset-rights acceptance explicit; keep visible meters disabled.
+
+## Early Apply/Q/nudge source and gain gate — 29 October 2026
+
+Implementation: `eeb0383`, refined by `4f0f8b9`. Baseline: `b6751e0` / source
+metadata code `1542e01`; reuse the earlier build/reference evidence above.
+No dependency upgrade, renderer rewrite, ID/capacity/persistence change or edits
+to `.reference/Ascii-Looper` / preserved `resources/ui`.
+
+Acceptance: Apply/Q/nudge after a validated early callback schedules a replacement
+50ms from the accepting audio frame, on either side of the original grid. It must
+retain controls captured by the action, preserve the original graph's silence
+until its volume start, survive a later scheduled STOP, and never reactivate the
+old source at its original grid. Immediate cancellation, prepare/clear/cleanup,
+unadmitted/stopping guards and full phase-FIFO rollback must remain safe.
+
+| Reference behavior | Native result | Evidence | Remaining limit |
+| --- | --- | --- | --- |
+| Healthy graph restart can precede original source start | Existing bounded phase events admit the replacement at its own 50ms deadline | Unchanged `Loop.restart`/`AudioGraph.retrigger`, Engine and actual processor RPC tests | Early 5ms RTRG still separate |
+| Post-effect graph volume remains zero until original grid | Source phase advances behind a retained volume gate; native smoothing opens it | Exact pre-grid zero PCM, unchanged volume scheduling facts, post-grid source comparison | Full WebAudio base/post fade shapes and resampling |
+| Scheduled STOP acts on the already-created replacement | Pending replacement remains valid until actual stop; new Apply while stopping stays guarded | Following-grid Q/replacement PCM and existing normal Start/STOP regressions | Broader musical/host listening acceptance |
+| Cancel and teardown cannot leak a silent advancing source | Stop/clear/panic/retirement close the gate and invalidate pending work | Strict zero tails through old grid, full FIFO/prepare/ownership regressions | Capture/edit graph origins and full release stress |
+
+The baseline oracle reproduced zero native PCM versus reference 0.0176493642
+(mono, 8kHz, 17-frame clip). Initial source-only evidence did not model the retained
+volume node. Reading that unchanged node revealed its zero-volume start at the
+original grid. The final oracle keeps all cases and tolerance, adds the volume
+scheduling assertion, advances replacement phase while checking gated silence,
+and compares post-grid PCM plus following-grid STOP. It still excludes complete
+fade curves/resampling; it does not claim a finished browser-envelope renderer.
+
+Implementation: a private graph-proof guard admits existing phase events while
+a source is queued; grid activation preserves their epoch, and an earlier event
+retires the old activation deadline. The scheduled volume deadline is retained
+separately, using the existing native smoothing length when it opens. Source tails
+use the gated value. Scheduled STOP preserves already-issued replacements; actual
+stop/cancel/cleanup still invalidates later work. New Apply while stopping and raw
+or unadmitted callbacks cannot bypass the proof. One transient frame field, no
+new allocation, locks, queue, public command, parameter or session field.
+
+GUI bindings in `resources/native/looper.js` already send `applyStart`,
+`quantizeStart` and `nudgeStart` unconditionally. The generic `tools/aion.py loop`
+client sends those same actions; human tracks remain 1..20. Actual processor RPC
+cases exercise the shared operation/payload without a second audio engine.
+
+Verification on final source:
+- Windows `aion_core_tests --meter-queued` passed: 48 before/after-grid paired
+  restart cases, 32 cancel/prepare/cleanup/unadmitted/stopping/FIFO cases, and
+  16 cancellations after a source begins advancing behind a closed volume gate.
+  Post-transition stereo PCM is exact against the existing playing-source path;
+  reference ticks include strict gate silence and the first post-grid source
+  sample, with full fade shapes excluded. Original
+  cleanup, metadata, overflow and retired-result cases remain unchanged.
+- Windows seven source/asset CTests passed in 117.77s (`--parallel 2`). New oracle:
+  30 mono/stereo buffer configurations, 120 restart cases, both directions,
+  8/48/96kHz, lengths 1/17/512/4097/20003; 2,918,302 compared frames and 2,563,772
+  silent frames. Maximum error 6.3772108371829e-8 at unchanged tolerance 1e-6.
+  The ordinary playing-source Start oracle and all earlier queued modes pass.
+- Final Windows actual processor/CLI/MIDI/state/timer suite passed, including
+  12 production RPC Apply/Q/nudge cases at 64/128 with real nonzero PCM, retained
+  gate, exact deadline and clip length. Zero tracked callback new/delete.
+  The new fixture drains bounded views outside audio every four callbacks; it
+  never substitutes an old queued snapshot for current processing state.
+- Final Linux Engine safety/PCM suite and actual processor/CLI/MIDI/state/timer
+  suite passed at 64/128, including the new production RPC source/gate assertions.
+  All seven final source/asset CTests passed in 298.84s with two independent jobs.
+- Final Windows `tools/TestMouseWorkflow.ps1 -SkipMidi` passed at 64/128:
+  actual pointer/keyboard Start/Q/nudge, queued STOP, recording, LIVE controls,
+  STUT, exact stereo WAV export and MERGE/Undo/Redo. The synthetic host opens no
+  hardware audio/MIDI device; physical MIDI was skipped.
+- Windows Standalone/VST3 and Linux Standalone/LV2 builds passed on final code.
+  Existing compiler warnings are retained separately; no dependency/format change.
+
+Reproduce from existing configured trees (VS bundled CMake path is documented in
+DEVELOPMENT_WORKFLOW.md when not on PATH):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+build/windows-core/Release/aion_core_tests.exe --meter-queued
+ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(js_native_queued_early_restart|js_native_queued_early_edits|js_native_queued_cleanup|js_native_queued_late_phase|js_native_queued_stop_phase|js_native_start_phase|original_ui_bytes)$'
+cmake --build --preset windows --target aion_midi_processor_tests AionLooper_Standalone AionLooper_VST3 aion_mouse_host --parallel 2
+build/windows/Release/aion_midi_processor_tests.exe
+tools/TestMouseWorkflow.ps1 -SkipMidi
+# Commit coherent Windows code, then sync; never reset dirty Linux work.
+wsl -d Ubuntu --exec bash /mnt/d/Jorge/Documents/Codex/Aion-Looper/tools/SetupWslWorkspace.sh /mnt/d/Jorge/Documents/Codex/Aion-Looper
+```
+
+Inside `/home/jorge/projects/Aion-Looper`:
+
+```sh
+cmake --build build/core --target aion_core_tests aion_start_probe --parallel 2
+build/core/aion_core_tests --meter-queued
+ctest --test-dir build/core --parallel 2 --no-tests=error --output-on-failure -R '^(js_native_queued_early_restart|js_native_queued_early_edits|js_native_queued_cleanup|js_native_queued_late_phase|js_native_queued_stop_phase|js_native_start_phase|original_ui_bytes)$'
+cmake --build build/linux --target aion_midi_processor_tests AionLooper_Standalone AionLooper_LV2 --parallel 2
+build/linux/aion_midi_processor_tests
+```
+
+Final warmed measurement harness: ignored `build/early-restart-bench-src` imports
+the existing Release core. One stereo 512-frame loop at 48kHz; 512 idle warm
+blocks, one early admission, controls/Apply on either side of the grid, single
+schedule/replacement/nominal-grid callback observations, 128 playing warm blocks,
+then 2,048 steady callbacks. Input generation, view draining and timing storage
+are outside `Engine::process`. Runs were taken after the other tests finished.
+
+| Platform | Block | Replacement | Schedule us | Replacement us | Mean us | p99 us | Observed max us | Budget us |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Windows | 64 | Before grid | 41.8 | 30.4 | 29.88 | 61.0 | 76.1 | 1333.33 |
+| Windows | 64 | After grid | 31.4 | 30.2 | 29.50 | 60.2 | 79.8 | 1333.33 |
+| Windows | 128 | Before grid | 52.2 | 53.5 | 58.16 | 98.7 | 145.8 | 2666.67 |
+| Windows | 128 | After grid | 52.8 | 52.8 | 58.62 | 103.0 | 139.9 | 2666.67 |
+| Linux/WSL | 64 | Before grid | 22.6 | 22.1 | 22.66 | 52.4 | 73.8 | 1333.33 |
+| Linux/WSL | 64 | After grid | 20.2 | 21.5 | 22.21 | 47.2 | 75.8 | 1333.33 |
+| Linux/WSL | 128 | Before grid | 41.2 | 56.3 | 43.65 | 79.4 | 111.0 | 2666.67 |
+| Linux/WSL | 128 | After grid | 41.0 | 90.7 | 44.25 | 82.2 | 145.8 | 2666.67 |
+
+Full data: local ignored `build/early-restart-bench-{windows,linux}.jsonl`, including
+admission and nominal-grid observations. Rebuild/re-run with:
+
+```powershell
+cmake --build build/early-restart-bench-windows --config Release --parallel 2
+build/early-restart-bench-windows/Release/queued_bench.exe
+```
+
+```sh
+cmake --build build/early-restart-bench-linux --parallel 2
+build/early-restart-bench-linux/queued_bench
+```
+
+These main-thread synthetic observations are not worst-case/maximum-load/host
+scheduling guarantees, physical round-trip latency or cross-OS speed comparisons.
+The graph's retained silence is musical scheduling, not a measured device buffer
+latency. No permanent benchmark target/dependency or distributable was added.
+
+No new REAPER/Ardour listening, physical audio/controller, sanitizer/full-suite,
+Apple or offline MIDI-render acceptance is claimed. No package or push. Exact
+browser gain curves, resampling, source overlap and wall/audio alignment remain
+release/sound gates. Next: unchanged-JS early 5ms RTRG comparisons, then playback
+speed/tempo/clock-source edits during the early interval. Keep meters disabled.
