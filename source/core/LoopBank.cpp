@@ -452,7 +452,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(sync.settings.mode!=SyncMode::off){
                 const double grid=sync.nextGridSeconds(frame);
                 meterPanicKnown[id]=false;t.queuedSourcePending=queuedStartMode==QueuedStartMode::messageCallback;
-                s=LoopState::queued;t.startAt=SyncClock::deadline(grid*rate);
+                s=LoopState::queued;t.startAt=SyncClock::deadline(grid*rate);t.queuedStartFraction=static_cast<double>(t.startAt)-grid*rate;
                 publishMeterQueue(id,std::max(0.0,grid-static_cast<double>(frame)/rate-.1));return true;
             }
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);publishImmediateMeterPlay(id);return true;
@@ -570,12 +570,23 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             const bool master=sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(id));
             return schedulePhase(t,id,static_cast<double>(frame)/rate+0.05,master);
         }
-        case LoopAction::speed:
+        case LoopAction::speed: {
             if (!std::isfinite(value) || value < 0.25f || value > 2 || s == LoopState::recording
                 || s == LoopState::overdubbing || s == LoopState::substituting || s == LoopState::multiplying || s == LoopState::finalizing) return false;
             if (value == t.info.playbackRate) return true;
+            const auto previous=t.targetRate;
             t.info.playbackRate = value;updateRate(t);
+            if(hasPreparedQueuedSource(t,true)&&t.targetRate!=previous){
+                // Direct speed edits update the existing unstarted AudioParam.
+                // Keep its captured offset, correcting only the sub-sample
+                // advance to the first native deadline sample. No inaudible
+                // smoothing ramp should be carried into source playback.
+                t.queuedSourcePhase=std::fmod(t.queuedSourcePhase+t.queuedStartFraction*(t.targetRate-previous),static_cast<double>(t.clip->length));
+                if(t.queuedSourcePhase<0)t.queuedSourcePhase+=t.clip->length;
+                t.rate=t.targetRate;t.rateRemaining=0;t.rateIncrement=0;
+            }
             return true;
+        }
         case LoopAction::undoGlobal:
         case LoopAction::redoGlobal:
         case LoopAction::clearAll:

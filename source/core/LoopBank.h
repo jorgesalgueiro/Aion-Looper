@@ -212,7 +212,7 @@ private:
         Clip* reverseHold = nullptr; // Old raw clip backing a playing reversed source after NORM.
         bool activeReverse = false;
         bool queuedSourcePending = false; // Audio-owned source admission, independent of raw meter resets.
-        double queuedSourcePhase=0;
+        double queuedSourcePhase=0,queuedStartFraction=0; // Fractional source time retained across inaudible rate edits.
         bool queuedSourceReverse=false; // Source controls captured at early graph birth, not at its grid.
         std::uint32_t queuedSourceTicket=0; // Explicit graph callback identity; raw window resets never replace it.
         std::uint64_t revision = 0, clearEpoch = 0, sourceRevision = 0;

@@ -2,16 +2,15 @@
 
 ## Latest implementation — 29 October 2026
 
-Early 5ms RTRG now accepts an explicitly validated future source, using the
-existing bounded phase scheduler and original-grid volume gate. No callback
-validation bypass, new IDs/state version, preserved-asset changes or dependency upgrade.
-Implementation `3f510b4`, completed GUI readiness wiring `c249f2e`: Windows/Linux
-reference, Engine and processor checks pass, including 64/128 callback safety.
-The real Windows pointer/keyboard/PCM workflow passes at both block sizes.
-The early-RTRG slice meets its documented acceptance; full release acceptance
-remains open. Both source mirrors are synchronized; no package or push created.
-Next after this slice: speed/tempo edits during the early-source interval;
-full browser envelopes/resampling, DAW listening and device gates remain open.
+Early-source speed edits are the active slice after accepted early RTRG
+(`3f510b4` / `c249f2e`, handoff `56596b1`). Baseline checkouts were clean.
+A new unchanged-JS test reproduced fractional-grid PCM mismatch. The native fix
+retains the captured source offset and applies direct speed edits before source
+start without carrying an inaudible smoothing ramp into playback. Windows
+reference (360 starts) and Engine tests pass at the first iteration; final shared
+RPC/UI and Windows/Linux acceptance are in progress. Do not advance to tempo or
+clock-source changes before finishing this slice. No reference/UI assets, IDs,
+capacity, state format or dependency versions changed.
 
 ## Owner-approved faster development workflow — 28 October 2026
 
@@ -1284,3 +1283,37 @@ device pass inferred from these results.
 Next concrete slice: compare speed/tempo/clock-source edits after early source
 birth and before the original grid against unchanged JavaScript. Keep full browser
 fade/resampling and physical device/selected-DAW release gates explicitly open.
+
+## Early-source direct speed edits — 29 October 2026
+
+Acceptance: after explicit early graph admission, original user speed changes
+at 80ms or 1ms before the scheduled grid update the existing source's AudioParam,
+not its buffer or actual source.start offset. Keep exact pre-grid silence and
+match source PCM from the first representable deadline sample, including reverse
+and fractional grids. No source-replacement phase event is created. Continue
+using existing shared GUI/CLI speed commands and original slider/1x controls;
+preserve stored clips/history, cancellation and callback allocation guards.
+
+Scope is direct user speed edits on a validated, unstarted source without an
+already-scheduled replacement. Tempo/clock-source changes and interleaved speed /
+Apply / RTRG source replacements remain separate validation; no full browser
+rate-envelope/resampling or device/DAW pass is inferred. Audible-source smoothing
+is preserved. Reference files and preserved resources/ui remain unchanged.
+
+Baseline failure: the new `--queued-early-speed` oracle rejected native PCM at
+8000Hz / 17-frame clip, frame 3500 (native 0.045596588402986526 versus expected
+0.04464251619354992, tolerance 1e-6). The oracle executes unchanged
+`UIManager.setLoopSpeed`, asserts the same source/buffer/start offset and checks
+the AudioParam event, with ordinary float conversion at the WebAudio boundary.
+No PCM tolerance or old regression is relaxed.
+
+Implementation retains the sub-sample difference between original grid time
+and its native deadline. Direct speed edits on an admitted future source adjust
+only that fractional advance and set the rate before start; ordinary playing
+sources retain existing smoothing. This uses fixed per-track scalar storage,
+no new queue/ownership/persistence model or command/parameter IDs.
+
+Initial evidence (before final narrowing/RPC/UI/platform gates):
+- Windows `StartPhaseParity.cjs ... --queued-early-speed`: PASS, 360 starts, 7,928,418 compared frames, 7,894,938 silent frames, max absolute error 5.568652272636143e-8 versus unchanged 1e-6 tolerance.
+- Windows `aion_core_tests --meter-queued`: PASS. New 24 early speed cases compare exact stereo output for 80ms versus one-block-before-grid edits at tracks 0/19, both directions and 64/128. New 20 cancellation/prepare/cleanup cases and all prior queued source tests pass with zero tracked callback new/delete.
+- Final build, actual production RPC, trusted Windows interaction and Linux results remain pending at this intermediate checkpoint.

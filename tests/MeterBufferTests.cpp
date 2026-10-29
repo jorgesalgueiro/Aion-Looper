@@ -848,6 +848,54 @@ void queuedLateSourceTests(){
     check(allocations.load()==0,"Late-source processing performs zero tracked callback new/delete");
     std::cout<<"PASS: callback-controlled late source silence/state/phase/reverse, wrong/raw/cancel/clear/prepare guards at tracks 0/19 and 64/128; exact stereo comparison and no callback new/delete\n";
 }
+void queuedEarlySpeedTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(float speed:{.25f,.5f,2.f}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        f.record(id);(void)f.next(MeterGraphEventKind::bufferInstalled,id);
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            check(e->enqueueLoop({LoopAction::startDelay,id,0,e->generation(),0,.217}),"Early speed captured Start");
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Early speed captured direction");
+        }
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);
+        const auto grid=f.view->tracks[id].scheduledFrame,waveform=f.view->tracks[id].waveformId;
+        for(auto* e:{f.engine.get(),f.control.get()}){LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,e->generation(),0,0};
+            birth.meterGraphTicket=1;birth.meterQueueId=q.queueId;birth.meterBufferId=q.bufferId;check(e->enqueueLoop(birth),"Early speed explicit source admission");}
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+        while(f.engine->clock()+block<grid-3840)f.cycle();
+        check(f.control->enqueueLoop({LoopAction::speed,id,0,f.control->generation(),0,speed}),"Comparison changes speed 80ms before grid");
+        while(f.engine->clock()+block<grid)f.cycle();
+        check(f.engine->enqueueLoop({LoopAction::speed,id,0,f.engine->generation(),0,speed}),"Primary changes speed within one block of grid");
+        // Equality begins at the first output sample, including source smoothing:
+        // both sources are still inaudible when their AudioParam is updated.
+        for(unsigned n=0;n<32;++n)f.cycle();
+        check(f.view->tracks[id].state==LoopState::playing&&f.view->tracks[id].waveformId==waveform&&f.view->tracks[id].length==512
+            &&f.view->tracks[id].playbackRate==speed&&!f.view->tracks[id].phaseApplyFrame&&!f.view->rejected,"Early speed retains clip/source and produces exact stereo PCM without replacement");
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<5;++cancel){
+        Fixture f(block,MeterEventScope::acceptedPlayback);
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        f.record(id);(void)f.next(MeterGraphEventKind::bufferInstalled,id);f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);
+        for(auto* e:{f.engine.get(),f.control.get()}){LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,e->generation(),0,0};
+            birth.meterGraphTicket=1;birth.meterQueueId=q.queueId;birth.meterBufferId=q.bufferId;check(e->enqueueLoop(birth),"Speed cancellation source admission");
+            check(e->enqueueLoop({LoopAction::speed,id,0,e->generation(),0,.25}),"Speed before cancellation");}
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+        if(cancel<3)f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);
+        else if(cancel==3)f.prepare();
+        else for(auto* e:{f.engine.get(),f.control.get()})check(e->retireQueuedSourceThrough(e->generation(),id,1),"Speed source cleanup fence");
+        for(unsigned n=0;n<400;++n)f.cycle();
+        check(f.view->tracks[id].state==(cancel==2?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].queuedSourceReady,"Speed edits cannot survive source cancellation or restore its old grid");
+    }
+    check(allocations.load()==0,"Early speed processing performs no callback new/delete");
+    std::cout<<"PASS: 24 early speed stereo equality cases at first grid sample (80ms versus one-block edit), reverse, tracks 0/19 and 64/128; 20 cancellation/prepare/cleanup cases, no callback new/delete\n";
+}
 void queuedEarlyRestartTests(){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})
@@ -1107,6 +1155,7 @@ void queuedCleanupSourceTests(){
     std::cout<<"PASS: retained cleanup cuts replacement source PCM, pending/future callback retirement, fresh callback survival, raw-reset identity, FIFO overflow and prepare guards at tracks 0/19, 64/128; no callback new/delete\n";
 }
 void meterQueuedTests(){
+    queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();
     queuedCleanupSourceTests();
