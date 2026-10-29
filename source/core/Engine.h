@@ -61,7 +61,7 @@ inline bool sameLoopMeterCallback(const MeterWindowEvent& event,const EngineView
 // the sole producer of commands; the message thread alone consumes meters.
 class Engine {
 public:
-    explicit Engine(MeterEventScope scope=MeterEventScope::rawWindows) :loops(scope){}
+    explicit Engine(MeterEventScope scope=MeterEventScope::rawWindows,QueuedStartMode queuedStart=QueuedStartMode::sampleGrid) :loops(scope,queuedStart){}
     void prepare(double sampleRate, std::uint32_t poolFrames = LoopBank::defaultFrames,DeviceOutputLatency outputLatency = {});
     void configureSync(SyncSettings settings) noexcept {loops.configureSync(settings);}
     void setMonitoring(bool enabled) noexcept { monitoring = enabled; }

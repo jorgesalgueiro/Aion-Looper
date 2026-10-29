@@ -13,6 +13,8 @@
 #include "core/MeterGraphEvents.h"
 
 namespace aion {
+// Application queues wait for explicit source creation; direct DSP clients may schedule at the grid.
+enum class QueuedStartMode { sampleGrid, messageCallback };
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
 enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest }; // Source/reset primitives are core-only, never exposed by IPC.
 constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart||action==LoopAction::meterQueuedWindowRequest||action==LoopAction::meterQueuedGraphRequest;}
@@ -43,7 +45,7 @@ public:
     static constexpr std::uint32_t trackCount = 20, blockFrames = 4096, maxBlocks = 2048;
     static_assert(trackCount==MeterGraphEvents::trackCount);
     static constexpr std::uint32_t defaultFrames = blockFrames * maxBlocks; // 64 MiB stereo
-    explicit LoopBank(MeterEventScope scope=MeterEventScope::rawWindows) :meterScope(scope){}
+    explicit LoopBank(MeterEventScope scope=MeterEventScope::rawWindows,QueuedStartMode startMode=QueuedStartMode::sampleGrid) :meterScope(scope),queuedStartMode(startMode){}
     ~LoopBank();
     LoopBank(const LoopBank&) = delete;
     LoopBank& operator=(const LoopBank&) = delete;
@@ -101,7 +103,8 @@ public:
     bool startQueuedMeterGraph(std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId) noexcept {
         if(!startQueuedMeterWindow(id,ticket,queueId,bufferId))return false;
         // This explicit callback origin, unlike a raw reset, owns later stops.
-        meterImmediateTickets[id]=ticket;meterPanicKnown[id]=true;meterQueuedIds[id]=0;return true;
+        meterImmediateTickets[id]=ticket;meterPanicKnown[id]=true;meterQueuedIds[id]=0;
+        admitQueuedSource(tracks[id]);return true;
     }
     void reportQueuedMeterGraph(bool accepted,std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId) noexcept {
         if(id<trackCount)meterGraphEvents->publish(accepted?MeterGraphEventKind::queuedGraphAccepted:MeterGraphEventKind::queuedGraphRejected,id,ticket,frame,tracks[id].clearEpoch,bufferId,0,queueId);
@@ -130,6 +133,7 @@ public:
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
 private:
     const MeterEventScope meterScope;
+    const QueuedStartMode queuedStartMode;
     CallbackClockStamp meterCallbackClock{}; // Audio owner, supplied once before dispatch in this callback.
     void publishMeterBuffer(unsigned id) noexcept {
         if(meterScope!=MeterEventScope::rawWindows&&tracks[id].clip)
@@ -196,6 +200,7 @@ private:
         std::array<Clip*,5> undo{},redo{}; // Immutable history leases, matching the reference depth.
         Clip* reverseHold = nullptr; // Old raw clip backing a playing reversed source after NORM.
         bool activeReverse = false;
+        bool queuedSourcePending = false; // Audio-owned source admission, independent of raw meter resets.
         std::uint64_t revision = 0, clearEpoch = 0, sourceRevision = 0;
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
@@ -263,12 +268,13 @@ private:
     void schedules(Track&) noexcept;
     std::uint32_t residentBlocks = 0;
     static bool hasPlaybackSource(const Track& t) noexcept {
-        const auto s=t.info.state;return t.clip&&(s==LoopState::playing||s==LoopState::stopping||s==LoopState::overdubbing||s==LoopState::substituting||s==LoopState::multiplying||(s==LoopState::finalizing&&t.playWhileFinalizing));
+        const auto s=t.info.state;return t.clip&&!t.queuedSourcePending&&(s==LoopState::playing||s==LoopState::stopping||s==LoopState::overdubbing||s==LoopState::substituting||s==LoopState::multiplying||(s==LoopState::finalizing&&t.playWhileFinalizing));
     }
     void stop(Track&) noexcept;
     void clear(Track&) noexcept;
     void blend(Track&) noexcept;
     void restartSource(Track&) noexcept;
+    void admitQueuedSource(Track&) noexcept;
     void saveUndo(Track&,std::uint32_t,bool global = true) noexcept;
     bool restore(Track&,std::uint32_t,bool redo) noexcept;
     std::array<std::uint8_t,50> undoOrder{},redoOrder{};

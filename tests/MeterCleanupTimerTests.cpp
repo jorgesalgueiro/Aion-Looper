@@ -329,10 +329,17 @@ void processorBufferReceiptTests(bool& audioWatch){
         rpc(R"({"operation":"setParameter","id":"syncBpm","value":999})");
         rpc(R"({"operation":"setParameter","id":"syncBars","value":1})");
         rpc(R"({"operation":"setParameter","id":"syncNum","value":1})");cycle();
+        const auto waitQueuedPastGrid=[&]{
+            const auto began=frame;
+            while(frame<began+6000){cycle();snapshot=rpc(R"({"operation":"snapshot"})");
+                if(frame>began+960)check(audio.getMagnitude(0,static_cast<int>(block))==0,"Production source remains silent before late callback admission");
+            }
+            check(snapshot["tracks"][19]["state"].toString()=="queued","Production preserves queued state after grid until actual callback");
+        };
         command("play");cycle();snapshot=rpc(R"({"operation":"snapshot"})");
         check(snapshot["tracks"][19]["state"].toString()=="queued","Production late-panic fixture accepts a real queued intent");
-        for(unsigned n=0;n<1000&&snapshot["tracks"][19]["state"].toString()=="queued";++n){cycle();snapshot=rpc(R"({"operation":"snapshot"})");}
-        check(snapshot["tracks"][19]["state"].toString()=="playing","Production audio crosses grid without proving message callback delivery");
+        waitQueuedPastGrid();
+        check(snapshot["tracks"][19]["state"].toString()=="queued","Grid alone cannot create the production queued source");
         s=p->inspectMeterServiceMessageThread();check(s.queued==5&&s.queueApplied==5&&s.plays==3&&s.stops==6&&s.pendingCleanups==1&&!s.rejected,
             "Production pending intent retains old cleanup after audible grid");
         command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
@@ -341,15 +348,15 @@ void processorBufferReceiptTests(bool& audioWatch){
         command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.queued==6&&s.stops==6&&!s.rejected,"Production repeated post-grid panic emits neither duplicate cancellation nor inferred graph stop");
         command("play");cycle();snapshot=rpc(R"({"operation":"snapshot"})");
-        for(unsigned n=0;n<1000&&snapshot["tracks"][19]["state"].toString()=="queued";++n){cycle();snapshot=rpc(R"({"operation":"snapshot"})");}
-        check(snapshot["tracks"][19]["state"].toString()=="playing","Production STOP NOW fixture crosses audio grid");
+        waitQueuedPastGrid();
+        check(snapshot["tracks"][19]["state"].toString()=="queued","Production STOP NOW fixture waits beyond source grid");
         command("stopImmediate");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.queued==8&&s.queueApplied==8&&s.stops==6&&s.pendingCleanups==1&&!s.rejected,"Production late STOP NOW retires queue through prepared cleanup route");
         command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.queued==8&&s.stops==6&&!s.rejected,"Production late STOP NOW leaves no orphan queue cancellation");
         command("play");cycle();snapshot=rpc(R"({"operation":"snapshot"})");
-        for(unsigned n=0;n<1000&&snapshot["tracks"][19]["state"].toString()=="queued";++n){cycle();snapshot=rpc(R"({"operation":"snapshot"})");}
-        check(snapshot["tracks"][19]["state"].toString()=="playing","Production sync-off STOP fixture crosses audio grid");
+        waitQueuedPastGrid();
+        check(snapshot["tracks"][19]["state"].toString()=="queued","Production sync-off STOP fixture waits beyond source grid");
         rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");cycle();
         command("stop");cycle();snapshot=rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(snapshot["tracks"][19]["state"].toString()=="stopped"&&s.queued==10&&s.queueApplied==10&&s.stops==6&&s.pendingCleanups==1&&!s.rejected,
@@ -358,6 +365,7 @@ void processorBufferReceiptTests(bool& audioWatch){
         check(s.queued==10&&s.stops==6&&!s.rejected,"Production sync-off STOP leaves no orphan queue cancellation");
         rpc(R"({"operation":"setParameter","id":"syncMode","value":1})");cycle();
         command("play");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
+        waitQueuedPastGrid();
         const auto beforeGraph=s;
         check(!p->requestQueuedMeterGraphMessageThread(20)&&p->requestQueuedMeterGraphMessageThread(19)
             &&!p->requestQueuedMeterGraphMessageThread(19),"Production stages one explicit queued graph callback");
@@ -365,6 +373,7 @@ void processorBufferReceiptTests(bool& audioWatch){
         cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.windows==beforeGraph.windows+1&&s.windowApplied==beforeGraph.windowApplied+1&&!s.pendingWindows&&!s.readyWindows
             &&s.attachedGraphs==1&&s.pendingCleanups==beforeGraph.pendingCleanups&&!s.rejected,"Production graph acceptance binds through sole prepared route and preserves old cleanup");
+        check(audio.getMagnitude(0,static_cast<int>(block))>0,"Production late accepted source emits real PCM");
         command("stopImmediate");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();
         check(s.stops==beforeGraph.stops+1&&s.stopApplied==beforeGraph.stopApplied+1&&s.pendingCleanups==1&&!s.rejected,"Production STOP NOW uses accepted queued graph origin");
         command("stopAll");cycle();rpc(R"({"operation":"snapshot"})");s=p->inspectMeterServiceMessageThread();

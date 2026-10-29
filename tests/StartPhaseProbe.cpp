@@ -7,9 +7,10 @@
 #include <thread>
 #include <string_view>
 int main(int argc,char** argv){
- const bool accepted=argc==2&&std::string_view(argv[1])=="--accepted-playback";
+ const bool callbackStart=argc==2&&std::string_view(argv[1])=="--callback-start";
+ const bool accepted=callbackStart||(argc==2&&std::string_view(argv[1])=="--accepted-playback");
  std::array<aion::MeterGraphEvent,20> queues{};std::uint32_t ticket=0;
- auto storage=std::make_unique<aion::LoopBank>(accepted?aion::MeterEventScope::acceptedPlayback:aion::MeterEventScope::rawWindows);auto& bank=*storage;std::string line;bank.prepare(81920,0);bank.resetMeterGraphEvents(7);
+ auto storage=std::make_unique<aion::LoopBank>(accepted?aion::MeterEventScope::acceptedPlayback:aion::MeterEventScope::rawWindows,callbackStart?aion::QueuedStartMode::messageCallback:aion::QueuedStartMode::sampleGrid);auto& bank=*storage;std::string line;bank.prepare(81920,0);bank.resetMeterGraphEvents(7);
  while(std::getline(std::cin,line)){
   std::istringstream input(line);std::string op;unsigned id;double value;if(!(input>>op>>id>>value))return 2;
   float right=static_cast<float>(value);(void)(input>>right);bool ok=true;aion::Stereo out{};using A=aion::LoopAction;

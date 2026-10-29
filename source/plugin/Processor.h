@@ -105,7 +105,7 @@ private:
     std::uint32_t exportGeneration=0;
     std::uint64_t exportSequence=0;
     juce::String exportFilename,exportStatus;
-    aion::Engine engine{aion::MeterEventScope::acceptedPlayback};
+    aion::Engine engine{aion::MeterEventScope::acceptedPlayback,aion::QueuedStartMode::messageCallback};
     using MeterOwners=std::array<std::optional<aion::LoopMeterLifecycle>,aion::LoopBank::trackCount>;
     std::unique_ptr<MeterOwners> meterOwners; // Construction heap; owners outlive timers and dispatcher.
     using MeterTimers=std::array<std::optional<aion::LoopMeterCleanupTimer>,aion::LoopBank::trackCount>;

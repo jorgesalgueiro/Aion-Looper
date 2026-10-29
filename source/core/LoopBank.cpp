@@ -246,6 +246,14 @@ void LoopBank::restartSource(Track& track) noexcept {
         track.sourceStartFrame=static_cast<double>(frame);track.sourceOffset=track.phase;
     }
 }
+void LoopBank::admitQueuedSource(Track& track) noexcept {
+    if(!track.queuedSourcePending)return;
+    track.queuedSourcePending=false;
+    if(track.info.state==LoopState::queued&&track.startAt&&frame>=track.startAt){
+        track.info.state=LoopState::playing;track.startAt=0;
+        track.tailRemaining=0;restartSource(track);blend(track);
+    }
+}
 void LoopBank::saveUndo(Track& track,std::uint32_t id,bool global) noexcept {
     if(track.info.undoCount==track.undo.size()){
         retire(track.undo[0]);std::move(track.undo.begin()+1,track.undo.end(),track.undo.begin());
@@ -281,7 +289,7 @@ void LoopBank::stop(Track& track) noexcept {
     if(track.info.state==LoopState::finalizing&&job.merge&&job.track==static_cast<std::uint32_t>(&track-tracks.data()))job.mergeNotify=false;
     track.info.stuttering=track.info.stutterClock=false;
     if(track.info.state==LoopState::armed){clear(track);return;}
-    track.startAt=track.endAt=0;++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stopPending=false;
+    track.queuedSourcePending=false;track.startAt=track.endAt=0;++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stopPending=false;
     if(capturing(track.info.state))(void)finish(track);
     if(track.info.state==LoopState::finalizing){track.finalPlay=false;track.playWhileFinalizing=false;}
     else if(track.info.state!=LoopState::empty)track.info.state=LoopState::stopped;
@@ -291,6 +299,7 @@ void LoopBank::stop(Track& track) noexcept {
 void LoopBank::clear(Track& track) noexcept {
     const auto removedBuffer=track.clip?track.clip->waveformId:0;
     ++track.sourceRevision;
+    track.queuedSourcePending=false;
     ++track.phaseEpoch;++track.revision;track.startAt=track.endAt=0;track.plannedFrames=0;
     for(std::uint32_t i=0;i<track.info.undoCount;++i)retire(track.undo[i]);
     for(std::uint32_t i=0;i<track.info.redoCount;++i)retire(track.redo[i]);
@@ -420,7 +429,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(s!=LoopState::stopped||!t.clip)return false;
             if(sync.settings.mode!=SyncMode::off){
                 const double grid=sync.nextGridSeconds(frame);
-                meterPanicKnown[id]=false;s=LoopState::queued;t.startAt=SyncClock::deadline(grid*rate);
+                meterPanicKnown[id]=false;t.queuedSourcePending=queuedStartMode==QueuedStartMode::messageCallback;
+                s=LoopState::queued;t.startAt=SyncClock::deadline(grid*rate);
                 publishMeterQueue(id,std::max(0.0,grid-static_cast<double>(frame)/rate-.1));return true;
             }
             s=LoopState::playing;t.phase=0;t.info.position=0;t.tailRemaining=0;restartSource(t);blend(t);publishImmediateMeterPlay(id);return true;
@@ -663,7 +673,7 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         }
         // Scheduled/space-limited capture can finish inside this sample.
         if(nonRealtime)completeOfflineEdits();
-        const bool audible=t.clip&&(v.state==LoopState::playing||v.state==LoopState::stopping||v.state==LoopState::overdubbing||v.state==LoopState::substituting||v.state==LoopState::multiplying||(v.state==LoopState::finalizing&&t.playWhileFinalizing));
+        const bool audible=t.clip&&!t.queuedSourcePending&&(v.state==LoopState::playing||v.state==LoopState::stopping||v.state==LoopState::overdubbing||v.state==LoopState::substituting||v.state==LoopState::multiplying||(v.state==LoopState::finalizing&&t.playWhileFinalizing));
         if(t.rateRemaining){t.rate+=t.rateIncrement;if(--t.rateRemaining==0)t.rate=t.targetRate;}
         if(t.panRemaining){t.panGain.left+=t.panIncrement.left;t.panGain.right+=t.panIncrement.right;if(--t.panRemaining==0)t.panGain=t.panTarget;}
         Stereo out{};
@@ -726,6 +736,9 @@ void LoopBank::updateRate(Track& track) noexcept {
 void LoopBank::schedules(Track& track) noexcept {
     auto& state=track.info.state;
     if(track.startAt&&frame>=track.startAt){
+        // A grid deadline is not source creation. A delayed/cancelled message
+        // callback must not leak samples or move the user-visible queued state.
+        if(state==LoopState::queued&&track.queuedSourcePending)return;
         track.startAt=0;
         if(state==LoopState::armed){
             state=LoopState::recording;

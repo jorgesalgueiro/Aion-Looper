@@ -674,3 +674,53 @@ formats as release acceptance: late source birth/phase, independent old/new
 cleanup sound and browser envelopes remain open. The renderer stays disabled;
 no distributable package or push was performed. Next is the late-callback sound
 slice, retaining the existing graph-result/cancellation and overflow guards.
+
+## 29 October 2026 — callback-controlled queued source admission
+
+Scope/acceptance: a fresh queued PLAY must stay silent and queued when the grid
+passes before its message callback. A valid queued graph request then admits one
+source on the audio owner, using actual current-time phase as the original
+`Loop.play(grid)` / `AudioGraph.build()` does when late. Early callbacks still
+retain the future audio grid. Reject wrong, raw-only, cancelled, cleared and
+prepare-stale requests without source birth. Preserve FIFO/identity/ownership
+coverage, exact 64/128 stereo behavior and zero tracked callback new/delete.
+
+Added an explicit immutable `QueuedStartMode`: direct DSP clients keep the existing
+sample-grid scheduler; the production Processor selects message-callback starts.
+This is independent of whether raw meter windows are observed. One audio-owned
+pending bit defers the grid transition; only the already validated integer
+queue/clip/ticket graph callback clears it. A late acceptance initializes phase,
+reverse and source timing at the current audio frame; stop/clear/prepare retire
+it. No new queue, allocation, lock, UI/file access, user command, ID, parameter or
+serialized state is introduced. Existing GUI, running-app CLI and MIDI PLAY/STOP
+all use the same Processor engine and service, including with the editor closed.
+No visible-meter renderer is enabled.
+
+Reproduced the defect before wiring the gate: at mono/8000Hz/17-frame clip, audio
+frame 3500, native emitted 0.045596588402986526 while the original source was not
+yet created (expected zero). New `js_native_queued_late_phase` then passed 30
+mono/stereo 8/48/96kHz clip cases / 60 forward/reverse starts: 1273462 silent
+pre-birth frames, 1279042 compared frames, maximum error 3.177606203164096e-8
+(tolerance unchanged at 1e-6). The reference invokes unchanged scheduled `play`
+late and checks its actual start offset. Browser gain envelopes/resampling and
+wall-clock delivery error are not claimed by this source-PCM oracle.
+
+Windows core `--meter-queued` and `--meter-stops` passed. New Engine tests cover
+48 late-source cases at tracks 0/19, 64/128: fresh-source stereo comparison,
+wrong clip, raw reset, STOP NOW, panic, clear and prepare. The following-grid STOP
+regression now covers both scheduling modes (16 cases). One new fixture assertion
+was corrected to expect prepare's existing pre-enqueue generation rejection.
+Production post-grid tests now require silence and queued state rather than the
+old premature playing state, while retaining their original queue/cleanup counts,
+cancellation routing, stale result and orphan-panic assertions. They also require
+real nonzero PCM after an explicit late acceptance. The actual JUCE Processor
+suite passed 1/1 in 32.88s, including autonomous timer, MIDI, running CLI and
+allocation checks. Active Windows Standalone/VST3 builds passed; remaining focused
+reference/UI and Linux evidence follows after this coherent snapshot is committed.
+
+Remaining scope: old/new source overlap and independent cleanup sound; exact
+browser volume envelopes/resampling; parameter edits between early graph birth
+and a future grid; complete wall/audio delivery alignment and DAW/device listening
+acceptance. Offline autonomous callbacks retain their existing exclusion and
+require explicit callback delivery in these deterministic offline fixtures; this
+is not offline MIDI-render acceptance. No package or release-readiness claim.

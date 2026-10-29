@@ -764,9 +764,10 @@ void queuedWindowTests(){
 // both must emit exactly the same PCM, even though only one starts as stopping.
 void queuedScheduledSourceTests(){
     using namespace aion;
-    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+    for(auto mode:{QueuedStartMode::sampleGrid,QueuedStartMode::messageCallback})for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
         Fixture f(block,MeterEventScope::acceptedPlayback);
-        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback);f.prepare();
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,mode);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,mode);f.prepare();
         f.record(id);(void)f.next(MeterGraphEventKind::bufferInstalled,id);
         f.command(LoopAction::stopImmediate,id);f.cycle();
         for(auto* e:{f.engine.get(),f.control.get()}){
@@ -798,7 +799,55 @@ void queuedScheduledSourceTests(){
     check(allocations.load()==0,"Queued scheduled source callbacks perform no tracked allocation/deallocation");
     std::cout<<"PASS: queued source Start/reverse PCM equals normally started source through following-grid STOP at tracks 0/19 and 64/128, no callback new/delete\n";
 }
+void queuedLateSourceTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned outcome=0;outcome<6;++outcome){
+        Fixture f(block,MeterEventScope::acceptedPlayback);
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        f.record(id);(void)f.next(MeterGraphEventKind::bufferInstalled,id);
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        const auto revision=f.view->tracks[id].sourceRevision;
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            check(e->enqueueLoop({LoopAction::startDelay,id,0,e->generation(),0,.217f}),"Late source Start offset");
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.f:0.f}),"Late source direction");
+        }
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);
+        const auto grid=f.view->tracks[id].scheduledFrame;
+        // The control creates a fresh source only at the late callback, through
+        // the existing immediate-source primitive, independently of the gate.
+        check(f.control->enqueueLoop({LoopAction::stopImmediate,id,0,f.control->generation(),0,0}),"Keep comparison source stopped until callback");
+        while(f.engine->clock()<grid+1104)f.cycle();
+        check(f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].sourceRevision==revision,"Passing grid cannot create source or change queued state before callback");
+        LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,f.engine->generation(),0,0};
+        birth.meterGraphTicket=1;birth.meterQueueId=q.queueId;birth.meterBufferId=q.bufferId;
+        if(outcome==0){
+            auto bad=birth;++bad.meterBufferId;check(f.engine->enqueueLoop(bad),"Deliver wrong late clip identity");f.cycle();
+            (void)f.next(MeterGraphEventKind::queuedGraphRejected,id);
+            check(f.view->tracks[id].state==LoopState::queued,"Rejected graph cannot admit queued audio");
+            birth.meterGraphTicket=2;check(f.engine->enqueueLoop(birth),"Deliver valid late source callback");
+            check(f.control->enqueueLoop({LoopAction::sourceRestart,id,0,f.control->generation(),0,0}),"Create comparison source at actual late frame");
+            f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+            check(f.view->tracks[id].state==LoopState::playing&&f.view->tracks[id].sourceRevision==revision+1,"Accepted callback creates exactly one fresh source");
+            for(unsigned n=0;n<16;++n)f.cycle();
+        }else{
+            if(outcome==5){auto raw=birth;raw.action=LoopAction::meterQueuedWindowRequest;
+                check(f.engine->enqueueLoop(raw),"Raw window reset before source birth");f.cycle();
+                (void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedWindowAccepted,id);
+                check(f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].sourceRevision==revision,"Raw acceptance stays silent without source birth");
+                birth.meterGraphTicket=2;
+            }
+            if(outcome==4)f.prepare();else {f.command(outcome==1?LoopAction::stopImmediate:outcome==2?LoopAction::stopAll:outcome==3?LoopAction::clear:LoopAction::stopImmediate,id);f.cycle();}
+            check(f.engine->enqueueLoop(birth)==(outcome!=4),"Cancelled callback queues for ownership rejection; stale generation rejects before enqueue");f.cycle();
+            check(f.view->tracks[id].state!=LoopState::playing,"Cancelled/clear/prepare callback cannot resurrect source");
+            for(unsigned n=0;n<8;++n)f.cycle();
+        }
+    }
+    check(allocations.load()==0,"Late-source processing performs zero tracked callback new/delete");
+    std::cout<<"PASS: callback-controlled late source silence/state/phase/reverse, wrong/raw/cancel/clear/prepare guards at tracks 0/19 and 64/128; exact stereo comparison and no callback new/delete\n";
+}
 void meterQueuedTests(){
+    queuedLateSourceTests();
     queuedScheduledSourceTests();
     stopCallbackClockTests();
     queuedDueDeliveryTests();
