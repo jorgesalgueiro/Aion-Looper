@@ -582,3 +582,14 @@ Linux reproduction follows after committing this coherent test snapshot.
 Next: characterize late callback source birth/phase and then outgoing/incoming
 cleanup overlap against the original audio. These remain unaccepted; keep the
 renderer disabled and do not package this characterization as a completed feature.
+
+Linux completion for the snapshot above (`ac02f40`):
+`cmake --build build/core --target aion_start_probe --parallel 2`, followed by
+`ctest --test-dir build/core --output-on-failure --no-tests=error -R '^(js_native_start_phase|original_ui_bytes)$'`
+in `/home/jorge/projects/Aion-Looper` passed 2/2 (118.15s total;
+PCM comparison 117.68s, asset check 0.46s). Windows `AssetTests.py` also passed
+original UI byte identity, deterministic embedding and tamper rejection.
+No source-phase defect was found in this scheduled-before-grid subset. Runtime
+code did not change, so application/plugin rebuilds, DAW/device tests and packages
+were not run for this test-only change. Existing late-source, overlap/envelope,
+64/128 interaction and renderer acceptance gaps remain open.
