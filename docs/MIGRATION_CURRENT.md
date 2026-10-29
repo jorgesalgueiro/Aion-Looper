@@ -1641,3 +1641,46 @@ no production callback/lifetime/state changes; original reference and embedded
 assets remain unchanged. The scoped two-same-action slice has no known blocking
 failure in the executed checks. Cross-action overtaking is the next slice, not
 implicitly accepted by these results.
+
+
+## Mixed RTRG then Apply / speed — 29 October 2026
+
+Smallest mixed-order slice: RTRG creates a source at +5ms; Apply is invoked before
+that source starts and creates another at +50ms. A .5x write between creations
+must affect the first future node only; source two captures .5x, and a subsequent
+.25x write must not override its later initial-rate event. Both starts, old-source
+PCM, reverse direction, original grid silence, current control metadata, later
+speed writes/fresh PLAY and cancellation must remain correct. The before/after-grid
+matrix is retained. Acceptance uses unchanged original handlers and the existing
+sample-deadline source AudioParam model, not a browser-renderer claim.
+
+| Behavior | Added verification | Pending |
+| --- | --- | --- |
+| RTRG then Apply with speed writes | New `js_native_queued_rtrg_apply_speed`, 30 mono/stereo, 8/48/96kHz, five-length configurations with both directions and both grid sides | Final Windows/Linux results below |
+| Both future nodes actually start | Oracle horizon extends through the second deadline +147 samples; Engine horizon through the second deadline +2048 samples | Browser envelopes/resampling excluded |
+| Source/control rate ownership | 16 additional exact paired stereo Engine playback cases at tracks 0/19, 64/128 | No production code change required so far |
+| Cancellation ownership | 20 additional StopNow/panic/clear/prepare/retirement-fence mixed-sequence cases; prior cases retained | Full release load/devices/DAWs remain open |
+
+The horizon extension strengthens the prior two-same-action oracle as well;
+rerun that affected test. All previous cases and PCM/metadata tolerances remain.
+GUI/CLI commands, UI assets, DSP, state schema, IDs, expanded capacity and pinned
+dependencies are unchanged. Reuse prior production RPC/UI/active-wrapper evidence
+for unchanged code; this test-only slice does not require rebuilding all wrappers.
+
+Important remaining difference, established by source inspection (not a claimed
+rendered comparison): Apply then RTRG is not simply the reverse chronological
+case. `AudioGraph.retrigger` stops only its current `this.source`. An Apply at
++50ms stops the older source at +50ms; a later RTRG at +5ms stops that future
+Apply source before it starts, while the older source keeps its +50ms stop.
+The older source can therefore overlap the RTRG source. Native `schedulePhase`
+currently removes pending non-RTRG events and has one current source renderer;
+its passing chronological source tests do not prove that overlap. Keep this as
+the next explicit parity gap, requiring a multi-source stop/lifetime/audio oracle
+and bounded native ownership if confirmed by that oracle. Do not switch the
+expectation to only the newest source or count this overlap as accepted.
+
+Reproduce: use the preceding core build and `--meter-queued` commands on Windows
+and the committed native WSL mirror. Run CTest on each with:
+`-R '^(original_ui_bytes|js_native_queued_multiple_replacement_speed|js_native_queued_rtrg_apply_speed)$'`
+(and `-C Release` on Windows), `--parallel 2 --no-tests=error --output-on-failure`.
+No package or push requested. Results and final checkpoint follow.

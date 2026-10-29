@@ -851,7 +851,9 @@ void queuedLateSourceTests(){
 void queuedReplacementSpeedTests(){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})
-    for(bool multiple:{false,true})for(bool early:{false,true})for(auto action:{LoopAction::applyStart,LoopAction::retrigger}){
+    for(unsigned sequence:{0u,1u,2u})for(bool early:{false,true})for(auto action:{LoopAction::applyStart,LoopAction::retrigger}){
+        if(sequence==2&&action!=LoopAction::retrigger)continue;
+        const bool multiple=sequence!=0;
         Fixture f(block,MeterEventScope::acceptedPlayback);
         f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
         f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
@@ -870,14 +872,17 @@ void queuedReplacementSpeedTests(){
         // no speed edit; the double-source control receives only the write
         // required to capture .5 in source two. Exact stereo equality protects
         // the original source and both replacement rates.
+        auto lastTarget=target;
         if(multiple){
             // Both engines capture .5 in source two. Only the primary receives
             // the later .25 write; neither earlier source may inherit it.
             check(f.control->enqueueLoop({LoopAction::speed,id,0,f.control->generation(),0,.5}),"Second source comparison control rate");
-            f.command(action,id);f.cycle();
+            const auto secondAction=sequence==2?LoopAction::applyStart:action;
+            lastTarget=f.engine->clock()+(secondAction==LoopAction::retrigger?240:2400);
+            f.command(secondAction,id);f.cycle();
             check(f.engine->enqueueLoop({LoopAction::speed,id,0,f.engine->generation(),0,.25}),"Speed targets newest of two pending sources");
         }
-        while(f.engine->clock()<std::max(grid,target)+2048)f.cycle();
+        while(f.engine->clock()<std::max(grid,lastTarget)+2048)f.cycle();
         check(f.view->tracks[id].playbackRate==(multiple?.25:.5)&&f.control->inspectAudioThread(id).track.playbackRate==(multiple?.5:1)
             &&!f.view->tracks[id].phaseApplyFrame&&!f.view->rejected,"UI metadata changes while scheduled source rate remains captured");
         for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::speed,id,0,e->generation(),0,.5}),"Explicit same-value speed write after source start");
@@ -890,7 +895,8 @@ void queuedReplacementSpeedTests(){
         for(unsigned n=0;n<400;++n)f.cycle();
         check(f.view->tracks[id].state==LoopState::playing&&f.view->tracks[id].playbackRate==.5,"Fresh source retains the speed control after captured-source playback");
     }
-    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool multiple:{false,true})for(unsigned cancel=0;cancel<5;++cancel){
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned sequence:{0u,1u,2u})for(unsigned cancel=0;cancel<5;++cancel){
+        const bool multiple=sequence!=0;
         Fixture f(block,MeterEventScope::acceptedPlayback);
         f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
         f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
@@ -899,7 +905,7 @@ void queuedReplacementSpeedTests(){
         f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);
         for(auto* e:{f.engine.get(),f.control.get()}){LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,e->generation(),0,0};birth.meterGraphTicket=1;birth.meterQueueId=q.queueId;birth.meterBufferId=q.bufferId;check(e->enqueueLoop(birth),"Mixed cancellation source admission");}
         f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
-        f.command(LoopAction::applyStart,id);f.cycle();
+        f.command(sequence==2?LoopAction::retrigger:LoopAction::applyStart,id);f.cycle();
         check(f.engine->enqueueLoop({LoopAction::speed,id,0,f.engine->generation(),0,.5}),"Mixed cancellation changes current control only");f.cycle();
         if(multiple){
             check(f.control->enqueueLoop({LoopAction::speed,id,0,f.control->generation(),0,.5}),"Canceled second source comparison rate");
@@ -913,7 +919,7 @@ void queuedReplacementSpeedTests(){
         check(f.view->tracks[id].state==(cancel==2?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].phaseApplyFrame&&!f.view->tracks[id].queuedSourceReady,"Canceled source rate events cannot resurrect after their old deadlines");
     }
     check(allocations.load()==0,"Scheduled replacement speed performs no callback new/delete");
-    std::cout<<"PASS: 32 single + 32 double queued Apply/RTRG then speed cases, exact old/replacement stereo PCM before/after grid, explicit same-value AudioParam write and fresh play at tracks 0/19, reverse and 64/128; 20 single + 20 double pending cancel/prepare/cleanup cases; no callback new/delete\n";
+    std::cout<<"PASS: 32 single + 32 double + 16 RTRG-to-Apply queued speed cases, exact old/replacement stereo PCM before/after grid, explicit same-value AudioParam write and fresh play at tracks 0/19, reverse and 64/128; 20 single + 20 double + 20 RTRG-to-Apply pending cancel/prepare/cleanup cases; no callback new/delete\n";
 }
 void queuedEarlySpeedTests(){
     using namespace aion;
