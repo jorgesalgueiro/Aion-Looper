@@ -445,7 +445,7 @@ let socket;
     assert.equal(speedEdited.tracks[0].state,'queued');assert.equal(speedEdited.outputPeak,0);
     for(const field of ['length','waveformId','undoCount','redoCount','scheduledFrame'])assert.equal(speedEdited.tracks[0][field],speedSource.tracks[0][field],'Early speed preserves '+field);
     await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Edited future source produces PCM at original grid');
-    await exactlyOne(()=>click('#loop-0 button[title="Reset Loop Playback Speed"]'),'Restore original speed button');await wait(s=>s.tracks[0].playbackRate===1,'Early speed reset');
+    await exactlyOne(()=>click('#loop-0 button[title="1x"]'),'Restore original speed button');await wait(s=>s.tracks[0].playbackRate===1,'Early speed reset');
     await exactlyOne(()=>click('#native-stop-all'),'Stop early speed source');await state('stopped');
     console.log('PASS: early-source trusted speed key, unchanged source/clip/deadline, pre-grid silence and audible retained grid at '+process.argv[2]);
     await wait(s=>s.gridPosition>0.03&&s.gridPosition<0.15,'Early RTRG grid phase');

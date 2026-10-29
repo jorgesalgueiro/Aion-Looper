@@ -869,12 +869,18 @@ void queuedEarlySpeedTests(){
         while(f.engine->clock()+block<grid-3840)f.cycle();
         check(f.control->enqueueLoop({LoopAction::speed,id,0,f.control->generation(),0,speed}),"Comparison changes speed 80ms before grid");
         while(f.engine->clock()+block<grid)f.cycle();
+        const bool scheduledStop=speed==.5f;
+        if(scheduledStop)f.command(LoopAction::stop,id); // Inside the minimum lead: stop at the following grid.
         check(f.engine->enqueueLoop({LoopAction::speed,id,0,f.engine->generation(),0,speed}),"Primary changes speed within one block of grid");
         // Equality begins at the first output sample, including source smoothing:
         // both sources are still inaudible when their AudioParam is updated.
         for(unsigned n=0;n<32;++n)f.cycle();
-        check(f.view->tracks[id].state==LoopState::playing&&f.view->tracks[id].waveformId==waveform&&f.view->tracks[id].length==512
+        check(f.view->tracks[id].state==(scheduledStop?LoopState::stopping:LoopState::playing)&&f.view->tracks[id].waveformId==waveform&&f.view->tracks[id].length==512
             &&f.view->tracks[id].playbackRate==speed&&!f.view->tracks[id].phaseApplyFrame&&!f.view->rejected,"Early speed retains clip/source and produces exact stereo PCM without replacement");
+        if(scheduledStop){const auto stopAt=f.view->tracks[id].scheduledFrame;check(stopAt>grid,"Queued speed edit retains the later normal STOP deadline");
+            while(f.engine->clock()<stopAt+512)f.cycle();
+            check(f.view->tracks[id].state==LoopState::stopped&&!f.view->tracks[id].scheduledFrame,"Early speed source stops at its retained deadline without resurrection");}
+
     }
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<5;++cancel){
         Fixture f(block,MeterEventScope::acceptedPlayback);
@@ -894,7 +900,7 @@ void queuedEarlySpeedTests(){
         check(f.view->tracks[id].state==(cancel==2?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].queuedSourceReady,"Speed edits cannot survive source cancellation or restore its old grid");
     }
     check(allocations.load()==0,"Early speed processing performs no callback new/delete");
-    std::cout<<"PASS: 24 early speed stereo equality cases at first grid sample (80ms versus one-block edit), reverse, tracks 0/19 and 64/128; 20 cancellation/prepare/cleanup cases, no callback new/delete\n";
+    std::cout<<"PASS: 24 early speed stereo equality cases at first grid sample (80ms versus one-block edit), reverse, tracks 0/19 and 64/128; 8 later scheduled STOP cases and 20 cancellation/prepare/cleanup cases, no callback new/delete\n";
 }
 void queuedEarlyRestartTests(){
     using namespace aion;
