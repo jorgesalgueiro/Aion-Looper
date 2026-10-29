@@ -644,3 +644,33 @@ Linux and active-format rebuild evidence follows after committing this coherent
 snapshot. No package is produced. Next after this fix: late callback source birth
 and phase, then independent old-cleanup overlap; preserve all cancellation and
 retired-result guards while addressing those remaining gates.
+
+Completion evidence for code snapshot `bbcc7da`:
+
+- Windows Release: existing `js_native_start_phase` + `original_ui_bytes` passed
+  2/2 in 42.93s; the new queued-stop oracle passed directly as recorded above.
+  `cmake --build --preset windows-dev --parallel 2` and
+  `cmake --build --preset windows --target AionLooper_VST3 --parallel 2` passed.
+- Native WSL core Debug: built `aion_start_probe` and `aion_core_tests`; direct
+  `build/core/aion_core_tests --meter-queued` and `--meter-stops` both passed,
+  including the same new 8-case Engine stereo comparison and allocation guard.
+  `ctest --test-dir build/core --output-on-failure --no-tests=error -R '^(js_native_start_phase|js_native_queued_stop_phase|original_ui_bytes)$'`
+  passed 3/3 in 179.75s (existing phase 112.03s; new queued-stop phase 67.31s;
+  original assets 0.41s). Original asset bytes and test tolerances are unchanged.
+- Native WSL Release: `cmake --build --preset linux-dev --parallel 2`, then
+  `cmake --build build/linux --target AionLooper_LV2 --parallel 2` both passed.
+  The LV2 build emitted the existing WSL EGL/DRI3 acceleration warning; this is
+  build/link evidence, not GUI or device validation.
+- Reviewed the source diff and all `restartSource` call sites. The only newly
+  initialized state is the queued-to-stopping start; other callers initialize
+  playing sources as before. No allocation, lock, ownership field, unbounded
+  work or state/parameter migration was introduced. `git diff --check` passed.
+
+This narrow defect meets its source-PCM and Engine acceptance criteria. No new
+host-routing/state/host-transport, frontend interaction or bridge behavior was
+introduced. No new REAPER/Ardour, physical-controller, listening, real UI,
+sanitizer/full-suite or Apple checks are claimed. Do not treat the rebuilt
+formats as release acceptance: late source birth/phase, independent old/new
+cleanup sound and browser envelopes remain open. The renderer stays disabled;
+no distributable package or push was performed. Next is the late-callback sound
+slice, retaining the existing graph-result/cancellation and overflow guards.
