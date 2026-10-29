@@ -554,3 +554,31 @@ remain their old source snapshots. Apple builds/device validation remain deferre
 this lifecycle change stays in shared portable code and retains platform build
 configuration for future macOS/iOS work. Existing preview archives remain labeled with their
 original commits; this session creates no package or push.
+
+## 29 October 2026 — queued source-phase regression
+
+Acceptance for this characterization slice: with the original scheduled `Loop.play`
+callback delivered before the grid, the native source must remain silent before
+its sample deadline and match the original graph's source PCM/phase from that
+sample onward. Preserve the existing 1e-6 tolerance and all prior phase cases.
+This covers 30 mono/stereo, 8/48/96 kHz, 1/17/512/4097/20003-frame clip cases;
+each adds fixed/reverse and dynamic/forward queued starts with a nonzero
+Start offset, tempo-preserved origin and fractional grid deadlines.
+
+`tests/StartPhaseParity.cjs` now executes unchanged `SyncManager.getNextGridTime`
+and `Loop.play`/`AudioGraph.build`, then compares the conditioned buffer using the
+existing linear interpolation oracle. The probe exposes the existing core PLAY
+action. No DSP, UI, parameters, bridge, CLI product commands or state format changed.
+This is core source-phase coverage, not a timer, browser resampler/envelope,
+64/128 callback, interaction or DAW acceptance claim.
+
+Windows Release: built `aion_start_probe`, then ran:
+`node tests/StartPhaseParity.cjs build/windows-core/Release/aion_start_probe.exe`.
+PASS: 30 cases, 60 queued starts, 201740 silent pre-grid frames,
+2077240 total compared frames, maximum absolute error 6.250360756743234e-8
+(tolerance 1e-6); prior 300 retriggers, 540 nudges and 288 tiny-wrap checks retained.
+Linux reproduction follows after committing this coherent test snapshot.
+
+Next: characterize late callback source birth/phase and then outgoing/incoming
+cleanup overlap against the original audio. These remain unaccepted; keep the
+renderer disabled and do not package this characterization as a completed feature.

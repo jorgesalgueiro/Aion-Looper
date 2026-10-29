@@ -39,6 +39,7 @@ int main(){
   else if(op=="timeline")bank.resetTimeline();
   else if(op=="rtrg")ok=bank.apply(A::retrigger,id);
   else if(op=="stop")ok=bank.apply(A::stopImmediate,id);
+  else if(op=="play")ok=bank.apply(A::play,id);
   else if(op=="retrigger")ok=bank.apply(A::sourceRestart,id);
   else if(op=="speed")ok=bank.apply(A::speed,id,static_cast<float>(value));
   else if(op=="solo")ok=bank.apply(A::solo,id);

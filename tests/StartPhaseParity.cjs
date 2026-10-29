@@ -9,6 +9,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  const audio={state:'running',currentTime:0,createBuffer:(count,length,rate)=>makeBuffer(Array.from({length:count},()=>Array(length).fill(0)),rate),createBufferSource:node,createGain:node,createChannelMerger:node,createAnalyser:node};
  const context={window:{},document:{getElementById:()=>null,createElement:()=>({}),head:{appendChild(){}}},effects:{},FACTORY_EFFECTS:{},console,setTimeout:()=>0,clearTimeout(){},audio};vm.createContext(context);
  vm.runInContext(fs.readFileSync(path.join(root,'resources/ui/Modules/audioEngine.js'),'utf8'),context);
+ vm.runInContext(fs.readFileSync(path.join(root,'resources/ui/Modules/scales.js'),'utf8'),context);
  const loops=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');vm.runInContext(loops,context);
  const match=/\/\/ Remove DC Offset\s+for \(let c = 0; c < finalBuffer.numberOfChannels; c\+\+\)/.exec(loops);assert(match);
  const start=match.index+match[0].indexOf('for ('),brace=loops.indexOf('{',start);let end=brace+1,depth=1;
@@ -32,13 +33,15 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  globalThis.delayValue=()=>state.loops[0].startDelay;
  globalThis.rtrg=()=>state.loops[0].retrigger();
  globalThis.stopped=()=>{state.loops[0].state="stopped";};
+ globalThis.grid=()=>SyncManager.getNextGridTime();
+ globalThis.scheduledPlay=time=>state.loops[0].play(time);
  globalThis.applyPhase=()=>state.loops[0].restart(audio.currentTime+0.05);
  globalThis.rate=()=>Math.fround(state.loops[0].effectivePlaybackRate);
  globalThis.offset=()=>state.loops[0].graph.startOffset;
  globalThis.phaseSolo=value=>{state.loops[0].isMutedBySolo=value;};
  globalThis.phaseSpeed=value=>{state.loops[0].playbackRate=value;};
  `,context);
- let cases=0,samples=0,maximum=0,nudges=0,tinyWraps=0,retriggers=0;
+ let cases=0,samples=0,maximum=0,nudges=0,tinyWraps=0,retriggers=0,queuedStarts=0,queuedSilentFrames=0;
  for(const mono of [true,false])for(const sampleRate of [8000,48000,96000])for(const length of [1,17,512,4097,20003]){
   audio.currentTime=0;vm.runInContext('state.syncEnabled=false;state.bpm=120;',context);
   const raw=[Array.from({length},(_,i)=>Math.fround(0.12+0.4*Math.sin(i*0.11))),Array.from({length},(_,i)=>Math.fround(-0.08+0.2*Math.cos(i*0.073)))];
@@ -121,11 +124,32 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   metadata.push({row:commands.length,value:context.delayValue()});commands.push('rtrg 0 0');retriggers++;
   {const target=(audio.currentTime+0.005)*sampleRate,deadline=Math.round(target);pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate)%length+length)%length});render(deadline-frame+7);}
   commands.push('solo 1 0');context.phaseSolo(false);excluded=false;render(47);
+  // An early queued callback builds the unchanged graph before its grid.
+  // Compare the source at the first representable deadline sample, including
+  // fractional grids, reverse buffers and a nonzero tempo-preserved origin.
+  // Late callback delivery and browser gain envelopes are separate gates.
+  for(const mode of [1,2]){
+   commands.push('stop 0 0');context.stopped();
+   const nextBpm=mode===1?999:731;origin=frame-(frame-origin)*bpm/nextBpm;bpm=nextBpm;
+   commands.push(`sync ${mode} ${bpm} 1 1`);context.configure(mode,bpm,origin/sampleRate,1);
+   context.phaseSpeed(1);commands.push('speed 0 1');
+   if(mode===1){context.toggle();commands.push('reverse 0 1');}
+   else {context.toggle();commands.push('reverse 0 0');}
+   context.setDelay(0.217);commands.push('delay 0 0.217');
+   audio.currentTime=frame/sampleRate;
+   const grid=context.grid();assert(grid>audio.currentTime,'Queued source must be scheduled ahead');
+   await context.scheduledPlay(grid);commands.push('play 0 0');
+   const target=grid*sampleRate,nearest=Math.round(target);
+   const deadline=Math.abs(target-nearest)<=4*Number.EPSILON*Math.max(1,Math.abs(target))?nearest:Math.ceil(target);
+   while(frame<deadline){checks.push({row:commands.length,expected:0});commands.push('tick 0 0');frame++;queuedSilentFrames++;}
+   pending.push({source:context.source(),at:deadline,phase:((context.offset()*sampleRate+(deadline-target)*context.rate())%length+length)%length});
+   render(Math.min(length+3,147));queuedStarts++;
+  }
   const result=spawnSync(process.argv[2],[],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:32*1024*1024});assert.equal(result.status,0,result.stderr);const rows=result.stdout.trim().split(/\r?\n/);assert.equal(rows.length,commands.length);
   rows.forEach((r,i)=>assert.equal(Number(r.split(' ')[0]),1,'Rejected '+commands[i]));
   for(const check of metadata)assert(Math.abs(Number(rows[check.row].split(' ')[3])-check.value)<=1e-14,'RTRG/Q/nudge metadata matches reference or documented tiny-clip wrap');
   for(const check of checks){const row=rows[check.row].split(' ').map(Number);for(const value of row.slice(6)){const error=Math.abs(value-check.expected);maximum=Math.max(maximum,error);assert(error<=1e-6,`Start phase ${mono}/${sampleRate}/${length}, frame ${row[1]}: ${value} vs ${check.expected}`);}samples++;}
   cases++;
  }
- console.log(JSON.stringify({result:'PASS',cases,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing; linear interpolation, browser playback envelopes/resampling excluded'}));
+ console.log(JSON.stringify({result:'PASS',cases,queuedStarts,queuedSilentFrames,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing and early-callback queued grid starts; linear interpolation, browser playback envelopes/resampling excluded'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
