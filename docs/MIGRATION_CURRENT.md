@@ -2,16 +2,16 @@
 
 ## Latest implementation — 29 October 2026
 
-Scheduled replacement / speed ordering meets the scoped acceptance below.
-Implementation `80bf816`, precision follow-up `e222753`: scheduled sources retain
-their own initial rates and original seconds timestamps. Current control metadata
-is independent of the source AudioParam; explicit same-value writes and fresh
-plays use current controls. Windows/Linux source, Engine and production shared-RPC
-gates pass, including 64/128 and fractional timestamp ties. Active-format builds
-pass. UI bindings/assets, IDs, capacity, persisted format and dependencies are
-unchanged. No package/push created; full renderer/device/DAW release gates remain
-open. Next: expand multiple-pending-source rate sequences, then early-source
-tempo/clock changes. See the final acceptance evidence below.
+Two pending same-action replacement / speed sequences meet the scoped acceptance
+below. Regression snapshot `5c5edf2` adds unchanged-JS comparisons for two Apply
+or two RTRG sources with interleaved .5x/.25x writes, plus exact stereo Engine
+and cancellation cases at 64/128. Windows/Linux focused tests pass; existing
+production DSP needs no change. Earlier rate/timestamp implementation at
+`80bf816` / `e222753` and its processor/UI/active-format evidence remain applicable.
+Assets, IDs, saved state, capacity and dependencies are unchanged. No package or
+push created. Next: mixed Apply/RTRG deadline overtaking with rate writes, then
+early-source tempo/clock changes. Full renderer/device/DAW release gates stay open.
+See the final acceptance evidence below.
 
 ## Owner-approved faster development workflow — 28 October 2026
 
@@ -1596,3 +1596,48 @@ Windows new oracle PASS: 30 configurations, 120 queued sequences (96 RTRG calls)
 No production DSP/parameters/commands/CLI/MIDI/bridge/UI/state or dependencies
 changed. Prior source/RPC/active-format evidence at e222753 remains applicable;
 unchanged suites and wrappers are not rebuilt solely for regression additions.
+
+
+Reproduce this regression slice (existing configured caches):
+
+```powershell
+# Resolve $cmake / $ctest from Visual Studio as documented above.
+& $cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+& build/windows-core/Release/aion_core_tests.exe --meter-queued
+& $ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_queued_multiple_replacement_speed)$'
+# Commit named source files locally, then sync only the committed snapshot.
+wsl -d Ubuntu --exec bash /mnt/d/Jorge/Documents/Codex/Aion-Looper/tools/SetupWslWorkspace.sh /mnt/d/Jorge/Documents/Codex/Aion-Looper
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake --build build/core --target aion_core_tests aion_start_probe --parallel 2
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec build/core/aion_core_tests --meter-queued
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec ctest --test-dir build/core --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_queued_multiple_replacement_speed)$'
+```
+
+Windows registered tests PASS (2/2, 56.79s including the 54.36s source test).
+These are test wall times, not callback performance or cross-OS comparisons.
+The initial Windows Engine run covered the 32 added playback cases; the final
+expanded cancellation executable is separately rebuilt and rerun. No production
+code changed, so existing measured callback, processor RPC, UI interaction and
+active-format build evidence is reused within its recorded scope. New physical
+hardware, REAPER/Ardour listening, browser-renderer, sanitizer or long-session
+acceptance is not claimed. No package or push created.
+
+Next: mixed Apply/RTRG pending-source deadline overtaking with rate writes,
+then early-source tempo/clock changes using the unchanged original handlers.
+
+
+Final Windows and Linux Engine `--meter-queued` runs PASS, including all 32 new
+two-source playback and 20 new two-source cancellation cases, retained single-source
+cases and all pre-existing queued lifetime/overflow regressions. Both rebuilt
+executables reported zero tracked callback new/delete. Windows final output is
+retained locally at `build/multiple-replacement-windows-engine.log`.
+
+
+Final Linux registered gate PASS: 2/2 tests, 155.68s including 155.06s for the new
+source oracle. Linux matched Windows: 30 configurations / 120 sequences / 96 RTRG
+calls, 2,901,886 compared frames including 2,580,188 silent frames, max error
+6.3772108371829e-8 at unchanged 1e-6 tolerance. Linux uses the existing Debug core;
+wall times are not a performance comparison. `git diff --check` PASS. Review found
+no production callback/lifetime/state changes; original reference and embedded
+assets remain unchanged. The scoped two-same-action slice has no known blocking
+failure in the executed checks. Cross-action overtaking is the next slice, not
+implicitly accepted by these results.
