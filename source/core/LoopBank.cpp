@@ -483,7 +483,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             ++t.phaseEpoch;t.info.phaseApplyFrame=0;t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         case LoopAction::retrigger: {
-            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped))return false;
+            const bool prepared=hasPreparedQueuedSource(t);
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!prepared))return false;
             const double previous=t.info.startDelay;
             t.info.startDelay=0;
             if(sync.settings.mode!=SyncMode::off){
@@ -495,7 +496,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
                 if(divisions>0)phase=round(phase*divisions)/divisions;
                 t.info.startDelay=std::clamp(phase,0.0,1.0);
             }
-            if(s==LoopState::playing){
+            if(s==LoopState::playing||prepared){
                 // Original Loop.retrigger -> healthy AudioGraph.retrigger starts
                 // its replacement source 5ms later; metadata changes at the tap.
                 const bool master=sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(id));

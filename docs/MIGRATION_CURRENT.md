@@ -1,17 +1,14 @@
 # Current migration checkpoint
 
-## Latest implementation ï¿½ 29 October 2026
+## Latest implementation — 29 October 2026
 
-Code snapshot `4f0f8b9` completes the source/gain-gate implementation for early
-Apply/Q/nudge, following `1542e01` metadata capture. A proven future source can
-schedule its 50ms replacement before or after the original grid. The replacement
-advances silently until the retained graph-volume start; a later scheduled STOP
-preserves it until its stop deadline. Panic/Stop Now/clear/cleanup retire pending
-work without a hidden-source tail. Final Windows/Linux Engine, reference and
-processor tests pass, as does the final Windows 64/128 pointer/PCM workflow.
-No reference/UI assets, parameter/action IDs, capacity or state format changed.
-Next: early 5ms RTRG, then speed/tempo edits and remaining envelope/renderer gates.
-Full looper/DAW/device release acceptance remains open.
+Early 5ms RTRG now accepts an explicitly validated future source, using the
+existing bounded phase scheduler and original-grid volume gate. No callback
+validation bypass, new IDs/state version, asset changes or dependency upgrade.
+Windows reference/processor checks pass; final Engine overflow and Linux checks
+are in progress. Do not treat this checkpoint as completed release acceptance.
+Next after this slice: speed/tempo edits during the early-source interval;
+full browser envelopes/resampling, DAW listening and device gates remain open.
 
 ## Owner-approved faster development workflow â€” 28 October 2026
 
@@ -1154,3 +1151,37 @@ Apple or offline MIDI-render acceptance is claimed. No package or push. Exact
 browser gain curves, resampling, source overlap and wall/audio alignment remain
 release/sound gates. Next: unchanged-JS early 5ms RTRG comparisons, then playback
 speed/tempo/clock-source edits during the early interval. Keep meters disabled.
+
+## Early 5ms RTRG — 29 October 2026
+
+Acceptance: a validated early queued graph accepts the existing GUI/CLI RTRG
+command, captures Start reset/quantization and direction at the tap, schedules
+its replacement at +5ms before or after the grid, preserves pre-grid silence,
+and does not resurrect the original source. Unadmitted/stopping sources remain
+guarded; STOP, panic, clear, prepare, retained cleanup and full-queue metadata
+rollback retain their existing ownership guarantees.
+
+Implementation changes only the RTRG guard and playing-branch selection;
+`hasPreparedQueuedSource` excludes unvalidated/stop-pending sources. No new audio
+storage, queue, persistence field or GUI/CLI command is introduced. The existing
+bounded phase-event execution and original volume gate own the replacement.
+
+Tests extend the prior slice rather than replace its cases: 64 paired Engine
+positive cases, 64 cancellation/overflow cases and 32 silent advancing-source
+tail cancellations at tracks 0/19 and 64/128. Production RPC adds four RTRG
+cases. The unchanged-JS source oracle adds 120 early RTRG starts across mono/
+stereo, 8/48/96kHz and five clip lengths. PCM tolerance stays 1e-6; metadata
+stays 1e-14. Oracle setup now preserves origin on an unchanged tempo instead
+of accumulating redundant floating-point conversion drift. The processor test
+allows initial grid activation inside the host block while keeping the exact
+pending 5ms deadline; PCM silence and subsequent source assertions are retained.
+
+Windows commands/evidence so far:
+- Build `build/windows-core` Release targets `aion_core_tests aion_start_probe`.
+- Build preset `windows` targets `aion_midi_processor_tests AionLooper_Standalone AionLooper_VST3`.
+- `node tests/StartPhaseParity.cjs build/windows-core/Release/aion_start_probe.exe --queued-early-rtrg`: PASS, 120 starts, 2,885,470 compared frames, 2,596,604 silent frames; max absolute error 6.183482287314135e-8.
+- `build/windows/Release/aion_midi_processor_tests.exe`: PASS, including actual shared GUI/CLI RPC and zero tracked processBlock new/delete.
+- Final Engine overflow/reference suite and Linux validation remain in progress at this snapshot; append results before marking the slice complete.
+
+No REAPER/Ardour listening, physical controller or full WebAudio envelope/
+resampling acceptance is claimed. No package or push requested for this slice.

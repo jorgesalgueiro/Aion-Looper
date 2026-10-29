@@ -851,7 +851,7 @@ void queuedLateSourceTests(){
 void queuedEarlyRestartTests(){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})
-    for(bool beforeGrid:{false,true})for(auto action:{LoopAction::applyStart,LoopAction::quantizeStart,LoopAction::nudgeStart}){
+    for(bool beforeGrid:{false,true})for(auto action:{LoopAction::applyStart,LoopAction::quantizeStart,LoopAction::nudgeStart,LoopAction::retrigger}){
         Fixture f(block,MeterEventScope::acceptedPlayback);
         f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
         f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
@@ -871,9 +871,9 @@ void queuedEarlyRestartTests(){
             check(e->enqueueLoop(birth),"Early restart requires explicit graph callback");
         }
         f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
-        const auto edit=grid-(beforeGrid?3840:960);
+        const auto edit=grid-(beforeGrid?3840:(action==LoopAction::retrigger?1:960));
         while(f.engine->clock()+block<edit)f.cycle();
-        const auto target=f.engine->clock()+2400;
+        const auto target=f.engine->clock()+(action==LoopAction::retrigger?240:2400);
         for(auto* e:{f.engine.get(),f.control.get()}){
             check(e->enqueueLoop({LoopAction::startDelay,id,0,e->generation(),0,.731}),"Early restart edited Start");
             check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?0.:1.}),"Early restart new source direction");
@@ -885,7 +885,7 @@ void queuedEarlyRestartTests(){
         check(f.control->enqueueLoop({LoopAction::stopImmediate,id,0,f.control->generation(),0,0})
             &&f.control->enqueueLoop({LoopAction::sourceRestart,id,0,f.control->generation(),0,0}),"Comparison uses ordinary playing source restart");
         for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({action,id,0,e->generation(),0,action==LoopAction::nudgeStart?(reverse?-1.:1.):0.}),"Schedule early Apply/Q/nudge");
-        const bool scheduledStop=!beforeGrid&&action==LoopAction::quantizeStart;
+        const bool scheduledStop=!beforeGrid&&(action==LoopAction::quantizeStart||action==LoopAction::retrigger);
         if(scheduledStop)f.command(LoopAction::stop,id);
         bool audible=false;auto end=std::max(grid,target)+4096;std::uint64_t stopAt=0;
         while(f.engine->clock()<end){
@@ -905,7 +905,7 @@ void queuedEarlyRestartTests(){
         }
         check(audible&&f.view->tracks[id].length==8192,"Early replacement remains audible without changing stored clip");
     }
-    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<8;++cancel){
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<8;++cancel)for(bool rtrg:{false,true}){
         Fixture f(block,MeterEventScope::acceptedPlayback);
         f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
         f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
@@ -920,14 +920,16 @@ void queuedEarlyRestartTests(){
         }
         if(cancel==7){f.command(LoopAction::stop,id);f.cycle();}
         for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::startDelay,id,0,e->generation(),0,.731}),"Cancellation fixture Start");
-        const auto target=f.engine->clock()+2400;f.command(LoopAction::applyStart,id);f.cycle();
+        const auto target=f.engine->clock()+((rtrg&&cancel!=6)?240:2400);f.command(rtrg&&cancel!=6?LoopAction::retrigger:LoopAction::applyStart,id);f.cycle();
         check(f.view->tracks[id].phaseApplyFrame==((cancel==5||cancel==7)?0:target),"Unadmitted/stopping queued source cannot schedule a restart");
         if(cancel==6){
+            const auto fullDeadline=f.engine->clock()+2400;
             for(unsigned n=0;n<126;++n)f.command(LoopAction::applyStart,id);
+            if(rtrg)f.command(LoopAction::retrigger,id);
             f.command(LoopAction::quantizeStart,id);
             for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::nudgeStart,id,0,e->generation(),0,1}),"Queue nudge against full early-source phase FIFO");
             f.cycle();f.cycle();
-            check(f.view->rejected&&f.view->tracks[id].startDelay==.731&&f.view->tracks[id].phaseApplyFrame==target+block,"Full phase FIFO rejects Q/nudge with metadata and accepted deadlines intact");
+            check(f.view->rejected&&f.view->tracks[id].startDelay==.731&&f.view->tracks[id].phaseApplyFrame==fullDeadline,"Full phase FIFO rejects Q/nudge with metadata and accepted deadlines intact");
             f.command(LoopAction::stopAll,id);
         }else if(cancel<3)f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);
         else if(cancel==3)f.prepare();
@@ -938,7 +940,7 @@ void queuedEarlyRestartTests(){
         for(unsigned n=0;n<400;++n)f.cycle();
         check(f.view->tracks[id].state==(cancel==2?LoopState::empty:cancel==5?LoopState::queued:LoopState::stopped)&&!f.view->tracks[id].phaseApplyFrame,"Cancel/clear/prepare/cleanup and unadmitted source cannot resurrect a phase event");
     }
-    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(auto cancel:{LoopAction::stopImmediate,LoopAction::stopAll,LoopAction::clear,LoopAction::meterGraphStart}){
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(auto cancel:{LoopAction::stopImmediate,LoopAction::stopAll,LoopAction::clear,LoopAction::meterGraphStart})for(bool rtrg:{false,true}){
         Fixture f(block,MeterEventScope::acceptedPlayback);
         f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
         f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
@@ -948,7 +950,7 @@ void queuedEarlyRestartTests(){
         for(auto* e:{f.engine.get(),f.control.get()}){LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,e->generation(),0,0};
             birth.meterGraphTicket=1;birth.meterQueueId=q.queueId;birth.meterBufferId=q.bufferId;check(e->enqueueLoop(birth),"Gated cancellation admits actual source");}
         f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
-        f.command(LoopAction::applyStart,id);const auto target=f.engine->clock()+2400;
+        f.command(rtrg?LoopAction::retrigger:LoopAction::applyStart,id);const auto target=f.engine->clock()+(rtrg?240:2400);
         while(f.engine->clock()<target+512)f.cycle();
         check(f.engine->clock()<grid&&f.view->tracks[id].state==LoopState::playing,"Source is advancing before retained graph volume start");
         // The sentinel case drives the independent retained-cleanup fence.
@@ -962,7 +964,7 @@ void queuedEarlyRestartTests(){
         }
     }
     check(allocations.load()==0,"Early restart processing performs no callback new/delete");
-    std::cout<<"PASS: 48 early Apply/Q/nudge source cases before/after original grid, exact post-transition stereo PCM, no old-grid resurrection; 32 cancel/prepare/cleanup/unadmitted/stopping/full-phase-FIFO cases plus 16 silent-source tail cancellations at tracks 0/19 and 64/128, no callback new/delete\n";
+    std::cout<<"PASS: 64 early Apply/Q/nudge/RTRG source cases before/after original grid, exact post-transition stereo PCM, no old-grid resurrection; 64 cancel/prepare/cleanup/unadmitted/stopping/full-phase-FIFO cases plus 32 silent-source tail cancellations at tracks 0/19 and 64/128, no callback new/delete\n";
 }
 void queuedEarlyControlTests(){
     using namespace aion;
