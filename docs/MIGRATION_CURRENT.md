@@ -1447,3 +1447,15 @@ Initial focused evidence:
 - Windows paired Engine tests: initial 32 Apply/RTRG/speed cases PASS at tracks 0/19 and 64/128, exact old/replacement stereo PCM, same-value live write and fresh play, zero tracked callback new/delete. Added 20 pending cancellation/clear/panic/prepare/retained-cleanup cases are under the final gate.
 - Existing UI/CLI bindings, native frontend and preserved resources/ui are unchanged. Reuse the prior `ff78df8` real Windows pointer/keyboard evidence for Start/Apply, RTRG and speed controls. This slice adds eight actual mixed shared-RPC cases to the processor fixture; it does not claim an unexecuted new pointer timing test or physical-device check.
 - Final relevant source/regression, active-format builds and production RPC tests are in progress before WSL acceptance.
+
+Timestamp boundary follow-up: an added independent `--queued-replacement-speed-tie`
+mode retains all previous cases and tests speed writes at the replacement deadline
+for 17/512-frame clips (RTRG/Apply), reverse/mono/stereo and 8/48/96kHz. It caught a
+real native boundary defect: converting original double seconds to frame units
+could erase an ULP and misorder the user's write versus a future initial-rate
+event. The fixed phase event now retains sourceStartSeconds instead of the
+already-multiplied sourceStartFrame scalar; activation derives frame metadata,
+while rate-event ordering compares the original seconds. No additional storage
+or tolerance change beyond the captured float rate. Final tie/platform gates are
+pending this snapshot; reuse the prior passing ten Windows source gates and
+32 + 20 Engine cases only for the behavior they actually covered.

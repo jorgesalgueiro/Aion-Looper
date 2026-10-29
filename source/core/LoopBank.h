@@ -249,7 +249,7 @@ private:
         std::uint64_t sourceClearEpoch = 0, sourceWaveform = 0;
         double sourceBpm = 0;
     };
-    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false,retrigger=false;double sourceStartFrame=0,sourceOffset=0;float rate=1;};
+    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false,retrigger=false;double sourceStartSeconds=0,sourceOffset=0;float rate=1;};
     static constexpr unsigned phaseCapacity=128;
     std::array<PhaseEvent,phaseCapacity> phaseEvents{};
     unsigned phaseRead=0,phaseWrite=0;

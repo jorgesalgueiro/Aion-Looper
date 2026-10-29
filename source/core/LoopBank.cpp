@@ -670,7 +670,7 @@ bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool ma
         phaseEvents[at]=phaseEvents[before];at=before;
     }
     double sourceOffset=std::fmod(offset,length);if(sourceOffset<0)sourceOffset+=length;
-    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending,target*rate,sourceOffset,static_cast<float>(track.phaseRate)};phaseWrite=next;
+    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending,target,sourceOffset,static_cast<float>(track.phaseRate)};phaseWrite=next;
     track.info.phaseApplyFrame=std::max(track.info.phaseApplyFrame,deadline);return true;
 }
 void LoopBank::applyPhaseEvents() noexcept {
@@ -690,7 +690,7 @@ void LoopBank::applyPhaseEvents() noexcept {
         retire(track.reverseHold);track.reverseHold=nullptr;
         track.rate=track.targetRate=event.rate;track.rateRemaining=0;track.rateIncrement=0;
         track.phase=event.phase;track.activeReverse=event.reverse;track.info.stuttering=track.info.stutterClock=false;
-        track.sourceStartFrame=event.sourceStartFrame;track.sourceOffset=event.sourceOffset;
+        track.sourceStartFrame=event.sourceStartSeconds*rate;track.sourceOffset=event.sourceOffset;
         track.info.position=static_cast<std::uint32_t>(track.phase);
         if(track.info.phaseApplyFrame==event.frame)track.info.phaseApplyFrame=0;
         blend(track);
@@ -793,7 +793,7 @@ void LoopBank::updateRate(Track& track,bool directSpeedEdit) noexcept {
             if(e.track!=static_cast<std::uint32_t>(&track-tracks.data())||e.epoch!=track.phaseEpoch||e.frame!=frame)continue;
             // A sub-sample future event can round to this native frame while
             // still following the user's write on the AudioParam timeline.
-            if(e.sourceStartFrame>static_cast<double>(frame))return;
+            if(e.sourceStartSeconds>static_cast<double>(frame)/rate)return;
             e.rate=next;
         }
     }
