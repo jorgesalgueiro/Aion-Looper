@@ -234,8 +234,11 @@ void LoopBank::restartSource(Track& track) noexcept {
     if(hasPlaybackSource(track))++track.sourceRevision;
     ++track.phaseEpoch;track.info.phaseApplyFrame=0;track.info.stuttering=track.info.stutterClock=false;
     retire(track.reverseHold);track.reverseHold=nullptr;
-    track.activeReverse=track.info.state==LoopState::playing&&track.info.reverse;
-    if(track.clip&&track.info.state==LoopState::playing){
+    // A queued source can reach its start grid with a later STOP already armed.
+    // It still needs the same initial phase and reverse buffer as a playing source.
+    const bool starting=track.info.state==LoopState::playing||track.info.state==LoopState::stopping;
+    track.activeReverse=starting&&track.info.reverse;
+    if(track.clip&&starting){
         const double length=track.clip->length,shift=track.info.startDelay*length;
         const double offset=sync.settings.mode!=SyncMode::off?(static_cast<double>(frame)-sync.origin)*track.phaseRate-shift:shift;
         track.phase=std::fmod(offset,length);if(track.phase<0)track.phase+=length;

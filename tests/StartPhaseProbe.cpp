@@ -5,12 +5,15 @@
 #include <memory>
 #include <sstream>
 #include <thread>
-int main(){
- auto storage=std::make_unique<aion::LoopBank>();auto& bank=*storage;std::string line;bank.prepare(81920,0);
+#include <string_view>
+int main(int argc,char** argv){
+ const bool accepted=argc==2&&std::string_view(argv[1])=="--accepted-playback";
+ std::array<aion::MeterGraphEvent,20> queues{};std::uint32_t ticket=0;
+ auto storage=std::make_unique<aion::LoopBank>(accepted?aion::MeterEventScope::acceptedPlayback:aion::MeterEventScope::rawWindows);auto& bank=*storage;std::string line;bank.prepare(81920,0);bank.resetMeterGraphEvents(7);
  while(std::getline(std::cin,line)){
   std::istringstream input(line);std::string op;unsigned id;double value;if(!(input>>op>>id>>value))return 2;
   float right=static_cast<float>(value);(void)(input>>right);bool ok=true;aion::Stereo out{};using A=aion::LoopAction;
-  if(op=="prepare")bank.prepare(id,0,value);
+  if(op=="prepare"){bank.prepare(id,0,value);bank.resetMeterGraphEvents(7);queues={};ticket=0;}
   else if(op=="record")ok=bank.apply(A::record,id);
   else if(op=="finish")ok=bank.apply(A::finish,id);
   else if(op=="merge")ok=bank.apply(A::merge,id,static_cast<float>(value));
@@ -39,7 +42,12 @@ int main(){
   else if(op=="timeline")bank.resetTimeline();
   else if(op=="rtrg")ok=bank.apply(A::retrigger,id);
   else if(op=="stop")ok=bank.apply(A::stopImmediate,id);
-  else if(op=="play")ok=bank.apply(A::play,id);
+  else if(op=="play"){
+   ok=bank.apply(A::play,id);aion::MeterGraphEvent event;
+   while(bank.popMeterGraphEvent(event,7))if(event.kind==aion::MeterGraphEventKind::queuedPlay)queues[event.track]=event;
+  }
+  else if(op=="birth")ok=id<queues.size()&&bank.startQueuedMeterGraph(id,++ticket,queues[id].queueId,queues[id].bufferId);
+  else if(op=="stopgrid")ok=bank.apply(A::stop,id);
   else if(op=="retrigger")ok=bank.apply(A::sourceRestart,id);
   else if(op=="speed")ok=bank.apply(A::speed,id,static_cast<float>(value));
   else if(op=="solo")ok=bank.apply(A::solo,id);

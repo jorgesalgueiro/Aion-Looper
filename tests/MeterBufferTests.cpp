@@ -759,7 +759,47 @@ void queuedWindowTests(){
     std::cout<<"PASS: conditional queued raw-window acceptance, full-width queue/clip validation, duplicate/saturation/cancellation/replacement/prepare guards, exact paired stereo PCM at tracks 0/19 and 64/128; no message graph birth inferred\n";
 }
 }
+// STOP inside the grid's 30ms minimum lead schedules the following grid.
+// Compare against an otherwise identical source stopped just after its start:
+// both must emit exactly the same PCM, even though only one starts as stopping.
+void queuedScheduledSourceTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback);f.prepare();
+        f.record(id);(void)f.next(MeterGraphEventKind::bufferInstalled,id);
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            check(e->enqueueLoop({LoopAction::startDelay,id,0,e->generation(),0,.217f}),"Set queued source Start offset");
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.f:0.f}),"Set queued source direction");
+            e->configureSync({SyncMode::fixed,120,1,1,4,false});
+        }
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);
+        const auto grid=f.view->tracks[id].scheduledFrame;
+        while(f.engine->clock()+block<grid-4800)f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            LoopCommand callback{LoopAction::meterQueuedGraphRequest,id,0,e->generation(),0,0};
+            callback.meterGraphTicket=1;callback.meterQueueId=q.queueId;callback.meterBufferId=q.bufferId;
+            check(e->enqueueLoop(callback),"Enqueue real integer-identity queued graph callback");
+        }
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);
+        (void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+        while(f.engine->clock()+block<grid-960)f.cycle();
+        check(f.engine->enqueueLoop({LoopAction::stop,id,0,f.engine->generation(),0,0}),"Queue STOP within last 30ms before source start");
+        f.cycle();const auto end=grid+24000;
+        check(f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].stopPending&&f.view->tracks[id].scheduledFrame==grid,"Queued source retains its start gate while STOP waits for the following grid");
+        while(f.engine->clock()<grid+960)f.cycle();
+        check(f.view->tracks[id].state==LoopState::stopping&&f.view->tracks[id].scheduledFrame==end,"Queued source plays while waiting for following-grid STOP");
+        check(f.control->enqueueLoop({LoopAction::stop,id,0,f.control->generation(),0,0}),"Reference source receives same STOP deadline after start");
+        f.cycle();
+        while(f.engine->clock()<=end+512)f.cycle();
+        check(f.view->tracks[id].state==LoopState::stopped,"Queued source completes scheduled stop and tail");
+    }
+    check(allocations.load()==0,"Queued scheduled source callbacks perform no tracked allocation/deallocation");
+    std::cout<<"PASS: queued source Start/reverse PCM equals normally started source through following-grid STOP at tracks 0/19 and 64/128, no callback new/delete\n";
+}
 void meterQueuedTests(){
+    queuedScheduledSourceTests();
     stopCallbackClockTests();
     queuedDueDeliveryTests();
     queuedCallbackClockTests();

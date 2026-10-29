@@ -593,3 +593,54 @@ No source-phase defect was found in this scheduled-before-grid subset. Runtime
 code did not change, so application/plugin rebuilds, DAW/device tests and packages
 were not run for this test-only change. Existing late-source, overlap/envelope,
 64/128 interaction and renderer acceptance gaps remain open.
+
+## 29 October 2026 — queued source with a following-grid STOP
+
+While continuing source/transition sound parity, found a smaller concrete defect:
+an early queued graph callback exists, then normal STOP arrives within 30ms of
+the source's upcoming grid. The original `scheduleStop()` minimum lead chooses
+the following grid, so the incoming source must play until then. Native
+`schedules()` correctly kept the start gate, but changed state to `stopping`
+before `restartSource()`, whose playing-only guard skipped both Start phase and
+reverse initialization. Fixed that guard to initialize either audible start state.
+No IDs, serialized state, UI assets, CLI commands, queue policy or timer changed.
+Existing PLAY/STOP through the shared command layer receive the correction.
+
+Acceptance: silence before source start; original source phase/PCM after start
+for forward and reverse mono/stereo clips at 8/48/96 kHz and fractional grid
+positions; identical Engine stereo PCM to a normally started source stopped at
+the same later grid, including completion/tail at tracks 0/19 and 64/128 samples;
+no tracked callback allocation/deallocation. Keep existing source, callback,
+identity, cancellation, overflow and ownership regression tolerances unchanged.
+
+Before the C++ fix, the new unchanged-JS comparison failed at mono/8000Hz/17
+frames, audio frame 3500: native 0.0458209291100502 versus original
+0.045596589134934966 (tolerance 1e-6). After the fix, the new
+`js_native_queued_stop_phase` comparison passed 30 cases / 60 queued starts,
+1238502 silent pre-grid frames and 1244082 total compared frames; maximum error
+3.683564875345269e-8 at the unchanged 1e-6 tolerance. This oracle invokes original
+`SyncManager.getNextGridTime`, `Loop.play`, `AudioGraph.build`, `scheduleStop`
+and `stop`; browser resampling/gain envelopes remain excluded.
+
+Windows Release built `aion_start_probe` and `aion_core_tests`.
+`aion_core_tests --meter-queued` and `--meter-stops` passed, including the new
+8-case production Engine differential (2 block sizes x 2 tracks x 2 directions),
+exact stereo PCM through the following-grid STOP/tail and zero tracked callback
+new/delete. The Engine test uses the real integer queue/clip/ticket callback path;
+the normal-source comparison receives STOP after start, choosing the same end.
+One initial test assertion mistakenly expected the combined scheduled-frame
+readout to expose the stop while its start was still pending; corrected it to
+check the start gate first and the stop deadline after start. DSP/reference
+expectations and tolerances were retained.
+
+| Behavior | Current evidence/status |
+| --- | --- |
+| Early queued source start | Prior/current source-phase regression; preserved |
+| Queued source starts while a later STOP is armed | C++ guard fixed; original source PCM + Engine 64/128 passed on Windows |
+| Late message callback / source creation | Still unaccepted; no policy change in this fix |
+| Old/new source overlap, cleanup sound and envelopes | Still unaccepted; renderer stays disabled |
+
+Linux and active-format rebuild evidence follows after committing this coherent
+snapshot. No package is produced. Next after this fix: late callback source birth
+and phase, then independent old-cleanup overlap; preserve all cancellation and
+retired-result guards while addressing those remaining gates.
