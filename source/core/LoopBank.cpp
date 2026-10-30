@@ -32,6 +32,7 @@ void LoopBank::prepare(std::uint32_t frames,std::uint32_t fadeFrames,double samp
     shutdown();
     totalBlocks=std::clamp(frames/blockFrames,1u,maxBlocks);
     audio.assign(static_cast<std::size_t>(totalBlocks)*blockFrames*2,0.0f);
+    retainedSources={};retainedCounts={};
     for(auto& track:tracks)track=Track{};
     freeCount=totalBlocks;residentBlocks=0;undoSize=redoSize=0;
     for(std::uint32_t i=0;i<totalBlocks;++i)freeBlocks[i]=static_cast<std::uint16_t>(i);
@@ -297,6 +298,7 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     return true;
 }
 void LoopBank::stop(Track& track) noexcept {
+    clearRetained(track);
     if(hasPlaybackSource(track))++track.sourceRevision;
     track.info.mergeSerial=0;
     if(track.info.state==LoopState::finalizing&&job.merge&&job.track==static_cast<std::uint32_t>(&track-tracks.data()))job.mergeNotify=false;
@@ -318,6 +320,7 @@ void LoopBank::cutQueuedSource(Track& track) noexcept {
     track.last=track.tail=track.blendFrom={};track.tailRemaining=track.blendRemaining=0;
 }
 void LoopBank::clear(Track& track) noexcept {
+    clearRetained(track);
     const auto removedBuffer=track.clip?track.clip->waveformId:0;
     ++track.sourceRevision;
     track.queuedSourcePending=false;
@@ -651,7 +654,18 @@ bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool ma
     while(phaseRead!=phaseWrite&&phaseEvents[phaseRead].epoch!=tracks[phaseEvents[phaseRead].track].phaseEpoch)
         phaseRead=(phaseRead+1)%phaseCapacity;
     if((phaseWrite+1)%phaseCapacity==phaseRead)return false;
+    unsigned retainedSlot=phaseCapacity;
     if(replacePending){
+        std::uint64_t until=0;
+        for(unsigned at=phaseRead;at!=phaseWrite;at=(at+1)%phaseCapacity){const auto& e=phaseEvents[at];
+            if(e.track==id&&e.epoch==track.phaseEpoch&&!e.retrigger&&e.frame>deadline)
+                until=until?std::min(until,e.frame):e.frame;
+        }
+        if(until){
+            for(unsigned at=0;at<phaseCapacity;++at)if(!retainedSources[at].used){retainedSlot=at;break;}
+            if(retainedSlot==phaseCapacity)return false;
+            auto& voice=retainedSources[retainedSlot];voice={};voice.used=true;voice.track=id;voice.epoch=track.phaseEpoch;voice.stopAt=until;++retainedCounts[id];
+        }
         unsigned write=phaseRead;track.info.phaseApplyFrame=0;
         for(unsigned read=phaseRead;read!=phaseWrite;read=(read+1)%phaseCapacity){
             const auto event=phaseEvents[read];
@@ -670,7 +684,7 @@ bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool ma
         phaseEvents[at]=phaseEvents[before];at=before;
     }
     double sourceOffset=std::fmod(offset,length);if(sourceOffset<0)sourceOffset+=length;
-    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending,target,sourceOffset,static_cast<float>(track.phaseRate)};phaseWrite=next;
+    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending,target,sourceOffset,static_cast<float>(track.phaseRate),retainedSlot};phaseWrite=next;
     track.info.phaseApplyFrame=std::max(track.info.phaseApplyFrame,deadline);return true;
 }
 void LoopBank::applyPhaseEvents() noexcept {
@@ -679,7 +693,22 @@ void LoopBank::applyPhaseEvents() noexcept {
         const bool valid=event.epoch==track.phaseEpoch;
         if(valid&&event.frame>frame)break;
         phaseRead=(phaseRead+1)%phaseCapacity;
-        if(!valid||!track.clip||(track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopping&&!hasPreparedQueuedSource(track,true)))continue;
+        if(!valid||!track.clip||(track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopping&&!hasPreparedQueuedSource(track,true))){
+            if(event.retainedSlot<phaseCapacity){const auto& voice=retainedSources[event.retainedSlot];
+                if(voice.used&&voice.track==event.track&&voice.epoch==event.epoch)releaseRetained(event.retainedSlot);}
+            continue;
+        }
+        if(event.retainedSlot<phaseCapacity){auto& voice=retainedSources[event.retainedSlot];
+            if(voice.used&&voice.track==event.track&&voice.epoch==event.epoch){
+                voice.clip=track.reverseHold?track.reverseHold:track.clip;voice.clip->leases.fetch_add(1,std::memory_order_relaxed);
+                const bool queued=track.info.state==LoopState::queued;
+                voice.startAt=queued?track.startAt:frame;voice.phase=queued?track.queuedSourcePhase:track.phase;
+                voice.reverse=queued?track.queuedSourceReverse:track.activeReverse;
+                voice.stuttering=track.info.stuttering;voice.stutterStart=track.info.stutterStart;voice.stutterEnd=track.info.stutterEnd;
+                voice.rate=track.rate;voice.targetRate=track.targetRate;voice.rateIncrement=track.rateIncrement;voice.rateRemaining=track.rateRemaining;
+                voice.last=track.last;voice.blendFrom=track.blendFrom;voice.blendRemaining=track.blendRemaining;
+            }
+        }
         if(track.info.state==LoopState::queued){
             // The replacement can start before the original grid. Retire that
             // old activation deadline so it cannot restart this source again.
@@ -695,6 +724,43 @@ void LoopBank::applyPhaseEvents() noexcept {
         if(track.info.phaseApplyFrame==event.frame)track.info.phaseApplyFrame=0;
         blend(track);
     }
+}
+void LoopBank::releaseRetained(unsigned slot) noexcept {
+    auto& voice=retainedSources[slot];if(voice.used)--retainedCounts[voice.track];retire(voice.clip);voice={};
+}
+void LoopBank::clearRetained(const Track& track) noexcept {
+    const auto id=static_cast<unsigned>(&track-tracks.data());
+    for(unsigned at=0;at<phaseCapacity;++at)if(retainedSources[at].used&&retainedSources[at].track==id)releaseRetained(at);
+}
+Stereo LoopBank::tickRetained(const Track& track) noexcept {
+    Stereo mix{};const auto id=static_cast<unsigned>(&track-tracks.data());
+    if(!retainedCounts[id])return mix;
+    for(unsigned at=0;at<phaseCapacity;++at){auto& voice=retainedSources[at];
+        if(!voice.used||voice.track!=id)continue;
+        if(voice.epoch!=track.phaseEpoch||frame>=voice.stopAt){releaseRetained(at);continue;}
+        if(!voice.clip||frame<voice.startAt)continue;
+        if(voice.rateRemaining){voice.rate+=voice.rateIncrement;if(--voice.rateRemaining==0)voice.rate=voice.targetRate;}
+        const auto length=voice.clip->length;
+        const auto index=static_cast<std::uint32_t>(voice.phase);auto next=index+1==length?0:index+1;
+        if(voice.stuttering&&index<voice.stutterEnd&&index+1>=voice.stutterEnd){
+            const double span=voice.stutterEnd-voice.stutterStart;
+            const double neighbor=span>=1?voice.phase+1-span:voice.stutterStart+std::fmod(voice.phase+1-voice.stutterStart,span);
+            next=static_cast<std::uint32_t>(std::clamp(neighbor,0.0,static_cast<double>(length-1)));
+        }
+        const auto i=voice.reverse?length-1-index:index,j=voice.reverse?length-1-next:next;
+        const auto f=static_cast<float>(voice.phase-index);
+        const auto& left=voice.clip->channels[0];const auto& right=voice.clip->channels[1];
+        Stereo out{left[i]+(left[j]-left[i])*f,right[i]+(right[j]-right[i])*f};
+        if(voice.stuttering&&next==index&&index>0){const auto previous=voice.reverse?length-index:index-1;
+            out={left[i]+(left[i]-left[previous])*f,right[i]+(right[i]-right[previous])*f};}
+        if(voice.blendRemaining){const float progress=1-static_cast<float>(--voice.blendRemaining)/fadeLength;
+            out={voice.blendFrom.left+(out.left-voice.blendFrom.left)*progress,voice.blendFrom.right+(out.right-voice.blendFrom.right)*progress};}
+        voice.last=out;voice.phase+=voice.rate;
+        if(voice.stuttering&&voice.phase>=voice.stutterEnd)voice.phase=voice.stutterStart+std::fmod(voice.phase-voice.stutterStart,voice.stutterEnd-voice.stutterStart);
+        else if(voice.phase>=length){voice.phase=std::fmod(voice.phase,static_cast<double>(length));voice.blendFrom=voice.last;voice.blendRemaining=fadeLength;}
+        mix.left+=out.left;mix.right+=out.right;
+    }
+    return mix;
 }
 Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
     applyPhaseEvents();
@@ -745,6 +811,7 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
             v.position=static_cast<std::uint32_t>(t.phase>=t.clip->length?std::fmod(t.phase,static_cast<double>(t.clip->length)):t.phase);
         }else if(t.tailRemaining){const float progress=static_cast<float>(--t.tailRemaining)/fadeLength;out={t.tail.left*progress,t.tail.right*progress};t.last=out;}
         else t.last={};
+        const auto retainedOut=tickRetained(t);out.left+=retainedOut.left;out.right+=retainedOut.right;t.last=out;
         if(t.queuedGainAt){
             if(frame<t.queuedGainAt)out={};
             else if(fadeLength&&frame-t.queuedGainAt<fadeLength){

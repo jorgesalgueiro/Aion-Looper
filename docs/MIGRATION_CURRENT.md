@@ -1732,3 +1732,56 @@ times for Apply then RTRG (including original-grid silence and cancellation),
 then compare actual summed PCM and establish bounded ownership/overflow. The
 source-inspection concern is pending that explicit oracle, not a fabricated
 claim of measured mismatch. Keep tempo/clock work behind this overlap gate.
+
+
+## Apply overtaken by RTRG: retained old-source overlap — 30 October 2026
+
+Acceptance: execute unchanged Apply (+50ms), write .5x, then RTRG (+5ms) before
+Apply starts, followed by .25x. Apply's source is stopped before birth; its older
+source keeps its original +50ms stop and can overlap the new RTRG source after
+the original grid. Compare the sum of all actually live source PCM, not only the
+newest source. Preserve source-specific rates, reverse direction, original grid
+silence, later explicit writes/fresh PLAY and cancellation. Test tracks 0/19,
+64/128, bounded saturation, release and reuse. This is the smallest single-Apply
+overtaking slice; arbitrary multiple pending Apply chains are not inferred.
+
+The new `--queued-apply-rtrg-overlap` oracle retains the original BufferSource
+start/stop times and each captured source rate. A source stopped before its
+start contributes no audio. Actual old/new source samples are summed before
+native loop pan/gain. PCM tolerance remains 1e-6; previous tests are retained.
+The unchanged reference and preserved UI files are not edited. Browser gain
+curves, AudioParam quantum and resampling remain outside this IO-stub model.
+
+Baseline negative: original native probe fails at mono/8kHz/17-frame clip,
+frame 6996: native 0.0242755226790905 versus source sum 0.06986710473102437.
+Trace shows original old-source stop at Apply's deadline, canceled future Apply,
+and the earlier new RTRG birth. Local negative: `build/apply-rtrg-negative.log`.
+Do not weaken that expected sum to the newest source's output.
+
+Implementation uses a fixed 128-slot retained-source pool in LoopBank. Reserve
+before mutating/canceling phase events; when full, RTRG rejects and the accepted
+Apply remains pending. At overtaking activation pin the older immutable clip,
+phase/direction/rate/ramp/stutter state and retain its own stop deadline. Sum it
+before shared volume/pan and the original queued gain gate. Stop/clear/epoch
+changes/prepare release active and reserved leases. No audio-side new/delete;
+clip releases go to the worker queue, now 512 entries for overlap + existing
+current/held/history/job leases. Empty tracks bypass the overlap scan.
+
+Regression additions: 120 unchanged-JS configurations/sequences (mono/stereo,
+8/48/96kHz, five lengths, both directions, both grid sides); 16 paired Engine
+playback +20 cancellation combinations, plus 128-slot saturation/recovery at
+tracks 0/19 and 64/128. Existing shared production RPC test gains four overlap
+cases using real GUI/CLI command paths and callback allocation tracking.
+
+A new saturation fixture initially misread EngineView.rejected as a cumulative
+counter. It is the latest user command's rejection flag (Engine.cpp); the reuse
+check now requires false AND a newly scheduled source event. Full-pool rejection
+still requires true with the accepted Apply deadline intact. No old regression
+was removed or tolerance changed. Intermediate builds overlapped a struct edit;
+those results are discarded. One clean affected-core build establishes a coherent
+header/library/test baseline before final acceptance.
+
+Exact commands/results and remaining limits follow after final verification.
+No UI/bridge bindings, commands/parameter IDs, persistence schema, capacity,
+logo/assets or dependencies changed. Existing GUI/CLI access invokes the repaired
+single DSP path. No package/push requested.

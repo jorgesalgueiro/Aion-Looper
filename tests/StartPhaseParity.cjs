@@ -49,8 +49,9 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  globalThis.phaseSpeed=value=>{state.loops[0].playbackRate=value;};
  globalThis.userSpeed=value=>UIManager.setLoopSpeed(0,value);
  `,context);
+ const queuedOverlapOnly=process.argv[3]==='--queued-apply-rtrg-overlap';
  const queuedRtrgApplyOnly=process.argv[3]==='--queued-rtrg-apply-speed';
- const queuedMultipleOnly=process.argv[3]==='--queued-multiple-replacement-speed'||queuedRtrgApplyOnly;
+ const queuedMultipleOnly=process.argv[3]==='--queued-multiple-replacement-speed'||queuedRtrgApplyOnly||queuedOverlapOnly;
  const queuedMixedTieOnly=process.argv[3]==='--queued-replacement-speed-tie';
  const queuedMixedOnly=process.argv[3]==='--queued-replacement-speed'||queuedMixedTieOnly||queuedMultipleOnly;
  const queuedSpeedOnly=process.argv[3]==='--queued-early-speed';
@@ -65,10 +66,22 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   audio.currentTime=0;vm.runInContext('state.syncEnabled=false;state.bpm=120;',context);
   const raw=[Array.from({length},(_,i)=>Math.fround(0.12+0.4*Math.sin(i*0.11))),Array.from({length},(_,i)=>Math.fround(-0.08+0.2*Math.cos(i*0.073)))];
   const buffer=makeBuffer(mono?[raw[0]]:raw,sampleRate);context.condition(buffer);
-  let frame=length,phase=0,origin=0,bpm=120,pending=[],excluded=false;
+  let frame=length,phase=0,origin=0,bpm=120,pending=[],excluded=false,voices=null,voiceGate=0;
   const commands=[`prepare 81920 ${sampleRate}`,'record 0 0',...raw[0].map((v,i)=>`tick 0 ${v}${mono?'':' '+raw[1][i]}`),'finish 0 0','wait 0 0'];
   audio.currentTime=frame/sampleRate;context.setup(buffer);let playingSource=context.source(),playingNode=context.sourceNode(),trace=null;const checks=[],metadata=[];
   const render=count=>{for(let n=0;n<count;++n){while(pending.length&&frame>=pending[0].at){const event=pending.shift();phase=event.phase;playingSource=event.source;if(event.node)playingNode=event.node;}
+   if(voices){
+    let left=0,right=0;
+    for(const voice of voices){const node=voice.node,start=node.started.time*sampleRate,stop=node.stoppedAt===undefined?Infinity:node.stoppedAt*sampleRate;
+     const deadline=t=>{const near=Math.round(t);return Math.abs(t-near)<=4*Number.EPSILON*Math.max(1,Math.abs(t))?near:Math.ceil(t);};
+     if(frame<deadline(start)||frame>=deadline(stop))continue;
+     const pos=((node.started.offset*sampleRate+(frame-start)*voice.rate)%length+length)%length,index=Math.floor(pos),next=(index+1)%length,f=Math.fround(pos-index);
+     const value=c=>Math.fround(node.buffer.getChannelData(c)[index]+Math.fround(node.buffer.getChannelData(c)[next]-node.buffer.getChannelData(c)[index])*f);
+     left=Math.fround(left+value(0));right=Math.fround(right+value(mono?0:1));
+    }
+    const expected=frame<voiceGate?0:(left+right)*.5*Math.SQRT1_2;
+    checks.push({row:commands.length,expected,trace});commands.push('tick 0 0');if(frame<voiceGate)queuedSilentFrames++;frame++;continue;
+   }
    const src=playingSource,index=Math.floor(phase),next=(index+1)%length,f=Math.fround(phase-index);
    const value=c=>Math.fround(src.getChannelData(c)[index]+Math.fround(src.getChannelData(c)[next]-src.getChannelData(c)[index])*f);
    const expected=excluded?0:(value(0)+value(mono?0:1))*0.5*Math.SQRT1_2;
@@ -114,7 +127,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
     }
     if(queuedRestartOnly){
      const original=context.source(),oldNode=context.sourceNode(),oldOffset=context.offset();
-     const mixedRtrg=queuedRtrgApplyOnly||(queuedMixedOnly&&(length===17||length===4097));
+     const mixedRtrg=!queuedOverlapOnly&&(queuedRtrgApplyOnly||(queuedMixedOnly&&(length===17||length===4097)));
      const editFrame=deadline-Math.ceil(sampleRate*(beforeGrid?.080:((queuedRtrgOnly||mixedRtrg)?.002:.020)));
      assert(editFrame>frame,'Fixture leaves time for early callback and restart edit');
      silence(editFrame);audio.currentTime=frame/sampleRate;
@@ -145,13 +158,13 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
       // Both nodes exist before either starts. The first speed write goes to
       // source one; source two captures that control, then owns the next write.
       silence(frame+1);audio.currentTime=frame/sampleRate;
-      if(mixedRtrg&&!queuedRtrgApplyOnly){await context.rtrg();commands.push('rtrg 0 0');retriggers++;}
+      if(queuedOverlapOnly||(mixedRtrg&&!queuedRtrgApplyOnly)){await context.rtrg();commands.push('rtrg 0 0');retriggers++;}
       else {context.applyPhase();commands.push('apply 0 0');}
       const node=context.sourceNode(),time=node.started.time,t=time*sampleRate,near=Math.round(t);
       const at=Math.abs(t-near)<=4*Number.EPSILON*Math.max(1,Math.abs(t))?near:Math.ceil(t);
       const captured=context.rate(),offset=node.started.offset;
       assert.equal(replacementNode.stoppedAt,time,'Second replacement stops the first at its own start');
-      assert(at>restartDeadline,'Fixture auditions both pending source starts');
+      assert(queuedOverlapOnly?at<restartDeadline:at>restartDeadline,'Fixture verifies intended deadline ordering');
       const firstEvents=replacementNode.playbackRate.events.length;
       silence(frame+1);audio.currentTime=frame/sampleRate;
       context.userSpeed(.25);commands.push('speed 0 0.25');
@@ -159,6 +172,12 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
       assert(node.playbackRate.events.some(e=>e.time===time&&Math.fround(e.value)===captured),'Second source retains captured initial rate');
       secondReplacement={source:context.source(),node,at,phase:((offset*sampleRate+(at-t)*captured)%length+length)%length};
       trace.second={at,time,captured,events:node.playbackRate.events};
+     }
+     if(queuedOverlapOnly){
+      assert.equal(oldNode.stoppedAt,targetTime,'Older source retains its Apply stop even after RTRG overtakes');
+      assert(replacementNode.stoppedAt<replacementNode.started.time,'Overtaken Apply source never starts');
+      voices=[{node:oldNode,rate:replacementRate},{node:replacementNode,rate:replacementRate},{node:secondReplacement.node,rate:trace.second.captured}];voiceGate=deadline;
+      render(Math.max(deadline,restartDeadline,secondReplacement.at)+147-frame);voices=null;pending=[];queuedStarts++;continue;
      }
      let followingStop=0;
      if(!beforeGrid&&length===20003){
@@ -326,5 +345,5 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   for(const check of checks){const row=rows[check.row].split(' ').map(Number);for(const value of row.slice(6)){const error=Math.abs(value-check.expected);maximum=Math.max(maximum,error);assert(error<=1e-6,`Start phase ${mono}/${sampleRate}/${length}, frame ${row[1]}: ${value} vs ${check.expected}, ${JSON.stringify(check.trace)}`);}samples++;}
   cases++;
  }
- console.log(JSON.stringify({result:'PASS',cases,queuedStarts,queuedSilentFrames,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:queuedRtrgApplyOnly?'Unchanged RTRG then Apply with interleaved speed writes: both source starts, per-node rates and original grid gate; deadline overtaking/overlap, envelopes and resampling excluded':queuedMultipleOnly?'Unchanged two pending Apply/RTRG sources with intervening speed writes: per-node initial rates, ordered PCM and original grid gate; envelopes/resampling excluded':queuedMixedTieOnly?'Unchanged AudioParam write at replacement deadline: true timestamp ordering including fractional times rounded to one native sample; old/source PCM and grid gate; envelopes/resampling excluded':queuedMixedOnly?'Unchanged Apply/RTRG then speed before replacement: old source retains rate; future initial-rate event wins at start; pre-grid silence/source PCM; envelopes/resampling excluded':queuedSpeedOnly?'Unchanged UI speed changes on an early validated source at 80/1ms before grid, retained actual source/start offset, current source PCM and pre-grid silence; browser envelopes/resampling excluded':queuedRtrgOnly?'Unchanged early-source RTRG: Start reset/quantization, 5ms replacement before/after grid, reverse PCM, original volume silence gate; fade shapes/resampling excluded':queuedRestartOnly?'Unchanged early-source Apply/Q/nudge replacement at 50ms before/after original grid, reverse/source phase, original volume silence gate and no old-source resurrection; fade shapes/resampling excluded':queuedEarlyOnly?'Unchanged Start/Reverse edits after early source birth preserve scheduled source phase/direction until next play; pre-grid silence; browser envelopes/resampling excluded':queuedCleanupOnly?'Unchanged Loop._teardown/AudioGraph.cleanup stops and disconnects replacement source; native cutoff has no residual tail; original source phase/PCM before cleanup; browser envelopes/resampling excluded':queuedLateOnly?'Queued source is silent through late callback admission, then matches original Loop.play/AudioGraph.build source phase/PCM; browser envelopes/resampling excluded':queuedStopOnly?'Queued source PCM after accepted early graph birth and STOP inside the 30ms minimum lead; original grid/play/build/scheduleStop; envelopes/resampling excluded':'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing and early-callback queued grid starts; linear interpolation, browser playback envelopes/resampling excluded'}));
+ console.log(JSON.stringify({result:'PASS',cases,queuedStarts,queuedSilentFrames,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:queuedOverlapOnly?'Unchanged Apply then RTRG: summed old/new source PCM, canceled Apply, captured rates and original grid silence; envelopes/resampling excluded':queuedRtrgApplyOnly?'Unchanged RTRG then Apply with interleaved speed writes: both source starts, per-node rates and original grid gate; deadline overtaking/overlap, envelopes and resampling excluded':queuedMultipleOnly?'Unchanged two pending Apply/RTRG sources with intervening speed writes: per-node initial rates, ordered PCM and original grid gate; envelopes/resampling excluded':queuedMixedTieOnly?'Unchanged AudioParam write at replacement deadline: true timestamp ordering including fractional times rounded to one native sample; old/source PCM and grid gate; envelopes/resampling excluded':queuedMixedOnly?'Unchanged Apply/RTRG then speed before replacement: old source retains rate; future initial-rate event wins at start; pre-grid silence/source PCM; envelopes/resampling excluded':queuedSpeedOnly?'Unchanged UI speed changes on an early validated source at 80/1ms before grid, retained actual source/start offset, current source PCM and pre-grid silence; browser envelopes/resampling excluded':queuedRtrgOnly?'Unchanged early-source RTRG: Start reset/quantization, 5ms replacement before/after grid, reverse PCM, original volume silence gate; fade shapes/resampling excluded':queuedRestartOnly?'Unchanged early-source Apply/Q/nudge replacement at 50ms before/after original grid, reverse/source phase, original volume silence gate and no old-source resurrection; fade shapes/resampling excluded':queuedEarlyOnly?'Unchanged Start/Reverse edits after early source birth preserve scheduled source phase/direction until next play; pre-grid silence; browser envelopes/resampling excluded':queuedCleanupOnly?'Unchanged Loop._teardown/AudioGraph.cleanup stops and disconnects replacement source; native cutoff has no residual tail; original source phase/PCM before cleanup; browser envelopes/resampling excluded':queuedLateOnly?'Queued source is silent through late callback admission, then matches original Loop.play/AudioGraph.build source phase/PCM; browser envelopes/resampling excluded':queuedStopOnly?'Queued source PCM after accepted early graph birth and STOP inside the 30ms minimum lead; original grid/play/build/scheduleStop; envelopes/resampling excluded':'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing and early-callback queued grid starts; linear interpolation, browser playback envelopes/resampling excluded'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
