@@ -1,19 +1,21 @@
 # Current migration checkpoint
 
-## Latest implementation — 29 October 2026
+## Latest implementation — 30 October 2026
 
-Chronological mixed RTRG-to-Apply / speed sequences meet the scoped acceptance
-below. Regression snapshot `3b3e45e` adds 120 unchanged-JS queued sequences and
-16 paired stereo Engine playback / 20 cancellation cases at 64/128. It also
-strengthens the prior two-source comparison horizon through the second deadline.
-Windows/Linux focused CTests and Engine suites pass; production DSP needs no
-change for this chronological sequence. Earlier implementation and processor/UI/
-active-format evidence remain applicable to unchanged code. Assets, IDs, saved
-state, capacity and dependencies are unchanged. No package/push created.
-Next: Apply-to-RTRG deadline overtaking and overlapping older sources. Source
-inspection identifies a possible audible difference in the one-source native
-renderer; do not treat chronological tests as overlap acceptance or advance to
-tempo work before resolving it. Full renderer/device/DAW release gates stay open.
+Single Apply-to-RTRG overtaking now retains and mixes the older source until its
+original stop. Implementation `bbe5ff2`; focused sanitizer selector `9a47cf3`.
+Windows/Linux all 14 relevant unchanged-JS source gates PASS, including 120 new
+summed-overlap sequences. Queued Engine, 128-slot rejection/recovery and production
+shared GUI/CLI RPC tests PASS at 64/128 with zero tracked callback new/delete.
+Focused ASan/UBSan + leak checks PASS. Windows Standalone/VST3 and Linux
+Standalone/LV2 builds PASS. Isolated Release timing observations stay within the
+64/128 callback budgets for the measured one-pair and 128-slot synthetic cases;
+they are not worst-case or physical latency claims. Assets, IDs, schema, track
+capacity and dependencies are unchanged. No package/push created.
+Next: multiple pending Apply sources before an overtaking RTRG, preserving the
+intermediate source's own start/stop. Do not infer arbitrary burst sound parity
+from saturation safety tests. Tempo/clock work stays behind this gap; full browser
+envelopes/resampling, devices and selected-DAW release acceptance remain open.
 See the final acceptance evidence below.
 
 ## Owner-approved faster development workflow — 28 October 2026
@@ -1826,7 +1828,7 @@ wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake --build build/l
 wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec build/linux/aion_midi_processor_tests
 wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake -S . -B build/overlap-asan -DAION_BUILD_PLUGIN=OFF -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug '-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer' '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined'
 wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake --build build/overlap-asan --target aion_core_tests --parallel 2
-wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 build/overlap-asan/aion_core_tests --meter-queued
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 build/overlap-asan/aion_core_tests --meter-overlap
 ```
 
 Linux source/sanitizer final results and isolated callback observations follow.
@@ -1835,3 +1837,75 @@ keep an intermediate Apply alive between its own start and the following Apply's
 stop; current pruning of non-RTRG events is not proven equivalent for that chain.
 Retain this as an explicit parity gap rather than claiming arbitrary burst sound
 acceptance from bounded saturation tests. Tempo/clock work stays behind it.
+
+
+Focused sanitizer acceptance (`9a47cf3` test selector; production implementation
+unchanged from `bbe5ff2`): `--meter-overlap` PASS in Windows Release and Linux
+ASan/UBSan Debug with leak detection and halt-on-error settings above. It runs the
+16 new overlap playback, 20 cancellation cases and the 128-slot saturation/reuse
+matrix at tracks 0/19 and 64/128. No sanitizer diagnostic/leak was reported; zero
+tracked callback new/delete. Existing `--meter-queued` retains every prior case
+and already passed Windows/Linux before this selector-only change. Do not claim
+the full historical suite was rerun under sanitizers: that broad instrumented run
+was stopped while computing, with no final result, and superseded by this scoped
+ownership run. No implementation or tolerance was changed to speed it up.
+
+
+Final Linux source gate: all 14 CTests PASS (949.99s, parallel 2); overlap test
+147.35s. Its 120-sequence / 2,661,728 compared / 2,552,888 silent-frame counts
+and 7.978123062191145e-8 maximum error exactly match Windows. Linux core is
+cached Debug; test wall times are not an OS runtime/build speed comparison.
+Final diff review and `git diff --check` PASS. Original source/UI/logo and stable
+IDs/schema/dependencies are unchanged. No known blocker in the executed
+single-Apply overtaking acceptance; remaining burst/renderer/DAW limits above
+are not silently treated as passed.
+
+Warmed Release callback observations, run sequentially after all acceptance and
+build processes had finished (48kHz, one stereo 512-frame clip): ignored
+`build/overlap-bench-src` imports the actual core Release libraries from
+`build/windows-core/Release/aion_core.lib` and `build/linux/libaion_core.a`.
+The queued harness warms 512 idle blocks, admits a queued source, creates Apply
+~80ms or ~20ms before grid, writes .5x, creates RTRG, then writes .25x. It measures
+the scheduling and actual 5ms birth callbacks, and the audible overlap window.
+After the older stop, 128 warm-up blocks precede 2,048 steady measurements.
+Input generation, view drains and timing storage stay outside timed Engine.process.
+The corrected marker includes a birth that occurs in the .25x callback at block
+128; preliminary zero birth markers were missing observations, not zero-cost
+callbacks, and are superseded below. The auxiliary nominal-grid marker is not
+used. Before-grid cases have no audible older-source overlap interval.
+
+| OS / block / creation lead | RTRG schedule us | Birth us | Audible overlap max us | Steady mean us | p99 us | Steady observed max us | Budget us |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Windows / 64 / ~80ms | 38.8 | 40.9 | n/a | 46.733 | 85.1 | 131.4 | 1333.333 |
+| Windows / 64 / ~20ms | 44.4 | 43.6 | 46.2 | 36.104 | 67.5 | 86.8 | 1333.333 |
+| Windows / 128 / ~80ms | 75.6 | 75.0 | n/a | 66.636 | 103.6 | 144.4 | 2666.667 |
+| Windows / 128 / ~20ms | 75.3 | 75.1 | 117.1 | 67.682 | 107.2 | 168.5 | 2666.667 |
+| Linux / 64 / ~80ms | 32.0 | 31.1 | n/a | 25.890 | 53.7 | 85.6 | 1333.333 |
+| Linux / 64 / ~20ms | 32.3 | 31.3 | 46.4 | 25.055 | 42.3 | 70.0 | 1333.333 |
+| Linux / 128 / ~80ms | 62.4 | 62.1 | n/a | 49.605 | 90.9 | 130.8 | 2666.667 |
+| Linux / 128 / ~20ms | 61.5 | 61.8 | 62.4 | 51.197 | 95.2 | 448.6 | 2666.667 |
+
+A second ignored harness warms 512 playing blocks, then submits 80 Apply/RTRG
+pairs, processes five callbacks, submits another 48 pairs and processes five
+callbacks. It measures the bounded burst/activation, all-128-retained-source
+window before the first 50ms stop (27 blocks at 64, eight at 128), and 64 callbacks
+covering lease release. No command rejected. This is synthetic capacity timing
+and safety evidence, not an unchanged-JS arbitrary-burst sound comparison.
+
+| OS / block | Burst/activation max us | Full overlap max us | Release-window max us | Budget us |
+| --- | ---: | ---: | ---: | ---: |
+| Windows / 64 | 106.7 | 163.6 | 98.3 | 1333.333 |
+| Windows / 128 | 236.8 | 228.1 | 206.4 | 2666.667 |
+| Linux / 64 | 97.8 | 119.0 | 109.2 | 1333.333 |
+| Linux / 128 | 268.8 | 238.0 | 188.3 | 2666.667 |
+
+Build ignored harness with CMake using `AION_SOURCE` and `AION_CORE_LIBRARY` set
+to the corresponding checkout and Release library above; Linux additionally uses
+`-DCMAKE_BUILD_TYPE=Release`, Windows `--config Release`. Run `queued_bench` then
+`overlap_capacity_bench` from `build/overlap-bench-windows/Release` or
+`build/overlap-bench-linux`, separately after acceptance jobs finish. Raw output:
+`build/overlap-bench-windows.jsonl`, `build/overlap-capacity-windows.jsonl`, and the
+Linux mirror's `build/overlap-bench-linux.jsonl`, `build/overlap-capacity-linux.jsonl`.
+Observed maxima are limited samples on this system. No worst-case/long-session,
+20-track simultaneous-load, driver/round-trip latency or OS performance ranking
+is inferred. No repeated timing run was selected merely to lower an observed max.
