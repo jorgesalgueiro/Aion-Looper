@@ -1,6 +1,6 @@
 # Development workflow
 
-Owner-approved policy, 28 October 2026. Preserve the working implementation and
+Owner-approved policy, updated 30 October 2026 (current aion_prompt.txt). Preserve the working implementation and
 acceptance evidence; reduce redundant build/validation work rather than weaken
 sound, timing, state compatibility or real-time safety.
 
@@ -8,16 +8,18 @@ sound, timing, state compatibility or real-time safety.
 
 | Platform | Active | Deferred |
 | --- | --- | --- |
-| Windows | Standalone + VST3; REAPER | CLAP (opt-in) |
-| Linux | Standalone + LV2; Ardour | CLAP (opt-in); Linux VST3 removed |
+| Windows | Standalone | VST3 (REAPER), CLAP (opt-in) |
+| Linux | Standalone | LV2 (Ardour), CLAP (opt-in); Linux VST3 removed |
 | macOS | Future Standalone + AU | Other desktop formats and current acceptance |
 | iOS | Future Standalone + AUv3 | Current implementation/device acceptance |
 
-`windows` and `linux` configure presets explicitly disable CLAP, including in
-older caches. Add `-DAION_BUILD_CLAP=ON` only for intentional CLAP work; existing
-extension code, IDs, mapping behavior and historical evidence remain. A cached
-CLAP validator path does not enable/register its gate when CLAP is off. New
-non-preset builds also default CLAP off. Future macOS defaults omit VST3/AUv3;
+`windows` and `linux` configure presets explicitly disable VST3, LV2 and CLAP,
+including older caches. New non-preset builds default these desktop wrappers off.
+Use `-DAION_BUILD_VST3=ON` or `-DAION_BUILD_LV2=ON` only for an explicitly relevant
+wrapper task; code, IDs and historical evidence stay intact. Add
+`-DAION_BUILD_CLAP=ON` only for intentional CLAP work; existing extension code,
+IDs, mapping behavior and historical evidence remain. A cached
+CLAP validator path does not enable/register its gate when CLAP is off. Future macOS defaults omit VST3/AUv3;
 iOS retains its AUv3 target. No format needs a separate DSP engine.
 
 ## Daily build and test loop
@@ -30,8 +32,8 @@ iOS retains its AUv3 target. No format needs a separate DSP engine.
    failures before increasing scope.
 3. At feature completion, run the relevant Windows/Linux regression set and
    unchanged-JS, connected-audio and interaction acceptance, including 64/128.
-   Changes to host routing/state/transport also require the selected VST3/LV2 host
-   checks. Report device/DAW/platform checks that remain unavailable separately.
+   Explicit wrapper routing/state/transport tasks require the relevant deferred
+   VST3/LV2 host checks. Report device/DAW/platform checks that remain unavailable separately.
 4. At integration/release gates, run the applicable selected-format validators,
    sanitizer/stress/long-session tests and platform checks. Build a package only
    after its acceptance passes and a package is needed.

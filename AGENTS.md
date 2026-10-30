@@ -1,3 +1,12 @@
+# Owner target update — 30 October 2026
+
+The current owner prompt at `D:\Jorge\Documents\Codex\aion_prompt.txt` supersedes
+older format gates below: active Windows and Linux delivery is Standalone only.
+VST3 (REAPER), LV2 (Ardour) and CLAP are deferred/opt-in. Preserve their code, IDs
+and historical tests; build/validate wrappers only for an explicitly relevant task.
+No Linux VST3. Apple remains future work. GUI/CLI shared-processor and affected
+Windows/Linux audio/reference/ownership tests still apply to Standalone changes.
+
 # Owner-approved development policy — 28 October 2026
 
 This policy supersedes older format/build-cadence requirements and any demand

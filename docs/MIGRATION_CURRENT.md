@@ -1,5 +1,14 @@
 # Current migration checkpoint
 
+## Current target policy — 30 October 2026
+
+The updated owner prompt makes Windows and Linux **Standalone only** for routine
+work. VST3/REAPER, LV2/Ardour and CLAP remain deferred/opt-in, preserving code,
+IDs and historical tests. Current CMake defaults and desktop presets disable
+those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
+`-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
+below is historical, not a requirement to rebuild wrappers on each engine fix.
+
 ## Latest implementation — 30 October 2026
 
 Single Apply-to-RTRG overtaking now retains and mixes the older source until its
@@ -1909,3 +1918,47 @@ Linux mirror's `build/overlap-bench-linux.jsonl`, `build/overlap-capacity-linux.
 Observed maxima are limited samples on this system. No worst-case/long-session,
 20-track simultaneous-load, driver/round-trip latency or OS performance ranking
 is inferred. No repeated timing run was selected merely to lower an observed max.
+
+
+## Multiple pending Apply sources overtaken by RTRG — 30 October 2026
+
+Acceptance: first Apply captures its own direction/rate/start at +50ms; a second
+Apply, created ~2ms later, stops it at the second Apply's start. RTRG at +5ms
+then cancels only the newest future Apply. Sum the original, intermediate Apply
+and RTRG source PCM using each source's captured rate and own start/stop, including
+original-grid silence. Change .5x then 2x then .25x controls and reverse/Start
+metadata between births to prove source independence. Preserve later writes,
+fresh PLAY, stop/panic/clear/prepare/cleanup and bounded ownership at 64/128.
+
+Baseline new unchanged-JS oracle fails the previous implementation: mono/8kHz,
+17-frame clip, frame 7236: native -0.12318186461925507 versus source sum
+-0.1388125105686761. Local log `build/apply-chain-negative.log`. Reference assets
+and the 1e-6 PCM / 1e-14 metadata tolerances are unchanged.
+
+Implementation: before pruning future Apply events, calculate every required
+retained-source slot and reserve them all or reject without any mutation. Pin
+intermediate clips with their captured phase, direction and initial AudioParam
+rate; start/stop them independently without replacing the current graph source.
+The newest Apply is canceled before birth. Existing earlier events due before
+RTRG remain ordered instead of being pruned. No allocation, lock, I/O or growing
+queue is added; reuse the fixed 128-slot source pool and worker retirement path.
+
+New oracle `--queued-apply-chain-overlap` / CTest
+`js_native_queued_apply_chain_overlap`: 30 mono/stereo, 8/48/96kHz, five-length
+configurations, 120 two-Apply sequences across both directions/grid sides. Initial
+Windows comparison PASS: 2,664,832 compared / 2,549,784 silent frames, max error
+1.0434593022967675e-7. Browser envelopes/resampling/AudioParam quantum excluded.
+
+Engine additions: 16 chain playback and 20 cancellation cases (paired exact
+stereo, tracks 0/19, 64/128), plus atomic two-slot rejection at 127 occupied slots.
+The latter requires that a different track can still acquire the remaining slot,
+then verifies panic/clear release and chain reuse. Sample-timed batches stay
+within 96 commands per block to respect the existing 128-command drain bound.
+Shared GUI/CLI processor tests add four real-RPC chain cases; no command/parameter
+IDs or UI bindings change. `--meter-overlap` retains its previous cases and adds
+the chain cases; the full `--meter-queued` suite still contains all prior tests.
+
+Current scope keeps clips and tempo unchanged between these scheduled births.
+Chains involving live buffer edits, deadline-straddling prefixes and renderer
+fade/resampling require their own evidence; do not infer those from this gate.
+Results, exact commands and the next step follow after final verification.

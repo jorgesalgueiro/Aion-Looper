@@ -281,9 +281,9 @@ void processorEarlyStartTests(bool& audioWatch){
             check(static_cast<bool>(p->request({request})["ok"]),"Early Start production shared GUI/CLI command");};
         cycle();command("record");for(unsigned n=0;n<8192/block;++n)cycle();command("finish");cycle();
         check(static_cast<int>(rpc(R"({"operation":"snapshot"})")["tracks"][19]["length"])==8192,"Early Start production immutable clip");
-        for(bool beforeGrid:{true,false})for(const auto* action:{"applyStart","quantizeStart","nudgeStart","retrigger","speed"})for(unsigned sequence:{0u,1u,2u}){
+        for(bool beforeGrid:{true,false})for(const auto* action:{"applyStart","quantizeStart","nudgeStart","retrigger","speed"})for(unsigned sequence:{0u,1u,2u,3u}){
             const bool mixed=sequence!=0;
-            if(sequence==2&&std::string_view(action)!="applyStart")continue;
+            if(sequence>=2&&std::string_view(action)!="applyStart")continue;
             if(mixed&&std::string_view(action)!="applyStart"&&std::string_view(action)!="retrigger")continue;
             command("stopImmediate");cycle();rpc(R"({"operation":"snapshot"})");for(unsigned n=0;n<8;++n)cycle();
             rpc(R"({"operation":"setParameter","id":"syncBpm","value":137.3})");
@@ -316,16 +316,20 @@ void processorEarlyStartTests(bool& audioWatch){
             // the initial source is then PLAYING, with the replacement still due.
             check(state["tracks"][19]["state"].toString()==(clock()>grid?"playing":"queued")&&static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])==static_cast<juce::int64>(target),"Shared GUI/CLI command retains the exact replacement deadline across grid activation");
             if(mixed){command("speed",.5);cycle();state=rpc(R"({"operation":"snapshot"})");check(static_cast<double>(state["tracks"][19]["playbackRate"])==.5&&!static_cast<bool>(state["rejected"]),"Shared GUI/CLI speed targets an already-scheduled source");}
-            if(sequence==2){
+            auto lastStop=target;
+            if(sequence==3){
+                lastStop=clock()+2400;command("applyStart");cycle();command("speed",2);cycle();
+            }
+            if(sequence>=2){
                 const auto retriggerTarget=clock()+240;command("retrigger");cycle();
                 state=rpc(R"({"operation":"snapshot"})");
                 check(static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])==static_cast<juce::int64>(retriggerTarget)&&!static_cast<bool>(state["rejected"]),"Shared GUI/CLI RTRG overtakes Apply at its own exact deadline");
                 command("speed",.25);cycle();state=rpc(R"({"operation":"snapshot"})");
                 check(static_cast<double>(state["tracks"][19]["playbackRate"])==.25&&!static_cast<bool>(state["rejected"]),"Overtaking source retains its captured rate independently of current GUI/CLI metadata");
             }
-            bool audible=false;while(clock()<std::max(grid,target)+2048){cycle();
+            bool audible=false;while(clock()<std::max(grid,lastStop)+2048){cycle();
                 if(clock()<=grid)check(audio.getMagnitude(0,static_cast<int>(block))==0,"Production early replacement respects the original graph volume start");
-                if(clock()>std::max(grid,target)+960)audible=audible||audio.getMagnitude(0,static_cast<int>(block))>0;}
+                if(clock()>std::max(grid,lastStop)+960)audible=audible||audio.getMagnitude(0,static_cast<int>(block))>0;}
             state=rpc(R"({"operation":"snapshot"})");
             if(!audible||state["tracks"][19]["state"].toString()!="playing"||static_cast<int>(state["tracks"][19]["length"])!=8192||static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])!=0||static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"])!=0||static_cast<bool>(state["rejected"]))
                 std::cerr<<"Early production case "<<block<<"/"<<beforeGrid<<"/"<<action<<", audible "<<audible<<", target "<<target<<", grid "<<grid<<", now "<<clock()<<", rejected "<<static_cast<bool>(state["rejected"])<<", state "<<state["tracks"][19]["state"].toString()<<", phase "<<static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])<<", scheduled "<<static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"])<<", length "<<static_cast<int>(state["tracks"][19]["length"])<<std::endl;
@@ -333,7 +337,7 @@ void processorEarlyStartTests(bool& audioWatch){
                 &&static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])==0&&static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"])==0&&!static_cast<bool>(state["rejected"]),"Production replacement plays without old-grid resurrection, rejected action or clip mutation");
         }
     }
-    std::cout<<"PASS: actual production GUI/CLI RPC Apply/Q/nudge/RTRG plus Apply-to-RTRG overlap and early/scheduled-source speed before/after original source grid, real callback ownership, 5/50ms deadlines, audible replacement and retained clip at 64/128\n";
+    std::cout<<"PASS: actual production GUI/CLI RPC Apply/Q/nudge/RTRG plus single/two-Apply-to-RTRG overlap and early/scheduled-source speed before/after original source grid, real callback ownership, 5/50ms deadlines, audible replacement and retained clip at 64/128\n";
 }
 void processorBufferReceiptTests(bool& audioWatch){
     for(unsigned block:{64u,128u}){

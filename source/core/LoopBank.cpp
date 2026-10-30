@@ -656,20 +656,34 @@ bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool ma
     if((phaseWrite+1)%phaseCapacity==phaseRead)return false;
     unsigned retainedSlot=phaseCapacity;
     if(replacePending){
-        std::uint64_t until=0;
+        // Only the latest future Apply is stopped before birth. Its predecessors
+        // retain their own start and following-Apply stop, independently of RTRG.
+        std::array<unsigned,phaseCapacity> future{},slots{};
+        unsigned futureCount=0,needed=0;
         for(unsigned at=phaseRead;at!=phaseWrite;at=(at+1)%phaseCapacity){const auto& e=phaseEvents[at];
-            if(e.track==id&&e.epoch==track.phaseEpoch&&!e.retrigger&&e.frame>deadline)
-                until=until?std::min(until,e.frame):e.frame;
+            if(e.track==id&&e.epoch==track.phaseEpoch&&!e.retrigger&&e.frame>deadline)future[futureCount++]=at;
         }
-        if(until){
-            for(unsigned at=0;at<phaseCapacity;++at)if(!retainedSources[at].used){retainedSlot=at;break;}
-            if(retainedSlot==phaseCapacity)return false;
-            auto& voice=retainedSources[retainedSlot];voice={};voice.used=true;voice.track=id;voice.epoch=track.phaseEpoch;voice.stopAt=until;++retainedCounts[id];
+        if(futureCount){
+            needed=1; // Current source (possibly an earlier Apply) at RTRG birth.
+            for(unsigned n=1;n<futureCount;++n)if(phaseEvents[future[n]].frame>phaseEvents[future[n-1]].frame)++needed;
+            unsigned found=0;
+            for(unsigned at=0;at<phaseCapacity&&found<needed;++at)if(!retainedSources[at].used)slots[found++]=at;
+            if(found<needed)return false; // No lease/event mutation before all reservations fit.
+            retainedSlot=slots[0];auto& old=retainedSources[retainedSlot];old={};old.used=true;old.track=id;old.epoch=track.phaseEpoch;
+            old.stopAt=phaseEvents[future[0]].frame;++retainedCounts[id];
+            unsigned slot=1;
+            for(unsigned n=1;n<futureCount;++n){const auto& e=phaseEvents[future[n-1]];const auto stop=phaseEvents[future[n]].frame;
+                if(stop<=e.frame)continue; // No representable sample between same-frame births.
+                auto& voice=retainedSources[slots[slot++]];voice={};voice.used=true;voice.track=id;voice.epoch=track.phaseEpoch;
+                voice.clip=track.clip;voice.clip->leases.fetch_add(1,std::memory_order_relaxed);
+                voice.startAt=e.frame;voice.stopAt=stop;voice.phase=e.phase;voice.reverse=e.reverse;
+                voice.rate=voice.targetRate=e.rate;++retainedCounts[id];
+            }
         }
         unsigned write=phaseRead;track.info.phaseApplyFrame=0;
         for(unsigned read=phaseRead;read!=phaseWrite;read=(read+1)%phaseCapacity){
             const auto event=phaseEvents[read];
-            if(event.track==id&&!event.retrigger)continue;
+            if(event.track==id&&!event.retrigger&&event.frame>deadline)continue;
             phaseEvents[write]=event;write=(write+1)%phaseCapacity;
             if(event.track==id&&event.epoch==track.phaseEpoch)track.info.phaseApplyFrame=std::max(track.info.phaseApplyFrame,event.frame);
         }

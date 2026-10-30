@@ -21,7 +21,9 @@
       "binaryDir": "${sourceDir}/build/linux",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "AION_BUILD_CLAP": "OFF"
+        "AION_BUILD_CLAP": "OFF",
+        "AION_BUILD_VST3": "OFF",
+        "AION_BUILD_LV2": "OFF"
       }
     },
     {
@@ -30,7 +32,9 @@
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/windows",
       "cacheVariables": {
-        "AION_BUILD_CLAP": "OFF"
+        "AION_BUILD_CLAP": "OFF",
+        "AION_BUILD_VST3": "OFF",
+        "AION_BUILD_LV2": "OFF"
       }
     },
     {

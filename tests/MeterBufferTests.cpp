@@ -851,9 +851,9 @@ void queuedLateSourceTests(){
 void queuedReplacementSpeedTests(bool overlapOnly=false){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})
-    for(unsigned sequence:{0u,1u,2u,3u})for(bool early:{false,true})for(auto action:{LoopAction::applyStart,LoopAction::retrigger}){
-        if(overlapOnly&&sequence!=3)continue;
-        if((sequence==2&&action!=LoopAction::retrigger)||(sequence==3&&action!=LoopAction::applyStart))continue;
+    for(unsigned sequence:{0u,1u,2u,3u,4u})for(bool early:{false,true})for(auto action:{LoopAction::applyStart,LoopAction::retrigger}){
+        if(overlapOnly&&sequence<3)continue;
+        if((sequence==2&&action!=LoopAction::retrigger)||(sequence>=3&&action!=LoopAction::applyStart))continue;
         const bool multiple=sequence!=0;
         Fixture f(block,MeterEventScope::acceptedPlayback);
         f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
@@ -878,13 +878,17 @@ void queuedReplacementSpeedTests(bool overlapOnly=false){
             // Both engines capture .5 in source two. Only the primary receives
             // the later .25 write; neither earlier source may inherit it.
             check(f.control->enqueueLoop({LoopAction::speed,id,0,f.control->generation(),0,.5}),"Second source comparison control rate");
-            const auto secondAction=sequence==2?LoopAction::applyStart:sequence==3?LoopAction::retrigger:action;
-            lastTarget=f.engine->clock()+(secondAction==LoopAction::retrigger?240:2400);
+            if(sequence==4){
+                lastTarget=f.engine->clock()+2400;f.command(LoopAction::applyStart,id);f.cycle();
+                for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::speed,id,0,e->generation(),0,2}),"Newest Apply receives the next control rate only");
+            }
+            const auto secondAction=sequence==2?LoopAction::applyStart:sequence>=3?LoopAction::retrigger:action;
+            lastTarget=std::max(lastTarget,f.engine->clock()+(secondAction==LoopAction::retrigger?240:2400));
             f.command(secondAction,id);f.cycle();
             check(f.engine->enqueueLoop({LoopAction::speed,id,0,f.engine->generation(),0,.25}),"Speed targets newest of two pending sources");
         }
         while(f.engine->clock()<std::max({grid,target,lastTarget})+2048)f.cycle();
-        check(f.view->tracks[id].playbackRate==(multiple?.25:.5)&&f.control->inspectAudioThread(id).track.playbackRate==(multiple?.5:1)
+        check(f.view->tracks[id].playbackRate==(multiple?.25:.5)&&f.control->inspectAudioThread(id).track.playbackRate==(sequence==4?2:multiple?.5:1)
             &&!f.view->tracks[id].phaseApplyFrame&&!f.view->rejected,"UI metadata changes while scheduled source rate remains captured");
         for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::speed,id,0,e->generation(),0,.5}),"Explicit same-value speed write after source start");
         // Repeating the displayed value is an actual AudioParam write, not a
@@ -896,8 +900,8 @@ void queuedReplacementSpeedTests(bool overlapOnly=false){
         for(unsigned n=0;n<400;++n)f.cycle();
         check(f.view->tracks[id].state==LoopState::playing&&f.view->tracks[id].playbackRate==.5,"Fresh source retains the speed control after captured-source playback");
     }
-    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned sequence:{0u,1u,2u,3u})for(unsigned cancel=0;cancel<5;++cancel){
-        if(overlapOnly&&sequence!=3)continue;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned sequence:{0u,1u,2u,3u,4u})for(unsigned cancel=0;cancel<5;++cancel){
+        if(overlapOnly&&sequence<3)continue;
         const bool multiple=sequence!=0;
         Fixture f(block,MeterEventScope::acceptedPlayback);
         f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
@@ -911,7 +915,11 @@ void queuedReplacementSpeedTests(bool overlapOnly=false){
         check(f.engine->enqueueLoop({LoopAction::speed,id,0,f.engine->generation(),0,.5}),"Mixed cancellation changes current control only");f.cycle();
         if(multiple){
             check(f.control->enqueueLoop({LoopAction::speed,id,0,f.control->generation(),0,.5}),"Canceled second source comparison rate");
-            f.command(sequence==3?LoopAction::retrigger:LoopAction::applyStart,id);f.cycle();
+            if(sequence==4){
+                f.command(LoopAction::applyStart,id);f.cycle();
+                for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::speed,id,0,e->generation(),0,2}),"Cancellation chain captures separate source rate");
+            }
+            f.command(sequence>=3?LoopAction::retrigger:LoopAction::applyStart,id);f.cycle();
             check(f.engine->enqueueLoop({LoopAction::speed,id,0,f.engine->generation(),0,.25}),"Canceled newest source rate write");f.cycle();
         }
         if(cancel<3)f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);
@@ -921,8 +929,8 @@ void queuedReplacementSpeedTests(bool overlapOnly=false){
         check(f.view->tracks[id].state==(cancel==2?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].phaseApplyFrame&&!f.view->tracks[id].queuedSourceReady,"Canceled source rate events cannot resurrect after their old deadlines");
     }
     check(allocations.load()==0,"Scheduled replacement speed performs no callback new/delete");
-    if(overlapOnly)std::cout<<"PASS: focused 16 Apply-to-RTRG overlap playback +20 cancellation cases, exact paired stereo at tracks 0/19, reverse and 64/128; no callback new/delete\n";
-    else std::cout<<"PASS: 32 single + 32 double + 16 RTRG-to-Apply + 16 Apply-to-RTRG overlap queued speed cases, exact old/replacement stereo PCM before/after grid, explicit same-value AudioParam write and fresh play at tracks 0/19, reverse and 64/128; 20 single + 20 double + 20 RTRG-to-Apply + 20 Apply-to-RTRG overlap pending cancel/prepare/cleanup cases; no callback new/delete\n";
+    if(overlapOnly)std::cout<<"PASS: focused 16 single +16 chain Apply-to-RTRG overlap playback and 20 single +20 chain cancellation cases, exact paired stereo at tracks 0/19, reverse and 64/128; no callback new/delete\n";
+    else std::cout<<"PASS: 32 single + 32 double + 16 RTRG-to-Apply + 16 Apply-to-RTRG +16 two-Apply chain overlap queued speed cases, exact old/replacement stereo PCM before/after grid, explicit same-value AudioParam write and fresh play at tracks 0/19, reverse and 64/128; 20 single + 20 double + 20 RTRG-to-Apply + 20 Apply-to-RTRG +20 two-Apply chain pending cancel/prepare/cleanup cases; no callback new/delete\n";
 }
 void queuedOverlapCapacityTests(){
     using namespace aion;
@@ -945,7 +953,35 @@ void queuedOverlapCapacityTests(){
     check(allocations.load()==0,"Overlap saturation and recovery perform no callback new/delete");
     std::cout<<"PASS: 128 overlap slots, explicit saturation rejection without partial phase cancellation, stop/clear release and reuse at tracks 0/19, 64/128; no callback new/delete\n";
 }
-void meterOverlapTests(){queuedReplacementSpeedTests(true);queuedOverlapCapacityTests();}
+void queuedChainCapacityTests(){
+    using namespace aion;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);const auto other=id==0?19u:0u;f.record(id);f.record(other);
+        // At most 96 commands in either block: both Apply births keep distinct
+        // sample deadlines without exceeding the existing 128-command budget.
+        const auto scheduled=[&](LoopAction action,std::uint64_t when){++f.request;
+            for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({action,id,f.request,e->generation(),when,0}),"Queue sample-timed two-slot chain");};
+        for(unsigned count:{32u,31u}){const auto base=f.engine->clock();
+            for(unsigned n=0;n<count;++n){scheduled(LoopAction::applyStart,base+2*n);scheduled(LoopAction::applyStart,base+2*n+1);scheduled(LoopAction::retrigger,base+2*n+1);}
+            f.cycle();check(!f.view->rejected&&f.view->lastRequestId==f.request,"126 chain reservations fit with independent intermediate deadlines");
+        }
+        f.command(LoopAction::applyStart,id);f.command(LoopAction::retrigger,id);f.cycle(); // 127 slots used.
+        f.command(LoopAction::applyStart,id);f.cycle();const auto kept=f.engine->clock()+2400;
+        f.command(LoopAction::applyStart,id);f.command(LoopAction::retrigger,id);f.cycle();
+        check(f.view->rejected&&f.view->tracks[id].phaseApplyFrame==kept,"Two-slot chain rejects with one free slot and preserves both accepted Apply events");
+        f.command(LoopAction::applyStart,other);f.command(LoopAction::retrigger,other);f.cycle();
+        check(!f.view->rejected,"Rejected two-slot reservation leaves the final slot available to another track");
+        f.command(LoopAction::stopAll,id);for(unsigned n=0;n<8;++n)f.cycle();
+        check(f.view->tracks[id].state==LoopState::stopped&&f.view->tracks[other].state==LoopState::stopped&&!f.view->tracks[id].phaseApplyFrame,"Panic releases scheduled and active intermediate clip leases");
+        f.command(LoopAction::play,id);f.cycle();f.command(LoopAction::applyStart,id);f.cycle();f.command(LoopAction::applyStart,id);f.command(LoopAction::retrigger,id);f.cycle();
+        check(!f.view->rejected&&f.view->tracks[id].phaseApplyFrame>f.engine->clock(),"Two-slot chain recovers after panic");
+        f.command(LoopAction::clear,id);for(unsigned n=0;n<64;++n)f.cycle();
+        check(f.view->tracks[id].state==LoopState::empty&&!f.view->tracks[id].phaseApplyFrame,"Clear cancels every intermediate source without resurrection");
+    }
+    check(allocations.load()==0,"Atomic multi-slot chain reservation and recovery perform no callback new/delete");
+    std::cout<<"PASS: two-slot chain atomic rejection with 127 occupied slots, surviving one-slot cross-track admission, panic/clear release and recovery at tracks 0/19, 64/128; no callback new/delete\n";
+}
+void meterOverlapTests(){queuedReplacementSpeedTests(true);queuedOverlapCapacityTests();queuedChainCapacityTests();}
 void queuedEarlySpeedTests(){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(float speed:{.25f,.5f,2.f}){
@@ -1261,6 +1297,7 @@ void queuedCleanupSourceTests(){
 void meterQueuedTests(){
     queuedReplacementSpeedTests();
     queuedOverlapCapacityTests();
+    queuedChainCapacityTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();
