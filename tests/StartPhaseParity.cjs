@@ -49,7 +49,8 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  globalThis.phaseSpeed=value=>{state.loops[0].playbackRate=value;};
  globalThis.userSpeed=value=>UIManager.setLoopSpeed(0,value);
  `,context);
- const queuedChainOnly=process.argv[3]==='--queued-apply-chain-overlap';
+ const queuedChainPrefixOnly=process.argv[3]==='--queued-apply-chain-prefix';
+ const queuedChainOnly=process.argv[3]==='--queued-apply-chain-overlap'||queuedChainPrefixOnly;
  const queuedOverlapOnly=process.argv[3]==='--queued-apply-rtrg-overlap'||queuedChainOnly;
  const queuedRtrgApplyOnly=process.argv[3]==='--queued-rtrg-apply-speed';
  const queuedMultipleOnly=process.argv[3]==='--queued-multiple-replacement-speed'||queuedRtrgApplyOnly||queuedOverlapOnly;
@@ -91,7 +92,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
    phase=(phase+actualRate)%length;frame++;
   }};
   if(queuedStopOnly||queuedLateOnly||queuedEarlyOnly||queuedRestartOnly||queuedSpeedOnly){
-   for(const reverse of [false,true])for(const beforeGrid of (queuedMixedTieOnly?[true]:((queuedRestartOnly||queuedSpeedOnly)?[true,false]:[true])))for(const speed of (queuedSpeedOnly?[.25,.5,2]:[1])){
+   for(const reverse of [false,true])for(const beforeGrid of (queuedMixedTieOnly?[true]:((queuedRestartOnly||queuedSpeedOnly)?[true,false]:[true])))for(const speed of (queuedSpeedOnly?[.25,.5,2]:[1]))for(const chainGap of [queuedChainPrefixOnly?.047:.002]){
     context.stopped();commands.push('stop 0 0');
     // Reapplying an unchanged tempo preserves origin; the production clock
     // does not accumulate rounding from a redundant tempo conversion.
@@ -146,6 +147,11 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
      assert.equal(context.sourceNode().started.time,targetTime,'Original replacement starts at its 5/50ms action deadline');
      const replacement=context.source(),newOffset=context.offset(),replacementNode=context.sourceNode(),replacementRate=context.rate();
      let secondReplacement=null,intermediate=null;
+     const renderChain=(count,extra=[])=>{
+      voices=[{node:oldNode,rate:replacementRate},{node:replacementNode,rate:replacementRate},...(intermediate?[intermediate]:[]),...extra];
+      voiceGate=deadline;render(count);voices=null;
+     };
+
      if(queuedMixedOnly){
       trace={reverse,beforeGrid,grid,deadline,restartDeadline,oldOffset,newOffset,replacementRate,oldEvents:oldNode.playbackRate.events,newEvents:replacementNode.playbackRate.events};
       const oldEvents=oldNode.playbackRate.events.length;
@@ -160,7 +166,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
       // source one; source two captures that control, then owns the next write.
       silence(frame+1);audio.currentTime=frame/sampleRate;
       if(queuedChainOnly){
-       silence(frame+Math.ceil(sampleRate*.002));audio.currentTime=frame/sampleRate;
+       renderChain(Math.ceil(sampleRate*chainGap));audio.currentTime=frame/sampleRate;
        context.setDelay(.389);commands.push('delay 0 0.389');
        context.setReverse(reverse);commands.push(`reverse 0 ${reverse?1:0}`);
        context.applyPhase();commands.push('apply 0 0');
@@ -168,7 +174,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
        assert.equal(replacementNode.stoppedAt,intermediate.node.started.time,'Earlier Apply stops at the next Apply start');
        assert(replacementNode.stoppedAt>replacementNode.started.time,'Intermediate Apply must contribute PCM before its stop');
        context.userSpeed(2);commands.push('speed 0 2');
-       silence(frame+1);audio.currentTime=frame/sampleRate;
+       renderChain(1);audio.currentTime=frame/sampleRate;
        trace.chain={start:intermediate.node.started.time,rate:intermediate.rate,events:intermediate.node.playbackRate.events};
       }
       if(queuedOverlapOnly||(mixedRtrg&&!queuedRtrgApplyOnly)){await context.rtrg();commands.push('rtrg 0 0');retriggers++;}
@@ -177,9 +183,10 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
       const at=Math.abs(t-near)<=4*Number.EPSILON*Math.max(1,Math.abs(t))?near:Math.ceil(t);
       const captured=context.rate(),offset=node.started.offset;
       assert.equal((intermediate?.node||replacementNode).stoppedAt,time,'Replacement stops only its immediate predecessor at its own start');
-      assert(queuedOverlapOnly?at<restartDeadline:at>restartDeadline,'Fixture verifies intended deadline ordering');
+      assert(queuedOverlapOnly?at<(intermediate?Math.ceil(intermediate.node.started.time*sampleRate):restartDeadline):at>restartDeadline,'Fixture verifies intended deadline ordering');
       const firstEvents=replacementNode.playbackRate.events.length;
-      silence(frame+1);audio.currentTime=frame/sampleRate;
+      if(queuedChainOnly)renderChain(1,[{node,rate:captured}]);else silence(frame+1);
+      audio.currentTime=frame/sampleRate;
       context.userSpeed(.25);commands.push('speed 0 0.25');
       assert.equal(replacementNode.playbackRate.events.length,firstEvents,'Later speed cannot modify the earlier pending source');
       assert(node.playbackRate.events.some(e=>e.time===time&&Math.fround(e.value)===captured),'Second source retains captured initial rate');
@@ -359,5 +366,5 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   for(const check of checks){const row=rows[check.row].split(' ').map(Number);for(const value of row.slice(6)){const error=Math.abs(value-check.expected);maximum=Math.max(maximum,error);assert(error<=1e-6,`Start phase ${mono}/${sampleRate}/${length}, frame ${row[1]}: ${value} vs ${check.expected}, ${JSON.stringify(check.trace)}`);}samples++;}
   cases++;
  }
- console.log(JSON.stringify({result:'PASS',cases,queuedStarts,queuedSilentFrames,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:queuedChainOnly?'Unchanged two Apply then RTRG: all live source PCM, independent intermediate start/stop, captured rates/reverse and grid gate; envelopes/resampling excluded':queuedOverlapOnly?'Unchanged Apply then RTRG: summed old/new source PCM, canceled Apply, captured rates and original grid silence; envelopes/resampling excluded':queuedRtrgApplyOnly?'Unchanged RTRG then Apply with interleaved speed writes: both source starts, per-node rates and original grid gate; deadline overtaking/overlap, envelopes and resampling excluded':queuedMultipleOnly?'Unchanged two pending Apply/RTRG sources with intervening speed writes: per-node initial rates, ordered PCM and original grid gate; envelopes/resampling excluded':queuedMixedTieOnly?'Unchanged AudioParam write at replacement deadline: true timestamp ordering including fractional times rounded to one native sample; old/source PCM and grid gate; envelopes/resampling excluded':queuedMixedOnly?'Unchanged Apply/RTRG then speed before replacement: old source retains rate; future initial-rate event wins at start; pre-grid silence/source PCM; envelopes/resampling excluded':queuedSpeedOnly?'Unchanged UI speed changes on an early validated source at 80/1ms before grid, retained actual source/start offset, current source PCM and pre-grid silence; browser envelopes/resampling excluded':queuedRtrgOnly?'Unchanged early-source RTRG: Start reset/quantization, 5ms replacement before/after grid, reverse PCM, original volume silence gate; fade shapes/resampling excluded':queuedRestartOnly?'Unchanged early-source Apply/Q/nudge replacement at 50ms before/after original grid, reverse/source phase, original volume silence gate and no old-source resurrection; fade shapes/resampling excluded':queuedEarlyOnly?'Unchanged Start/Reverse edits after early source birth preserve scheduled source phase/direction until next play; pre-grid silence; browser envelopes/resampling excluded':queuedCleanupOnly?'Unchanged Loop._teardown/AudioGraph.cleanup stops and disconnects replacement source; native cutoff has no residual tail; original source phase/PCM before cleanup; browser envelopes/resampling excluded':queuedLateOnly?'Queued source is silent through late callback admission, then matches original Loop.play/AudioGraph.build source phase/PCM; browser envelopes/resampling excluded':queuedStopOnly?'Queued source PCM after accepted early graph birth and STOP inside the 30ms minimum lead; original grid/play/build/scheduleStop; envelopes/resampling excluded':'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing and early-callback queued grid starts; linear interpolation, browser playback envelopes/resampling excluded'}));
+ console.log(JSON.stringify({result:'PASS',cases,queuedStarts,queuedSilentFrames,retriggers,nudges,tinyWraps,samples,maximumAbsoluteError:maximum,tolerance:1e-6,scope:queuedChainPrefixOnly?'Unchanged two Apply then late RTRG: first Apply starts before RTRG; independent source PCM/rates/reverse and grid gate; envelopes/resampling excluded':queuedChainOnly?'Unchanged two Apply then RTRG: all live source PCM, independent intermediate start/stop, captured rates/reverse and grid gate; envelopes/resampling excluded':queuedOverlapOnly?'Unchanged Apply then RTRG: summed old/new source PCM, canceled Apply, captured rates and original grid silence; envelopes/resampling excluded':queuedRtrgApplyOnly?'Unchanged RTRG then Apply with interleaved speed writes: both source starts, per-node rates and original grid gate; deadline overtaking/overlap, envelopes and resampling excluded':queuedMultipleOnly?'Unchanged two pending Apply/RTRG sources with intervening speed writes: per-node initial rates, ordered PCM and original grid gate; envelopes/resampling excluded':queuedMixedTieOnly?'Unchanged AudioParam write at replacement deadline: true timestamp ordering including fractional times rounded to one native sample; old/source PCM and grid gate; envelopes/resampling excluded':queuedMixedOnly?'Unchanged Apply/RTRG then speed before replacement: old source retains rate; future initial-rate event wins at start; pre-grid silence/source PCM; envelopes/resampling excluded':queuedSpeedOnly?'Unchanged UI speed changes on an early validated source at 80/1ms before grid, retained actual source/start offset, current source PCM and pre-grid silence; browser envelopes/resampling excluded':queuedRtrgOnly?'Unchanged early-source RTRG: Start reset/quantization, 5ms replacement before/after grid, reverse PCM, original volume silence gate; fade shapes/resampling excluded':queuedRestartOnly?'Unchanged early-source Apply/Q/nudge replacement at 50ms before/after original grid, reverse/source phase, original volume silence gate and no old-source resurrection; fade shapes/resampling excluded':queuedEarlyOnly?'Unchanged Start/Reverse edits after early source birth preserve scheduled source phase/direction until next play; pre-grid silence; browser envelopes/resampling excluded':queuedCleanupOnly?'Unchanged Loop._teardown/AudioGraph.cleanup stops and disconnects replacement source; native cutoff has no residual tail; original source phase/PCM before cleanup; browser envelopes/resampling excluded':queuedLateOnly?'Queued source is silent through late callback admission, then matches original Loop.play/AudioGraph.build source phase/PCM; browser envelopes/resampling excluded':queuedStopOnly?'Queued source PCM after accepted early graph birth and STOP inside the 30ms minimum lead; original grid/play/build/scheduleStop; envelopes/resampling excluded':'Unchanged user RTRG, UI setter/Q/nudge, Loop.restart and AudioGraph.retrigger source offsets + committed native PCM, 5/50ms timing and early-callback queued grid starts; linear interpolation, browser playback envelopes/resampling excluded'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

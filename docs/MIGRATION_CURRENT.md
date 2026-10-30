@@ -1962,3 +1962,14 @@ Current scope keeps clips and tempo unchanged between these scheduled births.
 Chains involving live buffer edits, deadline-straddling prefixes and renderer
 fade/resampling require their own evidence; do not infer those from this gate.
 Results, exact commands and the next step follow after final verification.
+
+
+Additional prefix variant: delay the second Apply/RTRG sequence ~47ms after
+first Apply creation. The first Apply then starts before RTRG while the second
+remains future. New `js_native_queued_apply_chain_prefix` executes all 120 cases
+separately; the original early-chain test keeps its original sequence order and
+32MiB probe-output bound. No prior case is removed. A preliminary combined
+240-case run PASS (max 9.088834995729655e-8); final separate gates supersede it.
+Engine playback adds 16 corresponding delayed-prefix cases at 64/128, keeping
+all early-chain and cancellation cases. Remaining live-buffer-edit/tempo and
+browser-rendered-envelope combinations stay explicitly outside this slice.

@@ -851,7 +851,8 @@ void queuedLateSourceTests(){
 void queuedReplacementSpeedTests(bool overlapOnly=false){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})
-    for(unsigned sequence:{0u,1u,2u,3u,4u})for(bool early:{false,true})for(auto action:{LoopAction::applyStart,LoopAction::retrigger}){
+    for(unsigned sequence:{0u,1u,2u,3u,4u})for(bool early:{false,true})for(auto action:{LoopAction::applyStart,LoopAction::retrigger})for(bool delayed:{false,true}){
+        if(delayed&&sequence!=4)continue;
         if(overlapOnly&&sequence<3)continue;
         if((sequence==2&&action!=LoopAction::retrigger)||(sequence>=3&&action!=LoopAction::applyStart))continue;
         const bool multiple=sequence!=0;
@@ -879,6 +880,7 @@ void queuedReplacementSpeedTests(bool overlapOnly=false){
             // the later .25 write; neither earlier source may inherit it.
             check(f.control->enqueueLoop({LoopAction::speed,id,0,f.control->generation(),0,.5}),"Second source comparison control rate");
             if(sequence==4){
+                if(delayed)while(f.engine->clock()+block<target-128)f.cycle();
                 lastTarget=f.engine->clock()+2400;f.command(LoopAction::applyStart,id);f.cycle();
                 for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::speed,id,0,e->generation(),0,2}),"Newest Apply receives the next control rate only");
             }
@@ -929,8 +931,8 @@ void queuedReplacementSpeedTests(bool overlapOnly=false){
         check(f.view->tracks[id].state==(cancel==2?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].phaseApplyFrame&&!f.view->tracks[id].queuedSourceReady,"Canceled source rate events cannot resurrect after their old deadlines");
     }
     check(allocations.load()==0,"Scheduled replacement speed performs no callback new/delete");
-    if(overlapOnly)std::cout<<"PASS: focused 16 single +16 chain Apply-to-RTRG overlap playback and 20 single +20 chain cancellation cases, exact paired stereo at tracks 0/19, reverse and 64/128; no callback new/delete\n";
-    else std::cout<<"PASS: 32 single + 32 double + 16 RTRG-to-Apply + 16 Apply-to-RTRG +16 two-Apply chain overlap queued speed cases, exact old/replacement stereo PCM before/after grid, explicit same-value AudioParam write and fresh play at tracks 0/19, reverse and 64/128; 20 single + 20 double + 20 RTRG-to-Apply + 20 Apply-to-RTRG +20 two-Apply chain pending cancel/prepare/cleanup cases; no callback new/delete\n";
+    if(overlapOnly)std::cout<<"PASS: focused 16 single +32 early/late chain Apply-to-RTRG overlap playback and 20 single +20 chain cancellation cases, exact paired stereo at tracks 0/19, reverse and 64/128; no callback new/delete\n";
+    else std::cout<<"PASS: 32 single + 32 double + 16 RTRG-to-Apply + 16 Apply-to-RTRG +32 early/late two-Apply chain overlap queued speed cases, exact old/replacement stereo PCM before/after grid, explicit same-value AudioParam write and fresh play at tracks 0/19, reverse and 64/128; 20 single + 20 double + 20 RTRG-to-Apply + 20 Apply-to-RTRG +20 two-Apply chain pending cancel/prepare/cleanup cases; no callback new/delete\n";
 }
 void queuedOverlapCapacityTests(){
     using namespace aion;
