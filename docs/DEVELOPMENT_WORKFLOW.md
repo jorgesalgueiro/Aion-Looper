@@ -102,8 +102,10 @@ cmake --preset linux \
   -DFETCHCONTENT_SOURCE_DIR_JUCE="$PWD/.deps/JUCE" \
   -DFETCHCONTENT_UPDATES_DISCONNECTED=ON
 cmake --build --preset linux-dev --parallel 2
-# When the plugin needs checking:
+# Only for an explicitly relevant deferred LV2 task:
+cmake --preset linux -DAION_BUILD_LV2=ON
 cmake --build build/linux --target AionLooper_LV2 --parallel 2
+# Restore routine Standalone-only defaults afterward with cmake --preset linux.
 ```
 
 Use that JUCE override only after the helper has copied the cache; for a fresh

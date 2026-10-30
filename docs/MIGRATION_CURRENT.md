@@ -11,20 +11,18 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Latest implementation — 30 October 2026
 
-Single Apply-to-RTRG overtaking now retains and mixes the older source until its
-original stop. Implementation `bbe5ff2`; focused sanitizer selector `9a47cf3`.
-Windows/Linux all 14 relevant unchanged-JS source gates PASS, including 120 new
-summed-overlap sequences. Queued Engine, 128-slot rejection/recovery and production
-shared GUI/CLI RPC tests PASS at 64/128 with zero tracked callback new/delete.
-Focused ASan/UBSan + leak checks PASS. Windows Standalone/VST3 and Linux
-Standalone/LV2 builds PASS. Isolated Release timing observations stay within the
-64/128 callback budgets for the measured one-pair and 128-slot synthetic cases;
-they are not worst-case or physical latency claims. Assets, IDs, schema, track
-capacity and dependencies are unchanged. No package/push created.
-Next: multiple pending Apply sources before an overtaking RTRG, preserving the
-intermediate source's own start/stop. Do not infer arbitrary burst sound parity
-from saturation safety tests. Tempo/clock work stays behind this gap; full browser
-envelopes/resampling, devices and selected-DAW release acceptance remain open.
+Two pending Applies overtaken by RTRG now retain the intermediate source's own
+start/stop and captured playback settings, including a prefix that starts before
+RTRG. Implementation `a386e25`; final reference/test additions `e97953a`.
+Windows/Linux affected unchanged-JS gates PASS, including 240 new early/late
+chain sequences. Engine 64/128 playback, cancellation, atomic pool rejection,
+shared GUI/CLI processor and focused ASan/UBSan/leak checks PASS. Both Standalone
+builds PASS; deferred plugin wrappers were not built. Measured Release callback
+observations stay inside the tested budgets; these are not worst-case or physical
+latency claims. Assets, IDs, schema, capacity and dependencies remain unchanged.
+Next: longer (three or more) pending Apply chains and live buffer-edit interactions
+need their own source comparisons before tempo/clock work. Browser envelopes,
+resampling, physical-device/listening and release acceptance remain open.
 See the final acceptance evidence below.
 
 ## Owner-approved faster development workflow — 28 October 2026
@@ -1959,8 +1957,8 @@ IDs or UI bindings change. `--meter-overlap` retains its previous cases and adds
 the chain cases; the full `--meter-queued` suite still contains all prior tests.
 
 Current scope keeps clips and tempo unchanged between these scheduled births.
-Chains involving live buffer edits, deadline-straddling prefixes and renderer
-fade/resampling require their own evidence; do not infer those from this gate.
+Chains involving live buffer edits and renderer fade/resampling require their
+own evidence. The additional deadline-straddling prefix evidence follows below.
 Results, exact commands and the next step follow after final verification.
 
 
@@ -1973,3 +1971,96 @@ separately; the original early-chain test keeps its original sequence order and
 Engine playback adds 16 corresponding delayed-prefix cases at 64/128, keeping
 all early-chain and cancellation cases. Remaining live-buffer-edit/tempo and
 browser-rendered-envelope combinations stay explicitly outside this slice.
+
+
+Windows results so far: original affected eight CTests PASS (200.57s, parallel 2),
+then final separate early-chain and delayed-prefix gates PASS (50.25s /53.67s;
+combined 53.70s). Early chain keeps the original 120-case order: 2,664,832 compared
+/2,549,784 silent frames, max 1.0434593022967675e-7. New late-prefix gate: 120 cases,
+2,733,228 compared /2,429,562 silent frames, max 7.88686600472488e-8. Tolerance 1e-6
+unchanged; preserved source assets and prior cases remain intact.
+
+The complete queued Engine suite PASS Windows/Linux, including all prior cases
+and the initial early-chain additions. Final extended `--meter-overlap` PASS
+Windows Release and Linux ASan/UBSan (leak detection, halt-on-error), adding the delayed
+64/128 playback cases as well. It covers 16 single +32 early/late chain playback,
+20 single +20 chain cancellation, existing 128-slot saturation and the new
+127-occupied-slot atomic two-slot/cross-track admission test. Zero tracked callback
+new/delete and no sanitizer diagnostic/leak. Source implementation is unchanged
+between these runs; no broader instrumented historical-suite pass is claimed.
+
+Windows Standalone build and production `aion_midi_processor_tests` PASS,
+including four additional two-Apply GUI/CLI RPC cases (36 early-start cases),
+metadata/deadline/audibility/clip lifetime, prior lifecycle/external CLI/MIDI/state
+and zero tracked processBlock new/delete. Native code, APVTS/action IDs, schema,
+track capacity and pinned versions stay unchanged except the scoped scheduler fix.
+
+Standalone-only configure initially exposed cached pluginval paths requiring
+disabled formats. Guard validation registration by AION_BUILD_VST3/LV2, matching
+the existing CLAP behavior. Retain paths and validate normally when explicitly
+enabled. Windows preset configure now PASS with VST3/LV2/CLAP OFF, and CTest -N
+registers zero deferred-format validator gates. No wrapper was built this session.
+
+Linux verification reuses existing `build/linux` Release core/probe/test targets,
+with its independent native sources/dependencies. This avoids repeating the
+slower cached Debug source-oracle run; configurations differ, so wall times are
+not claimed as runtime/build improvement or compared directly with prior Debug.
+The first Standalone-only reconfigure changes JUCE target compile definitions and
+requires dependent module rebuilds; do not call that a warmed incremental build.
+
+
+Final native Linux results: all nine affected source CTests PASS (394.48s,
+parallel 2), including both final chain variants. Final full `--meter-queued`
+PASS includes delayed-prefix cases. Standalone and production shared GUI/CLI
+processor build/tests PASS, with zero tracked processBlock new/delete. Both
+production caches have VST3/LV2/CLAP OFF and register zero deferred validator
+gates. Cached validator paths remain intact for explicitly enabled formats.
+Windows full queued tests passed before the delayed-selector extension; final
+focused overlap tests include that extension. Production source did not change
+between those checks. No full historical sanitizer suite was run this session.
+
+Release timing observations, measured sequentially after acceptance work at
+48kHz stereo (microseconds; no OS ranking or worst-case claim):
+
+| Platform / block | Highest sampled one-chain callback | Highest sampled full-pool callback | Callback budget |
+| --- | ---: | ---: | ---: |
+| Windows / 64 | 119.2 | 96.4 | 1333.33 |
+| Windows / 128 | 206.1 | 185.8 | 2666.67 |
+| Linux / 64 | 110.6 | 82.9 | 1333.33 |
+| Linux / 128 | 245.7 | 142.8 | 2666.67 |
+
+One-chain cases cover early/delayed, before/after-grid scheduling, source birth,
+intermediate start/stop, audible overlap and warmed steady playback. Pool cases
+reserve 128 slots with 64 two-slot chains, in bounded 96-command batches, then
+measure activation and lease expiry with zero rejections. This is not 128
+simultaneously audible sources or a 20-track load/long-session test. Ignored
+harness/raw JSONL files live under each checkout's `build/chain-*`; these are
+local measurement evidence, not shipped benchmarks or round-trip latency.
+
+Reproduce relevant checks after building the named targets (Windows CMake/CTest
+from the installed VS Build Tools; native WSL working directory for Linux):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --meter-overlap
+cmake --build --preset windows-dev --target aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+```
+
+```sh
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --meter-queued
+./build/linux/aion_midi_processor_tests
+ctest --test-dir build/linux --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_start_phase|js_native_queued_early_restart|js_native_queued_early_rtrg|js_native_queued_multiple_replacement_speed|js_native_queued_rtrg_apply_speed|js_native_queued_apply_rtrg_overlap|js_native_queued_apply_chain_overlap|js_native_queued_apply_chain_prefix)$'
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --meter-overlap
+```
+
+The isolated sanitizer cache uses Debug, plugin OFF, tests ON, with
+`-fsanitize=address,undefined -fno-omit-frame-pointer` compiler flags and
+`-fsanitize=address,undefined` linker flags. Windows source gates use the same
+CTest regex with `--test-dir build/windows-core -C Release` (eight prior affected
+gates followed by the final two chain gates were actually executed this turn).
+No new renderer/pointer, listening, physical MIDI/audio, DAW, wrapper-validator,
+full historical sanitizer or long-session pass is claimed. Existing compiler
+warnings remain separate from this slice. No package or push was created.

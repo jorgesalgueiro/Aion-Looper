@@ -49,14 +49,14 @@ See the [feature-by-feature parity checklist](docs/PARITY.md) for exact coverage
 
 | Platform | Standalone | Plugin formats in scope | Validation / availability |
 | --- | --- | --- | --- |
-| Windows x64 | Yes | VST3 | Development builds; scoped REAPER checks recorded |
-| Linux | Yes | LV2 | Development builds; scoped Ardour LV2 checks recorded |
+| Windows x64 | Yes | VST3 (deferred/opt-in) | Development builds; scoped REAPER checks recorded |
+| Linux | Yes | LV2 (deferred/opt-in) | Development builds; scoped Ardour LV2 checks recorded |
 | macOS | Future | AU | Build configuration prepared; platform acceptance pending |
 | iOS | Future | AUv3 | Build configuration prepared; device acceptance pending |
 
 Format availability does not mean every workflow has passed in every host: [validation notes](docs/VALIDATION.md) describe
-the checks actually run. Apple delivery is future work. CLAP remains available as an opt-in build, deferred
-from the current development/release matrix.
+the checks actually run. Current development targets Windows and Linux Standalone.
+VST3, LV2 and CLAP are deferred/opt-in; Apple delivery is future work.
 
 ### Your first loop: Windows or Linux
 
@@ -87,7 +87,9 @@ The in-app manuals explain the original controls and workflows.
 
 ### Use it in a DAW
 
-Build the plugin formats below, then add the relevant output folder to your
+For an explicitly relevant plugin task, configure Windows with
+`cmake --preset windows -DAION_BUILD_VST3=ON` or Linux with
+`cmake --preset linux -DAION_BUILD_LV2=ON`, then build that preset. Add the relevant output folder to your
 host's plugin search paths and rescan:
 
 | System | Build output folders | Suggested workflow |
@@ -160,7 +162,7 @@ ctest --preset linux
 ./build/linux/AionLooper_artefacts/Release/Standalone/Aion-Looper
 ```
 
-This builds Standalone and LV2. CLAP is opt-in/deferred. ALSA/JACK
+This builds Standalone. LV2 and CLAP are opt-in/deferred. ALSA/JACK
 development libraries enable the corresponding JUCE backends; physical device
 and low-latency performance still need testing with your own setup.
 

@@ -1,7 +1,8 @@
 # Build and package
 
-Current active formats: Windows Standalone/VST3; Linux Standalone/LV2. CLAP is
-deferred/opt-in (`-DAION_BUILD_CLAP=ON`). Use `windows-dev` / `linux-dev` build
+Current active targets: Windows Standalone and Linux Standalone. VST3, LV2 and
+CLAP are deferred/opt-in (`-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON`,
+`-DAION_BUILD_CLAP=ON` on their supported platforms). Use `windows-dev` / `linux-dev` build
 presets for Standalone-only iteration. Linux builds belong in native WSL storage,
 not `/mnt/d`; see [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) for safe
 setup/sync, test tiers and exact commands. Historical CLAP instructions below
@@ -45,8 +46,10 @@ cmake --install build/linux --prefix dist/linux
 cpack --config build/linux/CPackConfig.cmake -B dist -G ZIP
 ```
 
-Default targets: `AionLooper_Standalone`,
-`AionLooper_LV2`, `aion_core_tests`. JUCE natively supplies LV2; do not use an old
+Default targets include `AionLooper_Standalone` and `aion_core_tests`.
+For an explicitly relevant LV2 task, configure with
+`cmake --preset linux -DAION_BUILD_LV2=ON`, then build `AionLooper_LV2`.
+JUCE natively supplies LV2; do not use an old
 fork of JUCE_LV2. The browser subprocess is embedded for plugin hosts. Default
 JUCE Linux backends include ALSA/JACK when their development libraries are present;
 this is not evidence of real JACK hardware validation.
