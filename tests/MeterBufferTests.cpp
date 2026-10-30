@@ -848,10 +848,11 @@ void queuedLateSourceTests(){
     check(allocations.load()==0,"Late-source processing performs zero tracked callback new/delete");
     std::cout<<"PASS: callback-controlled late source silence/state/phase/reverse, wrong/raw/cancel/clear/prepare guards at tracks 0/19 and 64/128; exact stereo comparison and no callback new/delete\n";
 }
-void queuedReplacementSpeedTests(){
+void queuedReplacementSpeedTests(bool overlapOnly=false){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})
     for(unsigned sequence:{0u,1u,2u,3u})for(bool early:{false,true})for(auto action:{LoopAction::applyStart,LoopAction::retrigger}){
+        if(overlapOnly&&sequence!=3)continue;
         if((sequence==2&&action!=LoopAction::retrigger)||(sequence==3&&action!=LoopAction::applyStart))continue;
         const bool multiple=sequence!=0;
         Fixture f(block,MeterEventScope::acceptedPlayback);
@@ -896,6 +897,7 @@ void queuedReplacementSpeedTests(){
         check(f.view->tracks[id].state==LoopState::playing&&f.view->tracks[id].playbackRate==.5,"Fresh source retains the speed control after captured-source playback");
     }
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned sequence:{0u,1u,2u,3u})for(unsigned cancel=0;cancel<5;++cancel){
+        if(overlapOnly&&sequence!=3)continue;
         const bool multiple=sequence!=0;
         Fixture f(block,MeterEventScope::acceptedPlayback);
         f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
@@ -919,7 +921,8 @@ void queuedReplacementSpeedTests(){
         check(f.view->tracks[id].state==(cancel==2?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].phaseApplyFrame&&!f.view->tracks[id].queuedSourceReady,"Canceled source rate events cannot resurrect after their old deadlines");
     }
     check(allocations.load()==0,"Scheduled replacement speed performs no callback new/delete");
-    std::cout<<"PASS: 32 single + 32 double + 16 RTRG-to-Apply + 16 Apply-to-RTRG overlap queued speed cases, exact old/replacement stereo PCM before/after grid, explicit same-value AudioParam write and fresh play at tracks 0/19, reverse and 64/128; 20 single + 20 double + 20 RTRG-to-Apply + 20 Apply-to-RTRG overlap pending cancel/prepare/cleanup cases; no callback new/delete\n";
+    if(overlapOnly)std::cout<<"PASS: focused 16 Apply-to-RTRG overlap playback +20 cancellation cases, exact paired stereo at tracks 0/19, reverse and 64/128; no callback new/delete\n";
+    else std::cout<<"PASS: 32 single + 32 double + 16 RTRG-to-Apply + 16 Apply-to-RTRG overlap queued speed cases, exact old/replacement stereo PCM before/after grid, explicit same-value AudioParam write and fresh play at tracks 0/19, reverse and 64/128; 20 single + 20 double + 20 RTRG-to-Apply + 20 Apply-to-RTRG overlap pending cancel/prepare/cleanup cases; no callback new/delete\n";
 }
 void queuedOverlapCapacityTests(){
     using namespace aion;
@@ -942,6 +945,7 @@ void queuedOverlapCapacityTests(){
     check(allocations.load()==0,"Overlap saturation and recovery perform no callback new/delete");
     std::cout<<"PASS: 128 overlap slots, explicit saturation rejection without partial phase cancellation, stop/clear release and reuse at tracks 0/19, 64/128; no callback new/delete\n";
 }
+void meterOverlapTests(){queuedReplacementSpeedTests(true);queuedOverlapCapacityTests();}
 void queuedEarlySpeedTests(){
     using namespace aion;
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(float speed:{.25f,.5f,2.f}){

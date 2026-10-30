@@ -1785,3 +1785,53 @@ Exact commands/results and remaining limits follow after final verification.
 No UI/bridge bindings, commands/parameter IDs, persistence schema, capacity,
 logo/assets or dependencies changed. Existing GUI/CLI access invokes the repaired
 single DSP path. No package/push requested.
+
+
+Verification at implementation `bbe5ff2` (30 October):
+
+- Clean Windows core build and `aion_core_tests --meter-queued` PASS. Final log:
+  `build/overlap-clean-engine-windows.log`. Linux core build and the same queued
+  suite PASS. Both include 16 new overlap playback cases, 20 overlap cancellation
+  cases, 128-slot saturation/rejection/stop/clear/reuse at tracks 0/19 and 64/128,
+  all prior queued tests and zero tracked callback new/delete.
+- Windows all 14 relevant source CTests PASS (317.68s, parallel 2). New summed
+  overlap oracle: 30 configurations / 120 queued sequences /120 RTRG,
+  2,661,728 compared frames including 2,552,888 silent frames, max error
+  7.978123062191145e-8, unchanged 1e-6 tolerance. Prior source modes remain intact.
+- Windows Standalone/VST3 and Linux Standalone/LV2 builds PASS. Corresponding
+  `aion_midi_processor_tests` executables PASS on both OSes, including four new
+  overtaking GUI/CLI RPC sequences (32 total early-start cases), exact deadlines,
+  current metadata/audibility, retained clip, real message-loop cleanup, external
+  CLI instance routing, MIDI/state and zero tracked processBlock new/delete.
+- No host routing/state/transport precedence or UI/bridge binding changed.
+  Prior pointer interaction evidence is reused; no new renderer pointer test,
+  physical device/controller, REAPER/Ardour listening, Apple/CLAP, full validator
+  or long-session/max-capacity sound acceptance is claimed. Existing compiler
+  alignment/float-equality/test-indentation warnings remain separate from passing
+  core -Werror and acceptance gates. No dependency upgrade/package/push.
+
+Reproduce (existing caches, see DEVELOPMENT_WORKFLOW.md for tool paths):
+
+```powershell
+& $cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+& build/windows-core/Release/aion_core_tests.exe --meter-queued
+& $ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_start_phase|js_native_queued_stop_phase|js_native_queued_late_phase|js_native_queued_cleanup|js_native_queued_early_edits|js_native_queued_early_restart|js_native_queued_early_rtrg|js_native_queued_early_speed|js_native_queued_replacement_speed|js_native_queued_replacement_speed_tie|js_native_queued_multiple_replacement_speed|js_native_queued_rtrg_apply_speed|js_native_queued_apply_rtrg_overlap)$'
+& $cmake --build --preset windows --target aion_midi_processor_tests AionLooper_Standalone AionLooper_VST3 --parallel 2
+& build/windows/Release/aion_midi_processor_tests.exe
+# Commit locally and sync with SetupWslWorkspace.sh before Linux source tests.
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake --build build/core --target aion_core_tests aion_start_probe --parallel 2
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec build/core/aion_core_tests --meter-queued
+# Same 14-test regex above, ctest --test-dir build/core --parallel 2 (no -C).
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake --build build/linux --target aion_midi_processor_tests AionLooper_Standalone AionLooper_LV2 --parallel 2
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec build/linux/aion_midi_processor_tests
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake -S . -B build/overlap-asan -DAION_BUILD_PLUGIN=OFF -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug '-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer' '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined'
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+wsl -d Ubuntu --cd /home/jorge/projects/Aion-Looper --exec env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 build/overlap-asan/aion_core_tests --meter-queued
+```
+
+Linux source/sanitizer final results and isolated callback observations follow.
+Next slice: more than one pending Apply before an overtaking RTRG. Reference can
+keep an intermediate Apply alive between its own start and the following Apply's
+stop; current pruning of non-RTRG events is not proven equivalent for that chain.
+Retain this as an explicit parity gap rather than claiming arbitrary burst sound
+acceptance from bounded saturation tests. Tempo/clock work stays behind it.
