@@ -9,21 +9,23 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Latest implementation — 30 October 2026
+## Latest verified slice — 4 November 2026
 
-Two pending Applies overtaken by RTRG now retain the intermediate source's own
-start/stop and captured playback settings, including a prefix that starts before
-RTRG. Implementation `a386e25`; final reference/test additions `e97953a`.
-Windows/Linux affected unchanged-JS gates PASS, including 240 new early/late
-chain sequences. Engine 64/128 playback, cancellation, atomic pool rejection,
-shared GUI/CLI processor and focused ASan/UBSan/leak checks PASS. Both Standalone
-builds PASS; deferred plugin wrappers were not built. Measured Release callback
-observations stay inside the tested budgets; these are not worst-case or physical
-latency claims. Assets, IDs, schema, capacity and dependencies remain unchanged.
-Next: longer (three or more) pending Apply chains and live buffer-edit interactions
-need their own source comparisons before tempo/clock work. Browser envelopes,
-resampling, physical-device/listening and release acceptance remain open.
-See the final acceptance evidence below.
+Three-Apply chains followed by overtaking RTRG now have source-audio, lifecycle
+and capacity acceptance, including a prefix where two Applies start before RTRG.
+Regression snapshot `fc580c0`; existing production scheduler `a386e25` passes
+unchanged. Windows/Linux both new 120-sequence reference modes and both previous
+two-Apply modes PASS at unchanged tolerances. Focused 64/128 Engine, atomic
+three-slot rejection/recovery, production shared GUI/CLI and Linux ASan/UBSan/leak
+checks PASS. Both Standalone builds PASS. No new UI binding, ID, schema, asset,
+capacity or dependency change; deferred wrappers were not built. Timing samples
+stay inside the measured callback budgets, without worst-case/physical-latency
+claims. No package or push created.
+Next: compare NORM/live PCM replacement between Apply source creation and RTRG,
+including original-buffer ownership and cancellation. Arbitrary longer chains,
+live buffer edits, renderer envelopes/resampling, tempo changes, physical devices,
+listening and release acceptance remain outside this verified slice. See final
+acceptance evidence below.
 
 ## Owner-approved faster development workflow — 28 October 2026
 
@@ -2066,32 +2068,94 @@ full historical sanitizer or long-session pass is claimed. Existing compiler
 warnings remain separate from this slice. No package or push was created.
 
 
-## Three-Apply chain acceptance — 4 November 2026 (in progress)
+## Three-Apply chain acceptance — 4 November 2026
 
-Next slice: three pending Apply sources followed by overtaking RTRG, with both
-all-future and two-already-started prefix variants. Acceptance: unchanged reference
-source PCM at 1e-6 and metadata at 1e-14, independent Start/reverse/captured rate
-and own stop, original grid silence, 64/128 paired stereo, fresh PLAY and stop/
-panic/clear/prepare/cleanup cancellation. Three-slot admission must fail atomically
-when only two slots remain, without consuming them or canceling accepted Applies.
-Use existing GUI/CLI commands and processor tests; no new UI or DSP abstraction.
-Preserve earlier chain cases and asset bytes. Live buffer edits, renderer fades/
-resampling, tempo changes and device/listening acceptance are separate gaps.
+Acceptance defined before editing: three Applies followed by overtaking RTRG,
+both all-future and two-already-started prefixes; independent Start/reverse/rate
+and own stop, grid silence, 64/128 PCM, cancellation and atomic three-slot failure
+with two free slots. Regression snapshot `fc580c0` passes with the existing generic
+production scheduler unchanged; no new UI binding, command, parameter, state
+schema, runtime capacity, dependency or preserved-asset change. GUI/CLI reuse the
+same existing command implementation. Previous single/two-Apply cases remain.
 
-Windows initial checks: both new 120-sequence unchanged-JS modes PASS against
-the existing production implementation. Early: 2,667,898 compared /2,546,706
-silent frames, maximum error 7.663715295702644e-8. Prefix: 2,736,302 compared
-/2,420,372 silent frames, maximum error 7.879732011328855e-8. PCM 1e-6 and metadata
-1e-14 tolerances remain unchanged. The initial fixture sent raw .75x to the
-native probe while the original sync UI snapped it to 1x; corrected the fixture
-to send the supported 1x ratio to both paths, without changing source or tolerance.
+| Executed verification | Windows Release | Native WSL Linux |
+| --- | --- | --- |
+| Core/probe + Standalone/shared-processor builds | PASS | PASS (Release) |
+| Five source CTests: original assets, both two-Apply and both three-Apply modes | PASS, 114.14s, parallel 2 | PASS, 202.79s, parallel 2 |
+| Final `--meter-overlap` | PASS | PASS (Release) |
+| Production `aion_midi_processor_tests` | PASS | PASS (Release) |
+| Focused ASan/UBSan/leak `--meter-overlap` | Not run | PASS (Debug), no diagnostic |
 
-Existing generic retention handles these cases without a production-code change.
-Regression additions: 32 three-Apply early/prefix Engine playback cases, 40
-pending/active cancellation cases (StopNow/panic/clear/prepare/cleanup), and four
-three-slot atomic admission/recovery cases at tracks 0/19 and 64/128. A 126-slot
-reservation must reject a three-slot chain while leaving two slots usable by a
-second track. Keep previous single/two-Apply tests. Production shared GUI/CLI RPC
-adds eight three-Apply early/prefix cases (44 total early-source cases). Builds
-and final Windows/Linux/sanitizer results follow after execution. No UI bindings,
-parameters, assets, persistence schema, capacity or dependency changes.
+New oracle modes: `--queued-apply-triple-overlap` and
+`--queued-apply-triple-prefix`. Each runs 30 mono/stereo, 8/48/96kHz, five-length
+configurations /120 sequences with unchanged 1e-6 PCM and 1e-14 metadata tolerance.
+Windows early: 2,667,898 compared /2,546,706 silent frames, max error
+7.663715295702644e-8; prefix: 2,736,302 compared /2,420,372 silent frames, max error
+7.879732011328855e-8. Initial fixture .75x was incorrectly sent raw to the native
+probe while the sync UI snapped it to 1x; use the supported 1x ratio in both paths.
+No tolerance/source change or production failure is implied by that fixture fix.
+
+Focused Engine selection now covers 80 paired stereo playback and 80 cancellation
+cases (32 new three-Apply playback, 40 new pending/active cancellation), tracks
+0/19, directions and 64/128; explicit same-value speed writes and fresh PLAY.
+Retain all prior capacity cases; four new fixtures reserve 126 slots, reject a
+three-slot request without canceling accepted Applies, then admit a two-slot
+chain on another track, panic/clear and recover. Batches stay within 96 commands;
+64-sample first batches span two callbacks. Cancellation covers StopNow/panic/
+clear/prepare/cleanup after intermediate PCM begins as well as before birth.
+Zero tracked callback new/delete. Production RPC adds eight three-Apply early/
+prefix cases (44 early-source cases total), alongside existing external CLI,
+timer/MIDI/state/lifecycle checks and zero tracked processBlock new/delete.
+
+Logs: Windows `build/triple-production-windows.log`; native Linux
+`build/triple-core-linux.log`, `triple-production-linux.log`, `triple-asan.log`
+and build logs. Existing float-comparison/alignment warnings remain unrelated.
+No full historical suite, wrapper build, validator, pointer/renderer, physical
+MIDI/audio, listening or long-session acceptance was run/claimed this session.
+
+Release timing observations at 48kHz stereo, Windows then Linux after acceptance
+jobs stopped: four early/prefix/grid-side cases per block, 512 idle warm blocks,
+full admission/transition scenario and 2048 steady callbacks per case. Highest
+scenario or steady callback observed (microseconds):
+
+| Platform | 64 samples / 1333.33us budget | 128 samples / 2666.67us budget |
+| --- | ---: | ---: |
+| Windows | 89.0 | 162.5 |
+| Linux | 121.92 | 155.607 |
+
+These are one-clip three-Apply scenarios, not three simultaneously audible voices,
+a worst-case/physical-latency bound, OS ranking or 20-track load test. Previous
+full-pool timings remain historical. Ignored local harness/raw JSONL lives under
+`build/triple-bench-src`, `build/triple-bench-windows.jsonl` and native WSL
+`build/triple-bench-linux.jsonl`. Harnesses link unchanged Release core and time
+only Engine.process; input generation/view drain/timing storage are outside.
+A raw nominal_grid_us zero means the grid already passed, not a zero-cost call.
+
+Exact focused commands, from the matching checkout with installed CMake/CTest
+(Windows uses VS Build Tools):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --meter-overlap
+ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_queued_apply_chain_overlap|js_native_queued_apply_chain_prefix|js_native_queued_apply_triple_overlap|js_native_queued_apply_triple_prefix)$'
+cmake --build --preset windows-dev --target aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+```
+
+```sh
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --meter-overlap
+./build/linux/aion_midi_processor_tests
+ctest --test-dir build/linux --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_queued_apply_chain_overlap|js_native_queued_apply_chain_prefix|js_native_queued_apply_triple_overlap|js_native_queued_apply_triple_prefix)$'
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --meter-overlap
+```
+
+Sanitizer configuration remains the prior Debug/plugin-OFF/tests-ON cache with
+address/undefined sanitizer and frame-pointer flags. CMake regenerated because
+two CTest registrations were added; no configure/build speed claim. Linux used
+the independent committed mirror via SetupWslWorkspace.sh without overwriting
+local work. No package/push. Next: NORM/live PCM replacement between pending Apply
+creation and RTRG, including original-buffer ownership and cancellation. Constant-
+buffer acceptance does not establish that case, arbitrary longer chains, tempo
+changes or full browser-rendered envelopes/resampling.
