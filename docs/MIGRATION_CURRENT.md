@@ -2064,3 +2064,34 @@ gates followed by the final two chain gates were actually executed this turn).
 No new renderer/pointer, listening, physical MIDI/audio, DAW, wrapper-validator,
 full historical sanitizer or long-session pass is claimed. Existing compiler
 warnings remain separate from this slice. No package or push was created.
+
+
+## Three-Apply chain acceptance — 4 November 2026 (in progress)
+
+Next slice: three pending Apply sources followed by overtaking RTRG, with both
+all-future and two-already-started prefix variants. Acceptance: unchanged reference
+source PCM at 1e-6 and metadata at 1e-14, independent Start/reverse/captured rate
+and own stop, original grid silence, 64/128 paired stereo, fresh PLAY and stop/
+panic/clear/prepare/cleanup cancellation. Three-slot admission must fail atomically
+when only two slots remain, without consuming them or canceling accepted Applies.
+Use existing GUI/CLI commands and processor tests; no new UI or DSP abstraction.
+Preserve earlier chain cases and asset bytes. Live buffer edits, renderer fades/
+resampling, tempo changes and device/listening acceptance are separate gaps.
+
+Windows initial checks: both new 120-sequence unchanged-JS modes PASS against
+the existing production implementation. Early: 2,667,898 compared /2,546,706
+silent frames, maximum error 7.663715295702644e-8. Prefix: 2,736,302 compared
+/2,420,372 silent frames, maximum error 7.879732011328855e-8. PCM 1e-6 and metadata
+1e-14 tolerances remain unchanged. The initial fixture sent raw .75x to the
+native probe while the original sync UI snapped it to 1x; corrected the fixture
+to send the supported 1x ratio to both paths, without changing source or tolerance.
+
+Existing generic retention handles these cases without a production-code change.
+Regression additions: 32 three-Apply early/prefix Engine playback cases, 40
+pending/active cancellation cases (StopNow/panic/clear/prepare/cleanup), and four
+three-slot atomic admission/recovery cases at tracks 0/19 and 64/128. A 126-slot
+reservation must reject a three-slot chain while leaving two slots usable by a
+second track. Keep previous single/two-Apply tests. Production shared GUI/CLI RPC
+adds eight three-Apply early/prefix cases (44 total early-source cases). Builds
+and final Windows/Linux/sanitizer results follow after execution. No UI bindings,
+parameters, assets, persistence schema, capacity or dependency changes.
