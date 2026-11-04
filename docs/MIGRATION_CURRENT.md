@@ -11,20 +11,19 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Latest verified slice — 4 November 2026
 
-Three-Apply chains followed by overtaking RTRG now have source-audio, lifecycle
-and capacity acceptance, including a prefix where two Applies start before RTRG.
-Regression snapshot `fc580c0`; existing production scheduler `a386e25` passes
-unchanged. Windows/Linux both new 120-sequence reference modes and both previous
-two-Apply modes PASS at unchanged tolerances. Focused 64/128 Engine, atomic
-three-slot rejection/recovery, production shared GUI/CLI and Linux ASan/UBSan/leak
-checks PASS. Both Standalone builds PASS. No new UI binding, ID, schema, asset,
-capacity or dependency change; deferred wrappers were not built. Timing samples
-stay inside the measured callback budgets, without worst-case/physical-latency
-claims. No package or push created.
-Next: compare NORM/live PCM replacement between Apply source creation and RTRG,
-including original-buffer ownership and cancellation. Arbitrary longer chains,
-live buffer edits, renderer envelopes/resampling, tempo changes, physical devices,
-listening and release acceptance remain outside this verified slice. See final
+Playing-loop NORM now preserves pending Apply/RTRG deadlines and the original
+forward-buffer versus reversed-snapshot behavior. Implementation `09eac61`.
+Windows/Linux all 15 selected source/asset CTests PASS, including 180 new NORM
+sequences at unchanged tolerances. The 80 new Engine worker-delay/no-op/cancel/
+OOM/full-pool cases, previous edit/overlap suites, shared GUI/CLI processor tests
+and focused Linux ASan/UBSan/leak checks PASS at the documented 64/128 scope.
+Both Standalone builds PASS. Full-pool callback timing observations remain within
+the tested budgets, without worst-case/physical-latency claims. UI assets, IDs,
+persistence schema, capacity and pinned dependencies are unchanged. No package
+or push created; deferred wrappers were not built.
+Next: NORM on still-queued native tracks (currently rejected), preserving queue/
+graph/source identity and deadlines. Other live buffer edits, renderer envelopes/
+resampling, listening/devices and release acceptance remain open. See final
 acceptance evidence below.
 
 ## Owner-approved faster development workflow — 28 October 2026
@@ -2161,47 +2160,114 @@ buffer acceptance does not establish that case, arbitrary longer chains, tempo
 changes or full browser-rendered envelopes/resampling.
 
 
-## Pending Apply/RTRG with NORM — 4 November 2026 (in progress)
+## Pending Apply/RTRG with NORM — 4 November 2026
 
-Acceptance before production edits: preserve unchanged source start/stop and
-phase/rate through NORM before RTRG, after RTRG birth, and after an intermediate
-Apply starts. Forward sources share the normalized stored PCM; already-created
-reversed sources retain their independent old copy. New reversed sources take
-the current stored PCM. Compare unchanged JS at 1e-6 PCM /1e-14 metadata, mono/
-stereo, tiny/long clips, 8/48/96kHz; 64/128 cancellation, OOM, restore and bounded
-ownership tests plus shared GUI/CLI production checks. Keep assets/reference
-unchanged. Source comparisons use a controlled worker commit without advancing
-audio samples, not a physical real-time edit-latency claim.
+Acceptance defined before production edits: preserve source starts/stops, phase/
+rate and history through NORM before RTRG, after its birth and while an older
+Apply is retained. Forward sources share normalized stored PCM; already-created
+reversed sources keep independent old PCM. New reversed sources use current PCM.
+Original assets and 1e-6 PCM /1e-14 metadata tolerances remain unchanged.
+Baseline mono/8kHz/17 frames, frame 3541: native -0.2611359655857086 versus source
+sum -0.17801891043622273 (`build/norm-pending-negative.log`).
 
-Baseline reproduced: mono/8kHz/17 frames, frame 3541, native
--0.2611359655857086 versus unchanged-JS sum -0.17801891043622273
-(`build/norm-pending-negative.log`). NORM invalidated all pending phase events.
-Fix preserves deadlines during the worker edit, permits valid phase activation
-while NORM is finalizing, pins one raw-PCM lease per scheduled reversed source
-and transfers/releases it at activation, retention, cancellation or reset.
-Forward retained sources rebind to the normalized immutable result; reversed
-copies stay untouched. Storage/loops remain fixed (127 phase events, 128 voices);
-no callback allocation, deallocation, blocking or full-PCM work was added.
+Fix `09eac61`: NORM no longer invalidates phase events; valid source events still
+activate while its worker is pending. Each scheduled reversed source owns one
+raw-PCM lease, transferred/released on activation, retention, cancellation or
+reset. Retained forward sources rebind to normalized immutable output; reversed
+copies remain unchanged. Work/storage stays bounded at 127 phase events and 128
+retained sources. No callback allocation/deallocation, blocking or full-PCM edit
+was added. Existing 512-entry retirement queue and its worker-owned-until-stopped-
+prepare overflow fallback remain unchanged. No parameter/action ID, preset/state
+schema, capacity, UI binding or dependency change; GUI/CLI share existing NORM.
 
-Initial Windows new oracles PASS: each 60 cases /60 sequences, 1,344,236 compared
-frames /1,238,012 silent frames. Before-RTRG and after-RTRG maximum error
-1.450341824416057e-7; active-intermediate case 8.03442081753758e-8. Original
-assets/tolerances unchanged. New source modes operate after native grid activation;
-NORM on a still-queued native track remains a separate unsupported workflow.
+| Reference behavior | Native status | Evidence / remaining gap |
+| --- | --- | --- |
+| Playing NORM preserves pending and active source timing/PCM | Fixed | Three new reference positions; delayed-worker Engine cases |
+| Forward alias and reversed snapshot ownership | Fixed for NORM | Source PCM at both directions, mono/stereo and 8/48/96kHz |
+| No-op, failure and cancellation preserve musical state | Verified scoped cases | No-op/OOM/history/prepare/pool checks below |
+| NORM before native queued-track activation | Still rejected | Next slice; current new oracles normalize after the grid |
+| Complete browser renderer and physical performance | Pending | Envelopes/resampling/listening/devices/long sessions not certified |
 
-New Engine `--norm-pending` PASS: 48 changed/no-op worker-delay cases, 20 stop/
-panic/clear/same-rate/new-rate prepare, eight exact paired OOM rollbacks and four
-128-voice-pool cases at 64/128, tracks 0/19 and both directions; zero tracked
-callback new/delete. Test allocator pauses only worker threads, outside callbacks,
-so source deadlines execute while normalization is still in flight. The first
-new prepare assertion incorrectly expected same-rate prepare to clear audio; it
-now protects the established stopped/retained contract and adds a rate-change
-clear case. The first full-pool setup hit the separate 127-phase-event queue;
-batches now drain 5ms event deadlines while preserving all 50ms leases, retaining
-the original 128-slot exhaustion assertion and checking batch admission.
+| Executed checks | Windows Release | Native WSL Linux |
+| --- | --- | --- |
+| Core/probes + Standalone/shared-processor build | PASS | PASS (Release) |
+| 15 selected source/asset CTests | PASS, 309.51s, parallel 2 | PASS, 432.57s, parallel 2 |
+| `--norm-pending`, `--loop-edits`, `--meter-overlap` | PASS | PASS (Release) |
+| `aion_midi_processor_tests` | PASS | PASS (Release) |
+| ASan/UBSan/leak checks: those three core selections | Not run | PASS (Debug), no diagnostic |
 
-Windows Standalone/shared-processor build and tests PASS, including six new real
-GUI/CLI RPC cases (50 early-source cases total). New NORM processor cases use
-controlled offline worker commits; the separate Engine tests cover real-time
-processing while the worker is paused. No pointer/renderer claim or UI binding
-change. Final cross-platform/reference/sanitizer results follow after execution.
+New source modes each cover 60 cases/sequences (mono/stereo, 8/48/96kHz, five
+lengths, both directions), 1,344,236 compared /1,238,012 silent frames. Windows
+max errors: before/after RTRG 1.450341824416057e-7, active retained Apply
+8.03442081753758e-8. Source tests commit the worker result without advancing audio
+samples; they do not measure real-time edit latency. The separate Engine tests
+pause only worker allocations outside processing while audio deadlines advance.
+
+New Engine cases: 48 changed/no-op worker-delay, 20 stop/panic/clear/same/new-rate
+prepare, eight exact paired OOM rollback and four full-pool checks, tracks 0/19
+and 64/128; zero tracked callback new/delete. Preserve all previous regressions.
+The new prepare assertion was corrected to the established same-rate stop/retain
+contract, adding a rate-change clear case. Full-pool setup now drains the separate
+127-event queue between bounded batches while keeping all 128 leases live; the
+exhaustion assertion remains and each batch admission is checked. Existing
+reverse/full-FIFO cancellation checks also pass in the edit suite.
+
+Production RPC adds six NORM cases (50 early-source cases total), including
+preserved Apply deadlines and audible playback, alongside prior external CLI,
+timer/MIDI/state tests; zero tracked processBlock new/delete. New processor NORM
+cases use controlled offline commits. No new pointer/renderer test is claimed;
+those implementations/bindings are unchanged. Logs: `build/norm-production-windows.log`, `norm-loop-edits-windows.log`, `norm-overlap-windows.log`; native WSL
+`build/norm-core-linux.log`, `norm-loop-edits-linux.log`, `norm-overlap-linux.log`,
+`norm-production-linux.log`, `norm-asan.log`. Existing compiler warnings remain
+separate; no full historical or deferred-format validation pass is claimed.
+
+Release Engine.process timing observations at 48kHz stereo, sequential Windows
+then Linux after acceptance jobs stopped. Reused ignored full-pool harness:
+512 playing warm blocks, 64 two-slot chains /128 reservations, forward/reverse,
+natural expiry versus clear; eight cases/platform. Maximum callback among burst,
+NORM admission/commit attempts, full-pool playback and clear/expiry (microseconds):
+
+| Platform | 64 samples /1333.33us budget | 128 samples /2666.67us budget |
+| --- | ---: | ---: |
+| Windows | 126.1 | 299.0 |
+| Linux | 189.896 | 182.096 |
+
+Worker preparation sleeps occur outside timing with sample time frozen; one
+Windows case needed two commit-attempt callbacks. These are callback cost samples,
+not hardware continuity/edit latency, a worst-case bound, OS ranking, 128 audible
+voices, 20-track/long-session or complete JUCE/device callback measurements.
+Ignored local harness/raw output: `build/norm-bench-src`, Windows
+`build/norm-bench-windows.jsonl`, native WSL `build/norm-bench-linux.jsonl`.
+
+Exact commands from each checkout, with installed CMake/CTest (Windows uses VS
+Build Tools). Core cache builds/probes and selectors:
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --norm-pending
+./build/windows-core/Release/aion_core_tests.exe --loop-edits
+./build/windows-core/Release/aion_core_tests.exe --meter-overlap
+ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_(normalization|reverse|history|multiply|merge|start_phase|queued_apply_rtrg_overlap|queued_apply_chain_overlap|queued_apply_chain_prefix|queued_apply_triple_overlap|queued_apply_triple_prefix|apply_norm_before_rtrg|apply_norm_after_rtrg|apply_norm_retained))$'
+cmake --build --preset windows-dev --target aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+```
+
+```sh
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --norm-pending
+./build/linux/aion_core_tests --loop-edits
+./build/linux/aion_core_tests --meter-overlap
+./build/linux/aion_midi_processor_tests
+ctest --test-dir build/linux --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|js_native_(normalization|reverse|history|multiply|merge|start_phase|queued_apply_rtrg_overlap|queued_apply_chain_overlap|queued_apply_chain_prefix|queued_apply_triple_overlap|queued_apply_triple_prefix|apply_norm_before_rtrg|apply_norm_after_rtrg|apply_norm_retained))$'
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+for selection in --norm-pending --loop-edits --meter-overlap; do
+  env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests "$selection" || exit "$?"
+done
+```
+
+Sanitizer flags/cache are unchanged from the earlier checkpoint. Windows snapshot
+was committed before SetupWslWorkspace.sh synced the independent native mirror;
+no Linux source work was overwritten. No package/push. Next: allow NORM on still-
+queued native tracks with explicit queue/graph/state preservation and unchanged-
+JS evidence; do not generalize this playing-source slice to that workflow or
+other buffer replacement operations.
