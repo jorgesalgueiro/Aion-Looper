@@ -1,5 +1,6 @@
 #include "core/LoopMeterLifecycle.h"
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -8,6 +9,8 @@
 extern thread_local bool watch;
 extern std::atomic<int> allocations;
 extern std::atomic<bool> failWorkerAllocation;
+extern std::atomic<bool> holdWorkerAllocation;
+extern std::atomic<unsigned> heldWorkerAllocations;
 namespace {
 void check(bool ok,const char* label){if(!ok){std::cerr<<label<<'\n';std::exit(1);}}
 auto reading(const aion::MeterReading& r){return std::array<double,7>{r.rms,r.peak,r.linearPeak,r.peakDb,r.rmsPercent,r.peakPercent,r.clipped?1.:0.};}
@@ -1026,6 +1029,83 @@ void queuedTripleCapacityTests(){
     check(allocations.load()==0,"Atomic three-slot reservation performs no callback new/delete");
     std::cout<<"PASS: three-slot atomic rejection with 126 occupied slots, two-slot cross-track admission, panic/clear release and recovery at tracks 0/19, 64/128; no callback new/delete\n";
 }
+void normPendingTests(){
+    using namespace aion;
+    const auto waitHeld=[](unsigned count){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(heldWorkerAllocations.load()<count&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
+        check(heldWorkerAllocations.load()>=count,"NORM workers pause outside audio processing");};
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned stage:{0u,1u,2u})for(bool unity:{false,true}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);f.record(id);
+        if(unity){f.command(LoopAction::normalize,id);f.cycle(true);}
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Initial NORM source direction");
+        f.command(LoopAction::sourceRestart,id);f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?0.:1.}),"Pending reversed snapshot direction");
+        const auto first=f.engine->clock()+2400;f.command(LoopAction::applyStart,id);f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Second pending source direction");
+        const auto second=f.engine->clock()+2400;f.command(LoopAction::applyStart,id);f.cycle();
+        if(stage){f.command(LoopAction::retrigger,id);f.cycle();}
+        if(stage==2)while(f.engine->clock()<first+block)f.cycle();
+        const auto serial=f.view->tracks[id].sourceRevision,buffer=f.view->tracks[id].waveformId;
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);
+        f.command(LoopAction::normalize,id);f.cycle();waitHeld(2);
+        check(f.view->tracks[id].state==LoopState::finalizing&&!f.view->rejected,"NORM is accepted without canceling source ownership");
+        // Keep both immutable PCM jobs pending through the original source
+        // deadlines. Pausing a test allocator never blocks the audio callback.
+        while(f.engine->clock()<second+block)f.cycle();
+        check(!f.view->tracks[id].phaseApplyFrame&&f.view->tracks[id].sourceRevision>=serial+(stage==0?2u:stage==1?1u:0u),"Source events execute while NORM remains on the worker");
+        holdWorkerAllocation.store(false);f.cycle(true);
+        check(f.view->tracks[id].state==LoopState::playing&&f.view->tracks[id].waveformId!=buffer&&!f.view->tracks[id].finalizationFailed
+            &&!f.view->tracks[id].undoCount&&!f.view->tracks[id].redoCount,"NORM commit preserves playing state and history without retriggering");
+        if(!stage){f.command(LoopAction::retrigger,id);f.cycle();}
+        for(unsigned n=0;n<48;++n)f.cycle();
+        f.command(LoopAction::clear,id);for(unsigned n=0;n<64;++n)f.cycle();
+        check(f.view->tracks[id].state==LoopState::empty&&!f.view->tracks[id].phaseApplyFrame,"Clear releases scheduled reversed leases after NORM");
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<5;++cancel){
+        Fixture f(block,MeterEventScope::acceptedPlayback);f.record(id);
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,1}),"NORM cancellation pins reversed future PCM");
+        f.command(LoopAction::applyStart,id);f.cycle();f.command(LoopAction::applyStart,id);f.cycle();f.command(LoopAction::retrigger,id);f.cycle();
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::normalize,id);f.cycle();waitHeld(2);
+        if(cancel<3){f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);f.cycle();}
+        holdWorkerAllocation.store(false);
+        if(cancel==3)f.prepare();
+        else if(cancel==4)for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}
+        else f.cycle(true);
+        for(unsigned n=0;n<128;++n)f.cycle();
+        if(f.view->tracks[id].state!=((cancel==2||cancel==4)?LoopState::empty:LoopState::stopped)||f.view->tracks[id].phaseApplyFrame)
+            std::cerr<<"NORM cancellation "<<block<<"/"<<id<<"/"<<cancel<<", state "<<static_cast<unsigned>(f.view->tracks[id].state)<<", phase "<<f.view->tracks[id].phaseApplyFrame<<", rejected "<<f.view->rejected<<'\n';
+        check(f.view->tracks[id].state==((cancel==2||cancel==4)?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].phaseApplyFrame,"Canceled worker NORM cannot resurrect stopped/cleared/prepared sources");
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);f.record(id);
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"OOM future source direction");
+        f.command(LoopAction::applyStart,id);f.cycle();const auto target=f.engine->clock()+2400;f.command(LoopAction::applyStart,id);f.cycle();
+        const auto buffer=f.view->tracks[id].waveformId;
+        check(f.engine->enqueueLoop({LoopAction::normalize,id,++f.request,f.engine->generation(),0,0}),"OOM NORM on observed engine only");
+        failWorkerAllocation.store(true);f.cycle(true);
+        check(!failWorkerAllocation.load()&&f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==buffer
+            &&f.view->tracks[id].phaseApplyFrame==target,"NORM OOM preserves old PCM and all accepted source deadlines");
+        while(f.engine->clock()<target+2048)f.cycle(); // Exact stereo against an engine with no NORM attempt.
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block,MeterEventScope::acceptedPlayback);f.record(id);
+        for(unsigned batch=0;batch<4;++batch){
+            for(unsigned n=0;n<32;++n){f.command(LoopAction::applyStart,id);f.command(LoopAction::retrigger,id);}
+            f.cycle();check(!f.view->rejected,"Full-pool NORM fixture admits each bounded command batch");
+            // Retire the 5ms phase events before the next batch so the 127-event
+            // queue is not the limiting resource. All 50ms leases remain live.
+            for(unsigned n=0;n<240/block+1;++n)f.cycle();
+        }
+        f.command(LoopAction::normalize,id);f.cycle(true);
+        check(!f.view->rejected&&f.view->tracks[id].state==LoopState::playing,"NORM commits with all 128 overlap reservations occupied");
+        f.command(LoopAction::applyStart,id);f.command(LoopAction::retrigger,id);f.cycle();
+        check(f.view->rejected&&f.view->tracks[id].phaseApplyFrame>f.engine->clock(),"NORM cannot discard overlap reservations to admit another RTRG");
+        f.command(LoopAction::clear,id);for(unsigned n=0;n<64;++n)f.cycle();
+        check(f.view->tracks[id].state==LoopState::empty,"Full-pool NORM clear releases all forward PCM leases");
+    }
+    check(allocations.load()==0,"NORM source ownership performs no callback new/delete");
+    std::cout<<"PASS: NORM pending/active Apply/RTRG at tracks 0/19, reverse, 64/128; 48 changed/no-op delayed-worker playback, 20 cancellation/same/new-rate prepare, 8 exact OOM rollback and 4 full-pool cases; no callback new/delete\n";
+}
 void meterOverlapTests(){queuedReplacementSpeedTests(true);queuedOverlapCapacityTests();queuedChainCapacityTests();queuedTripleCapacityTests();}
 void queuedEarlySpeedTests(){
     using namespace aion;
@@ -1344,6 +1424,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
+    normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

@@ -10,8 +10,15 @@
 #include <vector>
 thread_local bool watch=false;
 std::atomic<bool> failWorkerAllocation{false};
+std::atomic<bool> holdWorkerAllocation{false};
+std::atomic<unsigned> heldWorkerAllocations{0};
+const auto testRunnerThread=std::this_thread::get_id();
 std::atomic<int> allocations{0};
-void* operator new(std::size_t n) { if(watch) ++allocations; if(!watch && failWorkerAllocation.exchange(false))throw std::bad_alloc(); if(auto* p=std::malloc(n == 0 ? 1 : n)) return p; throw std::bad_alloc(); }
+void* operator new(std::size_t n) {
+ if(!watch&&holdWorkerAllocation.load()&&std::this_thread::get_id()!=testRunnerThread){
+  heldWorkerAllocations.fetch_add(1);while(holdWorkerAllocation.load())std::this_thread::yield();
+ }
+ if(watch) ++allocations; if(!watch && failWorkerAllocation.exchange(false))throw std::bad_alloc(); if(auto* p=std::malloc(n == 0 ? 1 : n)) return p; throw std::bad_alloc(); }
 void operator delete(void* p) noexcept { if(watch) ++allocations; std::free(p); }
 void* operator new[](std::size_t n) { return ::operator new(n); }
 void operator delete[](void* p) noexcept { ::operator delete(p); }
@@ -35,6 +42,7 @@ void meterStopTests();
 void meterPanicTests();
 void meterQueuedTests();
 void meterOverlapTests();
+void normPendingTests();
 void playbackClockTests();
 void callbackAudibleTimeTests();
 void callbackClockTests();
@@ -79,6 +87,8 @@ int main(int argc,char** argv) {
     if(argc==2&&std::string_view(argv[1])=="--meter-playback"){meterPlaybackTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-stops"){meterStopTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-panic"){meterPanicTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--norm-pending"){normPendingTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--loop-edits"){loopTests();reverseTests();historyTests();multiplyTests();startPhaseTests();mergeTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-overlap"){meterOverlapTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-queued"){meterQueuedTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--callback-clock"){callbackClockTests();return 0;}

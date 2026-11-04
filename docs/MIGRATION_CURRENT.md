@@ -2159,3 +2159,49 @@ local work. No package/push. Next: NORM/live PCM replacement between pending App
 creation and RTRG, including original-buffer ownership and cancellation. Constant-
 buffer acceptance does not establish that case, arbitrary longer chains, tempo
 changes or full browser-rendered envelopes/resampling.
+
+
+## Pending Apply/RTRG with NORM — 4 November 2026 (in progress)
+
+Acceptance before production edits: preserve unchanged source start/stop and
+phase/rate through NORM before RTRG, after RTRG birth, and after an intermediate
+Apply starts. Forward sources share the normalized stored PCM; already-created
+reversed sources retain their independent old copy. New reversed sources take
+the current stored PCM. Compare unchanged JS at 1e-6 PCM /1e-14 metadata, mono/
+stereo, tiny/long clips, 8/48/96kHz; 64/128 cancellation, OOM, restore and bounded
+ownership tests plus shared GUI/CLI production checks. Keep assets/reference
+unchanged. Source comparisons use a controlled worker commit without advancing
+audio samples, not a physical real-time edit-latency claim.
+
+Baseline reproduced: mono/8kHz/17 frames, frame 3541, native
+-0.2611359655857086 versus unchanged-JS sum -0.17801891043622273
+(`build/norm-pending-negative.log`). NORM invalidated all pending phase events.
+Fix preserves deadlines during the worker edit, permits valid phase activation
+while NORM is finalizing, pins one raw-PCM lease per scheduled reversed source
+and transfers/releases it at activation, retention, cancellation or reset.
+Forward retained sources rebind to the normalized immutable result; reversed
+copies stay untouched. Storage/loops remain fixed (127 phase events, 128 voices);
+no callback allocation, deallocation, blocking or full-PCM work was added.
+
+Initial Windows new oracles PASS: each 60 cases /60 sequences, 1,344,236 compared
+frames /1,238,012 silent frames. Before-RTRG and after-RTRG maximum error
+1.450341824416057e-7; active-intermediate case 8.03442081753758e-8. Original
+assets/tolerances unchanged. New source modes operate after native grid activation;
+NORM on a still-queued native track remains a separate unsupported workflow.
+
+New Engine `--norm-pending` PASS: 48 changed/no-op worker-delay cases, 20 stop/
+panic/clear/same-rate/new-rate prepare, eight exact paired OOM rollbacks and four
+128-voice-pool cases at 64/128, tracks 0/19 and both directions; zero tracked
+callback new/delete. Test allocator pauses only worker threads, outside callbacks,
+so source deadlines execute while normalization is still in flight. The first
+new prepare assertion incorrectly expected same-rate prepare to clear audio; it
+now protects the established stopped/retained contract and adds a rate-change
+clear case. The first full-pool setup hit the separate 127-phase-event queue;
+batches now drain 5ms event deadlines while preserving all 50ms leases, retaining
+the original 128-slot exhaustion assertion and checking batch admission.
+
+Windows Standalone/shared-processor build and tests PASS, including six new real
+GUI/CLI RPC cases (50 early-source cases total). New NORM processor cases use
+controlled offline worker commits; the separate Engine tests cover real-time
+processing while the worker is paused. No pointer/renderer claim or UI binding
+change. Final cross-platform/reference/sanitizer results follow after execution.

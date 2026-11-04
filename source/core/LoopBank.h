@@ -137,7 +137,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     void setMeterCallbackClock(const CallbackClockStamp& callback) noexcept {meterCallbackClock=callback;}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
@@ -249,7 +249,10 @@ private:
         std::uint64_t sourceClearEpoch = 0, sourceWaveform = 0;
         double sourceBpm = 0;
     };
-    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false,retrigger=false;double sourceStartSeconds=0,sourceOffset=0;float rate=1;unsigned retainedSlot=128;};
+    // A reversed source snapshots the raw PCM at construction; its event owns
+    // one lease until activation/retention transfer or cancellation. Forward
+    // events use the current stored buffer so NORM remains an in-place edit.
+    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false,retrigger=false;double sourceStartSeconds=0,sourceOffset=0;float rate=1;unsigned retainedSlot=128;Clip* reverseClip=nullptr;};
     static constexpr unsigned phaseCapacity=128;
     std::array<PhaseEvent,phaseCapacity> phaseEvents{};
     unsigned phaseRead=0,phaseWrite=0;
@@ -271,6 +274,7 @@ private:
     void clearRetained(const Track&) noexcept;
     Stereo tickRetained(const Track&) noexcept;
 
+    void invalidatePhase(Track&) noexcept;
     void applyPhaseEvents() noexcept;
     bool schedulePhase(Track&, std::uint32_t, double targetSeconds, bool masterPhase, bool replacePending = false) noexcept;
     float& sample(Track&, std::uint32_t frame, std::uint32_t channel) noexcept;
@@ -287,7 +291,7 @@ private:
     std::thread worker;
     Clip* result = nullptr;
     bool resultChanged = true; // Worker publishes with result through jobState.
-    SpscQueue<Clip*,512> retired; // Current/held/history/job leases plus at most 128 overlap leases.
+    SpscQueue<Clip*,512> retired; // Current/held/history/job leases plus at most 128 overlap /127 scheduled reverse leases.
     std::vector<std::unique_ptr<Clip>> owned; // Worker only, except stopped prepare/destruction.
     std::atomic<unsigned> exportState{0}; // 0 idle/message released; 1 worker; 2 message result.
     Clip* exportClip=nullptr;

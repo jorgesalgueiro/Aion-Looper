@@ -281,7 +281,8 @@ void processorEarlyStartTests(bool& audioWatch){
             check(static_cast<bool>(p->request({request})["ok"]),"Early Start production shared GUI/CLI command");};
         cycle();command("record");for(unsigned n=0;n<8192/block;++n)cycle();command("finish");cycle();
         check(static_cast<int>(rpc(R"({"operation":"snapshot"})")["tracks"][19]["length"])==8192,"Early Start production immutable clip");
-        for(bool beforeGrid:{true,false})for(const auto* action:{"applyStart","quantizeStart","nudgeStart","retrigger","speed"})for(unsigned sequence:{0u,1u,2u,3u,4u,5u}){
+        for(bool beforeGrid:{true,false})for(const auto* action:{"applyStart","quantizeStart","nudgeStart","retrigger","speed"})for(unsigned sequence:{0u,1u,2u,3u,4u,5u,6u,7u,8u}){
+            if(sequence>=6&&beforeGrid)continue; // NORM requires an already playing native source.
             const bool mixed=sequence!=0;
             if(sequence>=2&&std::string_view(action)!="applyStart")continue;
             if(mixed&&std::string_view(action)!="applyStart"&&std::string_view(action)!="retrigger")continue;
@@ -319,9 +320,18 @@ void processorEarlyStartTests(bool& audioWatch){
             auto lastStop=target;
             if(sequence>=3){
                 lastStop=clock()+2400;command("applyStart");cycle();command("speed",2);cycle();
-                if(sequence>=4){
+                if(sequence>=4&&sequence<=5){
                     if(sequence==5)while(clock()+block<lastStop-128)cycle();
                     lastStop=clock()+2400;command("applyStart");cycle();command("speed",1);cycle();
+                }
+            }
+            if(sequence>=6){
+                while(clock()<=grid)cycle();
+                if(sequence==6){
+                    p->setNonRealtime(true);command("normalize");cycle();p->setNonRealtime(false);
+                    state=rpc(R"({"operation":"snapshot"})");
+                    check(static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])==static_cast<juce::int64>(lastStop)
+                        &&!static_cast<bool>(state["rejected"]),"Shared GUI/CLI NORM keeps pending Apply deadlines");
                 }
             }
             if(sequence>=2){
@@ -330,6 +340,13 @@ void processorEarlyStartTests(bool& audioWatch){
                 check(static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])==static_cast<juce::int64>(retriggerTarget)&&!static_cast<bool>(state["rejected"]),"Shared GUI/CLI RTRG overtakes Apply at its own exact deadline");
                 command("speed",.25);cycle();state=rpc(R"({"operation":"snapshot"})");
                 check(static_cast<double>(state["tracks"][19]["playbackRate"])==.25&&!static_cast<bool>(state["rejected"]),"Overtaking source retains its captured rate independently of current GUI/CLI metadata");
+            }
+            if(sequence>=7){
+                const auto normalizeAt=sequence==8?target+block:clock()+240+block;
+                while(clock()<normalizeAt)cycle();
+                p->setNonRealtime(true);command("normalize");cycle();p->setNonRealtime(false);
+                state=rpc(R"({"operation":"snapshot"})");
+                check(state["tracks"][19]["state"].toString()=="playing"&&!static_cast<bool>(state["rejected"]),"Shared GUI/CLI NORM preserves active and retained replacement sources");
             }
             bool audible=false;while(clock()<std::max(grid,lastStop)+2048){cycle();
                 if(clock()<=grid)check(audio.getMagnitude(0,static_cast<int>(block))==0,"Production early replacement respects the original graph volume start");
@@ -341,7 +358,7 @@ void processorEarlyStartTests(bool& audioWatch){
                 &&static_cast<juce::int64>(state["tracks"][19]["phaseApplyFrame"])==0&&static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"])==0&&!static_cast<bool>(state["rejected"]),"Production replacement plays without old-grid resurrection, rejected action or clip mutation");
         }
     }
-    std::cout<<"PASS: actual production GUI/CLI RPC Apply/Q/nudge/RTRG plus single/two/three-Apply-to-RTRG early/prefix overlap and early/scheduled-source speed before/after original source grid, real callback ownership, 5/50ms deadlines, audible replacement and retained clip at 64/128\n";
+    std::cout<<"PASS: actual production GUI/CLI RPC Apply/Q/nudge/RTRG plus single/two/three-Apply-to-RTRG early/prefix overlap, pending/active NORM and early/scheduled-source speed before/after original source grid, real callback ownership, 5/50ms deadlines, audible replacement and retained clip at 64/128\n";
 }
 void processorBufferReceiptTests(bool& audioWatch){
     for(unsigned block:{64u,128u}){
