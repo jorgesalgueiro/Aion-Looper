@@ -176,6 +176,10 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   }
   counts[sequence]=(counts[sequence]??0)+1;cases++;
  }
- if(!onlySequence)assert(overlapSamples>0,'Corpus includes audible independently stopped overlap');assert(distinctBufferSamples>0);
+ if(!onlySequence){
+  if(controls)assert.equal(overlapSamples,0,'Sequential MULT/Apply control sources stop at the next source birth without overlap');
+  else assert(overlapSamples>0,'Corpus includes audible independently stopped overlap');
+ }
+ assert(distinctBufferSamples>0);
  console.log(JSON.stringify({result:'PASS',mode:probe?'native_source_comparison':'reference_only',cases,sourceCount,observations,predictedFrames:samples,preGridSilentFrames:silent,overlapSamples,distinctBufferSamples,counts,maximumAbsoluteError:probe?maximum:null,tolerance:probe?1e-6:null,scope:controls?'Unchanged no-input MULT followed by Reverse/Start metadata, Apply and speed before/at the 5ms source deadline; captured buffers/direction/offset/rate and grid; source model only, delayed worker and tempo excluded':'Unchanged no-input MULT/startMultiply/multiplyInstant, source buffers/lengths/5ms stops, original grid, rapid doubles, pending Applies, Undo/NORM and cleanup; source model, browser rendering and worker latency excluded'}));
 })().catch(error=>{console.error(error);process.exitCode=1;});
