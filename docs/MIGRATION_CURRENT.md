@@ -9,30 +9,113 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Active slice — no-input MULT after source construction, in verification
+## Latest verified slice — no-input Multiply after source construction, 5 November 2026
 
-Continuing `3a52a52`. Scope: no-input doubling on a constructed source before the
-original volume grid, plus the same 5ms replacement when rapid doubles cross the
-grid into playing. The original input-capture branch remains a separate follow-up.
-Acceptance: source owns old PCM/length/rate and existing stops until replacement;
-new doubled storage/history does not move the original gate; replacement begins
-at completion audio-now +5ms; rapid/Apply/Undo/NORM preserve independent sources.
-Reserve bounded event/overlap leases before installing storage/history, retain old
-PCM on OOM/capacity failure, and prove cancellation/cleanup/prepare at 64/128.
-Existing GUI/keyboard/CLI action IDs and state schema remain stable.
+Implementation `8ad8761`, portable warning fix `5c97414`, continuing `3a52a52`.
+When native input is unavailable, original MULT/keyboard and running-Standalone
+CLI `loop multiply TRACK` now double a constructed queued source without moving
+its original audible grid. Stored audio/history changes on worker completion;
+existing sources retain their own buffers, lengths/rates and independent stops.
+A replacement begins at completion audio-now +5ms. Playing no-input doubling
+uses that same original timing, correcting an immediate-restart defect exposed
+when rapid doubles crossed the grid. Stopped/pre-birth doubling is unchanged.
+Queued input capture and pending-stop queued MULT remain separate guarded scope.
+No public IDs, parameters/schema, capacity, pinned dependencies, preserved UI/
+reference assets or ASCII logo changed. C++ remains the sole audio/state owner.
 
-Unchanged-method reference-only corpus: 384 cases. Baseline native rejects queued
-MULT after birth; the first 96 native double cases pass. Expanded rapid near-grid
-comparison exposed the existing playing path's immediate restart (0 instead of
-5ms); playing no-input doubling now uses the same reserved source replacement.
-All 160 focused native lifecycle cases and the full Windows production processor
-suite pass. The corrected full source corpus, actual UI, Windows/Linux final
-regressions and sanitizer acceptance remain pending. Linux initially stopped on
--Werror=misleading-indentation; splitting the guarded statement from subsequent
-assignments fixes the diagnostic without changing behavior. Full corrected
-384-case source comparison and actual Windows 64/128 pointers now PASS. No reference/preserved assets, logo, dependency or capacity changes.
+The existing worker prepares PCM. Completion reserves all phase/overlap capacity
+before installing storage/history, pins old forward sources and retains reversed
+snapshots with existing logical buffer versions. Reservation/OOM failure keeps old
+PCM/history and sets `finalizationFailed`; successful command admission alone is
+not proof of completed editing. Stop/clear/cleanup/prepare retire source/event
+leases through the worker. Diff review found no new callback allocation/free,
+locks, I/O or unbounded work; existing retirement-overflow retention until prepare
+is unchanged. The 160-case allocation guard tracks callback new/delete at zero.
 
-## Latest verified slice — queued Multiply before source construction, 5 November 2026
+| Acceptance | Executed evidence / limit |
+| --- | --- |
+| Unchanged no-input source behavior | **384 native/reference cases on each OS**: mono/stereo, 8/48/96kHz, lengths 1/17/512/4097, forward/reverse, early/1ms-before-grid; double/cleanup, rapid doubles, two pending Applies, double/Undo/NORM |
+| Source PCM / exact deadlines | 1,152 sources; 7,296 observations; 9,450,016 source-sum frames, including 8,226,208 silent pre-grid frames, 107,008 audible overlap samples and 1,107,056 distinct-buffer samples. Max absolute error **8.277312368853984e-8** on both OS, unchanged **1e-6** tolerance; exact 5ms replacement checks |
+| Native ownership/lifecycle | **160 cases per OS**, tracks 0/19, reverse, 64/128: rapid/history/NORM/Apply, delayed worker across grid with old-source playback, stop/panic/clear/cleanup/same/new-rate prepare before/after commit, OOM, full pool/event/overlap rollback, input/varispeed guards; exact paired stereo and tracked zero callback new/delete |
+| Existing regressions | Both OS full `--loop-edits` and `--meter-queued` PASS; all prior queued history/NORM/capacity/FIFO/cancellation coverage retained |
+| Production GUI/CLI | Windows/Linux Standalone and full processor suites PASS, including eight new no-input shared-RPC forward/reverse early/near-grid MULT/Undo/Redo cases at 64/128, 5ms metadata, doubled/restored length/depth, silence/audibility, existing actual external Python CLI routing and MIDI/state/timer checks. New source timing uses shared RPC, not a separate external-process CLI source oracle |
+| Actual original controls | Four Windows WebView2 synthetic-PCM cases: trusted no-input MULT/UNDO/REDO pointers, exact history/length, original pre-grid silence and later audible PCM, reverse, 64/128. Owned test host switches input bus only on message thread after audio pause acknowledgement, then restores it; no product RPC/parameter/hardware changes. 176 frontend eligibility states and retained shortcut/repeat cases PASS |
+| Integration comparisons | Windows **16/16 CTests PASS**, 212.25s, plus separately executed native 384 corpus; Linux **17/17 PASS**, 676.41s, including native 384 corpus (342.69s). Parallel 2 and concurrent verification workloads; these times are not comparative runtime/build benchmarks |
+| Sanitizers | Native WSL Debug ASan/UBSan/leaks: 160 new +108 pre-birth MULT +124 after-birth history +64 before-birth history +96 pre-birth NORM =**552 enumerated cases**, plus `--loop-edits`, all PASS without diagnostics |
+| Remaining validation | Browser renderer/envelopes/resampling, worker/command latency, control/tempo interleavings during delayed work or pending replacement, listening, physical audio/MIDI devices, Linux WebKit interaction and long sessions/full-capacity performance remain open. Deferred wrappers/DAWs/Apple not built/tested; no release readiness claim |
+
+Baseline rejection and the initial rapid near-grid deadline failure are retained
+in `build/postbirth-multiply-negative-windows.log` and
+`build/postbirth-multiply-rapid-deadline-negative-windows.log`. The first narrower
+96-case pass did not establish rapid behavior: expanding the corpus exposed the
+playing path's deadline zero versus required 5ms (3545 in the reproduced 8kHz
+case). Correcting that path makes the full 384 pass. No cases/tolerances removed
+or loosened. Linux initially failed `-Werror=misleading-indentation`; splitting
+the guarded statement from following assignments fixes it without behavior or
+warning-policy changes. Windows targets rebuilt successfully with that portable
+fix; unchanged passing runtime/UI suites were not repeated for a line break.
+
+After verification jobs stopped, the same ignored warmed harness ran Windows then
+Linux: 48kHz stereo, one 512-frame loop doubled while stopped, 512 warm callbacks,
+explicit queued source birth, no-input MULT admission, worker settlement outside
+measurement, Undo/Redo/Undo, playback through original grid and clear. Only
+Engine.process is timed; no forced worker delay in this harness.
+
+| Platform | Maximum measured MULT admission callback | Maximum any measured callback, 64 /128 samples |
+| --- | ---: | ---: |
+| Windows Release | 97.5us | 133.3us /222.2us |
+| Native WSL Linux Release | 42.376us | 100.252us /118.046us |
+
+Block deadlines: 1333.33us /2666.67us. These observations do not establish
+worst-case/full-capacity/long-session continuity, edit/command/worker latency,
+physical round-trip latency or OS rankings. Raw harness/results:
+`build/postbirth-multiply-bench-src`, `build/postbirth-multiply-bench-{windows,linux}.jsonl`.
+Binaries: `build/postbirth-multiply-bench-windows/Release/queued_bench.exe` and
+`build/postbirth-multiply-bench-linux/queued_bench`.
+
+Reproduce with existing caches (VS CMake/CTest resolution retained below):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe aion_meter_graph_probe --parallel 2
+foreach ($selection in '--postbirth-multiply','--loop-edits','--meter-queued') { & ./build/windows-core/Release/aion_core_tests.exe $selection; if ($LASTEXITCODE) { throw $selection } }
+node tests/QueuedMultiplySources.cjs --native ./build/windows-core/Release/aion_start_probe.exe
+$postbirthGate = '^(original_ui_bytes|native_frontend_commands|original_queued_multiply_sources|js_native_(queued_multiply|queued_history|multiply|history|normalization|queued_prebirth_norm|queued_prebirth_late_norm|queued_source_norm|queued_source_norm_phase|sync|reverse|meter_graph|start_phase))$'
+ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R $postbirthGate
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_midi_processor_tests aion_mouse_host --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -PostbirthMultiplyOnly
+```
+
+```sh
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_meter_graph_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+for selection in --postbirth-multiply --loop-edits --meter-queued; do ./build/linux/aion_core_tests "$selection" || exit; done
+./build/linux/aion_midi_processor_tests
+postbirth_gate='^(original_ui_bytes|native_frontend_commands|original_queued_multiply_sources|js_native_(queued_multiply_sources|queued_multiply|queued_history|multiply|history|normalization|queued_prebirth_norm|queued_prebirth_late_norm|queued_source_norm|queued_source_norm_phase|sync|reverse|meter_graph|start_phase))$'
+ctest --test-dir build/linux --parallel 2 --no-tests=error --output-on-failure -R "$postbirth_gate"
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+for selection in --postbirth-multiply --prebirth-multiply --postbirth-history --queued-history --prebirth-norm --loop-edits; do env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests "$selection" || exit; done
+```
+
+Final evidence: `build/postbirth-multiply-core-windows.log`, Linux
+`build/postbirth-multiply---postbirth-multiply-linux.log`; per-OS
+`build/postbirth-multiply---{loop-edits,meter-queued}-{windows,linux}.log`,
+`build/postbirth-multiply-production-{windows,linux}.log`,
+`build/postbirth-multiply-ctest-{windows,linux}.log`, preserved raw CTest
+`build/postbirth-multiply-regression-results-{windows,linux}.log`.
+Windows direct corpus `build/postbirth-multiply-source-windows.log`, UI
+`build/postbirth-multiply-ui-windows.log`, final build
+`build/postbirth-multiply-portable-build-windows.log`;
+Linux `build/postbirth-multiply-asan-linux.log` and initial compile failures
+`build/postbirth-multiply-{initial-werror,asan-initial-werror}-linux.log`.
+No package or push; Windows remains publishing owner, WSL receives guarded snapshots.
+
+Next: characterize control/tempo ordering (Reverse, Start, speed) during delayed
+no-input worker completion and the pending 5ms replacement before claiming those
+interleavings. Then port input-present MULT on a constructed but grid-gated source,
+including <128-frame discard, append/history, original gate/restart and cancellation.
+Keep that capture guard until its own end-to-end acceptance passes.
+
+## Previous verified slice — queued Multiply before source construction, 5 November 2026
 
 Implementation `f226c56`, continuing `9c4717b`. Original MULT/keyboard and running
 Standalone CLI `loop multiply TRACK` now double a queued loop before its source
@@ -126,7 +209,7 @@ Windows `build/queued-multiply-ui-final-windows.log`; Linux
 `build/queued-multiply-asan-linux.log`. No package or push; Windows remains
 publishing owner and WSL receives guarded committed snapshots.
 
-Next smallest slice: characterize **MULT after source construction but before the
+Historical next step (no-input branch completed above; input capture remains pending): characterize **MULT after source construction but before the
 original audible grid**. Original Loop is then playing and may capture input;
 compare its source/buffer/stop/record/history behavior before changing the native
 queued guard. Keep capture, varispeed and fallback boundaries explicit; do not

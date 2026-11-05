@@ -951,3 +951,60 @@ sanitizer cases plus edits all PASS. Commands, raw logs and scoped callback
 measurements are in MIGRATION_CURRENT.md. Do not infer full browser/driver parity
 from the reference-only sibling or this source model. Retain original renderer/listening, hardware, Linux WebKit and long-session
 limits until separately executed.
+
+## No-input Multiply after source construction — 5 November 2026
+
+Unchanged Loop.multiply / LoopManager.startMultiply / multiplyInstant establish
+the next branch: after Loop.play constructs a healthy graph, state is playing
+even if its original volume grid is future. startMultiply applies the original
+varispeed guard, then calls multiplyInstant if getRecordingNode returns null.
+The doubled buffer creates one local Undo entry and clears Redo. Healthy restart
+replaces the source at audio-now +5ms; it retains analyser/volume identity and
+the original volume gate. Old sources keep captured buffers, lengths/rates and
+prior independent stop deadlines, including multiple pending 50ms Applies.
+
+`tests/QueuedMultiplySources.cjs` runs those unchanged methods with the existing
+manual recording conditioning and AudioGraph. Four groups (double/cleanup, rapid
+doubles, two pending Applies, double/Undo/NORM) span mono/stereo, 8/48/96kHz,
+lengths 1/17/512/4097, forward/reverse and early/1ms-before-grid edits: 384 cases,
+1,152 sources, 7,296 observations and 9,450,016 predicted source-sum frames,
+including 8,226,208 pre-grid silent frames, 107,008 audible overlap samples and
+1,107,056 distinct-buffer samples. Default reference-only mode reports no native
+error/tolerance; `--native PROBE` checks PCM at unchanged 1e-6 and exact 5ms sample
+deadlines. The model excludes browser rendering/envelopes/resampling, asynchronous
+worker/command latency, physical timing/listening and control/tempo interleavings
+during a delayed worker or pending replacement. Those remain separate validation.
+
+Baseline `3a52a52` rejects constructed queued MULT. The first scoped implementation
+passed 96 basic native cases; expanded rapid near-grid doubling then crossed into
+the old playing path and exposed immediate restart (deadline zero, expected 3545
+in the reproduced 8kHz case). Preserved negatives:
+`build/postbirth-multiply-negative-windows.log` and
+`build/postbirth-multiply-rapid-deadline-negative-windows.log`. No case or tolerance
+was removed. Playing no-input doubling now uses the same reserved 5ms source
+replacement, while stopped and before-birth doubling retain their prior behavior.
+
+Implementation `8ad8761` (portable warning fix `5c97414`) holds constructed-source
+lifetimes through worker completion and across the original grid. It reserves
+phase/overlap capacity before swapping PCM/history, freezes forward source buffer
+identities, and uses existing reversed snapshots and logical versions. OOM or
+reservation failure retires the worker result and preserves old PCM/history;
+`finalizationFailed` identifies asynchronous failure after command admission.
+Stop/clear/cleanup/prepare retire pending/current leases through the existing
+worker ownership path. No callback allocation/free/locks/I/O, public IDs/state
+schema, dependencies, reference/preserved assets or logo changes.
+
+The existing MULT/keyboard and running-app CLI share the native action; the
+processor derives no-input fallback from real input availability. The owned
+Windows mouse host switches its test bus to zero channels only on the message
+thread after an audio pause acknowledgement, then restores it. This adds no
+product parameter/RPC or hardware access. Queued MULT with input capture and
+pending scheduled stops remain guarded; capture is a separate follow-up.
+Executed final acceptance: 384 native source cases on each OS, maximum error
+8.277312368853984e-8 at unchanged 1e-6; 160 new native lifecycle cases per OS,
+full affected queue/edit/production suites, Windows 16 selected CTests plus the
+direct 384 corpus, Linux 17 CTests including that corpus, four actual Windows
+64/128 pointer cases and 552 enumerated Linux sanitizer cases plus edits all
+PASS. Exact commands/logs, scoped callback measurements and remaining limits are
+in MIGRATION_CURRENT.md. Do not infer release or full renderer/control-interleaving
+parity from this source model.

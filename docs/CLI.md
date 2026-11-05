@@ -135,8 +135,8 @@ PLAY receipt and grid; `loop undo TRACK` / `loop redo TRACK` use that same histo
 The native worker builds PCM outside audio processing. A graph callback arriving
 during doubling waits in one bounded audio-owner slot until completion, retaining
 its original identity. STOP/STOP ALL, DEL, cleanup or prepare still cancel playback.
-Allocation/capacity failure retains old PCM/history. Queued MULT after source
-construction or with a pending scheduled stop remains unavailable in this slice.
+Allocation/capacity failure retains old PCM/history. After source construction, no-input fallback is described below. Queued input
+capture and pending scheduled stops remain unavailable.
 
 ## Constructed-source Multiply without input
 
