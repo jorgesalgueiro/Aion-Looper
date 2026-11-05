@@ -9,6 +9,61 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
+## Active slice — queued history after source creation: reference acceptance, 5 November 2026
+
+Continuing native baseline `dc54833`. This step establishes the after-source
+acceptance corpus; it does **not** enable or complete native after-birth history.
+Application/DSP/UI/CLI code, IDs and state remain unchanged. Keep this feature
+under repair; do not advance to another feature or package it as accepted.
+
+New `tests/QueuedHistorySources.cjs` loads unchanged Loop.undo/redo/restart,
+AudioGraph and buffer DSP. Default output is explicitly `reference_only` and the
+CTest is `original_queued_history_sources`. The optional `--native PROBE` mode is
+the future native source-PCM/deadline gate, intentionally not registered as a
+passing native CTest while unsupported.
+
+Reference corpus PASS on Windows: 768 cases, 2,112 constructed sources and 14,112
+asserted PCM/identity/length/timing/cleanup observations. Mono/stereo, 8/48/96kHz,
+lengths 1/17/512/4097, forward/reverse, 80ms/1ms-before-grid edits; 96 cases each
+for Undo, rapid Undo/Redo/Undo, pending Apply, two pending Applies, pending RTRG,
+NORM before/after Undo and teardown. The 18,900,032 finite predicted source frames
+include 16,452,416 pre-grid silent frames and 214,016 post-grid overlap frames;
+these are an analytical source model, **not** measured browser/native audio.
+
+Two native negatives reproduce without changing application code:
+
+- A future source exists but native state remains queued: first Undo is rejected.
+- With two pending Applies and the edit straddling the original grid, Undo is
+  accepted by the existing playing-state path, but its replacement deadline is
+  zero instead of expected sample 3545 at 8kHz. Current immediate history restart
+  invalidates pending phase events; admission-only changes cannot solve this.
+
+Windows verification: three selected CTests PASS (50.18s, parallel 2), including
+preserved UI bytes, the new original-source corpus and prior before-birth JS/native
+comparison. Existing 64-case `--queued-history` native ownership suite PASS. The
+new final finite-prediction checks pass directly too. Linux verification follows
+from this committed snapshot. No new sanitizer/UI/hardware/DAW claims are made;
+production processing/interaction code did not change.
+
+Reproduce (existing Windows VS CMake/CTest resolution retained below):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_start_probe --parallel 2
+ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|original_queued_history_sources|js_native_queued_history)$'
+./build/windows-core/Release/aion_core_tests.exe --queued-history
+node tests/QueuedHistorySources.cjs
+# Expected FAIL on the unchanged native baseline, not a native acceptance pass:
+node tests/QueuedHistorySources.cjs --native build/windows-core/Release/aion_start_probe.exe
+node tests/QueuedHistorySources.cjs --native build/windows-core/Release/aion_start_probe.exe --only-sequence apply-chain --near-grid
+```
+
+See [REFERENCE_AUDIT.md](REFERENCE_AUDIT.md#queued-history-after-source-creation--5-november-2026)
+for source semantics and implementation constraints. Next: bounded per-source PCM/
+length ownership and atomic 5ms history scheduling, then repair the native gates
+without weakening the prior accepted queue/NORM/overlap/OOM/cancellation checks.
+Do not remove the current queued-history UI guard until this native acceptance
+and actual interaction paths pass. Preserved resources/reference files stay unchanged.
+
 ## Latest verified slice — queued Undo/Redo before source creation, 5 November 2026
 
 Implementation `28e4b1a` plus final unchanged-retrigger-guard correction `7f7a0c2`,

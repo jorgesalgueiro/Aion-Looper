@@ -831,3 +831,59 @@ This follows the explicit RT/non-RT queue separation inspected in
 No external code was copied. Original graph timing, source PCM, UI assets and
 tolerances remain unchanged. Full graph creation/stop/overlap/renderer acceptance
 is still required before visible meters or a package.
+
+
+## Queued history after source creation — 5 November 2026
+
+The current slice's source of truth is unchanged Loop.undo/redo (loopTracks.js
+1878/1899), Loop.restart (2150), AudioGraph.retrigger (654) and graph build (730).
+Line numbers describe the preserved checkout, not a replacement implementation.
+`tests/QueuedHistorySources.cjs` executes these methods; it preserves the original
+five-entry history and buffer cloning, conditional restart and buffer DSP.
+
+Observed contract:
+
+- The original queued callback calls Loop.play(grid), setting JS state to playing
+  as soon as the future source is constructed. Native queued state still describes
+  its audio gate; it cannot alone choose the original history behavior.
+- Undo/Redo swaps stored PCM/length/history, then calls healthy graph restart.
+  The new source starts at max(requested time, audio-now + 5ms), with the restored
+  buffer, its own loop length, current direction and effective rate/Start offset.
+- Only the graph's latest source receives the new stop. Older sources retain
+  their previously scheduled starts/stops and independently owned buffer lengths.
+  Two future Applies followed by Undo can leave old sources audible after the
+  original grid while Undo overtakes the newest Apply. A latest-buffer-only
+  source model loses this PCM or interprets phase with the wrong length.
+- The same post-effect volume node retains its original grid start. Replacement
+  may run silently before grid; neither source restart nor storage swap moves it.
+- Forward sources share the particular buffer from their construction. History
+  changes the stored buffer identity; it does not rebind an existing source to
+  another buffer. NORM mutates only the current stored object and forward sources
+  sharing that object. Reverse sources retain separate reversed copies.
+- Healthy history restart retains analyser/volume identity. Graph teardown stops
+  and disconnects both current and retired sources; no future source may revive.
+
+The reference-only corpus asserts source PCM and node lifetime fields, then
+predicts a finite source-sum timeline with linear interpolation and a grid gate.
+It excludes renderer resampling/baseGain/volume envelope shapes, browser timer
+punctuality, actual device sound and hardware latency. No PCM error/tolerance is
+reported in reference-only mode. `--native PROBE` instead compares the timeline
+and exact 5ms sample deadlines against aion_start_probe at unchanged 1e-6 PCM
+tolerance. That mode currently fails; do not advertise its reference-only sibling
+as native feature parity. `--only-sequence NAME` and `--near-grid` narrow diagnosis
+without altering the full registered reference corpus.
+
+Implementation constraints established by this oracle (not an approved broad
+rewrite): separate source PCM/length from current stored PCM while preserving
+existing IDs and bounded queues. Current Track.clip determines forward playback
+length, and forward PhaseEvents generally read latest storage; both assumptions
+must be addressed before enabling after-birth history. Preserve old forward PCM
+leases through pending source stops, reversed snapshots, per-node rates and the
+original volume gate. NORM must replace only forward leases sharing its edited
+buffer identity, including retained/pending sources; unrelated history snapshots
+remain unchanged. Reserve source/event capacity before swapping history and
+publish changes atomically; failures must retain storage, history and accepted
+sources. Cancel/stop/clear/prepare must release all source/event leases through
+the existing worker ownership rules, without callback allocation/deallocation.
+Retain full FIFO/pool/OOM/cancellation safety evidence, Windows/Linux 64/128 and
+actual GUI/shared CLI interaction gates before declaring the native slice done.
