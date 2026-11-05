@@ -1008,3 +1008,29 @@ direct 384 corpus, Linux 17 CTests including that corpus, four actual Windows
 PASS. Exact commands/logs, scoped callback measurements and remaining limits are
 in MIGRATION_CURRENT.md. Do not infer release or full renderer/control-interleaving
 parity from this source model.
+
+
+## Controls on the pending no-input Multiply source — 5 November 2026
+
+`QueuedMultiplySources.cjs --controls` extends the unchanged-source oracle with
+Reverse/Start metadata, a subsequent Apply and Speed writes before/at the 5ms
+replacement deadline. Each node keeps its own buffer, direction, initial offset
+and AudioParam timeline. The model integrates timestamped setValueAtTime events;
+same-time later writes win, while a write before a future initial-rate event does
+not erase that event. The original 384-case corpus is retained and rechecked.
+
+The new 384 cases cover mono/stereo, 8/48/96kHz, lengths 1/17/512/4097, both
+directions and early/near-grid actions. New sequential sources assert zero overlap;
+the old Apply-chain corpus still asserts positive overlap. This corrects a
+fixture coverage assumption, not audio behavior or a tolerance. The Engine suite
+adds 32 exact paired-stereo control cases at tracks 0/19 and 64/128, retaining
+all 160 prior lifecycle/cancellation/OOM cases. Commands after worker commit may
+change metadata without rewriting already constructed sources; a later Apply
+captures the new settings. No production engine or frontend changes were needed.
+
+Final per-platform results, commands, retained initial fixture failures and
+sanitizer evidence are in MIGRATION_CURRENT.md. This covers **post-commit**
+controls only. Actions received during worker copying, tempo changes, browser
+envelopes/resampling, real command latency, listening/devices, Linux WebKit and
+long sessions remain unverified. Existing GUI/CLI routes are unchanged; no new
+physical-device, UI or release acceptance is inferred from this source model.

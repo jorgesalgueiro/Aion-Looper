@@ -9,7 +9,87 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Latest verified slice — no-input Multiply after source construction, 5 November 2026
+## Latest verified slice — controls after Multiply source construction, 5 November 2026
+
+Test snapshot `8af29d7`, coverage-assertion correction `c9861d9`, continuing
+`2bc723f`. This is regression coverage of the existing implementation, not a new
+DSP/UI feature. The slice covers the interval **after worker commit**, when the
+replacement source has already been constructed but its 5ms start is pending.
+Observable acceptance: Reverse/Start metadata cannot rewrite captured source PCM,
+direction or offset; Speed targets the newest source's AudioParam timeline;
+a later Apply captures the new metadata/control. Original grid silence, source
+stop deadlines, history and paired Engine stereo must remain intact.
+
+`QueuedMultiplySources.cjs --controls` adds 384 unchanged-JS/native cases: four
+96-case groups (metadata, metadata/Speed/Apply, Speed before start and Speed at
+its rounded native deadline), mono/stereo, 8/48/96kHz, lengths 1/17/512/4097,
+forward/reverse and early/1ms-before-grid. It executes the original setters,
+Loop.multiply/restart and AudioGraph methods. The source model now integrates
+per-node setValueAtTime events in timestamp order, including same-time writes;
+it does not emulate browser resampling, envelopes or tempo smoothing. The old
+384-case corpus remains intact and is rerun because that model changed.
+
+The Engine suite adds 32 cases (tracks 0/19, reverse, early/near grid, 64/128,
+metadata with/without Speed). Only the observed engine receives the late controls;
+its entire stereo output must equal the control engine through and beyond the
+original grid. Together with the existing 160 cases, `--postbirth-multiply` runs
+192 cases and retains delayed-worker, cancellation, OOM and capacity coverage.
+No engine, frontend, bridge, command IDs, state schema, pinned dependencies,
+preserved assets or logo changed. Existing GUI/CLI access and prior real-pointer
+checks are retained; no new UI, driver, DAW or physical-device pass is claimed.
+
+| Verification | Executed evidence |
+| --- | --- |
+| New source-control corpus | Windows/Linux **384 PASS each**, max absolute error **5.8649130496579716e-8** on both, unchanged **1e-6** tolerance |
+| Existing source corpus after model update | Windows/Linux 384 PASS each; unchanged maximum **8.277312368853984e-8**, same 1e-6 tolerance and all original overlap/history/NORM cases |
+| Engine control/ownership | Windows/Linux Release **192 cases each PASS**, including 32 new control cases, exact paired stereo and zero tracked callback new/delete |
+| Sanitizers | Native WSL Debug **192 cases PASS** under ASan/UBSan/leak detection, no diagnostics |
+| Assets/reference fixtures | Original asset bytes and both 384-case reference-only groups PASS on both OS; initial aggregate-coverage failures and corrected reruns retained |
+
+Reproduce with the existing caches (VS CMake/CTest resolution retained below):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --postbirth-multiply
+node tests/QueuedMultiplySources.cjs --controls --native ./build/windows-core/Release/aion_start_probe.exe
+ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|original_multiply_source_controls|original_queued_multiply_sources|js_native_queued_multiply_sources)$'
+```
+
+```sh
+cmake --build build/linux --target aion_core_tests aion_start_probe --parallel 2
+./build/linux/aion_core_tests --postbirth-multiply
+node tests/QueuedMultiplySources.cjs --controls --native ./build/linux/aion_start_probe
+ctest --test-dir build/linux --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|original_multiply_source_controls|original_queued_multiply_sources|js_native_queued_multiply_sources)$'
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --postbirth-multiply
+```
+
+The new native comparison is also registered as `js_native_multiply_source_controls`.
+Per-OS logs: `build/multiply-controls-{build,core,source,ctest,fixture-rerun,regression-results}-{windows,linux}.log`;
+Windows initial direct failure `build/multiply-controls-initial-windows.log`;
+Linux `build/multiply-controls-{asan,asan-build}-linux.log`.
+Windows initial CTest had 3 passes/1 fixture failure, Linux 3 passes/2 fixture
+failures (reference and native aggregate). Corrected reference-only reruns pass;
+final native results above are separate full direct runs, not inferred from the
+initial comparisons. Passing unchanged old corpus/assets were not rerun again.
+Concurrent verification timings are not runtime or build-performance benchmarks.
+No production/Standalone rebuild or UI rerun is needed for these test-only edits;
+prior evidence remains scoped to the previous implementation checkpoint.
+
+The initial new corpus incorrectly inherited the old Apply-chain assertion that
+some sources must overlap. Sequential MULT/Apply sources instead stop exactly at
+the next source birth. The corrected control group asserts **zero** overlap; the
+old corpus still requires nonzero overlap. No case, audio assertion or tolerance
+was removed/loosened. Initial failures are retained separately from passing reruns.
+
+Next: characterize Reverse/Start/speed and tempo changes **while the worker is
+still copying**, including completion ordering and controls received across the
+original grid. Tempo updates during a pending replacement also remain unverified.
+Then port input-present MULT on constructed grid-gated sources; keep that guard.
+Listening, Linux WebKit, devices, renderer/latency and long sessions remain open.
+No package, push or release claim.
+
+## Previous implementation slice — no-input Multiply after source construction, 5 November 2026
 
 Implementation `8ad8761`, portable warning fix `5c97414`, continuing `3a52a52`.
 When native input is unavailable, original MULT/keyboard and running-Standalone
