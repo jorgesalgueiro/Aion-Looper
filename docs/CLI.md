@@ -120,7 +120,8 @@ its independent source callback has not run. They restore stored audio and
 history depth without changing the original start grid or callback deadline.
 The callback uses the restored buffer, including its new length and current
 direction. After source construction (and while playing), history schedules a
-replacement source 5ms later. Existing sources retain their buffers/lengths and
+replacement source 5ms after audio-owner admission (not after typing the CLI
+command; mailbox dispatch has its own cadence). Existing sources retain their buffers/lengths and
 prior stops; the original grid still gates audible output. Global
 `loop undoGlobal` / `loop redoGlobal` share the same implementation. Stopped
 history does not start playback. Pending-stop queued history remains unavailable.

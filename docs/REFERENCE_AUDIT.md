@@ -835,7 +835,7 @@ is still required before visible meters or a package.
 
 ## Queued history after source creation — 5 November 2026
 
-The current slice's source of truth is unchanged Loop.undo/redo (loopTracks.js
+This slice's source of truth is unchanged Loop.undo/redo (loopTracks.js
 1878/1899), Loop.restart (2150), AudioGraph.retrigger (654) and graph build (730).
 Line numbers describe the preserved checkout, not a replacement implementation.
 `tests/QueuedHistorySources.cjs` executes these methods; it preserves the original
@@ -869,15 +869,18 @@ It excludes renderer resampling/baseGain/volume envelope shapes, browser timer
 punctuality, actual device sound and hardware latency. No PCM error/tolerance is
 reported in reference-only mode. `--native PROBE` instead compares the timeline
 and exact 5ms sample deadlines against aion_start_probe at unchanged 1e-6 PCM
-tolerance. That mode currently fails; do not advertise its reference-only sibling
-as native feature parity. `--only-sequence NAME` and `--near-grid` narrow diagnosis
+tolerance. At baseline `dc54833` that mode failed: queued Undo was rejected,
+and a near-grid Apply chain reached the playing-state path but restarted without
+the required 5ms deadline. Implementation `e1e0f5c` repairs source ownership and
+scheduling; final acceptance is recorded in MIGRATION_CURRENT.md. A passing
+reference-only sibling by itself is never native feature parity. `--only-sequence NAME` and `--near-grid` narrow diagnosis
 without altering the full registered reference corpus.
 
-Implementation constraints established by this oracle (not an approved broad
-rewrite): separate source PCM/length from current stored PCM while preserving
-existing IDs and bounded queues. Current Track.clip determines forward playback
-length, and forward PhaseEvents generally read latest storage; both assumptions
-must be addressed before enabling after-birth history. Preserve old forward PCM
+Implementation constraints established by this oracle: separate source PCM/
+length from current stored PCM while preserving existing IDs and bounded queues.
+The old Track.clip determined forward playback length, and forward PhaseEvents
+read latest storage. Implementation now retains forward sources/events across
+history changes and renders their actual source length. Preserve old forward PCM
 leases through pending source stops, reversed snapshots, per-node rates and the
 original volume gate. NORM must replace only forward leases sharing its edited
 buffer identity, including retained/pending sources; unrelated history snapshots
@@ -887,3 +890,21 @@ sources. Cancel/stop/clear/prepare must release all source/event leases through
 the existing worker ownership rules, without callback allocation/deallocation.
 Retain full FIFO/pool/OOM/cancellation safety evidence, Windows/Linux 64/128 and
 actual GUI/shared CLI interaction gates before declaring the native slice done.
+
+Logical buffer versions are necessary even when immutable native history shares
+physical PCM: original Undo/Redo clone buffers. A restored buffer can have the
+same native Clip pointer as an older source but is a different logical object.
+`storageVersion` / source versions prevent NORM from modifying that older source.
+The pointer-only implementation passed the initial 768 cases, then failed the
+added rapid Undo/Redo/Undo/NORM near-grid case by 0.1747151. The repaired corpus
+contains 960 cases, adding both rapid-history/NORM and Redo/NORM groups; the
+complete native corpus passes on Windows and Linux with maximum absolute error
+8.313785782032568e-8 within the unchanged 1e-6 tolerance. No case or
+tolerance was removed. These runtime tags are private, reset with prepare, and
+are not parameter/action IDs, waveform IDs or persistence schema fields.
+
+Final executed acceptance: 28 selected CTests per OS, 124 post-birth native cases,
+retained 64 pre-birth cases/full affected edits and queue regressions, production
+GUI/CLI RPC and actual Windows 64/128 pointers, plus focused Linux ASan/UBSan/leak
+checks. Exact commands, counts, raw log locations, measured callback scope and
+outstanding renderer/device/long-session limits are in MIGRATION_CURRENT.md.
