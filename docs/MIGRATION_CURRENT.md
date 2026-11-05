@@ -9,29 +9,119 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Active slice — NORM before queued graph creation, 5 November 2026
+## Latest verified slice — pre-birth queued NORM, 5 November 2026
 
-Baseline a19064c is clean and verified for constructed sources; continue it.
-The unchanged reference NORM never starts/cancels queued play. New baseline oracle
-first rejects NORM (`build/prebirth-norm-negative.log`). Acceptance: preserve the
-original queue/clock receipt through successful PCM installation and in-flight
-callback outcomes; NORM alone creates no source, including beyond the grid.
-Keep old analyser/history/cleanup, no-op/OOM/cancel/prepare, 64/128 and shared
-GUI/CLI access. No new parameters, schema, assets or dependencies.
+Implementation `30db3bd`, continuing verified baseline `a19064c`. NORM now works
+before and after queued graph creation through the existing shared GUI/CLI
+`loop normalize TRACK` command. It preserves the play receipt, original callback
+deadline and grid; successful PCM installation alone never creates a source.
 
-Implementation separates immutable play-buffer receipt from current PCM identity.
-Only a successful ordered NORM buffer fact explicitly continues that queue;
-generic/boolean buffer notices cannot inherit this authority. Existing async
-commit semantics remain: a source built while NORM is pending captures committed
-PCM at birth; reversed snapshots stay independent, forwards update on commit.
-Do not claim synchronous JS action-time/render latency equivalence for this case.
-Windows focused evidence so far: 120 early/late unchanged-JS cases at 1e-6,
-96 Engine ordering/OOM/cancel/overflow/old-cleanup cases with no callback new/delete,
-actual shared production GUI/CLI commands and eight trusted WebView cases at
-64/128 pass. Broader Windows/Linux regression/sanitizer acceptance is pending.
-No complete-slice claim, package or push yet.
+The audio owner keeps an immutable queued PLAY buffer ID separately from the
+current PCM waveform ID. A successful NORM `bufferInstalled` fact explicitly
+continues that pending queue via its queue ID. The message owner retains the
+original clock/receipt and pending transaction; normal buffer changes and bare
+booleans cannot inherit that authority. Callback requests/results continue using
+the original receipt, while waveform/export/stop operations use current PCM IDs.
+No event/action IDs, persistence schema, capacities, dependencies, original UI/
+reference assets or logo changed. Added storage is a fixed 20-entry uint64 array
+and a message-owned flag; all NORM buffer processing/allocation stays on the worker.
 
-## Latest verified slice — constructed queued-source NORM, 5 November 2026
+| Acceptance | Evidence / remaining limit |
+| --- | --- |
+| Original committed NORM before early/late graph creation | 120 unchanged-JS cases, both directions, mono/stereo, 8/48/96kHz, lengths 1/17/512/4097/20003 |
+| Queue/source/clock ownership | 96 new Engine cases at tracks 0/19, 64/128; exact original deadline, no graph from NORM or grid expiry |
+| Existing queued/playing NORM and source lifecycle | Full selected core queue suite and 18 reference/frontend/asset checks on each OS |
+| Shared GUI/CLI and actual interaction | Production processor/external CLI suites on both OS; eight trusted Windows WebView cases before/after graph birth at 64/128 |
+| Memory/RT ownership | Linux ASan/UBSan/leak checks for three NORM selections; zero tracked callback new/delete in scoped core/processor tests |
+| Full browser sound/device/release acceptance | Pending: renderer envelopes/resampling, Linux WebKit interaction, listening, hardware and long sessions |
+
+Existing asynchronous commit semantics remain. A source constructed while the
+worker is pending captures the PCM committed at birth. A forward source receives
+later normalized storage; a reversed source retains its independent snapshot.
+Reference gates commit NORM before source creation without advancing sample time.
+Delayed-worker tests protect source/grid/ownership behavior; synchronous JS
+button-to-sound latency equivalence is not established.
+
+The new baseline oracle first rejected NORM (`build/prebirth-norm-negative.log`).
+Early/late modes compare 1,243,592 /1,313,512 frames, with respective maximum errors
+8.283281738297177e-8 /7.022869774608864e-8 on both OS, unchanged 1e-6 tolerance.
+The late mode also retains tempo, speed, sync-off and Start metadata changes.
+Native 96-case coverage: 32 commit/request/worker/late-callback orderings, 40
+stop/panic/clear/same/new-rate prepare cases, eight exact OOM rollback cases,
+four FIFO saturation/retry/stale-timer cases, four bare-boolean authority guards,
+and eight old-analyser/data/cleanup/fresh-callback cases. All preserve history.
+The former four pre-birth rejection assertions are retained as stronger acceptance,
+original-grid, graphless-state and silence assertions; no case/tolerance was removed.
+
+| Executed checks | Windows | Native WSL Linux |
+| --- | --- | --- |
+| Standalone, current start/reference/meter-graph probes and processor builds | PASS | PASS |
+| 18 selected CTests | PASS, 259.79s, parallel 2 | PASS, 385.95s, parallel 2 |
+| Full `--meter-queued` Release suite | PASS | PASS |
+| Production GUI/CLI processor/timer/state suite | PASS | PASS |
+| Focused NORM ASan/UBSan/leaks | Not run | PASS: `--prebirth-norm --queued-norm --norm-pending` |
+| Actual focused WebView pointer test | PASS, 64/128 | Not run |
+
+The broad sanitizer `--meter-queued` run was stopped unfinished during unchanged
+speed/overlap matrices; no full-suite sanitizer pass is claimed. The focused
+selections retain the new 96, existing 108 queued and 80 playing NORM cases,
+including cancellation, no-op, OOM and retained-source exhaustion safety checks.
+No implementation failure was bypassed or regression deleted. Historical
+unchanged acceptance remains in the previous checkpoints; wrappers were not built.
+
+Callback-cost observations after acceptance jobs stopped: same ignored harness
+on Windows then Linux, 48kHz stereo, one 512-frame loop, forward/reverse, 512 warm
+playing callbacks. Timed Engine.process for NORM admission/commit, subsequent
+birth using the original receipt, queued-to-playing playback and clear:
+
+| Platform | 64 samples /1333.33us deadline | 128 samples /2666.67us deadline |
+| --- | ---: | ---: |
+| Maximum observed Windows callback | 117.3us | 230.4us |
+| Maximum observed Linux callback | 113.758us | 115.458us |
+
+Worker sleeps/preparation are outside timing with sample time frozen; all four
+cases/platform installed the result in one commit-attempt callback. These are
+scoped callback-cost samples, not edit/round-trip latency, worst-case continuity,
+full-capacity/long-session performance or OS rankings. Local ignored harness/raw
+output: `build/prebirth-norm-bench-src`, `build/prebirth-norm-bench-{windows,linux}.jsonl`.
+
+Reproduce from existing caches (installed CMake/CTest; VS tools on Windows):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe aion_meter_graph_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --meter-queued
+ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|native_frontend_commands|original_meter_source_lifecycle|js_native_(meter_graph|normalization|reverse|start_phase|queued_(late_phase|stop_phase|early_edits|apply_chain_overlap|source_norm|source_norm_phase|prebirth_norm|prebirth_late_norm)|apply_norm_.*))$'
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_midi_processor_tests aion_mouse_host --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -QueuedNormOnly
+```
+
+```sh
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_meter_graph_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --meter-queued
+./build/linux/aion_midi_processor_tests
+ctest --test-dir build/linux --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|native_frontend_commands|original_meter_source_lifecycle|js_native_(meter_graph|normalization|reverse|start_phase|queued_(late_phase|stop_phase|early_edits|apply_chain_overlap|source_norm|source_norm_phase|prebirth_norm|prebirth_late_norm)|apply_norm_.*))$'
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+for selection in --prebirth-norm --queued-norm --norm-pending; do
+  env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests "$selection" || exit "$?"
+done
+```
+
+Windows executable discovery is unchanged: see the VS `vswhere` CMake/CTest
+resolution immediately below. Fresh probes were built before each reference run.
+Logs: Windows `build/prebirth-norm-{core,queued-windows,production-windows,ctest-windows,ui-windows}.log`;
+native WSL `build/prebirth-norm-{queued-linux,production-linux,ctest-linux,asan-focused}.log`.
+Both copies retain `build/prebirth-norm-source-results-{windows,linux}.log` with
+raw reference output. Exact source and commands above reuse the existing caches;
+there was no dependency upgrade, package or push.
+
+Next: queued Undo/Redo before graph creation. The unchanged Loop.undo/redo methods
+replace stored buffers and leave queued play pending, while native restore still
+requires playing/stopped. Establish its length/history/source expectations before
+adding native eligibility; do not automatically apply NORM's continuation policy
+to unrelated buffer replacement. After-graph history edits are a separate slice.
+
+## Previous verified slice — constructed queued-source NORM, 5 November 2026
 
 Implementation: `c79025b`; strengthened fixtures: `43ce195`.
 NORM now accepts a queued loop after its independent graph callback has

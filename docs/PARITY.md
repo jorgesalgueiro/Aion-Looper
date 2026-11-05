@@ -1,7 +1,7 @@
 # Migration status
 
-Active delivery: Windows Standalone/VST3 and Linux Standalone/LV2. CLAP is
-opt-in/deferred; historical CLAP results remain valid within their recorded scope.
+Active delivery: Windows and Linux Standalone. VST3 (REAPER), LV2 (Ardour) and
+CLAP are opt-in/deferred; historical format results retain their recorded scope.
 See [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) for focused iteration and
 feature-completion/release gates. No status below implies unavailable hardware
 or Apple acceptance.
@@ -25,7 +25,7 @@ or Apple acceptance.
 | Internal static/dynamic sync and main gestures | Sample-clock arm/cancel, fixed capture, dynamic bar/second-tap finish, queued play/stop, visual count-in, original grid controls; unified mouse/keyboard | Native WebView2 input, reference timing/PCM and 64/128 gates; loop-source/DAW/MIDI clock and physical latency pending |
 | Loop pan/varispeed | Native reference pan law, manual 0.25x-2x and reference sync-ratio rates with smoothing; original synchronized Speed thresholds and focused thumb snapping; half/reset | Antialiasing, browser-rendered audio and live/hardware tempo changes |
 | Loop reverse | Original Rvers toggle; requested direction latches on play/retrigger; independent reversed source retained across NORM | Reference source PCM and state tests; hardware/browser rendering remain separate |
-| Loop normalization | Immutable worker NORM with shared stereo peak; playing Apply/RTRG deadlines, shared forward PCM and reversed snapshots preserved | Source/threshold, delayed-worker, OOM/cancel/pool and GUI/CLI tests; still-queued NORM, hardware/listening, full browser playback and long-session stress pending |
+| Loop normalization | Immutable worker NORM with shared stereo peak; playing/queued Apply/RTRG and original play receipts survive before/after graph creation; forward PCM updates and reversed snapshots preserved | Committed source/threshold, 96 new pre-birth ordering/cancel/OOM/overflow/cleanup cases, existing ownership gates, Windows/Linux references and GUI/CLI checks; async action latency, renderer, hardware/listening and long-session acceptance remain open |
 | Loop Undo/Redo | Per-loop five-snapshot history, global order and original controls/shortcuts; immutable handle swaps | Long-session/memory/hardware stress; restoration temporarily disabled on a track being captured/finalized |
 | Loop Multiply | Original MULT/shortcut captures and appends >=128 frames, or doubles stopped/no-input loops; immutable local history and bounded growth | JS committed PCM/state, worker lifecycle and 64/128 checks; full browser/driver/sync acceptance pending |
 | Loop names | Original name fields, C++ message-thread session labels on all 20 tracks; Unicode, Enter-to-blur, editor reload and acknowledged deletion | Temporary session metadata; project persistence/export remains unported; 4096 UTF-8 byte IPC limit |
