@@ -1058,7 +1058,9 @@ void queuedNormTests(){
         const auto pending=f.view->tracks[id].phaseApplyFrame,serial=f.view->tracks[id].sourceRevision;
         heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::normalize,id);f.cycle();waitHeld();
         check(!f.view->rejected&&f.view->tracks[id].state==LoopState::finalizing&&f.view->tracks[id].phaseApplyFrame==(pending&&pending<f.engine->clock()?0:pending),"Queued NORM preserves accepted phase deadlines while worker runs");
-        while(f.engine->clock()<grid+block)f.cycle();
+        while(f.engine->clock()<grid+block){f.cycle();
+            if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Worker-delayed queued NORM remains silent before the original grid");
+        }
         check(!f.view->tracks[id].scheduledFrame&&!f.view->tracks[id].phaseApplyFrame&&f.view->tracks[id].sourceRevision>serial,"Original source or pending replacement starts without waiting for NORM");
         holdWorkerAllocation.store(false);f.cycle(true);
         check(f.view->tracks[id].state==LoopState::playing&&f.view->tracks[id].waveformId!=buffer&&!f.view->tracks[id].finalizationFailed

@@ -38,7 +38,8 @@ foreach ($block in $Blocks) {
             & node (Join-Path $repo 'tests/MidiWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "MIDI workflow failed at $block samples." }
         }
-        Write-Output "PASS: production processor/editor mouse workflow at $block samples."
+        if ($QueuedNormOnly) { Write-Output "PASS: focused queued-NORM processor/editor mouse workflow at $block samples." }
+        else { Write-Output "PASS: production processor/editor mouse workflow at $block samples." }
     } finally {
         $env:AION_MOUSE_TEST_RUN = $savedTestRun
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $savedArguments

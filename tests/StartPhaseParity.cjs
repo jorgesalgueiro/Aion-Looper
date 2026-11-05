@@ -72,7 +72,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  const queuedCleanupOnly=process.argv[3]==='--queued-cleanup';
  const queuedLateOnly=process.argv[3]==='--queued-late'||queuedCleanupOnly;
  let cases=0,samples=0,maximum=0,nudges=0,tinyWraps=0,retriggers=0,queuedStarts=0,queuedSilentFrames=0;
- for(const mono of [true,false])for(const sampleRate of [8000,48000,96000])for(const length of (queuedMixedTieOnly?[17,512]:[1,17,512,4097,20003]))for(const normDirection of (normOverlapOnly?[false,true]:[null])){
+ for(const mono of [true,false])for(const sampleRate of [8000,48000,96000])for(const length of (queuedMixedTieOnly?[17,512]:[1,17,512,4097,20003]))for(const normDirection of ((normOverlapOnly||queuedNormOnly)?[false,true]:[null])){
   audio.currentTime=0;vm.runInContext('state.syncEnabled=false;state.bpm=120;',context);
   const raw=[Array.from({length},(_,i)=>Math.fround(0.12+0.4*Math.sin(i*0.11))),Array.from({length},(_,i)=>Math.fround(-0.08+0.2*Math.cos(i*0.073)))];
   const buffer=makeBuffer(mono?[raw[0]]:raw,sampleRate);context.condition(buffer);
@@ -100,7 +100,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
    phase=(phase+actualRate)%length;frame++;
   }};
   if(queuedStopOnly||queuedLateOnly||queuedEarlyOnly||queuedRestartOnly||queuedSpeedOnly||queuedNormOnly){
-   for(const reverse of (normOverlapOnly?[normDirection]:[false,true]))for(const beforeGrid of (normOverlapOnly?[queuedNormPhase]:queuedMixedTieOnly?[true]:((queuedRestartOnly||queuedSpeedOnly)?[true,false]:[true])))for(const speed of (queuedSpeedOnly?[.25,.5,2]:[1]))for(const chainGap of [queuedChainPrefixOnly?.047:.002]){
+   for(const reverse of ((normOverlapOnly||queuedNormOnly)?[normDirection]:[false,true]))for(const beforeGrid of (normOverlapOnly?[queuedNormPhase]:queuedMixedTieOnly?[true]:((queuedRestartOnly||queuedSpeedOnly)?[true,false]:[true])))for(const speed of (queuedSpeedOnly?[.25,.5,2]:[1]))for(const chainGap of [queuedChainPrefixOnly?.047:.002]){
     context.stopped();commands.push('stop 0 0');
     // Reapplying an unchanged tempo preserves origin; the production clock
     // does not accumulate rounding from a redundant tempo conversion.
