@@ -1270,6 +1270,22 @@ void postbirthMultiplyTests(){
         while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
         check(heldWorkerAllocations.load()>=2,"Post-birth MULT pauses workers outside callback");};
     unsigned cases=0;
+    // A completed MULT has constructed its 5ms replacement already. Later
+    // metadata belongs to the next source, and a speed write before the future
+    // initial-rate event must not retarget either the old or replacement voice.
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool near:{false,true})for(bool speed:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse);const auto grid=f.view->tracks[id].scheduledFrame;
+        if(near)while(f.engine->clock()+block<grid-48)f.cycle();
+        const auto target=f.engine->clock()+240;f.command(LoopAction::multiply,id);f.cycle(true);
+        check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id))&&f.engine->clock()<target,"Control fixture leaves pending 5ms MULT source");
+        const auto send=[&](LoopAction action,double value){check(f.engine->enqueueLoop({action,id,++f.request,f.engine->generation(),0,value}),"Queue observed post-MULT control");};
+        send(LoopAction::reverse,reverse?0.:1.);send(LoopAction::startDelay,.731);if(speed)send(LoopAction::speed,.5);
+        f.cycle();check(!f.view->rejected&&f.view->tracks[id].reverse!=reverse&&f.view->tracks[id].startDelay==.731
+            &&f.view->tracks[id].playbackRate==(speed?.5:1.),"Pending MULT accepts independent metadata/control without changing captured source");
+        bool heard=false;while(f.engine->clock()<grid+2048){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Post-MULT controls preserve original silence gate");else heard=heard||f.view->outputPeak>0;}
+        check(heard,"Post-MULT captured source remains audible and exactly matches unchanged control engine");
+        f.command(LoopAction::clear,id);f.cycle();++cases;
+    }
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool near:{false,true})for(unsigned sequence=0;sequence<4;++sequence){
         Fixture f(block);auto owner=setup(f,id,reverse);const auto grid=f.view->tracks[id].scheduledFrame;const auto identity=owner->inspect();
         if(near)while(f.engine->clock()+block<grid-48)f.cycle();
@@ -1330,7 +1346,7 @@ void postbirthMultiplyTests(){
         f.command(LoopAction::multiply,id);f.cycle();check(f.view->rejected&&f.view->tracks[id].length==512&&!f.view->tracks[id].undoCount,"Original varispeed guard applies after source construction");++cases;
     }
     check(allocations.load()==0,"Post-birth MULT has no callback new/delete");
-    std::cout<<"PASS: post-birth no-input Multiply "<<cases<<" 5ms/source-length/history/rapid/Apply/NORM cases, original grid, delayed worker across grid, cancel/cleanup/prepare/OOM/full pool/event/overlap and input/varispeed guards; tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";
+    std::cout<<"PASS: post-birth no-input Multiply "<<cases<<" 5ms/source-length/history/rapid/Apply/NORM and pending-source metadata/speed cases, original grid, delayed worker across grid, cancel/cleanup/prepare/OOM/full pool/event/overlap and input/varispeed guards; tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";
 }
 
 void prebirthMultiplyTests(){
