@@ -908,3 +908,46 @@ retained 64 pre-birth cases/full affected edits and queue regressions, productio
 GUI/CLI RPC and actual Windows 64/128 pointers, plus focused Linux ASan/UBSan/leak
 checks. Exact commands, counts, raw log locations, measured callback scope and
 outstanding renderer/device/long-session limits are in MIGRATION_CURRENT.md.
+
+## Queued Multiply before source creation — 5 November 2026
+
+Source of truth: unchanged Loop.multiply (loopTracks.js:1982) delegates to
+multiplyInstant (1997) while queued. It clones the old buffer into local Undo,
+clears Redo, allocates a double-length buffer with two exact channel copies, then
+changes stored PCM/duration/waveform. It does not create or restart a graph while
+queued; the original subsequent Loop.play callback reads that new buffer and
+current direction/effective rate at its original grid. The existing local/global
+history bookkeeping is retained; MULT does not create a new global Undo entry.
+
+`tests/QueuedMultiplyParity.cjs` executes these unchanged methods, including
+manual capture conditioning, Undo/Redo, Loop.play and AudioGraph. Its 192 cases
+cover mono/stereo, 8/48/96kHz, lengths 1/17/512/4097, forward/reverse, early/late
+source birth, single/repeated doubling and intervening history. It asserts exact
+reference channel copies and queued state/history, then compares native source
+PCM and lengths at unchanged 1e-6 tolerance. Reference-only mode explicitly
+reports no native PCM error or comparison count. It is a source/interpolation
+model, excluding browser envelopes/resampling, timer punctuality, worker/command
+latency and physical device sound. Baseline `9c4717b` rejects queued MULT; the
+negative is saved in `build/queued-multiply-negative-windows.log`.
+
+Implementation `f226c56` retains asynchronous worker doubling and the immutable
+PLAY receipt. One fixed-size audio-owner slot holds an in-flight conditional graph
+request until the worker outcome; it does not block the audio thread or the
+command FIFO. Completion publishes PCM continuation before a revalidated graph
+result. Duplicate pending identities are idempotent; mismatched receipts do not
+overwrite the slot. Stop/cancel/clear, cleanup retirement, generation loss and
+prepare cannot grant an old callback new authority. OOM retains the old PCM and
+history; capacity rejection happens before mutation. Source construction after
+OOM can still use the original receipt against retained PCM. No public commands,
+parameters, persisted fields or asset bytes change; original MULT/keyboard and
+running-app CLI use the same existing native action. After-birth queued MULT
+and pending-stop queued MULT remain a separate unported scope.
+
+Executed final acceptance: Windows/Linux 192 native source cases each
+(8,484,512 channel samples, maximum error 4.4128859011394184e-8), 108 native
+lifecycle cases each, full affected queue/edit/production suites, 16 selected
+CTests each, four actual Windows 64/128 pointer cases and 392 enumerated Linux
+sanitizer cases plus edits all PASS. Commands, raw logs and scoped callback
+measurements are in MIGRATION_CURRENT.md. Do not infer full browser/driver parity
+from the reference-only sibling or this source model. Retain original renderer/listening, hardware, Linux WebKit and long-session
+limits until separately executed.
