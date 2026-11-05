@@ -1144,9 +1144,10 @@ void queuedHistoryTests(){
         restore(false);restore(true);restore(false);
         if(late){while(f.engine->clock()<grid+block){f.cycle();check(f.view->outputPeak==0,"Past-grid history remains silent before callback");}restore(true);}
         birth(f,*owner,id,expected);
-        if(!late){const auto before=f.view->tracks[id];f.command(global?LoopAction::redoGlobal:LoopAction::redo,id);f.cycle();MeterGraphEvent unexpected;
-            check(f.view->rejected&&f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].redoCount==before.redoCount
-                &&!f.engine->popMeterGraphEvent(unexpected),"After-birth queued history remains explicitly outside this slice");}
+        if(!late){const auto target=f.engine->clock()+240;f.command(global?LoopAction::redoGlobal:LoopAction::redo,id);f.cycle();
+            check(!f.view->rejected&&owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id))
+                &&f.view->tracks[id].redoCount==0&&f.view->tracks[id].undoCount==1&&f.view->tracks[id].phaseApplyFrame==target
+                &&f.view->outputPeak==0,"After-birth queued history preserves the case with accepted 5ms replacement, restored depth and grid silence");}
         bool audible=false;while(f.engine->clock()<grid+2048){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Restored source respects original grid silence");
             if(f.engine->clock()>grid+512)audible=audible||f.view->outputPeak>0;}
         check(f.view->tracks[id].state==LoopState::playing&&audible,"Original queued receipt starts restored source");
@@ -1192,7 +1193,60 @@ void queuedHistoryTests(){
         check(owner->consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"History delayed buffer notice cannot obsolete its accepted source");++cases;
     }
     check(allocations.load()==0,"Queued history has no callback new/delete");
-    std::cout<<"PASS: queued Undo/Redo "<<cases<<" local/global early/late, length/depth, original receipt/grid, full-width validation, source-boundary rejection and stop/panic/clear/prepare cases; tracks 0/19, reverse, 64/128, exact paired stereo and no callback new/delete\n";
+    std::cout<<"PASS: queued Undo/Redo "<<cases<<" local/global early/late, length/depth, original receipt/grid, full-width validation, accepted source-boundary replacement and stop/panic/clear/prepare cases; tracks 0/19, reverse, 64/128, exact paired stereo and no callback new/delete\n";
+}
+
+
+void postbirthHistoryTests(){
+    using namespace aion;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        auto owner=std::make_unique<LoopMeterLifecycle>(*f.engine,id);f.record(id);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Post-birth history seed");
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        f.command(LoopAction::multiply,id);f.cycle(true);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Post-birth history doubled seed");
+        for(auto* e:{f.engine.get(),f.control.get()}){e->configureSync({SyncMode::fixed,137.3,1,4,4,false});
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Post-birth direction");}
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);check(owner->consumeQueuedPlay(q)&&owner->requestQueuedGraph(q.queueId,q.bufferId),"Post-birth explicit graph request");
+        const auto request=owner->queuedWindowTransaction();LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};
+        mirror.meterGraphTicket=request.ticket;mirror.meterQueueId=request.queueId;mirror.meterBufferId=request.bufferId;check(f.control->enqueueLoop(mirror),"Post-birth paired graph");
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);check(owner->consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"Post-birth owns constructed source");return owner;
+    };
+    unsigned cases=0;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool nearGrid:{false,true})for(unsigned sequence=0;sequence<6;++sequence){
+        Fixture f(block);auto owner=setup(f,id,reverse);const auto grid=f.view->tracks[id].scheduledFrame;const auto identity=owner->inspect();
+        if(nearGrid)while(f.engine->clock()+block<grid-48)f.cycle();
+        if(sequence==2){f.command(LoopAction::applyStart,id);f.cycle();f.command(LoopAction::applyStart,id);f.cycle();}
+        const auto target=f.engine->clock()+240;f.command(LoopAction::undo,id);f.cycle();
+        check(!f.view->rejected&&f.view->tracks[id].length==512&&f.view->tracks[id].undoCount==0&&f.view->tracks[id].redoCount==1
+            &&f.view->tracks[id].phaseApplyFrame==target&&owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"History swaps storage and admits exact 5ms source without resetting graph");
+        if(sequence==1||sequence==4||sequence==5){f.command(LoopAction::redo,id);f.cycle();check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Rapid post-birth redo");
+            if(sequence!=5){f.command(LoopAction::undo,id);f.cycle();check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Rapid post-birth undo");}}
+        if(sequence==3||sequence==4||sequence==5){f.command(LoopAction::normalize,id);f.cycle(true);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"NORM redirects matching forward buffers only");}
+        bool audible=false;while(f.engine->clock()<grid+4096){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"History replacements retain original pre-grid silence");
+            if(f.engine->clock()>grid+512)audible=audible||f.view->outputPeak>0;}
+        check(audible&&owner->inspect().analyser==identity.analyser&&owner->inspect().data==identity.data,"History source and overlap remain audible without replacing analyser/data");
+        f.command(LoopAction::clear,id);f.cycle();check(owner->consumeClear(f.next(MeterGraphEventKind::cleared,id)),"Post-birth clear");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<5;++cancel){
+        Fixture f(block);auto owner=setup(f,id,true);f.command(LoopAction::undo,id);f.cycle();check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"History before pending-source cancellation");
+        if(cancel>=3){if(cancel==3)f.prepare();else for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}}
+        else {f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);f.cycle();}
+        for(unsigned n=0;n<128;++n)f.cycle();
+        check(f.view->tracks[id].state==((cancel==2||cancel==4)?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].phaseApplyFrame,"Canceled history replacement never resurrects a source");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool overlaps:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,false);
+        if(overlaps){for(unsigned batch=0;batch<4;++batch){for(unsigned n=0;n<32;++n){f.command(LoopAction::applyStart,id);f.command(LoopAction::retrigger,id);}f.cycle();for(unsigned n=0;n<240/block+1;++n)f.cycle();}
+            f.command(LoopAction::applyStart,id);f.cycle();}
+        else for(unsigned n=0;n<127;++n)f.command(LoopAction::retrigger,id);
+        const auto before=f.view->tracks[id];f.command(LoopAction::undo,id);f.cycle();MeterGraphEvent event;
+        check(f.view->rejected&&f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].undoCount==before.undoCount
+            &&f.view->tracks[id].redoCount==before.redoCount&&!f.engine->popMeterGraphEvent(event),"Full event/overlap reservations reject history atomically before swapping PCM/depth");
+        f.command(LoopAction::clear,id);for(unsigned n=0;n<128;++n)f.cycle();check(f.view->tracks[id].state==LoopState::empty,"Full reservation clear releases source leases");++cases;
+    }
+    check(allocations.load()==0,"Post-birth history and source leases have no callback new/delete");
+    std::cout<<"PASS: post-birth history "<<cases<<" 5ms/length/rapid/Apply/versioned NORM, grid silence, analyser/data, stop/clear/prepare and full event/overlap atomic rejection cases at tracks 0/19, reverse, 64/128; exact paired stereo and no callback new/delete\n";
 }
 
 void prebirthNormTests(){
@@ -1705,7 +1759,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();prebirthNormTests();queuedNormTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();prebirthNormTests();queuedNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

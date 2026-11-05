@@ -144,7 +144,10 @@ void loopTests(){
  for(int i=0;i<4;++i){const auto out=bank.tick({});const float multiplier=static_cast<float>(3-i)/4;check(std::abs(out.left-last.left*multiplier)<1e-6f,"stop release envelope regression");}
  // Worker completion time is asynchronous. Compare deterministic playback after both
  // stopped clips have committed, then apply commands at the same relative samples.
- Engine engine64,engine128;
+ // Keep the four full Engine fixtures off the Windows test thread stack.
+ // Their construction remains outside tracked audio processing; assertions are unchanged.
+ auto engine64Storage=std::make_unique<Engine>(),engine128Storage=std::make_unique<Engine>();
+ auto& engine64=*engine64Storage;auto& engine128=*engine128Storage;
  const auto ready=[&](Engine& engine,bool normalize=false){
   engine.prepare(8000,8192);engine.setMonitoring(false);engine.setAutoPlay(false);
   const auto generation=engine.generation();check(engine.enqueueLoop({A::record,0,1,generation,0,0}),"engine record queue");check(engine.enqueueLoop({A::finish,0,2,generation,256,0}),"engine finish queue");
@@ -177,7 +180,8 @@ void loopTests(){
  watch=false;
  check(left64==left128&&right64==right128,"committed PCM/sample commands and rate/pan ramps invariant at 64/128");
  check(left64[31]==0&&left64[32]!=0,"play command exact sample boundary");
- Engine normalized64,normalized128;ready(normalized64,true);ready(normalized128,true);
+ auto normalized64Storage=std::make_unique<Engine>(),normalized128Storage=std::make_unique<Engine>();
+ auto& normalized64=*normalized64Storage;auto& normalized128=*normalized128Storage;ready(normalized64,true);ready(normalized128,true);
  std::fill(left64.begin(),left64.end(),0);std::fill(right64.begin(),right64.end(),0);std::fill(left128.begin(),left128.end(),0);std::fill(right128.begin(),right128.end(),0);
  watch=true;
  for(unsigned offset=0;offset<2048;offset+=64){float* channels[]={left64.data()+offset,right64.data()+offset};normalized64.process(channels,2,64);}

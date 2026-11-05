@@ -62,7 +62,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  const nativeIndex=process.argv.indexOf('--native'),probe=nativeIndex<0?null:process.argv[nativeIndex+1];
  if(nativeIndex>=0)assert(probe,'--native requires the current aion_start_probe path');
  const sequenceIndex=process.argv.indexOf('--only-sequence'),onlySequence=sequenceIndex<0?null:process.argv[sequenceIndex+1];
- const sequences=['undo','rapid','apply','apply-chain','rtrg','norm-before','norm-after','cleanup'];
+ const sequences=['undo','rapid','apply','apply-chain','rtrg','norm-before','norm-after','cleanup','rapid-norm','redo-norm'];
  if(sequenceIndex>=0)assert(sequences.includes(onlySequence),'Unknown --only-sequence');
  let cases=0,sourceCount=0,samples=0,silent=0,observations=0,overlapSamples=0,distinctBufferSamples=0,maximum=0;
  const counts={};
@@ -130,13 +130,13 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   if(sequence==='rtrg'){await context.rtrg();const rtrg=remember();if(probe)commands.push('rtrg 0 0');assert.equal(rtrg.started.time,audio.currentTime+.005);render(frame+Math.ceil(rate*.002));}
   const replacement=undoAt();
   if(apply){assert(replacement.started.time<apply.started.time,'Undo overtakes the newest 50ms Apply');assert.equal(initial.stoppedAt,firstApply.started.time,'Undo retains the initial source older independent Apply stop');observations+=2;}
-  if(sequence==='rapid'){
+  if(sequence==='rapid'||sequence==='rapid-norm'||sequence==='redo-norm'){
    render(frame+Math.ceil(rate*.002));const when=audio.currentTime+.005,old=replacement.buffer;
    context.restore(true);const redo=remember();if(probe){phaseChecks.push({row:commands.length,target:ceilSample(when*rate)});commands.push('redo 0 0');}
    assert.equal(redo.started.time,when);assert.equal(replacement.stoppedAt,when);assert.equal(replacement.buffer,old);assert.equal(context.info()[0],size*2);observations+=4;
-   render(frame+Math.ceil(rate*.002));undoAt();
+   if(sequence!=='redo-norm'){render(frame+Math.ceil(rate*.002));undoAt();}
   }
-  if(sequence==='norm-after'){
+  if(sequence==='norm-after'||sequence==='rapid-norm'||sequence==='redo-norm'){
    render(frame+Math.ceil(rate*.001));const current=context.sourceNode(),old=current.buffer,stored=context.stored();context.normalize();if(probe)commands.push('normalize 0 0','wait 0 0');
    assert.equal(context.sourceNode(),current);assert.equal(current.buffer,old,'NORM never creates/replaces an existing source');
    if(!reverse){assert.equal(current.buffer,stored);sources.at(-1).want=data(stored);}else assert.notEqual(current.buffer,stored);

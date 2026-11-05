@@ -9,60 +9,44 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Active slice — queued history after source creation: reference acceptance, 5 November 2026
+## Active slice — queued history after source creation, implementation in verification
 
-Continuing native baseline `dc54833`. This step establishes the after-source
-acceptance corpus; it does **not** enable or complete native after-birth history.
-Application/DSP/UI/CLI code, IDs and state remain unchanged. Keep this feature
-under repair; do not advance to another feature or package it as accepted.
+Continuing `dc54833`; reference acceptance committed as `5bc745e`. Original source
+methods establish 5ms history replacement, old independent source buffers/lengths/
+stops, original volume grid and shared-buffer-only NORM mutation. The corpus now
+has 960 cases (two additional rapid-history/NORM alias groups), covering mono/
+stereo, 8/48/96kHz, lengths 1/17/512/4097, forward/reverse, early/near-grid edits,
+Apply chains, RTRG, NORM and teardown. `original_queued_history_sources` is the
+explicit reference-only gate; `js_native_queued_history_sources` compares source
+PCM and exact replacement deadlines against the current native probe at 1e-6.
 
-New `tests/QueuedHistorySources.cjs` loads unchanged Loop.undo/redo/restart,
-AudioGraph and buffer DSP. Default output is explicitly `reference_only` and the
-CTest is `original_queued_history_sources`. The optional `--native PROBE` mode is
-the future native source-PCM/deadline gate, intentionally not registered as a
-passing native CTest while unsupported.
+Implementation adds bounded forward-source leases and logical buffer-version tags
+alongside existing reverse snapshots. History reserves the 5ms event/overlap
+capacity before storage/history mutation, freezes existing source PCM identities,
+and keeps the original volume grid. Rendering wraps each source's actual length.
+NORM/merge redirect only matching forward buffer identities/versions; immutable
+history handles can share physical PCM without aliasing distinct JS buffer clones.
+Playing history now uses the same original 5ms replacement rather than the prior
+immediate restart. Shared GUI/keyboard/CLI actions retain existing IDs/schema.
+No dependency, format, reference/preserved-resource, capacity or logo changes.
 
-Reference corpus PASS on Windows: 768 cases, 2,112 constructed sources and 14,112
-asserted PCM/identity/length/timing/cleanup observations. Mono/stereo, 8/48/96kHz,
-lengths 1/17/512/4097, forward/reverse, 80ms/1ms-before-grid edits; 96 cases each
-for Undo, rapid Undo/Redo/Undo, pending Apply, two pending Applies, pending RTRG,
-NORM before/after Undo and teardown. The 18,900,032 finite predicted source frames
-include 16,452,416 pre-grid silent frames and 214,016 post-grid overlap frames;
-these are an analytical source model, **not** measured browser/native audio.
+Initial native 768-case source corpus PASS (maximum 8.313785782032568e-8). Added
+rapid Undo/Redo/Undo/NORM reproduced a pointer-alias PCM failure (0.1747151 error);
+logical version tags repair it: focused 48 near-grid cases PASS (8.140158269664965e-8).
+Initial 92 native lifecycle cases and the full production processor suite PASS,
+including 16 local/global before/after-birth early/late GUI/CLI RPC cases at 64/128.
+The expanded 124-case native suite, full affected Windows/Linux regressions,
+sanitizers and actual GUI acceptance are in progress; do not claim final acceptance.
 
-Two native negatives reproduce without changing application code:
-
-- A future source exists but native state remains queued: first Undo is rejected.
-- With two pending Applies and the edit straddling the original grid, Undo is
-  accepted by the existing playing-state path, but its replacement deadline is
-  zero instead of expected sample 3545 at 8kHz. Current immediate history restart
-  invalidates pending phase events; admission-only changes cannot solve this.
-
-Windows verification: three selected CTests PASS (50.18s, parallel 2), including
-preserved UI bytes, the new original-source corpus and prior before-birth JS/native
-comparison. Existing 64-case `--queued-history` native ownership suite PASS. The
-new final finite-prediction checks pass directly too. Linux verification follows
-from this committed snapshot. No new sanitizer/UI/hardware/DAW claims are made;
-production processing/interaction code did not change.
-
-Reproduce (existing Windows VS CMake/CTest resolution retained below):
-
-```powershell
-cmake --build build/windows-core --config Release --target aion_start_probe --parallel 2
-ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|original_queued_history_sources|js_native_queued_history)$'
-./build/windows-core/Release/aion_core_tests.exe --queued-history
-node tests/QueuedHistorySources.cjs
-# Expected FAIL on the unchanged native baseline, not a native acceptance pass:
-node tests/QueuedHistorySources.cjs --native build/windows-core/Release/aion_start_probe.exe
-node tests/QueuedHistorySources.cjs --native build/windows-core/Release/aion_start_probe.exe --only-sequence apply-chain --near-grid
-```
-
-See [REFERENCE_AUDIT.md](REFERENCE_AUDIT.md#queued-history-after-source-creation--5-november-2026)
-for source semantics and implementation constraints. Next: bounded per-source PCM/
-length ownership and atomic 5ms history scheduling, then repair the native gates
-without weakening the prior accepted queue/NORM/overlap/OOM/cancellation checks.
-Do not remove the current queued-history UI guard until this native acceptance
-and actual interaction paths pass. Preserved resources/reference files stay unchanged.
+Windows broad edit tests hit the 1MiB stack with four value Engine fixtures after
+source metadata grew. Those existing instances now use construction-time heap
+storage, like adjacent fixtures; every assertion remains, no stack flag/tolerance
+changes. An object read while a fixture changed was explicitly rebuilt by touching
+the source after compilation; do not use the earlier 92 count as the expanded test.
+The native baseline rejection/zero-deadline negatives are retained under
+`build/queued-history-sources-*-negative*.log`; they describe `dc54833`, not a
+passing test of the implementation. See REFERENCE_AUDIT.md for the original
+contract and remaining renderer/device scope. No package or push; stay on this slice.
 
 ## Latest verified slice — queued Undo/Redo before source creation, 5 November 2026
 

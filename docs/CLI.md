@@ -119,7 +119,9 @@ command controls the running session and does not create a second audio engine.
 its independent source callback has not run. They restore stored audio and
 history depth without changing the original start grid or callback deadline.
 The callback uses the restored buffer, including its new length and current
-direction. Global `loop undoGlobal` / `loop redoGlobal` share the same rules.
-Once the future source has been constructed, history stays unavailable while
-still queued; history in playing/stopped states retains its existing behavior.
-Storage-capacity rejection leaves the clip, history and pending play unchanged.
+direction. After source construction (and while playing), history schedules a
+replacement source 5ms later. Existing sources retain their buffers/lengths and
+prior stops; the original grid still gates audible output. Global
+`loop undoGlobal` / `loop redoGlobal` share the same implementation. Stopped
+history does not start playback. Pending-stop queued history remains unavailable.
+Storage/event/overlap-capacity rejection leaves PCM, history and sources unchanged.

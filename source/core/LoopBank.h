@@ -138,7 +138,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     void setMeterCallbackClock(const CallbackClockStamp& callback) noexcept {meterCallbackClock=callback;}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
@@ -211,7 +211,9 @@ private:
         LoopView info{};
         Clip* clip = nullptr; // Immutable samples; one audio lease plus any in-flight job lease.
         std::array<Clip*,5> undo{},redo{}; // Immutable history leases, matching the reference depth.
-        Clip* reverseHold = nullptr; // Old raw clip backing a playing reversed source after NORM.
+        Clip* reverseHold = nullptr; // Independent reversed source snapshot.
+        Clip* forwardHold = nullptr; // Forward source buffer retained across a stored-buffer history swap.
+        std::uint64_t storageVersion=1,forwardVersion=0; // Logical buffer identity; history clones can reuse immutable PCM.
         bool activeReverse = false;
         bool queuedSourcePending = false; // Audio-owned source admission, independent of raw meter resets.
         double queuedSourcePhase=0,queuedStartFraction=0; // Fractional source time retained across inaudible rate edits.
@@ -253,9 +255,9 @@ private:
         double sourceBpm = 0;
     };
     // A reversed source snapshots the raw PCM at construction; its event owns
-    // one lease until activation/retention transfer or cancellation. Forward
-    // events use the current stored buffer so NORM remains an in-place edit.
-    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false,retrigger=false;double sourceStartSeconds=0,sourceOffset=0;float rate=1;unsigned retainedSlot=128;Clip* reverseClip=nullptr;};
+    // one lease until activation/retention transfer or cancellation. History
+    // freezes forward event buffer identity; NORM redirects only matching buffers.
+    struct PhaseEvent {std::uint64_t frame=0,epoch=0;double phase=0;std::uint32_t track=0;bool reverse=false,retrigger=false;double sourceStartSeconds=0,sourceOffset=0;float rate=1;unsigned retainedSlot=128;Clip* reverseClip=nullptr;Clip* forwardClip=nullptr;std::uint64_t bufferVersion=0;};
     static constexpr unsigned phaseCapacity=128;
     std::array<PhaseEvent,phaseCapacity> phaseEvents{};
     unsigned phaseRead=0,phaseWrite=0;
@@ -265,7 +267,7 @@ private:
         Clip* clip=nullptr;
         bool used=false,reverse=false,stuttering=false;
         unsigned track=0;
-        std::uint64_t epoch=0,startAt=0,stopAt=0;
+        std::uint64_t epoch=0,startAt=0,stopAt=0,bufferVersion=0;
         double phase=0,stutterStart=0,stutterEnd=0;
         float rate=1,targetRate=1,rateIncrement=0;
         unsigned rateRemaining=0,blendRemaining=0;
@@ -279,7 +281,7 @@ private:
 
     void invalidatePhase(Track&) noexcept;
     void applyPhaseEvents() noexcept;
-    bool schedulePhase(Track&, std::uint32_t, double targetSeconds, bool masterPhase, bool replacePending = false) noexcept;
+    bool schedulePhase(Track&,std::uint32_t,double,bool,bool replacePending=false,Clip* sourceBuffer=nullptr) noexcept;
     float& sample(Track&, std::uint32_t frame, std::uint32_t channel) noexcept;
     bool finish(Track&) noexcept;
     void acceptResult() noexcept;
@@ -304,6 +306,9 @@ private:
     std::uint64_t frame=0;
     SyncClock sync;
     Stereo previousInput{},olderInput{};
+    double effectiveRateFor(const Track&,std::uint32_t length) const noexcept;
+    static Clip* playbackClip(const Track& t) noexcept { return t.reverseHold?t.reverseHold:t.forwardHold?t.forwardHold:t.clip; }
+    void freezeHistorySources(Track&,std::uint32_t) noexcept;
     void updateRate(Track&,bool directSpeedEdit=false) noexcept;
     void schedules(Track&) noexcept;
     std::uint32_t residentBlocks = 0;

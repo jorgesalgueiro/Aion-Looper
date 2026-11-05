@@ -260,7 +260,7 @@ void processorDueDeliveryTests(bool& audioWatch){
     std::cout<<"PASS: production cleanup command readout retains accepting callback across later views and rejects release at tracks 0/19, 64/128\n";
 }
 void processorQueuedHistoryTests(bool& audioWatch){
-    for(unsigned block:{64u,128u})for(bool global:{false,true})for(bool late:{false,true}){
+    for(unsigned block:{64u,128u})for(bool global:{false,true})for(bool late:{false,true})for(bool beforeBirth:{false,true}){
         auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
         const auto rpc=[&](const char* text){auto result=p->request({juce::JSON::parse(text)});check(static_cast<bool>(result["ok"]),"Early Start production RPC");return result;};
         rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");
@@ -288,19 +288,22 @@ void processorQueuedHistoryTests(bool& audioWatch){
         rpc(R"({"operation":"setParameter","id":"syncMode","value":1})");
         rpc(R"({"operation":"setParameter","id":"syncBpm","value":60})");cycle();command("play");cycle();
         state=rpc(R"({"operation":"snapshot"})");const auto grid=static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"]);
-        const auto restore=[&](bool redo){command(redo?(global?"redoGlobal":"redo"):(global?"undoGlobal":"undo"));cycle();
+        if(!beforeBirth){check(p->requestQueuedMeterGraphMessageThread(19),"Production history constructs original source");cycle();}
+        const auto restore=[&](bool redo){const auto replacement=clock()+240;command(redo?(global?"redoGlobal":"redo"):(global?"undoGlobal":"undo"));cycle();
             state=rpc(R"({"operation":"snapshot"})");const auto t=state["tracks"][19];
-            check(!static_cast<bool>(state["rejected"])&&t["state"].toString()=="queued"&&!static_cast<bool>(t["queuedSourceReady"])
-                &&static_cast<juce::int64>(t["scheduledFrame"])==grid&&static_cast<int>(t["length"])==(global?512:redo?1024:512)
+            check(!static_cast<bool>(state["rejected"])&&(beforeBirth?t["state"].toString()=="queued":t["state"].toString()=="queued"||t["state"].toString()=="playing")
+                &&(!beforeBirth||!static_cast<bool>(t["queuedSourceReady"]))
+                &&static_cast<juce::int64>(t["scheduledFrame"])==(t["state"].toString()=="queued"?grid:0)
+                &&(beforeBirth||static_cast<juce::int64>(t["phaseApplyFrame"])==static_cast<juce::int64>(replacement))&&static_cast<int>(t["length"])==(global?512:redo?1024:512)
                 &&static_cast<int>(t["undoCount"])==(redo?1:0)&&static_cast<int>(t["redoCount"])==(redo?0:1),"Shared GUI/CLI queued history preserves grid and restores exact length/depth");};
         restore(false);restore(true);restore(false);
-        if(late){while(clock()<static_cast<std::uint64_t>(grid)+block){cycle();check(audio.getMagnitude(0,static_cast<int>(block))==0,"Production late history stays silent without source");}restore(true);}
-        check(p->requestQueuedMeterGraphMessageThread(19),"Production original queued graph receipt survives history");cycle();
+        if(late){while(clock()<static_cast<std::uint64_t>(grid)+block){cycle();if(beforeBirth)check(audio.getMagnitude(0,static_cast<int>(block))==0,"Production late history stays silent without source");}restore(true);}
+        if(beforeBirth){check(p->requestQueuedMeterGraphMessageThread(19),"Production original queued graph receipt survives history");cycle();}
         bool audible=false;while(clock()<static_cast<std::uint64_t>(grid)+2048){cycle();if(clock()<=static_cast<std::uint64_t>(grid))check(audio.getMagnitude(0,static_cast<int>(block))==0,"Production restored source retains grid silence");
             if(clock()>static_cast<std::uint64_t>(grid)+512)audible=audible||audio.getMagnitude(0,static_cast<int>(block))>0;}
         check(audible,"Production restored source becomes audible");
     }
-    std::cout<<"PASS: production shared GUI/CLI queued local/global Undo/Redo, restored lengths/depths, early/late receipt, original grid and audible source at 64/128\n";
+    std::cout<<"PASS: production shared GUI/CLI queued local/global Undo/Redo before/after source construction, 5ms replacements, restored lengths/depths, early/late receipt, original grid and audible source at 64/128\n";
 }
 void processorEarlyStartTests(bool& audioWatch){
     for(unsigned block:{64u,128u}){

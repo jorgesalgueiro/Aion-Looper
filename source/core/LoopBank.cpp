@@ -154,9 +154,18 @@ void LoopBank::acceptResult() noexcept {
     if(track.revision==job.revision&&track.info.state==LoopState::finalizing){
         if(result){
             if(track.clip)residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
-            if(job.normalize)for(auto& voice:retainedSources){
-                if(!voice.used||voice.reverse||voice.track!=job.track||voice.clip!=track.clip)continue;
+            if(job.normalize||(job.merge&&job.edit))for(auto& voice:retainedSources){
+                if(!voice.used||voice.reverse||voice.track!=job.track||voice.clip!=track.clip||voice.bufferVersion!=track.storageVersion)continue;
                 result->leases.fetch_add(1,std::memory_order_relaxed);retire(voice.clip);voice.clip=result;
+            }
+            if(job.normalize||(job.merge&&job.edit)){
+                const auto redirect=[&](Clip*& source,std::uint64_t version) noexcept {
+                    if(source&&source==track.clip&&version==track.storageVersion){result->leases.fetch_add(1,std::memory_order_relaxed);retire(source);source=result;}
+                };
+                redirect(track.forwardHold,track.forwardVersion);
+                for(unsigned at=phaseRead;at!=phaseWrite;at=(at+1)%phaseCapacity){auto& event=phaseEvents[at];
+                    if(event.track==job.track&&event.epoch==track.phaseEpoch)redirect(event.forwardClip,event.bufferVersion);
+                }
             }
             // Web Audio reverses into an independent source buffer. NORM edits
             // the stored buffer, leaving that playing reversed copy untouched.
@@ -245,7 +254,7 @@ void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     track.info.stuttering=track.info.stutterClock=false;
     // An early graph already constructed its reversed AudioBuffer. NORM must
     // not replace that snapshot when the inaudible source reaches its grid.
-    if(!preparedQueue){retire(track.reverseHold);track.reverseHold=nullptr;}
+    if(!preparedQueue){retire(track.reverseHold);track.reverseHold=nullptr;retire(track.forwardHold);track.forwardHold=nullptr;}
     // A queued source can reach its start grid with a later STOP already armed.
     // It still needs the same initial phase and reverse buffer as a playing source.
     const bool starting=track.info.state==LoopState::playing||track.info.state==LoopState::stopping
@@ -253,7 +262,7 @@ void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     track.activeReverse=starting&&(preparedQueue?track.queuedSourceReverse:track.info.reverse);
     if(track.clip&&starting){
         if(!preparedQueue){track.rate=track.targetRate=static_cast<float>(track.phaseRate);track.rateRemaining=0;track.rateIncrement=0;}
-        const double length=track.clip->length,shift=track.info.startDelay*length;
+        const double length=playbackClip(track)->length,shift=track.info.startDelay*length;
         const double offset=sync.settings.mode!=SyncMode::off?(static_cast<double>(frame)-sync.origin)*track.phaseRate-shift:shift;
         track.phase=preparedQueue?track.queuedSourcePhase:std::fmod(offset,length);if(track.phase<0)track.phase+=length;
         track.info.position=static_cast<std::uint32_t>(track.phase);
@@ -293,26 +302,42 @@ void LoopBank::saveUndo(Track& track,std::uint32_t id,bool global) noexcept {
     track.redo.fill(nullptr);track.info.redoCount=0;
     if(global){append(undoOrder,undoSize,id);redoSize=0;}
 }
+void LoopBank::freezeHistorySources(Track& track,std::uint32_t id) noexcept {
+    // Construction captures an AudioBuffer identity, independently of storage.
+    const bool reverse=hasPreparedQueuedSource(track)?track.queuedSourceReverse:track.activeReverse;
+    auto*& held=reverse?track.reverseHold:track.forwardHold;
+    if(!held){held=track.clip;held->leases.fetch_add(1,std::memory_order_relaxed);if(!reverse)track.forwardVersion=track.storageVersion;}
+    for(unsigned at=phaseRead;at!=phaseWrite;at=(at+1)%phaseCapacity){auto& event=phaseEvents[at];
+        if(event.track==id&&event.epoch==track.phaseEpoch&&!event.reverse&&!event.forwardClip){
+            event.forwardClip=track.clip;event.forwardClip->leases.fetch_add(1,std::memory_order_relaxed);
+        }
+    }
+}
 bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     auto& from=redo?track.redo:track.undo;auto& to=redo?track.undo:track.redo;
     auto& fromCount=redo?track.info.redoCount:track.info.undoCount;
     auto& toCount=redo?track.info.undoCount:track.info.redoCount;
-    // A pending message callback has not captured PCM/length/direction yet.
-    // Restore storage without creating a source or moving that callback/grid.
-    const bool queued=track.info.state==LoopState::queued&&track.queuedSourcePending&&!track.queuedSourceTicket;
-    if(!track.clip||!fromCount||toCount>=to.size()||
-       (track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopped&&!queued))return false;
+    const bool prebirth=track.info.state==LoopState::queued&&track.queuedSourcePending&&!track.queuedSourceTicket;
+    const bool running=track.info.state==LoopState::playing||hasPreparedQueuedSource(track);
+    if(!track.clip||!fromCount||toCount>=to.size()||track.storageVersion==std::numeric_limits<std::uint64_t>::max()||(!running&&track.info.state!=LoopState::stopped&&!prebirth))return false;
     const auto restored=from[fromCount-1];
     if(restored->length>track.clip->length&&restored->length-track.clip->length>growthRoom(track))return false;
+    if(running){
+        const bool master=sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(id));
+        // Reserve every event/overlap lease before mutating storage or history.
+        if(!schedulePhase(track,id,static_cast<double>(frame)/rate+.005,master,true,restored))return false;
+        freezeHistorySources(track,id);
+    }
     residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
+    ++track.storageVersion; // JS history restores a distinct buffer object, even when native immutable PCM is shared.
     to[toCount++]=track.clip;track.clip=from[--fromCount];from[fromCount]=nullptr;
     track.info.mergeSerial=0;
     residentBlocks+=(track.clip->length+blockFrames-1)/blockFrames;
-    track.info.length=track.clip->length;track.info.finalizationFailed=false;updateRate(track);
+    track.info.length=track.clip->length;track.info.finalizationFailed=false;
+    if(running)track.phaseRate=effectiveRateFor(track,track.clip->length);else updateRate(track);
     if(redo){if(remove(redoOrder,redoSize,id,true))append(undoOrder,undoSize,id);}
     else if(remove(undoOrder,undoSize,id,true))append(redoOrder,redoSize,id);
-    if(track.info.state==LoopState::playing){track.phase=0;track.info.position=0;restartSource(track);blend(track);}
-    publishMeterBuffer(id,queued);
+    publishMeterBuffer(id,prebirth);
     return true;
 }
 void LoopBank::stop(Track& track) noexcept {
@@ -329,7 +354,7 @@ void LoopBank::stop(Track& track) noexcept {
     if(capturing(track.info.state))(void)finish(track);
     if(track.info.state==LoopState::finalizing){track.finalPlay=false;track.playWhileFinalizing=false;}
     else if(track.info.state!=LoopState::empty)track.info.state=LoopState::stopped;
-    retire(track.reverseHold);track.reverseHold=nullptr;track.activeReverse=false;
+    retire(track.reverseHold);track.reverseHold=nullptr;retire(track.forwardHold);track.forwardHold=nullptr;track.activeReverse=false;
     track.tail=track.last;track.tailRemaining=fadeLength;track.phase=0;track.info.position=0;
 }
 void LoopBank::cutQueuedSource(Track& track) noexcept {
@@ -350,7 +375,7 @@ void LoopBank::clear(Track& track) noexcept {
     track.undo.fill(nullptr);track.redo.fill(nullptr);
     const auto historyId=static_cast<std::uint32_t>(&track-tracks.data());
     forget(undoOrder,undoSize,historyId);forget(redoOrder,redoSize,historyId);
-    retire(track.reverseHold);track.reverseHold=nullptr;track.activeReverse=false;
+    retire(track.reverseHold);track.reverseHold=nullptr;retire(track.forwardHold);track.forwardHold=nullptr;track.activeReverse=false;
     track.tail=track.last;track.tailRemaining=fadeLength;
     for(std::uint32_t i=0;i<track.blockCount;++i)freeBlocks[freeCount++]=track.blocks[i];
     track.blockCount=track.captureLength=0;
@@ -664,14 +689,16 @@ void LoopBank::completeOfflineEdits() noexcept {
     acceptResult();
 }
 void LoopBank::beginBlock() noexcept {acceptResult();for(auto& track:tracks)track.info.peak=0;}
-bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool master,bool replacePending) noexcept {
+bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool master,bool replacePending,Clip* sourceBuffer) noexcept {
     const auto deadline=SyncClock::deadline(target*rate);
-    const double length=track.clip->length,shift=track.info.startDelay*length;
-    const double offset=master?(target-sync.origin/rate)*track.phaseRate*rate-shift:shift;
-    double phase=std::fmod(offset+(static_cast<double>(deadline)-target*rate)*track.phaseRate,length);
+    auto* source=sourceBuffer?sourceBuffer:track.clip;
+    const double sourceRate=sourceBuffer?effectiveRateFor(track,source->length):track.phaseRate;
+    const double length=source->length,shift=track.info.startDelay*length;
+    const double offset=master?(target-sync.origin/rate)*sourceRate*rate-shift:shift;
+    double phase=std::fmod(offset+(static_cast<double>(deadline)-target*rate)*sourceRate,length);
     if(phase<0)phase+=length;
     while(phaseRead!=phaseWrite&&phaseEvents[phaseRead].epoch!=tracks[phaseEvents[phaseRead].track].phaseEpoch){
-        retire(phaseEvents[phaseRead].reverseClip);phaseRead=(phaseRead+1)%phaseCapacity;
+        retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;
     }
     if((phaseWrite+1)%phaseCapacity==phaseRead)return false;
     unsigned retainedSlot=phaseCapacity;
@@ -695,15 +722,15 @@ bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool ma
             for(unsigned n=1;n<futureCount;++n){const auto& e=phaseEvents[future[n-1]];const auto stop=phaseEvents[future[n]].frame;
                 if(stop<=e.frame)continue; // No representable sample between same-frame births.
                 auto& voice=retainedSources[slots[slot++]];voice={};voice.used=true;voice.track=id;voice.epoch=track.phaseEpoch;
-                voice.clip=e.reverse?e.reverseClip:track.clip;voice.clip->leases.fetch_add(1,std::memory_order_relaxed);
+                voice.clip=e.reverse?e.reverseClip:e.forwardClip?e.forwardClip:track.clip;voice.clip->leases.fetch_add(1,std::memory_order_relaxed);
                 voice.startAt=e.frame;voice.stopAt=stop;voice.phase=e.phase;voice.reverse=e.reverse;
-                voice.rate=voice.targetRate=e.rate;++retainedCounts[id];
+                voice.rate=voice.targetRate=e.rate;voice.bufferVersion=e.bufferVersion;++retainedCounts[id];
             }
         }
         unsigned write=phaseRead;track.info.phaseApplyFrame=0;
         for(unsigned read=phaseRead;read!=phaseWrite;read=(read+1)%phaseCapacity){
             const auto event=phaseEvents[read];
-            if(event.track==id&&!event.retrigger&&event.frame>deadline){retire(event.reverseClip);continue;}
+            if(event.track==id&&!event.retrigger&&event.frame>deadline){retire(event.reverseClip);retire(event.forwardClip);continue;}
             phaseEvents[write]=event;write=(write+1)%phaseCapacity;
             if(event.track==id&&event.epoch==track.phaseEpoch)track.info.phaseApplyFrame=std::max(track.info.phaseApplyFrame,event.frame);
         }
@@ -718,16 +745,18 @@ bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool ma
         phaseEvents[at]=phaseEvents[before];at=before;
     }
     double sourceOffset=std::fmod(offset,length);if(sourceOffset<0)sourceOffset+=length;
-    auto* reverseClip=track.info.reverse?track.clip:nullptr;
+    auto* reverseClip=track.info.reverse?source:nullptr;
+    auto* forwardClip=!track.info.reverse?sourceBuffer:nullptr;
+    if(forwardClip)forwardClip->leases.fetch_add(1,std::memory_order_relaxed);
     if(reverseClip)reverseClip->leases.fetch_add(1,std::memory_order_relaxed);
-    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending,target,sourceOffset,static_cast<float>(track.phaseRate),retainedSlot,reverseClip};phaseWrite=next;
+    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending,target,sourceOffset,static_cast<float>(sourceRate),retainedSlot,reverseClip,forwardClip,sourceBuffer?track.storageVersion+1:track.storageVersion};phaseWrite=next;
     track.info.phaseApplyFrame=std::max(track.info.phaseApplyFrame,deadline);return true;
 }
 void LoopBank::invalidatePhase(Track& track) noexcept {
     const auto id=static_cast<unsigned>(&track-tracks.data());
     ++track.phaseEpoch;track.info.phaseApplyFrame=0;
     for(unsigned at=phaseRead;at!=phaseWrite;at=(at+1)%phaseCapacity){auto& event=phaseEvents[at];
-        if(event.track==id){retire(event.reverseClip);event.reverseClip=nullptr;}
+        if(event.track==id){retire(event.reverseClip);event.reverseClip=nullptr;retire(event.forwardClip);event.forwardClip=nullptr;}
     }
 }
 void LoopBank::applyPhaseEvents() noexcept {
@@ -738,14 +767,15 @@ void LoopBank::applyPhaseEvents() noexcept {
         phaseRead=(phaseRead+1)%phaseCapacity;
         const bool normalizing=track.info.state==LoopState::finalizing&&track.playWhileFinalizing&&job.normalize&&job.track==event.track;
         if(!valid||!track.clip||(track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopping&&!hasPreparedQueuedSource(track,true)&&!normalizing)){
-            retire(event.reverseClip);
+            retire(event.reverseClip);retire(event.forwardClip);
             if(event.retainedSlot<phaseCapacity){const auto& voice=retainedSources[event.retainedSlot];
                 if(voice.used&&voice.track==event.track&&voice.epoch==event.epoch)releaseRetained(event.retainedSlot);}
             continue;
         }
         if(event.retainedSlot<phaseCapacity){auto& voice=retainedSources[event.retainedSlot];
             if(voice.used&&voice.track==event.track&&voice.epoch==event.epoch){
-                voice.clip=track.reverseHold?track.reverseHold:track.clip;voice.clip->leases.fetch_add(1,std::memory_order_relaxed);
+                voice.clip=playbackClip(track);voice.clip->leases.fetch_add(1,std::memory_order_relaxed);
+                voice.bufferVersion=track.forwardHold?track.forwardVersion:track.storageVersion;
                 const bool queued=waitingQueuedSource(track);
                 voice.startAt=queued?track.startAt:frame;voice.phase=queued?track.queuedSourcePhase:track.phase;
                 voice.reverse=queued?track.queuedSourceReverse:track.activeReverse;
@@ -763,7 +793,8 @@ void LoopBank::applyPhaseEvents() noexcept {
             track.startAt=0;track.tailRemaining=0;
         }
         ++track.sourceRevision;
-        retire(track.reverseHold);track.reverseHold=event.reverseClip; // Transfer the scheduled reversed source lease.
+        retire(track.reverseHold);track.reverseHold=event.reverseClip; // Transfer constructed source leases.
+        retire(track.forwardHold);track.forwardHold=event.forwardClip;track.forwardVersion=event.forwardClip?event.bufferVersion:0;
         track.rate=track.targetRate=event.rate;track.rateRemaining=0;track.rateIncrement=0;
         track.phase=event.phase;track.activeReverse=event.reverse;track.info.stuttering=track.info.stutterClock=false;
         track.sourceStartFrame=event.sourceStartSeconds*rate;track.sourceOffset=event.sourceOffset;
@@ -833,17 +864,17 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         if(t.panRemaining){t.panGain.left+=t.panIncrement.left;t.panGain.right+=t.panIncrement.right;if(--t.panRemaining==0)t.panGain=t.panTarget;}
         Stereo out{};
         if(audible){
+            const auto* source=playbackClip(t);const auto sourceLength=source->length;
             if(v.stuttering&&t.phase>=v.stutterEnd)t.phase=v.stutterStart+std::fmod(t.phase-v.stutterStart,v.stutterEnd-v.stutterStart);
-            else if(t.phase>=t.clip->length){t.phase=std::fmod(t.phase,static_cast<double>(t.clip->length));blend(t);}
+            else if(t.phase>=sourceLength){t.phase=std::fmod(t.phase,static_cast<double>(sourceLength));blend(t);}
             v.position=static_cast<std::uint32_t>(t.phase);
-            auto next=v.position+1==t.clip->length?0:v.position+1;
+            auto next=v.position+1==sourceLength?0:v.position+1;
             if(v.stuttering&&v.position<v.stutterEnd&&v.position+1>=v.stutterEnd){
                 const double span=v.stutterEnd-v.stutterStart;
                 const double neighbor=span>=1?t.phase+1-span:v.stutterStart+std::fmod(t.phase+1-v.stutterStart,span);
-                next=static_cast<std::uint32_t>(std::clamp(neighbor,0.0,static_cast<double>(t.clip->length-1)));
+                next=static_cast<std::uint32_t>(std::clamp(neighbor,0.0,static_cast<double>(sourceLength-1)));
             }
             const float fraction=static_cast<float>(t.phase-v.position);
-            const auto* source=t.reverseHold?t.reverseHold:t.clip;
             const auto index=t.activeReverse?source->length-1-v.position:v.position;
             const auto nextIndex=t.activeReverse?source->length-1-next:next;
             const auto& left=source->channels[0];const auto& right=source->channels[1];
@@ -854,8 +885,8 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
             if(t.blendRemaining){const float progress=1-static_cast<float>(--t.blendRemaining)/fadeLength;out={t.blendFrom.left+(out.left-t.blendFrom.left)*progress,t.blendFrom.right+(out.right-t.blendFrom.right)*progress};}
             t.last=out;t.phase+=t.rate;
             if(v.stuttering&&t.phase>=v.stutterEnd)t.phase=v.stutterStart+std::fmod(t.phase-v.stutterStart,v.stutterEnd-v.stutterStart);
-            else if(t.phase>=t.clip->length){t.phase=std::fmod(t.phase,static_cast<double>(t.clip->length));blend(t);}
-            v.position=static_cast<std::uint32_t>(t.phase>=t.clip->length?std::fmod(t.phase,static_cast<double>(t.clip->length)):t.phase);
+            else if(t.phase>=sourceLength){t.phase=std::fmod(t.phase,static_cast<double>(sourceLength));blend(t);}
+            v.position=static_cast<std::uint32_t>(t.phase>=sourceLength?std::fmod(t.phase,static_cast<double>(sourceLength)):t.phase);
         }else if(t.tailRemaining){const float progress=static_cast<float>(--t.tailRemaining)/fadeLength;out={t.tail.left*progress,t.tail.right*progress};t.last=out;}
         else t.last={};
         const auto retainedOut=tickRetained(t);out.left+=retainedOut.left;out.right+=retainedOut.right;t.last=out;
@@ -883,17 +914,21 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
 void LoopBank::configureSync(SyncSettings settings) noexcept {
     sync.configure(settings,frame);for(auto& track:tracks)updateRate(track);
 }
-void LoopBank::updateRate(Track& track,bool directSpeedEdit) noexcept {
-    if(!track.clip)return;
-    const auto previousControl=static_cast<float>(track.phaseRate);
+double LoopBank::effectiveRateFor(const Track& track,std::uint32_t length) const noexcept {
     double target=track.info.playbackRate;
-    if(sync.settings.mode!=SyncMode::off&&!track.info.dynamicRecorded&&track.info.originalBpm>0&&track.info.length){
-        const double duration=static_cast<double>(track.info.length)/rate;
+    if(sync.settings.mode!=SyncMode::off&&!track.info.dynamicRecorded&&track.info.originalBpm>0&&length){
+        const double duration=static_cast<double>(length)/rate;
         const double expected=duration/(sync.settings.bpm/track.info.originalBpm);
         const double ratio=expected/(sync.loopFrames()/rate);
         const double natural=ratio>=1?std::floor(ratio+0.5):1/std::max(1.0,std::floor(1/ratio+0.5));
         target=duration/(sync.loopFrames()/rate*natural)*track.info.playbackRate;
     }
+    return std::max(.001,target);
+}
+void LoopBank::updateRate(Track& track,bool directSpeedEdit) noexcept {
+    if(!track.clip)return;
+    const auto previousControl=static_cast<float>(track.phaseRate);
+    const auto target=effectiveRateFor(track,track.info.length);
     track.phaseRate=std::max(0.001,target); // JS source offset uses Number before AudioParam float conversion.
     const auto next=static_cast<float>(track.phaseRate);
     // Metadata and the current source AudioParam can differ: a future source
