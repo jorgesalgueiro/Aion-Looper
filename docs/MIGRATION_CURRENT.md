@@ -9,42 +9,125 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Active slice — constructed queued-source NORM, 5 November 2026
+## Latest verified slice — constructed queued-source NORM, 5 November 2026
 
-Scope: NORM after the independent queued graph callback has constructed a source,
-before its original audible grid. Before graph birth remains rejected/disabled;
-that separate buffer/queue-receipt case is the next slice. Do not infer full
-queued NORM, other buffer edits or renderer/device parity from this change.
+Implementation: `c79025b`; strengthened fixtures: `43ce195`.
+NORM now accepts a queued loop after its independent graph callback has
+constructed the future source. GUI and running-Standalone CLI share the existing
+`loop normalize TRACK` command. The original grid, source identity and accepted
+Apply/RTRG deadlines survive worker finalization. Forward sources receive the
+normalized stored PCM; reversed sources retain the PCM snapshot leased at graph
+construction. Grid/phase activation continues while the worker is pending.
+Clear, stop and prepare release the leases without resurrecting playback.
 
-Acceptance: no premature audio or grid reset, retain pending Apply/RTRG deadlines,
-forward shared-buffer normalization versus independent reversed snapshots, worker
-completion before/after grid, no-op/history and OOM/cancellation/prepare safety.
-The existing GUI and running-Standalone CLI `loop normalize TRACK` share one
-processor command; only the native button readiness changes, with no redesign.
+| Parity item | Status / evidence |
+| --- | --- |
+| Constructed queued-source NORM | Verified for this slice; reference PCM, worker-delay and actual production command/UI checks |
+| Pending Apply/RTRG and original grid silence | Preserved, including worker completion after activation |
+| No-op, OOM, stop/clear/prepare and history | 108 focused Engine cases, tracks 0/19, forward/reverse, 64/128; no callback new/delete |
+| NORM before graph creation | Still rejected/disabled; next slice needs explicit buffer/queue-receipt handling |
+| Full renderer, listening, hardware and release acceptance | Pending; no new certification |
 
-Implementation keeps the original queue/source identity and bounded phase pool.
-An audio-owned transient flag retains a constructed future source while NORM is
-finalizing; original grid/phase events execute while the worker is pending.
-Reversed PCM is leased at graph construction and survives normalization/grid
-activation; clear/stop/prepare release it. No new IDs, persisted fields, queues,
-dependencies or preserved UI/reference asset changes.
+No parameter/action IDs, schema, capacity, dependencies, logo or preserved
+`resources/ui` / reference assets changed. Only the native NORM readiness guard
+changes presentation logic. The transient queue-finalization flag is audio owned;
+storage/queues stay bounded and NORM buffer processing/allocation remain on the
+existing worker.
 
-Windows focused evidence so far: the new unchanged-JS mode first rejected NORM
-on baseline d77987b (`build/queued-norm-negative.log`). Two source modes now pass:
-60 basic source starts /30 matrix cases (max PCM error 8.283281738297177e-8) and
-60 two-Apply/overtaking-RTRG sequences (6.022638282532355e-8), unchanged 1e-6
-PCM tolerance. Mono/stereo, 8/48/96kHz, lengths 1/17/512/4097/20003 and both source
-directions; browser envelopes/resampling excluded. Engine `--queued-norm` passes
-108 cases: 48 delayed changed/no-op/Apply/RTRG, 48 cancel/stop/same/new-rate prepare,
-eight exact OOM rollback and four explicit pre-birth rejection cases, tracks
-0/19 at 64/128; zero tracked callback new/delete. One fixture assertion was fixed
-to account for a 5ms event activating inside a 128-sample block; its exact deadline
-is retained, with no tolerance or coverage reduction. Standalone/processor/mouse
-host builds and production shared GUI/CLI processor tests pass. Frontend guards
-pass. Actual WebView, full relevant Windows/Linux and sanitizer acceptance is
-still in progress; no completed-slice claim yet.
+| Executed verification | Windows Release | Native WSL Linux |
+| --- | --- | --- |
+| Standalone, current probes and processor builds | PASS | PASS |
+| 26 selected reference/frontend/asset checks | PASS | PASS, 10 retained +16 resumed after chat interruption |
+| Current normalization/reverse probe checks | PASS, rebuilt and rerun 2/2 | PASS, rebuilt and rerun 2/2 |
+| Queued core/lifecycle and shared GUI/CLI processor tests | PASS | PASS |
+| Strengthened `--queued-norm` 108 cases | PASS | PASS |
+| Focused ASan/UBSan/leak checks | Not run | PASS |
+| Actual WebView trusted NORM pointer, forward/reverse, 64/128 | PASS | Not run |
 
-## Latest verified slice — 4 November 2026
+The baseline first rejected NORM (`build/queued-norm-negative.log`).
+Each new source mode now covers 60 fresh-buffer cases at mono/stereo, 8/48/96kHz,
+lengths 1/17/512/4097/20003 and both directions: plain queued NORM and two future
+Applies followed by overtaking RTRG. Compared frames: 1,243,592 /1,246,832.
+Windows maximum errors: 6.498684168576574e-8 /6.022638282532355e-8, unchanged
+1e-6 tolerance. Linux has the same maxima. Browser envelopes/resampling are excluded.
+Fresh buffers prevent the reverse case accidentally becoming a no-op after
+forward NORM. The delayed-worker cases explicitly assert pre-grid silence.
+
+Engine coverage: 48 changed/no-op/Apply/RTRG worker-delay cases, 48 immediate/
+scheduled stop, panic, clear and same/new-rate prepare cases, eight exact OOM
+rollback comparisons and four explicit pre-birth rejection cases. The 128-sample
+fixture now accounts for RTRG firing inside the NORM admission block, retaining
+its exact deadline. Existing playing-NORM/full-pool/overlap/cancellation guards
+pass. Linux sanitizer selectors were `--queued-norm --norm-pending --meter-overlap`;
+the strengthened queued selector was rebuilt/rerun after the test-only follow-up.
+Production processor checks include external CLI, native outcomes, state and
+lifecycle guards; the new queued commands use controlled offline commits.
+
+Actual Windows UI checks use `tools/TestMouseWorkflow.ps1 -QueuedNormOnly`.
+This is the focused NORM path, not the whole mouse/export/MIDI suite. An initial
+sandbox renderer timeout occurred before feature execution; the verified owned
+fixture was closed/relaunched outside the sandbox. The focused fixture's skipped
+master-gain setup and reverse-checkbox selector were corrected before both block
+sizes passed. No production behavior or tolerance was weakened. Review also
+caught a stale historical reference executable: both OS probes were rebuilt and
+the dependent normalization/reverse checks rerun. Retain those refreshed results.
+
+Callback-cost observations, 48kHz stereo, one 512-frame loop, forward/reverse,
+64/128, 512 warm playing blocks. Timed only Engine.process during early source
+birth, NORM admission/commit, queued-to-playing playback and clear:
+
+| Platform | 64 samples /1333.33us deadline | 128 samples /2666.67us deadline |
+| --- | ---: | ---: |
+| Windows maximum observed callback | 97.8us | 131.7us |
+| Linux maximum observed callback | 193.236us | 130.227us |
+
+Acceptance jobs had stopped before sequential Windows/Linux measurements.
+Worker preparation sleeps are outside timing with sample time frozen; one
+Windows 128 reverse case needed two commit attempts. This measures callback
+cost, not edit latency, physical round-trip latency, worst-case continuity,
+20-track/full-pool/long-session behavior or an OS comparison. Ignored harness:
+`build/queued-norm-bench-src`; raw JSONL: `build/queued-norm-bench-{windows,linux}.jsonl`.
+
+Commands (existing caches; Windows uses installed VS CMake/CTest):
+
+```powershell
+$vsRoot=& 'C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe' -latest -products '*' -property installationPath
+$cmake=Join-Path $vsRoot 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+$ctest=Join-Path (Split-Path $cmake) 'ctest.exe'
+& $cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --meter-queued
+& $ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|native_frontend_commands|js_native_(normalization|reverse|start_phase|queued_.*|apply_norm_.*))$'
+& $cmake --build build/windows --config Release --target AionLooper_Standalone aion_midi_processor_tests aion_mouse_host --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -QueuedNormOnly
+```
+
+```sh
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --meter-queued
+./build/linux/aion_midi_processor_tests
+ctest --test-dir build/linux --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|native_frontend_commands|js_native_(normalization|reverse|start_phase|queued_.*|apply_norm_.*))$'
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --queued-norm
+```
+
+Logs: Windows `build/queued-norm-{core,queued-regression,playing-regression,production-windows,ctest-windows,reference-refresh-windows,ui-windows}.log`;
+native WSL `build/queued-norm-{core-linux,production-linux,followup-core,ctest-linux,ctest-linux-resume,reference-refresh-linux,asan,asan-followup}.log`.
+The interrupted run's ten passing names are retained in
+`build/queued-norm-completed-linux.txt`; its unfinished cases were selected
+with `ctest -E` rather than repeating those passes. Windows 26-test invocation:
+518.18s; refreshed probe pair: 12.16s. Linux resumed 16: 473.83s; refreshed probe
+pair: 18.47s. The interrupted Linux invocation has no completed-run total.
+
+Next: NORM before graph creation. Preserve the queued intent and original
+command-origin deadline across successful PCM installation, including an already
+in-flight graph transaction. Do not create a graph merely because NORM ran or
+silently broaden the guard without receipt/PCM/cancellation evidence. Other
+buffer edits, Linux WebKit interaction, renderer envelopes/resampling, listening/
+devices, long sessions and release checks remain open. No deferred wrappers,
+package or push.
+
+## Previous verified slice — 4 November 2026
 
 Playing-loop NORM now preserves pending Apply/RTRG deadlines and the original
 forward-buffer versus reversed-snapshot behavior. Implementation `09eac61`.
