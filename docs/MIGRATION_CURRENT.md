@@ -9,23 +9,105 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Active slice — queued Undo/Redo before source creation, 5 November 2026
+## Latest verified slice — queued Undo/Redo before source creation, 5 November 2026
 
-Continuing `15af02a`. Acceptance: restore PCM/length/history through shared local/
-global GUI/CLI commands while the original queued source callback is still pending;
-preserve its immutable receipt/deadline/grid and silence even after grid expiry.
-Creation must use restored PCM and current direction. Keep after-birth queued
-history disabled for this slice. Reject capacity failure atomically, retain
-cancellation/clear/prepare/FIFO and original analyser/history ownership.
+Implementation `28e4b1a` plus final unchanged-retrigger-guard correction `7f7a0c2`,
+continuing baseline `15af02a`. Shared GUI/keyboard/CLI local and global Undo/Redo
+now accept a queued loop before its independent source callback has constructed
+playback. Restoring changes stored PCM, length and history depth, retaining the
+original immutable PLAY receipt, callback time and grid. Even a passed grid stays
+silent until callback delivery; birth takes the restored buffer/current direction.
 
-Implemented in the existing restore/receipt path, with no new IDs/schema/storage.
-The initial unchanged-source oracle rejects native `undo` as expected (retained
-`build/queued-history-negative.log`); the implemented comparison passes 96 early/
-late mono/stereo cases at 8/48/96kHz, original 1e-6 tolerance. Native lifecycle,
-production/GUI and Windows/Linux acceptance are being finalized. Do not interpret
-this in-progress checkpoint as complete platform or release acceptance.
+The existing O(1) immutable history swap publishes an explicit pending-queue
+continuation through the existing buffer receipt path. It neither allocates nor
+creates/resets an analyser or source. Capacity rejection precedes all mutation.
+Normal buffer notices cannot inherit queue authority. No new storage, public
+IDs, schema, parameters, dependencies, preserved UI/reference assets or logo.
+Queued history after source construction remains rejected/disabled for a separate
+slice; playing/stopped history retains its existing behavior. GUI additionally
+keeps scheduled-stop queues disabled. The unrelated RTRG guard remains unchanged.
 
-## Latest verified slice — pre-birth queued NORM, 5 November 2026
+| Acceptance | Executed evidence / limit |
+| --- | --- |
+| Original queued Undo/Redo, repeated shrinking/growing buffers | 96 unchanged-method/source cases: mono/stereo, 8/48/96kHz, lengths 1/17/512/4097, forward/reverse, early/late callbacks |
+| Original PCM/grid/silence | 4,241,824 compared channel samples and 2,112,488 silent frames; maximum error 6.3772108371829e-8 on each OS; unchanged 1e-6 tolerance |
+| Local/global history and ownership | 64 native Engine cases, tracks 0/19, 64/128, exact paired stereo, full-width continuation, repeated restore and original complete callback-time identity |
+| Cancellation/capacity/FIFO | STOP NOW, panic, clear, same/new-rate prepare, atomic growing-restore rejection, saturated FIFO retry, callback requested before message consumes installed PCM |
+| Existing edits and NORM | Existing native `--loop-edits` and 96-case `--prebirth-norm` suites on both OS; unchanged JS history/NORM/phase checks |
+| Shared production commands | Eight new local/global early/late production RPC cases at 64/128; full processor suite including external Python CLI routing, state, MIDI and tracked callback allocations on both OS |
+| Actual original UI | Four Windows forward/reverse cases at 64/128: trusted MULT/UNDO/REDO pointers, native acknowledgement, exact restored lengths, unchanged grid, silence, automatic original callback and audible PCM |
+| Sanitizers | Linux ASan/UBSan with leak detection: all 64 new queued-history cases PASS |
+| Outstanding release coverage | Linux WebKit interaction, physical audio/MIDI devices, listening, browser envelopes/resampling and long sessions remain unverified; no wrapper/DAW/Apple builds or package |
+
+The initial unchanged-source test failed at native `undo` before implementation
+(`build/queued-history-negative.log`). No existing case was deleted or tolerance
+loosened. New focused CTest: `js_native_queued_history`; direct native selector:
+`--queued-history` (also included in `--meter-queued`). Existing receipt-identity,
+NORM cancellation/OOM and source-boundary checks remain intact. New feature CLI
+commands use the same existing native actions; see [CLI.md](CLI.md#queued-history).
+The external CLI transport suite passed; the new queued cases exercise its shared
+production RPC path rather than a separate external-process queued timing oracle.
+
+| Executed check | Windows Release | Native WSL Linux Release |
+| --- | --- | --- |
+| Standalone, core/probes, processor and Windows mouse host build | PASS | PASS (mouse host Windows-only) |
+| `--queued-history`, `--loop-edits`, `--prebirth-norm` | PASS | PASS |
+| Full production processor suite | PASS | PASS |
+| 12 selected reference/frontend/asset CTests | PASS, 179.70s, parallel 2 | PASS, 288.30s, parallel 2 |
+| Actual focused WebView pointer gate | PASS, final UI rerun at 64/128 | Not run |
+| Focused ASan/UBSan/leaks | Not run | PASS, existing Debug sanitizer cache |
+
+Callback-cost observations after builds/acceptance jobs stopped: same ignored
+harness, Windows then Linux, 48kHz stereo, one 512-frame loop doubled while stopped,
+512 warm playing callbacks, queued Undo/Redo/Undo then birth/playback/clear. Timing
+covers Engine.process only; setup/worker preparation and telemetry drain excluded.
+
+| Platform | Maximum measured history-command callback | Maximum any measured callback, 64 /128 samples |
+| --- | ---: | ---: |
+| Windows | 85.8us | 86.7us /150.1us |
+| Linux | 48.552us | 123.837us /109.98us |
+
+Deadlines are 1333.33us /2666.67us. These scoped samples do not establish worst-case
+continuity, edit/round-trip latency, full-capacity/long-session CPU or OS rankings.
+Ignored harness/raw results: `build/queued-history-bench-src`,
+`build/queued-history-bench-{windows,linux}.jsonl` on the corresponding OS.
+
+Reproduce with existing caches (Windows VS CMake/CTest resolution retained below):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe aion_meter_graph_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --queued-history
+./build/windows-core/Release/aion_core_tests.exe --loop-edits
+./build/windows-core/Release/aion_core_tests.exe --prebirth-norm
+ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|native_frontend_commands|original_meter_source_lifecycle|js_native_(history|queued_history|normalization|reverse|start_phase|queued_(late_phase|early_edits|prebirth_norm|prebirth_late_norm)))$'
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_midi_processor_tests aion_mouse_host --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -QueuedHistoryOnly
+```
+
+```sh
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_meter_graph_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --queued-history
+./build/linux/aion_core_tests --loop-edits
+./build/linux/aion_core_tests --prebirth-norm
+./build/linux/aion_midi_processor_tests
+ctest --test-dir build/linux --parallel 2 --no-tests=error --output-on-failure -R '^(original_ui_bytes|native_frontend_commands|original_meter_source_lifecycle|js_native_(history|queued_history|normalization|reverse|start_phase|queued_(late_phase|early_edits|prebirth_norm|prebirth_late_norm)))$'
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --queued-history
+```
+
+Logs per OS: `build/queued-history-{core,edits,norm,production,ctest}-{windows,linux}.log`;
+Windows `build/queued-history-ui-windows.log`; Linux `build/queued-history-asan-linux.log`.
+Raw oracle output preserved in `build/queued-history-source-results-{windows,linux}.log`.
+No package or push. Windows remains publishing owner; WSL receives committed snapshots.
+
+Next: characterize queued Undo/Redo after source construction against unchanged
+Loop.undo/redo/restart and AudioGraph, including different buffer lengths, original
+future grid, forward/reverse source snapshots, pending Apply/RTRG and stop/cleanup.
+Define replacement timing/PCM/ownership acceptance before changing eligibility;
+do not simply remove the current queued-source guard.
+
+## Previous verified slice — pre-birth queued NORM, 5 November 2026
 
 Implementation `30db3bd`, continuing verified baseline `a19064c`. NORM now works
 before and after queued graph creation through the existing shared GUI/CLI
@@ -131,7 +213,7 @@ Both copies retain `build/prebirth-norm-source-results-{windows,linux}.log` with
 raw reference output. Exact source and commands above reuse the existing caches;
 there was no dependency upgrade, package or push.
 
-Next: queued Undo/Redo before graph creation. The unchanged Loop.undo/redo methods
+Next at that checkpoint (now completed above): queued Undo/Redo before graph creation. The unchanged Loop.undo/redo methods
 replace stored buffers and leave queued play pending, while native restore still
 requires playing/stopped. Establish its length/history/source expectations before
 adding native eligibility; do not automatically apply NORM's continuation policy
