@@ -425,7 +425,7 @@
                 r.redo.disabled=!active||!t.redoCount||!['playing','stopped'].includes(t.state);
                 r.reverse.checked=!!t.reverse;
                 r.mult.disabled=!active||!t.length||!['playing','stopped','multiplying'].includes(t.state)||snapshot.tracks.some((other,id)=>id!==i&&['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(other.state));
-                r.normalize.disabled=!active||!t.length||!['playing','stopped'].includes(t.state)||snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
+                r.normalize.disabled=!active||!t.length||!(['playing','stopped'].includes(t.state)||(t.state==='queued'&&t.queuedSourceReady))||snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 const mergeBusy=snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 r.mergeSource.disabled=!active||mergeBusy;
                 r.mergeGo.disabled=!active||mergeBusy||!['empty','playing','stopped'].includes(t.state)||!sources.includes(Number(r.mergeSource.value))||r.mergeSource.value==='';

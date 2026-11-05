@@ -979,3 +979,13 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log(`PASS: ${cases} unchanged original volume readouts, silence units and full 0..2 range`);
 }
+
+{
+ const line=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8').split('\n').find(l=>l.includes('r.normalize.disabled='));assert(line);
+ for(const state of ['empty','queued','playing','stopped','finalizing'])for(const ready of [false,true])for(const busy of [false,true]){
+  const t={state,length:state==='empty'?0:512,queuedSourceReady:ready},r={normalize:{}},snapshot={tracks:[t,...(busy?[{state:'recording'}]:[])]};
+  const c={t,r,snapshot,active:true};vm.createContext(c);vm.runInContext(line,c);
+  assert.equal(r.normalize.disabled,busy||!(state==='playing'||state==='stopped'||(state==='queued'&&ready)),'NORM readiness follows the actual native source and worker/capture gate');
+ }
+ console.log('PASS: NORM enabled for constructed queued sources, blocked before graph birth/during worker/capture');
+}

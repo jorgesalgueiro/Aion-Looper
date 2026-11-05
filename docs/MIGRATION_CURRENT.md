@@ -9,6 +9,41 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
+## Active slice — constructed queued-source NORM, 5 November 2026
+
+Scope: NORM after the independent queued graph callback has constructed a source,
+before its original audible grid. Before graph birth remains rejected/disabled;
+that separate buffer/queue-receipt case is the next slice. Do not infer full
+queued NORM, other buffer edits or renderer/device parity from this change.
+
+Acceptance: no premature audio or grid reset, retain pending Apply/RTRG deadlines,
+forward shared-buffer normalization versus independent reversed snapshots, worker
+completion before/after grid, no-op/history and OOM/cancellation/prepare safety.
+The existing GUI and running-Standalone CLI `loop normalize TRACK` share one
+processor command; only the native button readiness changes, with no redesign.
+
+Implementation keeps the original queue/source identity and bounded phase pool.
+An audio-owned transient flag retains a constructed future source while NORM is
+finalizing; original grid/phase events execute while the worker is pending.
+Reversed PCM is leased at graph construction and survives normalization/grid
+activation; clear/stop/prepare release it. No new IDs, persisted fields, queues,
+dependencies or preserved UI/reference asset changes.
+
+Windows focused evidence so far: the new unchanged-JS mode first rejected NORM
+on baseline d77987b (`build/queued-norm-negative.log`). Two source modes now pass:
+60 basic source starts /30 matrix cases (max PCM error 8.283281738297177e-8) and
+60 two-Apply/overtaking-RTRG sequences (6.022638282532355e-8), unchanged 1e-6
+PCM tolerance. Mono/stereo, 8/48/96kHz, lengths 1/17/512/4097/20003 and both source
+directions; browser envelopes/resampling excluded. Engine `--queued-norm` passes
+108 cases: 48 delayed changed/no-op/Apply/RTRG, 48 cancel/stop/same/new-rate prepare,
+eight exact OOM rollback and four explicit pre-birth rejection cases, tracks
+0/19 at 64/128; zero tracked callback new/delete. One fixture assertion was fixed
+to account for a 5ms event activating inside a 128-sample block; its exact deadline
+is retained, with no tolerance or coverage reduction. Standalone/processor/mouse
+host builds and production shared GUI/CLI processor tests pass. Frontend guards
+pass. Actual WebView, full relevant Windows/Linux and sanitizer acceptance is
+still in progress; no completed-slice claim yet.
+
 ## Latest verified slice — 4 November 2026
 
 Playing-loop NORM now preserves pending Apply/RTRG deadlines and the original

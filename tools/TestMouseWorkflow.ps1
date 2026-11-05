@@ -1,4 +1,4 @@
-param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi)
+param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi, [switch] $QueuedNormOnly)
 $ErrorActionPreference = 'Stop'
 if ($SkipMidi -and $MidiOnly) { throw 'SkipMidi cannot be combined with MidiOnly.' }
 $repo = Split-Path -Parent $PSScriptRoot
@@ -19,19 +19,22 @@ foreach ($block in $Blocks) {
         $preview = Start-Process -FilePath $hostPath -ArgumentList "$block" -WindowStyle Hidden -PassThru
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $savedArguments
         $env:WEBVIEW2_USER_DATA_FOLDER = $savedProfile
-        if (!$ExportOnly -and !$MergeOnly -and !$MidiOnly) {
+        if ($QueuedNormOnly) {
+            & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block --queued-norm-only
+            if ($LASTEXITCODE -ne 0) { throw "Queued NORM UI failed at $block samples." }
+        } elseif (!$ExportOnly -and !$MergeOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Mouse workflow failed at $block samples." }
         }
-        if (!$MergeOnly -and !$MidiOnly) {
+        if (!$QueuedNormOnly -and !$MergeOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/ExportWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "WAV export workflow failed at $block samples." }
         }
-        if (!$ExportOnly -and !$MidiOnly) {
+        if (!$QueuedNormOnly -and !$ExportOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/MergeWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Merge workflow failed at $block samples." }
         }
-        if (!$SkipMidi -and !$ExportOnly -and !$MergeOnly) {
+        if (!$QueuedNormOnly -and !$SkipMidi -and !$ExportOnly -and !$MergeOnly) {
             & node (Join-Path $repo 'tests/MidiWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "MIDI workflow failed at $block samples." }
         }

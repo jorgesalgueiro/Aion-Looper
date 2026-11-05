@@ -281,7 +281,7 @@ void processorEarlyStartTests(bool& audioWatch){
             check(static_cast<bool>(p->request({request})["ok"]),"Early Start production shared GUI/CLI command");};
         cycle();command("record");for(unsigned n=0;n<8192/block;++n)cycle();command("finish");cycle();
         check(static_cast<int>(rpc(R"({"operation":"snapshot"})")["tracks"][19]["length"])==8192,"Early Start production immutable clip");
-        for(bool beforeGrid:{true,false})for(const auto* action:{"applyStart","quantizeStart","nudgeStart","retrigger","speed"})for(unsigned sequence:{0u,1u,2u,3u,4u,5u,6u,7u,8u}){
+        for(bool beforeGrid:{true,false})for(const auto* action:{"applyStart","quantizeStart","nudgeStart","retrigger","speed","normalize"})for(unsigned sequence:{0u,1u,2u,3u,4u,5u,6u,7u,8u}){
             if(sequence>=6&&beforeGrid)continue; // NORM requires an already playing native source.
             const bool mixed=sequence!=0;
             if(sequence>=2&&std::string_view(action)!="applyStart")continue;
@@ -297,6 +297,16 @@ void processorEarlyStartTests(bool& audioWatch){
                 state=rpc(R"({"operation":"snapshot"})");grid=static_cast<std::uint64_t>(static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"]));}
             check(p->requestQueuedMeterGraphMessageThread(19),"Early Start production explicit callback");cycle();
             check(static_cast<bool>(rpc(R"({"operation":"snapshot"})")["tracks"][19]["queuedSourceReady"]),"Validated early source exposes audio-owned GUI readiness");
+            if(std::string_view(action)=="normalize"){
+                const auto buffer=static_cast<juce::int64>(rpc(R"({"operation":"snapshot"})")["tracks"][19]["waveformId"]);
+                p->setNonRealtime(true);command("normalize");cycle();p->setNonRealtime(false);
+                state=rpc(R"({"operation":"snapshot"})");
+                check(state["tracks"][19]["state"].toString()=="queued"&&static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"])==static_cast<juce::int64>(grid)
+                    &&static_cast<juce::int64>(state["tracks"][19]["waveformId"])!=buffer&&!static_cast<bool>(state["rejected"]),"Shared GUI/CLI queued NORM preserves source grid and installs PCM");
+                bool audible=false;while(clock()<grid+2048){cycle();if(clock()<=grid)check(audio.getMagnitude(0,static_cast<int>(block))==0,"Queued NORM preserves pre-grid silence");
+                    if(clock()>grid+960)audible=audible||audio.getMagnitude(0,static_cast<int>(block))>0;}
+                state=rpc(R"({"operation":"snapshot"})");check(audible&&state["tracks"][19]["state"].toString()=="playing"&&!static_cast<bool>(state["rejected"]),"Queued NORM shared command opens source at retained grid");continue;
+            }
             const auto edit=grid-(beforeGrid?3840:((std::string_view(action)=="retrigger"||std::string_view(action)=="speed")?1:960));while(clock()+block<edit)cycle();
             if(std::string_view(action)=="speed"){
                 command("speed",.5);cycle();bool audible=false;

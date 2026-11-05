@@ -181,8 +181,10 @@ void LoopBank::acceptResult() noexcept {
             }else track.info.mergeSerial=0;
             track.info.finalizationFailed=false;
         }else track.info.finalizationFailed=true;
+        const bool queued=waitingQueuedSource(track);
         const bool play=track.finalPlay&&(job.edit||autoPlay);
-        track.info.state=track.clip?(play?LoopState::playing:LoopState::stopped):LoopState::empty;
+        track.info.state=track.clip?(queued?LoopState::queued:play?(track.normalizeQueued&&track.info.stopPending?LoopState::stopping:LoopState::playing):LoopState::stopped):LoopState::empty;
+        track.normalizeQueued=false;
         if(!track.clip)track.info.length=0;
         if(result){updateRate(track);if(!job.normalize&&!job.merge){track.phase=0;track.info.position=0;restartSource(track);}
             if(resultChanged&&!((job.normalize||job.merge)&&track.activeReverse))blend(track);}
@@ -241,10 +243,13 @@ void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     // Start replacement scheduled while that source was still inaudible.
     if(!preparedQueue)invalidatePhase(track);
     track.info.stuttering=track.info.stutterClock=false;
-    retire(track.reverseHold);track.reverseHold=nullptr;
+    // An early graph already constructed its reversed AudioBuffer. NORM must
+    // not replace that snapshot when the inaudible source reaches its grid.
+    if(!preparedQueue){retire(track.reverseHold);track.reverseHold=nullptr;}
     // A queued source can reach its start grid with a later STOP already armed.
     // It still needs the same initial phase and reverse buffer as a playing source.
-    const bool starting=track.info.state==LoopState::playing||track.info.state==LoopState::stopping;
+    const bool starting=track.info.state==LoopState::playing||track.info.state==LoopState::stopping
+        ||(track.info.state==LoopState::finalizing&&track.normalizeQueued&&track.playWhileFinalizing);
     track.activeReverse=starting&&(preparedQueue?track.queuedSourceReverse:track.info.reverse);
     if(track.clip&&starting){
         if(!preparedQueue){track.rate=track.targetRate=static_cast<float>(track.phaseRate);track.rateRemaining=0;track.rateIncrement=0;}
@@ -270,6 +275,10 @@ void LoopBank::admitQueuedSource(Track& track) noexcept {
         const double offset=sync.settings.mode!=SyncMode::off?(static_cast<double>(track.startAt)-sync.origin)*track.phaseRate-shift:shift;
         track.queuedSourcePhase=std::fmod(offset,length);if(track.queuedSourcePhase<0)track.queuedSourcePhase+=length;
         track.queuedSourceReverse=track.info.reverse;
+        if(track.queuedSourceReverse){
+            retire(track.reverseHold);track.reverseHold=track.clip;
+            track.reverseHold->leases.fetch_add(1,std::memory_order_relaxed);
+        }
     }
 }
 void LoopBank::saveUndo(Track& track,std::uint32_t id,bool global) noexcept {
@@ -349,7 +358,7 @@ void LoopBank::clear(Track& track) noexcept {
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
     const bool muted=track.info.muted;track.info=LoopView{};track.info.muted=muted;
-    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=false;
+    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=track.normalizeQueued=false;
     if(freeCount)poolFull=false;
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
@@ -484,12 +493,13 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             t.info.reverse=value!=0;return true; // Apply on the next play/retrigger.
         case LoopAction::solo:soloTrack=soloTrack==static_cast<int>(id)?-1:static_cast<int>(id);return true;
         case LoopAction::normalize:
-            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped)||hasCapture())return false;
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!hasPreparedQueuedSource(t,true))||hasCapture())return false;
             job.blockCount=0;job.length=t.clip->length;job.offset=0;job.track=id;job.revision=t.revision;
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=true;job.multiply=job.doubling=false;
             job.merge=false;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
-            t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            t.normalizeQueued=s==LoopState::queued;
+            t.finalPlay=s==LoopState::playing||t.normalizeQueued;t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         case LoopAction::retrigger: {
             const bool prepared=hasPreparedQueuedSource(t);
@@ -731,7 +741,7 @@ void LoopBank::applyPhaseEvents() noexcept {
         if(event.retainedSlot<phaseCapacity){auto& voice=retainedSources[event.retainedSlot];
             if(voice.used&&voice.track==event.track&&voice.epoch==event.epoch){
                 voice.clip=track.reverseHold?track.reverseHold:track.clip;voice.clip->leases.fetch_add(1,std::memory_order_relaxed);
-                const bool queued=track.info.state==LoopState::queued;
+                const bool queued=waitingQueuedSource(track);
                 voice.startAt=queued?track.startAt:frame;voice.phase=queued?track.queuedSourcePhase:track.phase;
                 voice.reverse=queued?track.queuedSourceReverse:track.activeReverse;
                 voice.stuttering=track.info.stuttering;voice.stutterStart=track.info.stutterStart;voice.stutterEnd=track.info.stutterEnd;
@@ -739,11 +749,13 @@ void LoopBank::applyPhaseEvents() noexcept {
                 voice.last=track.last;voice.blendFrom=track.blendFrom;voice.blendRemaining=track.blendRemaining;
             }
         }
-        if(track.info.state==LoopState::queued){
+        if(waitingQueuedSource(track)){
             // The replacement can start before the original grid. Retire that
             // old activation deadline so it cannot restart this source again.
             track.queuedGainAt=track.startAt;
-            track.info.state=track.info.stopPending?LoopState::stopping:LoopState::playing;track.startAt=0;track.tailRemaining=0;
+            if(track.info.state==LoopState::finalizing)track.playWhileFinalizing=true;
+            else track.info.state=track.info.stopPending?LoopState::stopping:LoopState::playing;
+            track.startAt=0;track.tailRemaining=0;
         }
         ++track.sourceRevision;
         retire(track.reverseHold);track.reverseHold=event.reverseClip; // Transfer the scheduled reversed source lease.
@@ -903,7 +915,8 @@ void LoopBank::schedules(Track& track) noexcept {
     if(track.startAt&&frame>=track.startAt){
         // A grid deadline is not source creation. A delayed/cancelled message
         // callback must not leak samples or move the user-visible queued state.
-        if(state==LoopState::queued&&track.queuedSourcePending)return;
+        if(waitingQueuedSource(track)&&track.queuedSourcePending)return;
+        const bool queued=waitingQueuedSource(track);
         track.startAt=0;
         if(state==LoopState::armed){
             state=LoopState::recording;
@@ -916,11 +929,15 @@ void LoopBank::schedules(Track& track) noexcept {
             }
             track.recordPrefix=0;
         }
-        else if(state==LoopState::queued){state=track.info.stopPending?LoopState::stopping:LoopState::playing;track.tailRemaining=0;restartSource(track,queuedStartMode==QueuedStartMode::messageCallback&&track.queuedSourceTicket);blend(track);}
+        else if(queued){
+            if(state==LoopState::finalizing)track.playWhileFinalizing=true;
+            else state=track.info.stopPending?LoopState::stopping:LoopState::playing;
+            track.tailRemaining=0;restartSource(track,queuedStartMode==QueuedStartMode::messageCallback&&track.queuedSourceTicket);blend(track);
+        }
     }
     if(track.endAt&&frame>=track.endAt){
         track.endAt=0;
-        if(state==LoopState::stopping)stop(track);
+        if(state==LoopState::stopping||(state==LoopState::finalizing&&track.normalizeQueued&&track.info.stopPending))stop(track);
         else if(state==LoopState::recording)(void)finish(track);
     }
 }

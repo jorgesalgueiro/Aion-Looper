@@ -105,3 +105,8 @@ production processors with synthetic audio and the actual JUCE message loop.
 They do not prove physical device behavior, OS audio-driver latency, DAW/plugin
 control, Apple operation, or full migration parity. See VALIDATION.md for executed
 results and remaining validation.
+
+NORM also accepts a queued loop once its independent graph callback has
+constructed the future source (`queuedSourceReady`). It retains the original
+start grid. A queued loop before graph creation still rejects NORM; use `status`
+to inspect readiness. The command does not create a second audio engine.

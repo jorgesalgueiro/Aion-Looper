@@ -1029,6 +1029,70 @@ void queuedTripleCapacityTests(){
     check(allocations.load()==0,"Atomic three-slot reservation performs no callback new/delete");
     std::cout<<"PASS: three-slot atomic rejection with 126 occupied slots, two-slot cross-track admission, panic/clear release and recovery at tracks 0/19, 64/128; no callback new/delete\n";
 }
+void queuedNormTests(){
+    using namespace aion;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool unity){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();f.record(id);
+        if(unity){f.command(LoopAction::normalize,id);f.cycle(true);}
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        MeterGraphEvent discarded;while(f.engine->popMeterGraphEvent(discarded)){}
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Queued NORM source direction");
+        }
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);
+        for(auto* e:{f.engine.get(),f.control.get()}){LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,e->generation(),0,0};
+            birth.meterGraphTicket=1;birth.meterQueueId=q.queueId;birth.meterBufferId=q.bufferId;check(e->enqueueLoop(birth),"Queued NORM graph request");}
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+        check(f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].queuedSourceReady,"Queued NORM starts with a constructed inaudible source");
+    };
+    const auto waitHeld=[](){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
+        check(heldWorkerAllocations.load()>=2,"Queued NORM workers pause outside processing");};
+    unsigned cases=0;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool unity:{false,true})for(unsigned stage=0;stage<3;++stage){
+        Fixture f(block);setup(f,id,reverse,unity);const auto grid=f.view->tracks[id].scheduledFrame,buffer=f.view->tracks[id].waveformId;
+        while(f.engine->clock()+block<grid-3840)f.cycle();
+        if(stage){f.command(LoopAction::applyStart,id);f.cycle();if(stage==2){f.command(LoopAction::retrigger,id);f.cycle();}}
+        const auto pending=f.view->tracks[id].phaseApplyFrame,serial=f.view->tracks[id].sourceRevision;
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::normalize,id);f.cycle();waitHeld();
+        check(!f.view->rejected&&f.view->tracks[id].state==LoopState::finalizing&&f.view->tracks[id].phaseApplyFrame==(pending&&pending<f.engine->clock()?0:pending),"Queued NORM preserves accepted phase deadlines while worker runs");
+        while(f.engine->clock()<grid+block)f.cycle();
+        check(!f.view->tracks[id].scheduledFrame&&!f.view->tracks[id].phaseApplyFrame&&f.view->tracks[id].sourceRevision>serial,"Original source or pending replacement starts without waiting for NORM");
+        holdWorkerAllocation.store(false);f.cycle(true);
+        check(f.view->tracks[id].state==LoopState::playing&&f.view->tracks[id].waveformId!=buffer&&!f.view->tracks[id].finalizationFailed
+            &&!f.view->tracks[id].undoCount&&!f.view->tracks[id].redoCount,"Queued NORM commits after grid without resetting source/history");
+        f.command(LoopAction::clear,id);for(unsigned n=0;n<64;++n)f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned cancel=0;cancel<6;++cancel){
+        Fixture f(block);setup(f,id,reverse,false);
+        if(cancel==5){f.command(LoopAction::stop,id);f.cycle();check(f.view->tracks[id].stopPending,"Queued NORM scheduled stop fixture");}
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::normalize,id);f.cycle();waitHeld();
+        if(cancel==5)while(f.engine->clock()<=f.view->tracks[id].scheduledFrame||f.view->tracks[id].scheduledFrame)f.cycle();
+        if(cancel<3){f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);f.cycle();}
+        holdWorkerAllocation.store(false);
+        if(cancel==3)f.prepare();
+        else if(cancel==4)for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}
+        else f.cycle(true);
+        for(unsigned n=0;n<400;++n)f.cycle();
+        check(f.view->tracks[id].state==((cancel==2||cancel==4)?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].scheduledFrame,"Queued NORM cancellation/prepare cannot resurrect source");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);setup(f,id,reverse,false);const auto grid=f.view->tracks[id].scheduledFrame,buffer=f.view->tracks[id].waveformId;
+        check(f.engine->enqueueLoop({LoopAction::normalize,id,++f.request,f.engine->generation(),0,0}),"Queued OOM NORM on observed engine only");
+        failWorkerAllocation.store(true);f.cycle(true);
+        check(!failWorkerAllocation.load()&&f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==buffer
+            &&f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].scheduledFrame==grid,"Queued NORM OOM preserves original grid/PCM");
+        while(f.engine->clock()<grid+2048)f.cycle();++cases; // Exact stereo against the unedited engine.
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block);setup(f,id,true,false);f.command(LoopAction::stopImmediate,id);f.cycle();f.command(LoopAction::play,id);f.cycle();
+        f.command(LoopAction::normalize,id);f.cycle();check(f.view->rejected&&f.view->tracks[id].state==LoopState::queued&&!f.view->tracks[id].queuedSourceReady,"NORM before graph birth remains explicitly unsupported");++cases;
+    }
+    check(allocations.load()==0,"Queued NORM performs no callback new/delete");
+    std::cout<<"PASS: queued-source NORM "<<cases<<" delayed changed/no-op, Apply/RTRG, stop/clear/same/new-rate prepare and exact OOM rollback cases; tracks 0/19, reverse, 64/128, no callback new/delete\n";
+}
 void normPendingTests(){
     using namespace aion;
     const auto waitHeld=[](unsigned count){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
@@ -1424,7 +1488,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    normPendingTests();
+    queuedNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

@@ -218,6 +218,7 @@ private:
         std::uint64_t revision = 0, clearEpoch = 0, sourceRevision = 0;
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
+        bool normalizeQueued = false; // NORM preserves a constructed source's future grid while the worker runs.
         SyncMode recordMode=SyncMode::off;
         double recordBarFrames=0,recordOrigin=0,recordStartSeconds=0;
         std::uint32_t plannedFrames=0,recordPrefix=0;
@@ -307,8 +308,11 @@ private:
     static bool hasPlaybackSource(const Track& t) noexcept {
         const auto s=t.info.state;return t.clip&&!t.queuedSourcePending&&(s==LoopState::playing||s==LoopState::stopping||s==LoopState::overdubbing||s==LoopState::substituting||s==LoopState::multiplying||(s==LoopState::finalizing&&t.playWhileFinalizing));
     }
+    static bool waitingQueuedSource(const Track& t) noexcept {
+        return t.info.state==LoopState::queued||(t.info.state==LoopState::finalizing&&t.normalizeQueued&&t.finalPlay&&!t.playWhileFinalizing);
+    }
     bool hasPreparedQueuedSource(const Track& t,bool includeStopping=false) const noexcept {
-        return queuedStartMode==QueuedStartMode::messageCallback&&t.info.state==LoopState::queued
+        return queuedStartMode==QueuedStartMode::messageCallback&&waitingQueuedSource(t)
             &&!t.queuedSourcePending&&t.queuedSourceTicket&&(includeStopping||!t.info.stopPending);
     }
     void stop(Track&) noexcept;
