@@ -463,7 +463,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=false;job.multiply=job.doubling=true;
             job.merge=false;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
-            if(!sourceDouble)invalidatePhase(t);t.multiplyQueued=prebirth;t.multiplySource=sourceDouble;
+            if(!sourceDouble)invalidatePhase(t);
+            t.multiplyQueued=prebirth;t.multiplySource=sourceDouble;
             t.finalPlay=s==LoopState::playing||prebirth||sourceDouble;t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         }

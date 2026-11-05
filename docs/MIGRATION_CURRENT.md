@@ -27,7 +27,10 @@ comparison exposed the existing playing path's immediate restart (0 instead of
 5ms); playing no-input doubling now uses the same reserved source replacement.
 All 160 focused native lifecycle cases and the full Windows production processor
 suite pass. The corrected full source corpus, actual UI, Windows/Linux final
-regressions and sanitizer acceptance remain pending. No reference/preserved assets, logo, dependency or capacity changes.
+regressions and sanitizer acceptance remain pending. Linux initially stopped on
+-Werror=misleading-indentation; splitting the guarded statement from subsequent
+assignments fixes the diagnostic without changing behavior. Full corrected
+384-case source comparison and actual Windows 64/128 pointers now PASS. No reference/preserved assets, logo, dependency or capacity changes.
 
 ## Latest verified slice — queued Multiply before source construction, 5 November 2026
 
