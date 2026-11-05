@@ -297,8 +297,11 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     auto& from=redo?track.redo:track.undo;auto& to=redo?track.undo:track.redo;
     auto& fromCount=redo?track.info.redoCount:track.info.undoCount;
     auto& toCount=redo?track.info.undoCount:track.info.redoCount;
+    // A pending message callback has not captured PCM/length/direction yet.
+    // Restore storage without creating a source or moving that callback/grid.
+    const bool queued=track.info.state==LoopState::queued&&track.queuedSourcePending&&!track.queuedSourceTicket;
     if(!track.clip||!fromCount||toCount>=to.size()||
-       (track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopped))return false;
+       (track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopped&&!queued))return false;
     const auto restored=from[fromCount-1];
     if(restored->length>track.clip->length&&restored->length-track.clip->length>growthRoom(track))return false;
     residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
@@ -309,7 +312,7 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     if(redo){if(remove(redoOrder,redoSize,id,true))append(undoOrder,undoSize,id);}
     else if(remove(undoOrder,undoSize,id,true))append(redoOrder,redoSize,id);
     if(track.info.state==LoopState::playing){track.phase=0;track.info.position=0;restartSource(track);blend(track);}
-    publishMeterBuffer(id);
+    publishMeterBuffer(id,queued);
     return true;
 }
 void LoopBank::stop(Track& track) noexcept {

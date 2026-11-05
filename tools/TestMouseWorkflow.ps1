@@ -1,4 +1,4 @@
-param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi, [switch] $QueuedNormOnly)
+param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi, [switch] $QueuedNormOnly, [switch] $QueuedHistoryOnly)
 $ErrorActionPreference = 'Stop'
 if ($SkipMidi -and $MidiOnly) { throw 'SkipMidi cannot be combined with MidiOnly.' }
 $repo = Split-Path -Parent $PSScriptRoot
@@ -19,26 +19,30 @@ foreach ($block in $Blocks) {
         $preview = Start-Process -FilePath $hostPath -ArgumentList "$block" -WindowStyle Hidden -PassThru
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $savedArguments
         $env:WEBVIEW2_USER_DATA_FOLDER = $savedProfile
-        if ($QueuedNormOnly) {
+        if ($QueuedHistoryOnly) {
+            & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block --queued-history-only
+            if ($LASTEXITCODE -ne 0) { throw "Queued history UI failed at $block samples." }
+        } elseif ($QueuedNormOnly) {
             & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block --queued-norm-only
             if ($LASTEXITCODE -ne 0) { throw "Queued NORM UI failed at $block samples." }
         } elseif (!$ExportOnly -and !$MergeOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Mouse workflow failed at $block samples." }
         }
-        if (!$QueuedNormOnly -and !$MergeOnly -and !$MidiOnly) {
+        if (!$QueuedHistoryOnly -and !$QueuedNormOnly -and !$MergeOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/ExportWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "WAV export workflow failed at $block samples." }
         }
-        if (!$QueuedNormOnly -and !$ExportOnly -and !$MidiOnly) {
+        if (!$QueuedHistoryOnly -and !$QueuedNormOnly -and !$ExportOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/MergeWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Merge workflow failed at $block samples." }
         }
-        if (!$QueuedNormOnly -and !$SkipMidi -and !$ExportOnly -and !$MergeOnly) {
+        if (!$QueuedHistoryOnly -and !$QueuedNormOnly -and !$SkipMidi -and !$ExportOnly -and !$MergeOnly) {
             & node (Join-Path $repo 'tests/MidiWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "MIDI workflow failed at $block samples." }
         }
-        if ($QueuedNormOnly) { Write-Output "PASS: focused queued-NORM processor/editor mouse workflow at $block samples." }
+        if ($QueuedHistoryOnly) { Write-Output "PASS: focused queued-history processor/editor mouse workflow at $block samples." }
+        elseif ($QueuedNormOnly) { Write-Output "PASS: focused queued-NORM processor/editor mouse workflow at $block samples." }
         else { Write-Output "PASS: production processor/editor mouse workflow at $block samples." }
     } finally {
         $env:AION_MOUSE_TEST_RUN = $savedTestRun

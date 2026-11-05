@@ -17,7 +17,7 @@ struct MeterGraphEvent {
     std::uint32_t retiredTicket=0; // Actual window removed by clear; never a JS graph inference.
     std::uint64_t bufferId=0; // Installed immutable clip, or the clip removed by clear. Never an analyser ID.
     double stopLeadSeconds=0; // Scheduled stop delta at audio acceptance, before sample deadline rounding. Not wall time.
-    std::uint64_t queueId=0; // Accepted intent; on bufferInstalled, explicit NORM continuation of that pending intent.
+    std::uint64_t queueId=0; // Accepted intent; on bufferInstalled, explicit edit continuation of that pending intent.
     double queueDelaySeconds=0; // max(0, unrounded grid delta - 100ms), only on queuedPlay. Not wall time.
     CallbackClockStamp callbackClock{}; // Exact queued-command callback; never a later snapshot or DAC edge.
     bool operator==(const MeterGraphEvent&) const noexcept = default;

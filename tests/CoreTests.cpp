@@ -45,6 +45,7 @@ void meterOverlapTests();
 void normPendingTests();
 void queuedNormTests();
 void prebirthNormTests();
+void queuedHistoryTests();
 void playbackClockTests();
 void callbackAudibleTimeTests();
 void callbackClockTests();
@@ -89,6 +90,7 @@ int main(int argc,char** argv) {
     if(argc==2&&std::string_view(argv[1])=="--meter-playback"){meterPlaybackTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-stops"){meterStopTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-panic"){meterPanicTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--queued-history"){queuedHistoryTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--prebirth-norm"){prebirthNormTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--queued-norm"){queuedNormTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--norm-pending"){normPendingTests();return 0;}

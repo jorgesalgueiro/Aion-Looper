@@ -1098,6 +1098,103 @@ void queuedNormTests(){
     check(allocations.load()==0,"Queued NORM performs no callback new/delete");
     std::cout<<"PASS: queued-source NORM "<<cases<<" delayed changed/no-op, Apply/RTRG, stop/clear/same/new-rate prepare and exact OOM rollback cases; tracks 0/19, reverse, 64/128, no callback new/delete\n";
 }
+
+void queuedHistoryTests(){
+    using namespace aion;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool global,unsigned capacity=81920){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(48000,capacity,{true,48000,0});e->setMonitoring(false);e->setTarget(1);}
+        auto owner=std::make_unique<LoopMeterLifecycle>(*f.engine,id);
+        f.command(LoopAction::record,id);for(unsigned n=0;n<(capacity==8192?4096u:512u)/f.block;++n)f.cycle();f.command(LoopAction::finish,id);f.cycle(true);
+        check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"History initial PCM");
+        if(global){f.command(LoopAction::overdub,id);f.cycle();f.command(LoopAction::finish,id);f.cycle(true);
+            check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"History globally indexed edit");}
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        if(!global){f.command(LoopAction::multiply,id);f.cycle(true);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"History length-changing local edit");}
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"History direction");}
+        f.command(LoopAction::play,id);f.cycle(false,{100,true});
+        check(owner->consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay,id)),"History initial queued receipt");return owner;
+    };
+    const auto birth=[](Fixture& f,LoopMeterLifecycle& owner,unsigned id,const QueuedMeterCallbackTime& expected){
+        check(owner.requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds}),"History original callback requests once");
+        const auto request=owner.queuedWindowTransaction();LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};
+        mirror.meterGraphTicket=request.ticket;mirror.meterQueueId=request.queueId;mirror.meterBufferId=request.bufferId;
+        check(f.control->enqueueLoop(mirror),"History paired callback");f.cycle();(void)f.next(MeterGraphEventKind::started,id);
+        check(owner.consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"History accepts original receipt against restored PCM");
+        check(!owner.requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds+1}),"History receipt is one-shot");
+    };
+    unsigned cases=0;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool global:{false,true})for(bool late:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse,global);QueuedMeterCallbackTime expected;
+        check(owner->readQueuedCallbackTime(73,{73,100},expected),"History original callback time");
+        const auto grid=f.view->tracks[id].scheduledFrame;const auto identity=owner->inspect();
+        const auto restore=[&](bool redo){const auto before=f.view->tracks[id];
+            f.command(redo?(global?LoopAction::redoGlobal:LoopAction::redo):(global?LoopAction::undoGlobal:LoopAction::undo),id);f.cycle();
+            const auto installed=f.next(MeterGraphEventKind::bufferInstalled,id);auto wrong=installed;wrong.queueId+=(1ull<<32);
+            check(!owner->consumeBuffer(wrong)&&owner->consumeBuffer(installed),"History requires full-width explicit queue continuation");
+            const auto& t=f.view->tracks[id];QueuedMeterCallbackTime current;
+            check(!f.view->rejected&&t.state==LoopState::queued&&!t.queuedSourceReady&&t.scheduledFrame==grid&&f.view->outputPeak==0
+                &&t.waveformId!=before.waveformId&&t.undoCount==(redo?1u:0u)&&t.redoCount==(redo?0u:1u)
+                &&t.length==(global?512u:redo?1024u:512u),"History swaps exact storage/depth/length without starting or moving playback");
+            check(owner->readQueuedCallbackTime(73,{73,100},current)&&current==expected&&owner->queuedCallbackBuffer()==expected.bufferId
+                &&owner->committedBuffer()==installed.bufferId&&owner->inspect().data==identity.data,"History preserves exact original receipt and analyser/data");};
+        restore(false);restore(true);restore(false);
+        if(late){while(f.engine->clock()<grid+block){f.cycle();check(f.view->outputPeak==0,"Past-grid history remains silent before callback");}restore(true);}
+        birth(f,*owner,id,expected);
+        if(!late){const auto before=f.view->tracks[id];f.command(global?LoopAction::redoGlobal:LoopAction::redo,id);f.cycle();MeterGraphEvent unexpected;
+            check(f.view->rejected&&f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].redoCount==before.redoCount
+                &&!f.engine->popMeterGraphEvent(unexpected),"After-birth queued history remains explicitly outside this slice");}
+        bool audible=false;while(f.engine->clock()<grid+2048){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Restored source respects original grid silence");
+            if(f.engine->clock()>grid+512)audible=audible||f.view->outputPeak>0;}
+        check(f.view->tracks[id].state==LoopState::playing&&audible,"Original queued receipt starts restored source");
+        f.command(LoopAction::clear,id);f.cycle();check(owner->consumeClear(f.next(MeterGraphEventKind::cleared,id)),"History clear retires restored ownership");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<5;++cancel){
+        Fixture f(block);auto owner=setup(f,id,true,false);QueuedMeterCallbackTime expected;check(owner->readQueuedCallbackTime(73,{73,100},expected),"History cancellation receipt");
+        f.command(LoopAction::undo,id);f.cycle();check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"History before cancellation");
+        if(cancel>=3){
+            if(cancel==3)f.prepare();else for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}
+            check(owner->reset(),"Prepared history owner resets");}
+        else {f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);f.cycle();
+            const auto event=f.next(cancel==0?MeterGraphEventKind::queuedStop:cancel==1?MeterGraphEventKind::queuedCancel:MeterGraphEventKind::cleared,id);
+            check(cancel==0?owner->consumeQueuedStop(event):cancel==1?owner->consumeQueuedCancel(event):owner->consumeClear(event),"History consumes authoritative cancellation");}
+        check(!owner->requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds+1}),"History old callback cannot resurrect canceled/cleared/prepared queue");++cases;
+    }
+
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block);auto owner=setup(f,id,true,false,8192);QueuedMeterCallbackTime expected;
+        check(owner->readQueuedCallbackTime(73,{73,100},expected),"History exhausted-capacity receipt");
+        f.command(LoopAction::undo,id);f.cycle();check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"History frees current storage capacity");
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::off,137.3,1,1,4,false});
+        const auto other=id?0u:19u;f.record(other);(void)f.next(MeterGraphEventKind::bufferInstalled,other);
+        f.command(LoopAction::stopImmediate,other);for(unsigned n=0;n<8;++n)f.cycle();
+        const auto before=f.view->tracks[id];f.command(LoopAction::redo,id);f.cycle();MeterGraphEvent event;
+        check(f.view->rejected&&f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].length==before.length
+            &&f.view->tracks[id].redoCount==before.redoCount&&!f.engine->popMeterGraphEvent(event),"Capacity failure preserves exact history/PCM without a false continuation");
+        QueuedMeterCallbackTime current;check(owner->readQueuedCallbackTime(73,{73,100},current)&&current==expected,"Failed growing restore retains original timer");
+        birth(f,*owner,id,expected);++cases;
+    }
+
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool saturated:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,false,false);QueuedMeterCallbackTime expected;
+        check(owner->readQueuedCallbackTime(73,{73,100},expected),"History delayed-consumer receipt");
+        f.command(LoopAction::undo,id);f.cycle(); // Keep bufferInstalled unconsumed on message owner.
+        if(saturated){for(unsigned n=0;n<255;++n)f.command(LoopAction::mute,id);
+            check(!owner->requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds})&&!owner->queuedWindowTransaction().ticket,"FIFO failure preserves history callback for retry");f.cycle();}
+        check(owner->requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds}),"Old receipt requests callback before message sees history PCM");
+        const auto request=owner->queuedWindowTransaction();
+        check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id))&&owner->queuedWindowTransaction().ticket==request.ticket,"Ordered history continuation retains pending callback transaction");
+        LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};mirror.meterGraphTicket=request.ticket;mirror.meterQueueId=request.queueId;mirror.meterBufferId=request.bufferId;
+        check(f.control->enqueueLoop(mirror),"History delayed-consumer paired callback");f.cycle();(void)f.next(MeterGraphEventKind::started,id);
+        check(owner->consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"History delayed buffer notice cannot obsolete its accepted source");++cases;
+    }
+    check(allocations.load()==0,"Queued history has no callback new/delete");
+    std::cout<<"PASS: queued Undo/Redo "<<cases<<" local/global early/late, length/depth, original receipt/grid, full-width validation, source-boundary rejection and stop/panic/clear/prepare cases; tracks 0/19, reverse, 64/128, exact paired stereo and no callback new/delete\n";
+}
+
 void prebirthNormTests(){
     using namespace aion;
     const auto setup=[](Fixture& f,unsigned id,bool reverse,bool attached=false){
@@ -1608,7 +1705,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    prebirthNormTests();queuedNormTests();normPendingTests();
+    queuedHistoryTests();prebirthNormTests();queuedNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

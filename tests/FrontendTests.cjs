@@ -989,3 +989,19 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: NORM enabled before/after queued graph birth, blocked during worker/capture');
 }
+
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const start=source.indexOf('        const restoreHistory=');const end=source.indexOf('        const multiply=',start);assert(start>=0&&end>start);
+ for(const state of ['empty','queued','playing','stopped','finalizing'])for(const ready of [false,true])for(const stopPending of [false,true])for(const count of [0,1])for(const redo of [false,true])for(const global of [false,true]){
+  let action;const t={state,stopPending,queuedSourceReady:ready,undoCount:count,redoCount:count};
+  const c={snapshot:{tracks:[t],nextUndo:0,nextRedo:0},scheduler:{enqueue:resolver=>{action=resolver();}}};vm.createContext(c);
+  vm.runInContext(source.slice(start,end)+'restoreHistory('+redo+','+(global?'null':'0')+');',c);
+  const enabled=count>0&&(['playing','stopped'].includes(state)||(state==='queued'&&!ready&&!stopPending));
+  assert.equal(!!action,enabled,'Shared local/global history dispatch guard');
+  const lines=source.split('\n').filter(l=>l.includes('r.undo.disabled=')||l.includes('r.redo.disabled='));assert.equal(lines.length,2);
+  const r={undo:{},redo:{}};const ui={r,t,active:true};vm.createContext(ui);vm.runInContext(lines.join('\n'),ui);
+  assert.equal(r.undo.disabled,!enabled);assert.equal(r.redo.disabled,!enabled);
+ }
+ console.log('PASS: local/global history dispatch and original controls enabled only before queued graph birth or in playing/stopped states');
+}

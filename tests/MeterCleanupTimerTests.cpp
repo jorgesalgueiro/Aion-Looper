@@ -259,6 +259,49 @@ void processorDueDeliveryTests(bool& audioWatch){
     std::cout<<"PASS: production guarded due delivery uses configured counter, exact receipt and sole result route; early/stale/duplicate/replacement/release rejection at tracks 0/19, 64/128\n";
     std::cout<<"PASS: production cleanup command readout retains accepting callback across later views and rejects release at tracks 0/19, 64/128\n";
 }
+void processorQueuedHistoryTests(bool& audioWatch){
+    for(unsigned block:{64u,128u})for(bool global:{false,true})for(bool late:{false,true}){
+        auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
+        const auto rpc=[&](const char* text){auto result=p->request({juce::JSON::parse(text)});check(static_cast<bool>(result["ok"]),"Early Start production RPC");return result;};
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");
+        rpc(R"({"operation":"setParameter","id":"masterGain","value":1})");
+        rpc(R"({"operation":"setParameter","id":"inputMonitor","value":0})");
+        juce::AudioBuffer<float> audio(2,static_cast<int>(block));juce::MidiBuffer midi;midi.ensureSize(256);
+        const auto clock=[&]{return p->inspectCallbackClockAudioThread().endFrame;};
+        unsigned cycles=0;
+        const auto cycle=[&]{const auto frame=clock();for(unsigned n=0;n<block;++n){audio.setSample(0,static_cast<int>(n),.3f*static_cast<float>(std::sin((frame+n)*.037)));audio.setSample(1,static_cast<int>(n),-.5f*audio.getSample(0,static_cast<int>(n)));}
+            audioWatch=true;p->processBlock(audio,midi);audioWatch=false;
+            // Production views are bounded; drain on the message owner rather
+            // than mistaking an old queued view for current audio state.
+            if(++cycles%4==0)rpc(R"({"operation":"snapshot"})");};
+        const auto command=[&](const char* action,double value=0){auto* data=new juce::DynamicObject();juce::var request(data);
+            data->setProperty("operation","loop");data->setProperty("action",action);data->setProperty("track",19);data->setProperty("value",value);
+            data->setProperty("generation",static_cast<int>(p->inspectCallbackClockAudioThread().generation));
+            data->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis())+4000);
+            check(static_cast<bool>(p->request({request})["ok"]),"Early Start production shared GUI/CLI command");};
+
+        cycle();command("record");for(unsigned n=0;n<512/block;++n)cycle();command("finish");cycle();
+        if(global){command("overdub");cycle();command("finish");cycle();}
+        command("stopImmediate");cycle();
+        if(!global){command("multiply");cycle();}
+        auto state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["tracks"][19]["undoCount"])==1,"Production history fixture checkpoint");
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":1})");
+        rpc(R"({"operation":"setParameter","id":"syncBpm","value":60})");cycle();command("play");cycle();
+        state=rpc(R"({"operation":"snapshot"})");const auto grid=static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"]);
+        const auto restore=[&](bool redo){command(redo?(global?"redoGlobal":"redo"):(global?"undoGlobal":"undo"));cycle();
+            state=rpc(R"({"operation":"snapshot"})");const auto t=state["tracks"][19];
+            check(!static_cast<bool>(state["rejected"])&&t["state"].toString()=="queued"&&!static_cast<bool>(t["queuedSourceReady"])
+                &&static_cast<juce::int64>(t["scheduledFrame"])==grid&&static_cast<int>(t["length"])==(global?512:redo?1024:512)
+                &&static_cast<int>(t["undoCount"])==(redo?1:0)&&static_cast<int>(t["redoCount"])==(redo?0:1),"Shared GUI/CLI queued history preserves grid and restores exact length/depth");};
+        restore(false);restore(true);restore(false);
+        if(late){while(clock()<static_cast<std::uint64_t>(grid)+block){cycle();check(audio.getMagnitude(0,static_cast<int>(block))==0,"Production late history stays silent without source");}restore(true);}
+        check(p->requestQueuedMeterGraphMessageThread(19),"Production original queued graph receipt survives history");cycle();
+        bool audible=false;while(clock()<static_cast<std::uint64_t>(grid)+2048){cycle();if(clock()<=static_cast<std::uint64_t>(grid))check(audio.getMagnitude(0,static_cast<int>(block))==0,"Production restored source retains grid silence");
+            if(clock()>static_cast<std::uint64_t>(grid)+512)audible=audible||audio.getMagnitude(0,static_cast<int>(block))>0;}
+        check(audible,"Production restored source becomes audible");
+    }
+    std::cout<<"PASS: production shared GUI/CLI queued local/global Undo/Redo, restored lengths/depths, early/late receipt, original grid and audible source at 64/128\n";
+}
 void processorEarlyStartTests(bool& audioWatch){
     for(unsigned block:{64u,128u}){
         auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
@@ -1395,6 +1438,7 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     clearDispatcherTests(audioWatch);
     processorBufferReceiptTests(audioWatch);
     processorEarlyStartTests(audioWatch);
+    processorQueuedHistoryTests(audioWatch);
     processorDueDeliveryTests(audioWatch);
     panicDispatcherTests(audioWatch);
     queuedAdapterTests(audioWatch);

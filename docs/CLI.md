@@ -112,3 +112,14 @@ not itself create a source. The existing asynchronous worker commits new PCM;
 use `status` to distinguish acceptance, finalization and playback. Sources take
 the PCM committed at construction; reversed snapshots remain independent. The
 command controls the running session and does not create a second audio engine.
+
+## Queued history
+
+`loop undo TRACK` and `loop redo TRACK` now also work while PLAY is queued and
+its independent source callback has not run. They restore stored audio and
+history depth without changing the original start grid or callback deadline.
+The callback uses the restored buffer, including its new length and current
+direction. Global `loop undoGlobal` / `loop redoGlobal` share the same rules.
+Once the future source has been constructed, history stays unavailable while
+still queued; history in playing/stopped states retains its existing behavior.
+Storage-capacity rejection leaves the clip, history and pending play unchanged.

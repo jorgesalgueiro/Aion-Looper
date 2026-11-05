@@ -334,7 +334,7 @@ private:
     std::array<std::uint32_t,trackCount> retiredSourceTickets{};
     std::array<bool,trackCount> meterPanicKnown{};
     std::array<std::uint64_t,trackCount> meterQueuedIds{};
-    std::array<std::uint64_t,trackCount> meterQueuedBufferIds{}; // Immutable play receipt; NORM changes PCM, not this identity.
+    std::array<std::uint64_t,trackCount> meterQueuedBufferIds{}; // Immutable play receipt; pre-birth history/NORM change PCM, not this identity.
     std::array<std::uint64_t,trackCount> meterQueuedWindowIds{};
     std::uint64_t meterQueueHighWater=0;
     std::array<std::uint64_t,trackCount> meterGraphFrames{};

@@ -172,7 +172,7 @@ public:
     // Sole stream consumer supplies the actual installed immutable clip receipt.
     // A buffer change does not create/reset/detach an analyser or stop timer.
     bool consumeBuffer(const MeterGraphEvent& event) noexcept {
-        // Only an explicit audio-owner NORM continuation can change PCM while
+        // Only an explicit audio-owner edit continuation can change PCM while
         // retaining the immutable queued receipt, clock and in-flight request.
         const bool continuation=event.queueId&&event.queueId==queuedId&&matchesQueuedBuffer(queuedNotice.bufferId);
         const auto matches=[&]() noexcept {

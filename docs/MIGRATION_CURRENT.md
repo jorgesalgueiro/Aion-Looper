@@ -9,6 +9,22 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
+## Active slice — queued Undo/Redo before source creation, 5 November 2026
+
+Continuing `15af02a`. Acceptance: restore PCM/length/history through shared local/
+global GUI/CLI commands while the original queued source callback is still pending;
+preserve its immutable receipt/deadline/grid and silence even after grid expiry.
+Creation must use restored PCM and current direction. Keep after-birth queued
+history disabled for this slice. Reject capacity failure atomically, retain
+cancellation/clear/prepare/FIFO and original analyser/history ownership.
+
+Implemented in the existing restore/receipt path, with no new IDs/schema/storage.
+The initial unchanged-source oracle rejects native `undo` as expected (retained
+`build/queued-history-negative.log`); the implemented comparison passes 96 early/
+late mono/stereo cases at 8/48/96kHz, original 1e-6 tolerance. Native lifecycle,
+production/GUI and Windows/Linux acceptance are being finalized. Do not interpret
+this in-progress checkpoint as complete platform or release acceptance.
+
 ## Latest verified slice — pre-birth queued NORM, 5 November 2026
 
 Implementation `30db3bd`, continuing verified baseline `a19064c`. NORM now works
