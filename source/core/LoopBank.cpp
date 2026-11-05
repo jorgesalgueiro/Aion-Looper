@@ -164,6 +164,15 @@ void LoopBank::acceptResult() noexcept {
     auto& track=tracks[job.track];
     for(std::uint32_t i=0;i<job.blockCount;++i)freeBlocks[freeCount++]=job.blocks[i];
     if(track.revision==job.revision&&track.info.state==LoopState::finalizing){
+        const bool sourceMultiply=track.multiplySource&&track.finalPlay;
+        if(result&&sourceMultiply){
+            const bool master=sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(job.track));
+            // Reserve the replacement and every overlap lease before installing PCM/history.
+            if(track.storageVersion==std::numeric_limits<std::uint64_t>::max()
+                ||!schedulePhase(track,job.track,static_cast<double>(frame)/rate+.005,master,true,result)){
+                retire(result);result=nullptr;
+            }else {freezeHistorySources(track,job.track);++track.storageVersion;}
+        }
         if(result){
             if(track.clip)residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
             if(job.normalize||(job.merge&&job.edit))for(auto& voice:retainedSources){
@@ -205,10 +214,10 @@ void LoopBank::acceptResult() noexcept {
         const bool queued=waitingQueuedSource(track);
         const bool play=track.finalPlay&&(job.edit||autoPlay);
         track.info.state=track.clip?(queued?LoopState::queued:play?(track.normalizeQueued&&track.info.stopPending?LoopState::stopping:LoopState::playing):LoopState::stopped):LoopState::empty;
-        const bool multipliedQueue=track.multiplyQueued;track.normalizeQueued=track.multiplyQueued=false;
+        const bool multipliedQueue=track.multiplyQueued;track.normalizeQueued=track.multiplyQueued=track.multiplySource=false;
         if(!track.clip)track.info.length=0;
-        if(result){updateRate(track);if(!job.normalize&&!job.merge&&!multipliedQueue){track.phase=0;track.info.position=0;restartSource(track);}
-            if(resultChanged&&!((job.normalize||job.merge)&&track.activeReverse))blend(track);}
+        if(result){if(sourceMultiply)track.phaseRate=effectiveRateFor(track,result->length);else updateRate(track);if(!job.normalize&&!job.merge&&!multipliedQueue&&!sourceMultiply){track.phase=0;track.info.position=0;restartSource(track);}
+            if(resultChanged&&!sourceMultiply&&!((job.normalize||job.merge)&&track.activeReverse))blend(track);}
         if(result)publishMeterBuffer(job.track,job.normalize||multipliedQueue); // Keep the immutable pending PLAY receipt.
     }else retire(result);
     result=nullptr;jobState.store(0,std::memory_order_release);
@@ -272,7 +281,7 @@ void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     // A queued source can reach its start grid with a later STOP already armed.
     // It still needs the same initial phase and reverse buffer as a playing source.
     const bool starting=track.info.state==LoopState::playing||track.info.state==LoopState::stopping
-        ||(track.info.state==LoopState::finalizing&&track.normalizeQueued&&track.playWhileFinalizing);
+        ||(track.info.state==LoopState::finalizing&&(track.normalizeQueued||track.multiplySource)&&track.playWhileFinalizing);
     track.activeReverse=starting&&(preparedQueue?track.queuedSourceReverse:track.info.reverse);
     if(track.clip&&starting){
         if(!preparedQueue){track.rate=track.targetRate=static_cast<float>(track.phaseRate);track.rateRemaining=0;track.rateIncrement=0;}
@@ -402,7 +411,7 @@ void LoopBank::clear(Track& track) noexcept {
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
     const bool muted=track.info.muted;track.info=LoopView{};track.info.muted=muted;
-    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=track.normalizeQueued=track.multiplyQueued=false;
+    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=track.normalizeQueued=track.multiplyQueued=track.multiplySource=false;
     if(freeCount)poolFull=false;
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
@@ -442,8 +451,9 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(value!=0&&value!=1)return false;
             if(s==LoopState::multiplying)return finish(t);
             const bool prebirth=s==LoopState::queued&&t.queuedSourcePending&&!t.queuedSourceTicket&&!t.info.stopPending;
-            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!prebirth)||hasCapture())return false;
-            if(s==LoopState::playing&&(std::abs(t.info.playbackRate-1)>0.01f||t.rateRemaining))return false;
+            const bool sourceDouble=value==0&&(hasPreparedQueuedSource(t)||s==LoopState::playing);
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!prebirth&&!sourceDouble)||hasCapture())return false;
+            if((s==LoopState::playing||sourceDouble)&&(std::abs(t.info.playbackRate-1)>0.01f||(!sourceDouble&&t.rateRemaining)))return false;
             if(s==LoopState::playing&&value==1){
                 if(!freeCount||growthRoom(t)<128)return false;
                 invalidatePhase(t);t.captureLength=t.captureOffset=0;t.info.finalizationFailed=false;s=LoopState::multiplying;poolFull=false;return true;
@@ -453,8 +463,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=false;job.multiply=job.doubling=true;
             job.merge=false;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
-            invalidatePhase(t);t.multiplyQueued=prebirth;
-            t.finalPlay=s==LoopState::playing||prebirth;t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            if(!sourceDouble)invalidatePhase(t);t.multiplyQueued=prebirth;t.multiplySource=sourceDouble;
+            t.finalPlay=s==LoopState::playing||prebirth||sourceDouble;t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         }
         case LoopAction::undo:return restore(t,id,false);
@@ -781,7 +791,7 @@ void LoopBank::applyPhaseEvents() noexcept {
         const bool valid=event.epoch==track.phaseEpoch;
         if(valid&&event.frame>frame)break;
         phaseRead=(phaseRead+1)%phaseCapacity;
-        const bool normalizing=track.info.state==LoopState::finalizing&&track.playWhileFinalizing&&job.normalize&&job.track==event.track;
+        const bool normalizing=track.info.state==LoopState::finalizing&&track.playWhileFinalizing&&(job.normalize||track.multiplySource)&&job.track==event.track;
         if(!valid||!track.clip||(track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopping&&!hasPreparedQueuedSource(track,true)&&!normalizing)){
             retire(event.reverseClip);retire(event.forwardClip);
             if(event.retainedSlot<phaseCapacity){const auto& voice=retainedSources[event.retainedSlot];

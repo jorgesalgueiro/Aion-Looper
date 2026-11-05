@@ -1011,13 +1011,13 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
  const start=source.indexOf('const multiply=id=>scheduler.enqueue('),end=source.indexOf('const merge=',start);
  assert(start>=0&&end>start);let cases=0;
- for(const state of ['empty','armed','recording','queued','playing','stopped','stopping','finalizing','multiplying','overdubbing','substituting'])for(const ready of [false,true])for(const stopPending of [false,true])for(const length of [0,512]){
-  let action;const t={state,queuedSourceReady:ready,stopPending,length};const snapshot={tracks:[t]};
+ for(const state of ['empty','armed','recording','queued','playing','stopped','stopping','finalizing','multiplying','overdubbing','substituting'])for(const ready of [false,true])for(const stopPending of [false,true])for(const length of [0,512])for(const inputAvailable of [false,true]){
+  let action;const t={state,queuedSourceReady:ready,stopPending,length};const snapshot={tracks:[t],inputAvailable};
   const c={snapshot,scheduler:{enqueue:resolver=>{action=resolver();}}};vm.createContext(c);vm.runInContext(source.slice(start,end)+'multiply(0);',c);
-  const enabled=length>0&&(['playing','stopped','multiplying'].includes(state)||(state==='queued'&&!ready&&!stopPending));
+  const enabled=length>0&&(['playing','stopped','multiplying'].includes(state)||(state==='queued'&&!stopPending&&(!ready||!inputAvailable)));
   assert.equal(!!action,enabled,'MULT shared dispatch guard');
   const line=source.split('\n').find(l=>l.includes('r.mult.disabled='));assert(line);const r={mult:{}};
   const ui={r,t,i:0,active:true,snapshot};vm.createContext(ui);vm.runInContext(line,ui);assert.equal(r.mult.disabled,!enabled,'Original MULT control eligibility');cases++;
  }
- console.log('PASS: '+cases+' shared MULT dispatch/control states including queued pre-birth, empty, pending-stop and post-birth exclusion');
+ console.log('PASS: '+cases+' shared MULT dispatch/control states including queued pre-birth, no-input constructed source, empty, pending-stop and input-capture exclusion');
 }

@@ -137,3 +137,14 @@ during doubling waits in one bounded audio-owner slot until completion, retainin
 its original identity. STOP/STOP ALL, DEL, cleanup or prepare still cancel playback.
 Allocation/capacity failure retains old PCM/history. Queued MULT after source
 construction or with a pending scheduled stop remains unavailable in this slice.
+
+## Constructed-source Multiply without input
+
+When native input is unavailable, `loop multiply TRACK` uses instant buffer
+doubling even after the queued source has been constructed. Existing sources
+keep their own PCM/lengths/stops; the original grid gates their output. The worker
+commits doubled storage/history only after reserving a replacement source for
+5ms after audio-owner completion. Playing no-input doubling uses the same timing.
+The GUI/keyboard and CLI share this implementation. OOM or event/overlap-capacity
+failure preserves old storage/history; inspect `finalizationFailed` in snapshot.
+Queued source capture with input and pending-stop queued Multiply remain guarded.

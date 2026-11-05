@@ -1249,6 +1249,90 @@ void postbirthHistoryTests(){
     std::cout<<"PASS: post-birth history "<<cases<<" 5ms/length/rapid/Apply/versioned NORM, grid silence, analyser/data, stop/clear/prepare and full event/overlap atomic rejection cases at tracks 0/19, reverse, 64/128; exact paired stereo and no callback new/delete\n";
 }
 
+void postbirthMultiplyTests(){
+    using namespace aion;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool full=false){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        if(full)for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(48000,4096);e->setMonitoring(false);e->setTarget(1);}
+        auto owner=std::make_unique<LoopMeterLifecycle>(*f.engine,id);
+        if(full){f.command(LoopAction::record,id);for(unsigned n=0;n<4096/f.block;++n)f.cycle();f.command(LoopAction::finish,id);f.cycle(true);}else f.record(id);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Post-birth history seed");
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+
+        for(auto* e:{f.engine.get(),f.control.get()}){e->configureSync({SyncMode::fixed,137.3,1,4,4,false});
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Post-birth direction");}
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);check(owner->consumeQueuedPlay(q)&&owner->requestQueuedGraph(q.queueId,q.bufferId),"Post-birth explicit graph request");
+        const auto request=owner->queuedWindowTransaction();LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};
+        mirror.meterGraphTicket=request.ticket;mirror.meterQueueId=request.queueId;mirror.meterBufferId=request.bufferId;check(f.control->enqueueLoop(mirror),"Post-birth paired graph");
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);check(owner->consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"Post-birth owns constructed source");return owner;
+    };
+    const auto waitHeld=[](){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
+        check(heldWorkerAllocations.load()>=2,"Post-birth MULT pauses workers outside callback");};
+    unsigned cases=0;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool near:{false,true})for(unsigned sequence=0;sequence<4;++sequence){
+        Fixture f(block);auto owner=setup(f,id,reverse);const auto grid=f.view->tracks[id].scheduledFrame;const auto identity=owner->inspect();
+        if(near)while(f.engine->clock()+block<grid-48)f.cycle();
+        if(sequence==2){f.command(LoopAction::applyStart,id);f.cycle();f.command(LoopAction::applyStart,id);f.cycle();}
+        const auto target=f.engine->clock()+240;f.command(LoopAction::multiply,id);f.cycle(true);
+        check(!f.view->rejected&&f.view->tracks[id].length==1024&&f.view->tracks[id].undoCount==1&&f.view->tracks[id].phaseApplyFrame==target
+            &&owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Post-birth MULT installs doubled PCM/history with exact 5ms replacement");
+        if(sequence==1){f.command(LoopAction::multiply,id);f.cycle(true);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id))&&f.view->tracks[id].length==2048,"Rapid no-input doubles retain scheduled sources");}
+        if(sequence==3){f.command(LoopAction::undo,id);f.cycle();check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Post-birth MULT Undo snapshot");
+            f.command(LoopAction::normalize,id);f.cycle(true);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"NORM after MULT Undo preserves logical source identities");}
+        bool heard=false;while(f.engine->clock()<grid+4096){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"MULT preserves original pre-grid silence");else heard=heard||f.view->outputPeak>0;}
+        check(heard&&owner->inspect().analyser==identity.analyser&&owner->inspect().data==identity.data,"MULT retains healthy graph/analyser and becomes audible");
+        f.command(LoopAction::clear,id);f.cycle();check(owner->consumeClear(f.next(MeterGraphEventKind::cleared,id)),"Post-birth MULT releases source leases");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool late:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse);const auto grid=f.view->tracks[id].scheduledFrame,revision=f.view->tracks[id].sourceRevision;
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::multiply,id);f.cycle();waitHeld();
+        if(late){bool heard=false;while(f.engine->clock()<grid+512){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Delayed MULT keeps grid gate");else heard=heard||f.view->outputPeak>0;}check(heard,"Old constructed source plays while MULT worker is delayed");}
+        else {check(f.view->tracks[id].queuedSourceReady&&f.view->tracks[id].length==512&&f.view->tracks[id].sourceRevision==revision,"Pending MULT preserves original source/length");for(unsigned n=0;n<8;++n)f.cycle();}
+        holdWorkerAllocation.store(false);const auto target=f.engine->clock()+240;f.cycle(true);
+        check(f.view->tracks[id].phaseApplyFrame==target&&f.view->tracks[id].length==1024&&owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Worker completion reserves replacement without changing old source early");
+        while(f.engine->clock()<grid+2048)f.cycle();f.command(LoopAction::clear,id);f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool beforeCommit:{false,true})for(unsigned cancel=0;cancel<6;++cancel){
+        Fixture f(block);auto owner=setup(f,id,true);
+        if(beforeCommit){heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);}
+        f.command(LoopAction::multiply,id);f.cycle(!beforeCommit);if(beforeCommit)waitHeld();else check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"MULT before pending-source cancel");
+        if(cancel<3){f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);f.cycle();}
+        if(cancel==5){const auto ticket=owner->binding().ticket;check(owner->teardown()&&f.control->retireQueuedSourceThrough(f.control->generation(),id,ticket),"Cleanup retires both constructed MULT sources");f.cycle();}
+        holdWorkerAllocation.store(false);
+        if(cancel==3)f.prepare();else if(cancel==4)for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}else f.cycle(true);
+        for(unsigned n=0;n<128;++n)f.cycle();
+        check(f.view->tracks[id].state==((cancel==2||cancel==4)?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].phaseApplyFrame,"Canceled MULT cannot revive pending/current sources");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse);const auto before=f.view->tracks[id];
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,0}),"OOM MULT only on observed engine");failWorkerAllocation.store(true);f.cycle(true);MeterGraphEvent event;
+        check(!failWorkerAllocation.load()&&f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId
+            &&f.view->tracks[id].undoCount==before.undoCount&&f.view->tracks[id].scheduledFrame==before.scheduledFrame&&!f.view->tracks[id].phaseApplyFrame&&!f.engine->popMeterGraphEvent(event),"OOM keeps old source/grid/PCM/history atomically");
+        while(f.engine->clock()<before.scheduledFrame+1024)f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool overlaps:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,false);
+        if(overlaps){for(unsigned batch=0;batch<4;++batch){for(unsigned n=0;n<32;++n){f.command(LoopAction::applyStart,id);f.command(LoopAction::retrigger,id);}f.cycle();for(unsigned n=0;n<240/block+1;++n)f.cycle();}f.command(LoopAction::applyStart,id);f.cycle();}
+        else for(unsigned n=0;n<127;++n)f.command(LoopAction::retrigger,id);
+        const auto before=f.view->tracks[id];f.command(LoopAction::multiply,id);f.cycle(true);MeterGraphEvent event;
+        check(f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].undoCount==before.undoCount&&!f.engine->popMeterGraphEvent(event),"Full event/overlap reservation fails before PCM/history publication");
+        f.command(LoopAction::clear,id);for(unsigned n=0;n<128;++n)f.cycle();check(f.view->tracks[id].state==LoopState::empty,"Failed MULT frees worker result and scheduled leases");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse,true);const auto before=f.view->tracks[id];f.command(LoopAction::multiply,id);f.cycle();
+        check(f.view->rejected&&f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].undoCount==before.undoCount,"Full-pool post-birth MULT rejects before job admission");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse);
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::multiply,id,++f.request,e->generation(),0,1}),"Queue unported input-capture request");f.cycle();check(f.view->rejected,"Constructed queued input capture remains explicitly guarded");
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::speed,id,++f.request,e->generation(),0,.5}),"Set requested varispeed");f.cycle();
+        f.command(LoopAction::multiply,id);f.cycle();check(f.view->rejected&&f.view->tracks[id].length==512&&!f.view->tracks[id].undoCount,"Original varispeed guard applies after source construction");++cases;
+    }
+    check(allocations.load()==0,"Post-birth MULT has no callback new/delete");
+    std::cout<<"PASS: post-birth no-input Multiply "<<cases<<" 5ms/source-length/history/rapid/Apply/NORM cases, original grid, delayed worker across grid, cancel/cleanup/prepare/OOM/full pool/event/overlap and input/varispeed guards; tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";
+}
+
 void prebirthMultiplyTests(){
     using namespace aion;
     const auto setup=[](Fixture& f,unsigned id,bool reverse,bool full=false){
@@ -1872,7 +1956,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();postbirthMultiplyTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

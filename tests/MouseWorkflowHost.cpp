@@ -29,6 +29,7 @@ public:
             choices.push_back({exportDirectory,filename,std::move(done)});
         };
         (void)pcmDirectory.getChildFile("early-source-start").deleteFile();
+        (void)pcmDirectory.getChildFile("input-channels").deleteFile();(void)pcmDirectory.getChildFile("input-channels-ack").deleteFile();
         processor = std::make_unique<AionProcessor>(nativePicker?AionProcessor::ExportDestination{}:std::move(picker));
         processor->setPlayConfigDetails(2, 2, 48000, blockSize);
         processor->prepareToPlay(48000, blockSize);
@@ -48,6 +49,12 @@ public:
             std::uint32_t seenRevision=0;bool heard=false;
             auto deadline = std::chrono::steady_clock::now();
             while (running.load()) {
+                if(audioPauseRequested.load(std::memory_order_acquire)){
+                    audioPaused.store(true,std::memory_order_release);
+                    while(audioPauseRequested.load(std::memory_order_acquire)&&running.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    audioPaused.store(false,std::memory_order_release);deadline=std::chrono::steady_clock::now();
+                    if(!running.load())break;
+                }
                 for (int i = 0; i < blockSize; ++i, ++frame) {
                     buffer.setSample(0, i, 0.25f * std::sin(float(frame % 48000) * 0.057595865f));
                     buffer.setSample(1, i, 0.17f * std::sin(float(frame % 48000) * 0.079848813f));
@@ -116,6 +123,18 @@ private:
     struct Choice {juce::File directory;juce::String filename;std::function<void(juce::File)> done;};
     std::vector<Choice> choices;
     void timerCallback() override {
+        // Test-only bus routing, changed solely on the message thread after an
+        // audio-owner pause handshake. No production RPC/parameter is added.
+        const auto inputs=pcmDirectory.getChildFile("input-channels");
+        if(pendingInputChannels<0&&inputs.existsAsFile()){
+            const auto text=inputs.loadFileAsString().trim();(void)inputs.deleteFile();
+            if(text=="0"||text=="2"){pendingInputChannels=text.getIntValue();audioPauseRequested.store(true,std::memory_order_release);}
+        }
+        if(pendingInputChannels>=0&&audioPaused.load(std::memory_order_acquire)){
+            processor->setPlayConfigDetails(pendingInputChannels,2,48000,blockSize);
+            (void)pcmDirectory.getChildFile("input-channels-ack").replaceWithText(juce::String(pendingInputChannels));
+            pendingInputChannels=-1;audioPauseRequested.store(false,std::memory_order_release);
+        }
         // Test-host IO only: exercise an early callback through the production
         // message-thread adapter without adding a public/debug RPC operation.
         const auto early=pcmDirectory.getChildFile("early-source-start");
@@ -162,7 +181,8 @@ private:
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
     int blockSize = 64;
-    std::atomic<bool> running{false};
+    std::atomic<bool> running{false},audioPauseRequested{false},audioPaused{false};
+    int pendingInputChannels=-1;
     std::thread audio;
     std::unique_ptr<AionProcessor> processor;
     std::unique_ptr<Window> window;

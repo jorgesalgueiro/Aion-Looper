@@ -9,6 +9,26 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
+## Active slice — no-input MULT after source construction, in verification
+
+Continuing `3a52a52`. Scope: no-input doubling on a constructed source before the
+original volume grid, plus the same 5ms replacement when rapid doubles cross the
+grid into playing. The original input-capture branch remains a separate follow-up.
+Acceptance: source owns old PCM/length/rate and existing stops until replacement;
+new doubled storage/history does not move the original gate; replacement begins
+at completion audio-now +5ms; rapid/Apply/Undo/NORM preserve independent sources.
+Reserve bounded event/overlap leases before installing storage/history, retain old
+PCM on OOM/capacity failure, and prove cancellation/cleanup/prepare at 64/128.
+Existing GUI/keyboard/CLI action IDs and state schema remain stable.
+
+Unchanged-method reference-only corpus: 384 cases. Baseline native rejects queued
+MULT after birth; the first 96 native double cases pass. Expanded rapid near-grid
+comparison exposed the existing playing path's immediate restart (0 instead of
+5ms); playing no-input doubling now uses the same reserved source replacement.
+All 160 focused native lifecycle cases and the full Windows production processor
+suite pass. The corrected full source corpus, actual UI, Windows/Linux final
+regressions and sanitizer acceptance remain pending. No reference/preserved assets, logo, dependency or capacity changes.
+
 ## Latest verified slice — queued Multiply before source construction, 5 November 2026
 
 Implementation `f226c56`, continuing `9c4717b`. Original MULT/keyboard and running

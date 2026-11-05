@@ -228,6 +228,7 @@ private:
         bool finalPlay = false, playWhileFinalizing = false;
         bool normalizeQueued = false; // NORM preserves a constructed source's future grid while the worker runs.
         bool multiplyQueued = false; // Pre-birth doubling preserves the original PLAY receipt/grid until commit.
+        bool multiplySource = false; // No-input doubling retains the constructed source until its 5ms replacement.
         SyncMode recordMode=SyncMode::off;
         double recordBarFrames=0,recordOrigin=0,recordStartSeconds=0;
         std::uint32_t plannedFrames=0,recordPrefix=0;
@@ -321,7 +322,7 @@ private:
         const auto s=t.info.state;return t.clip&&!t.queuedSourcePending&&(s==LoopState::playing||s==LoopState::stopping||s==LoopState::overdubbing||s==LoopState::substituting||s==LoopState::multiplying||(s==LoopState::finalizing&&t.playWhileFinalizing));
     }
     static bool waitingQueuedSource(const Track& t) noexcept {
-        return t.info.state==LoopState::queued||(t.info.state==LoopState::finalizing&&(t.normalizeQueued||t.multiplyQueued)&&t.finalPlay&&!t.playWhileFinalizing);
+        return t.info.state==LoopState::queued||(t.info.state==LoopState::finalizing&&(t.normalizeQueued||t.multiplyQueued||t.multiplySource)&&t.finalPlay&&!t.playWhileFinalizing);
     }
     bool hasPreparedQueuedSource(const Track& t,bool includeStopping=false) const noexcept {
         return queuedStartMode==QueuedStartMode::messageCallback&&waitingQueuedSource(t)
