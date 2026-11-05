@@ -1090,10 +1090,128 @@ void queuedNormTests(){
     }
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
         Fixture f(block);setup(f,id,true,false);f.command(LoopAction::stopImmediate,id);f.cycle();f.command(LoopAction::play,id);f.cycle();
-        f.command(LoopAction::normalize,id);f.cycle();check(f.view->rejected&&f.view->tracks[id].state==LoopState::queued&&!f.view->tracks[id].queuedSourceReady,"NORM before graph birth remains explicitly unsupported");++cases;
+        const auto grid=f.view->tracks[id].scheduledFrame;
+        f.command(LoopAction::normalize,id);f.cycle(true);
+        check(!f.view->rejected&&f.view->tracks[id].state==LoopState::queued&&!f.view->tracks[id].queuedSourceReady
+            &&f.view->tracks[id].scheduledFrame==grid&&f.view->outputPeak==0,"Pre-birth NORM keeps the original graphless queue and silence");++cases;
     }
     check(allocations.load()==0,"Queued NORM performs no callback new/delete");
     std::cout<<"PASS: queued-source NORM "<<cases<<" delayed changed/no-op, Apply/RTRG, stop/clear/same/new-rate prepare and exact OOM rollback cases; tracks 0/19, reverse, 64/128, no callback new/delete\n";
+}
+void prebirthNormTests(){
+    using namespace aion;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool attached=false){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        auto owner=std::make_unique<LoopMeterLifecycle>(*f.engine,id);f.record(id);
+        check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Pre-birth NORM installs initial PCM");
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        if(attached){
+            f.command(LoopAction::play,id);f.cycle();check(owner->consumeImmediatePlay(f.next(MeterGraphEventKind::immediatePlay,id)),"Attach old analyser before pre-birth NORM");
+            f.command(LoopAction::stopImmediate,id);f.cycle();check(owner->consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"Retain old cleanup before pre-birth NORM");
+        }
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Pre-birth source direction");
+        }
+        f.command(LoopAction::play,id);f.cycle(false,{100,true});
+        check(owner->consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay,id)),"Pre-birth accepted play receipt");return owner;
+    };
+    const auto waitHeld=[](){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
+        check(heldWorkerAllocations.load()>=2,"Pre-birth workers pause outside the callback");};
+    const auto request=[](Fixture& f,LoopMeterLifecycle& owner,unsigned id,const QueuedMeterCallbackTime& expected){
+        check(owner.requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds}),"Original due receipt survives NORM");
+        const auto transaction=owner.queuedWindowTransaction();
+        LoopCommand command{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};
+        command.meterGraphTicket=transaction.ticket;command.meterQueueId=transaction.queueId;command.meterBufferId=transaction.bufferId;
+        check(f.control->enqueueLoop(command),"Mirror pre-birth conditional callback");
+        check(transaction.bufferId==expected.bufferId&&!owner.requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds+1}),"One immutable original receipt, one-shot delivery");
+    };
+    const auto attach=[](Fixture& f,LoopMeterLifecycle& owner,unsigned id){
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);
+        check(owner.consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"NORM does not obsolete an accepted in-flight graph result");
+    };
+    unsigned cases=0;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned stage=0;stage<4;++stage){
+        Fixture f(block);auto owner=setup(f,id,reverse);QueuedMeterCallbackTime expected;
+        check(owner->readQueuedCallbackTime(73,{73,100},expected),"Read original pre-birth deadline");
+        const auto grid=f.view->tracks[id].scheduledFrame,oldBuffer=owner->committedBuffer();const auto identity=owner->inspect();
+        if(stage>=2){heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);}
+        f.command(LoopAction::normalize,id);f.cycle(stage<2);check(!f.view->rejected,"NORM accepts a pending queue before graph creation");
+        if(stage>=2)waitHeld();
+        if(stage<2){
+            const auto installed=f.next(MeterGraphEventKind::bufferInstalled,id);
+            check(installed.queueId==expected.queueId&&installed.bufferId!=oldBuffer,"NORM publishes PCM separately from its retained play receipt");
+            if(stage==1)request(f,*owner,id,expected); // The message owner has not observed the PCM install yet.
+            auto bad=installed;bad.queueId+=(1ull<<32);check(!owner->consumeBuffer(bad)&&owner->committedBuffer()==oldBuffer,"Wrong full-width continuation cannot retarget the queue");
+            check(owner->consumeBuffer(installed)&&owner->queuedCallbackBuffer()==expected.bufferId&&owner->committedBuffer()==installed.bufferId
+                &&owner->inspect().analyser==identity.analyser&&owner->inspect().data==identity.data,"NORM preserves graph history and the original callback buffer identity");
+            QueuedMeterCallbackTime current;check(owner->readQueuedCallbackTime(73,{73,100},current)&&current==expected,"All command-origin deadline fields remain exact after NORM");
+            if(stage==0){
+                f.command(LoopAction::normalize,id);f.cycle(true);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Repeated no-op NORM retains the same receipt");
+                check(owner->readQueuedCallbackTime(73,{73,100},current)&&current==expected,"Repeated NORM cannot postpone or replace the deadline");
+                request(f,*owner,id,expected);
+            }
+        }else{
+            if(stage==3)while(f.engine->clock()<grid+block){f.cycle();check(f.view->outputPeak==0&&!f.view->tracks[id].queuedSourceReady,"A passed grid and pending NORM do not create a source");}
+            request(f,*owner,id,expected);
+        }
+        attach(f,*owner,id);const auto binding=owner->binding();
+        while(f.engine->clock()<grid+block){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Pre-birth NORM preserves pre-grid silence");}
+        if(stage>=2){const auto revision=f.view->tracks[id].sourceRevision;holdWorkerAllocation.store(false);f.cycle(true);
+            check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id))&&f.view->tracks[id].sourceRevision==revision,"Late NORM commit does not restart its already-created source");}
+        check(f.view->tracks[id].state==LoopState::playing&&owner->binding().ticket==binding.ticket&&!f.view->tracks[id].undoCount&&!f.view->tracks[id].redoCount,"Source, graph and history survive pre-birth NORM");
+        f.command(LoopAction::clear,id);f.cycle();check(owner->consumeClear(f.next(MeterGraphEventKind::cleared,id)),"Clear releases pre-birth NORM ownership");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned cancel=0;cancel<5;++cancel){
+        Fixture f(block);auto owner=setup(f,id,reverse);QueuedMeterCallbackTime expected;check(owner->readQueuedCallbackTime(73,{73,100},expected),"Cancellation seed receipt");
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::normalize,id);f.cycle();waitHeld();
+        if(cancel<3){f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);f.cycle();
+            auto event=f.next(cancel==0?MeterGraphEventKind::queuedStop:cancel==1?MeterGraphEventKind::queuedCancel:MeterGraphEventKind::cleared,id);
+            check(cancel==0?owner->consumeQueuedStop(event):cancel==1?owner->consumeQueuedCancel(event):owner->consumeClear(event),"Cancellation retains the actual queued routing");}
+        holdWorkerAllocation.store(false);
+        if(cancel==3){f.prepare();check(owner->reset(),"Same-rate prepare retires old receipt");}
+        else if(cancel==4){for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}check(owner->reset(),"New-rate prepare retires old receipt");}
+        else f.cycle(true);
+        for(unsigned n=0;n<400;++n)f.cycle();
+        MeterGraphEvent remaining;while(f.engine->popMeterGraphEvent(remaining))
+            check(remaining.kind==MeterGraphEventKind::bufferInstalled&&owner->consumeBuffer(remaining),"Canceled NORM's remaining buffer facts cannot create a graph");
+        check(!owner->requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds+1})&&f.view->tracks[id].state==((cancel==2||cancel==4)?LoopState::empty:LoopState::stopped),"NORM completion cannot resurrect a canceled or prepared queue");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse);QueuedMeterCallbackTime expected;check(owner->readQueuedCallbackTime(73,{73,100},expected),"OOM seed receipt");
+        const auto buffer=owner->committedBuffer();check(f.engine->enqueueLoop({LoopAction::normalize,id,++f.request,f.engine->generation(),0,0}),"Pre-birth OOM edit only on observed engine");
+        failWorkerAllocation.store(true);f.cycle(true);check(!failWorkerAllocation.load()&&f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==buffer&&owner->committedBuffer()==buffer,"OOM retains old PCM and receipt");
+        request(f,*owner,id,expected);attach(f,*owner,id);const auto grid=f.view->tracks[id].scheduledFrame;while(f.engine->clock()<grid+2048)f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block);auto owner=setup(f,id,true);QueuedMeterCallbackTime expected;check(owner->readQueuedCallbackTime(73,{73,100},expected),"Saturation seed receipt");
+        f.command(LoopAction::normalize,id);f.cycle(true);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Saturation NORM continuation");
+        const auto before=owner->queuedWindowTransaction();for(unsigned n=0;n<255;++n)f.command(LoopAction::mute,id);
+        check(!owner->requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds})&&owner->queuedWindowTransaction().ticket==before.ticket,"A full command FIFO cannot consume the preserved NORM receipt");
+        f.cycle();f.cycle();request(f,*owner,id,expected);attach(f,*owner,id);
+        f.command(LoopAction::stopImmediate,id);f.cycle();check(owner->consumeImmediateStop(f.next(MeterGraphEventKind::immediateStop,id)),"NORM's new PCM routes the accepted graph stop");
+        f.command(LoopAction::play,id);f.cycle(false,{101,true});check(owner->consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay,id)),"Replacement queued intent after NORM");
+        check(!owner->requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds+1}),"An old NORM timer cannot retarget the replacement intent");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block);auto owner=setup(f,id,false);QueuedMeterCallbackTime expected;check(owner->readQueuedCallbackTime(73,{73,100},expected),"Boolean guard seed receipt");
+        f.command(LoopAction::normalize,id);f.cycle(true);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Boolean guard NORM continuation");
+        check(owner->setBuffer(true)&&!owner->queuedCallbackBuffer()&&!owner->requestQueuedGraphDue(expected,73,{73,expected.deadlineSeconds}),"A bare buffer boolean cannot inherit NORM's receipt authority");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse,true);QueuedMeterCallbackTime expected;check(owner->readQueuedCallbackTime(73,{73,100},expected),"Attached analyser seed deadline");
+        const auto identity=owner->inspect();const auto cleanup=owner->cleanupRequest();
+        f.command(LoopAction::normalize,id);f.cycle(true);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Attached analyser NORM continuation");
+        check(identity.analyser&&owner->inspect().analyser==identity.analyser&&owner->inspect().data==identity.data&&owner->cleanupRequest()==cleanup,"NORM retains old analyser/data and exact cleanup request");
+        check(owner->deliverCleanup(cleanup)&&!owner->inspect().present,"Old cleanup precedes the delayed graph callback");
+        request(f,*owner,id,expected);attach(f,*owner,id);
+        check(owner->inspect().present&&owner->inspect().analyser!=identity.analyser&&!owner->deliverCleanup(cleanup),"Fresh callback survives old cleanup and obsolete timer delivery");
+        const auto grid=f.view->tracks[id].scheduledFrame;while(f.engine->clock()<grid+1024)f.cycle();++cases;
+    }
+    check(allocations.load()==0,"Pre-birth NORM routing has no callback new/delete");
+    std::cout<<"PASS: pre-birth NORM "<<cases<<" before/in-flight callback, repeated no-op, delayed worker/late callback, exact original deadline, stop/clear/prepare and OOM cases at tracks 0/19, reverse, 64/128; no callback new/delete\n";
 }
 void normPendingTests(){
     using namespace aion;
@@ -1490,7 +1608,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedNormTests();normPendingTests();
+    prebirthNormTests();queuedNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

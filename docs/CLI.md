@@ -106,7 +106,9 @@ They do not prove physical device behavior, OS audio-driver latency, DAW/plugin
 control, Apple operation, or full migration parity. See VALIDATION.md for executed
 results and remaining validation.
 
-NORM also accepts a queued loop once its independent graph callback has
-constructed the future source (`queuedSourceReady`). It retains the original
-start grid. A queued loop before graph creation still rejects NORM; use `status`
-to inspect readiness. The command does not create a second audio engine.
+NORM accepts a queued loop with committed audio before or after its graph
+callback. It retains the original play receipt and start grid; normalization does
+not itself create a source. The existing asynchronous worker commits new PCM;
+use `status` to distinguish acceptance, finalization and playback. Sources take
+the PCM committed at construction; reversed snapshots remain independent. The
+command controls the running session and does not create a second audio engine.

@@ -250,7 +250,7 @@ bool AionProcessor::requestQueuedMeterWindowMessageThread(unsigned track) noexce
     serviceMeters();
     if(!meterPrepared()||!meterTimers||!(*meterTimers)[track]||!meterOwners)return false;
     const auto& owner=*(*meterOwners)[track];
-    return (*meterTimers)[track]->requestQueuedWindow(owner.queuedIntentId(),owner.committedBuffer());
+    return (*meterTimers)[track]->requestQueuedWindow(owner.queuedIntentId(),owner.queuedCallbackBuffer());
 }
 bool AionProcessor::requestQueuedMeterGraphMessageThread(unsigned track) noexcept {
     JUCE_ASSERT_MESSAGE_THREAD
@@ -258,7 +258,7 @@ bool AionProcessor::requestQueuedMeterGraphMessageThread(unsigned track) noexcep
     serviceMeters();
     if(!meterPrepared()||!meterTimers||!(*meterTimers)[track]||!meterOwners)return false;
     const auto& owner=*(*meterOwners)[track];
-    return (*meterTimers)[track]->requestQueuedGraph(owner.queuedIntentId(),owner.committedBuffer());
+    return (*meterTimers)[track]->requestQueuedGraph(owner.queuedIntentId(),owner.queuedCallbackBuffer());
 }
 bool AionProcessor::readQueuedMeterCallbackTimeMessageThread(unsigned track,aion::QueuedMeterCallbackTime& output) noexcept {
     JUCE_ASSERT_MESSAGE_THREAD

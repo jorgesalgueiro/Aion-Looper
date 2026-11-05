@@ -9,6 +9,28 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
+## Active slice — NORM before queued graph creation, 5 November 2026
+
+Baseline a19064c is clean and verified for constructed sources; continue it.
+The unchanged reference NORM never starts/cancels queued play. New baseline oracle
+first rejects NORM (`build/prebirth-norm-negative.log`). Acceptance: preserve the
+original queue/clock receipt through successful PCM installation and in-flight
+callback outcomes; NORM alone creates no source, including beyond the grid.
+Keep old analyser/history/cleanup, no-op/OOM/cancel/prepare, 64/128 and shared
+GUI/CLI access. No new parameters, schema, assets or dependencies.
+
+Implementation separates immutable play-buffer receipt from current PCM identity.
+Only a successful ordered NORM buffer fact explicitly continues that queue;
+generic/boolean buffer notices cannot inherit this authority. Existing async
+commit semantics remain: a source built while NORM is pending captures committed
+PCM at birth; reversed snapshots stay independent, forwards update on commit.
+Do not claim synchronous JS action-time/render latency equivalence for this case.
+Windows focused evidence so far: 120 early/late unchanged-JS cases at 1e-6,
+96 Engine ordering/OOM/cancel/overflow/old-cleanup cases with no callback new/delete,
+actual shared production GUI/CLI commands and eight trusted WebView cases at
+64/128 pass. Broader Windows/Linux regression/sanitizer acceptance is pending.
+No complete-slice claim, package or push yet.
+
 ## Latest verified slice — constructed queued-source NORM, 5 November 2026
 
 Implementation: `c79025b`; strengthened fixtures: `43ce195`.

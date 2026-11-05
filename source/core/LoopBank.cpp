@@ -188,7 +188,7 @@ void LoopBank::acceptResult() noexcept {
         if(!track.clip)track.info.length=0;
         if(result){updateRate(track);if(!job.normalize&&!job.merge){track.phase=0;track.info.position=0;restartSource(track);}
             if(resultChanged&&!((job.normalize||job.merge)&&track.activeReverse))blend(track);}
-        if(result)publishMeterBuffer(job.track); // Successful audio-owner installation, not worker completion alone.
+        if(result)publishMeterBuffer(job.track,job.normalize); // NORM preserves any still-pending play receipt.
     }else retire(result);
     result=nullptr;jobState.store(0,std::memory_order_release);
 }
@@ -265,10 +265,12 @@ void LoopBank::admitQueuedSource(Track& track) noexcept {
     track.queuedSourcePending=false;
     // A fresh source takes the current AudioParam value, not an old source ramp.
     track.rate=track.targetRate;track.rateRemaining=0;track.rateIncrement=0;
-    if(track.info.state==LoopState::queued&&track.startAt&&frame>=track.startAt){
-        track.info.state=LoopState::playing;track.startAt=0;
+    if(waitingQueuedSource(track)&&track.startAt&&frame>=track.startAt){
+        if(track.info.state==LoopState::finalizing)track.playWhileFinalizing=true;
+        else track.info.state=LoopState::playing;
+        track.startAt=0;
         track.tailRemaining=0;restartSource(track);blend(track);
-    }else if(track.info.state==LoopState::queued&&track.startAt&&track.clip){
+    }else if(waitingQueuedSource(track)&&track.startAt&&track.clip){
         // WebAudio constructs the future source now. Metadata-only Start and
         // Reverse edits cannot rewrite that source when its grid arrives.
         const double length=track.clip->length,shift=track.info.startDelay*length;
@@ -353,7 +355,7 @@ void LoopBank::clear(Track& track) noexcept {
     const auto id=static_cast<std::uint32_t>(&track-tracks.data());
     (*meterWindows)[id].reset();meterGraphTickets[id]=meterImmediateTickets[id]=0;meterGraphFrames[id]=0;
     meterPanicKnown[id]=false;
-    meterQueuedIds[id]=0;
+    meterQueuedIds[id]=meterQueuedBufferIds[id]=0;
     meterGraphEvents->publish(MeterGraphEventKind::cleared,id,0,frame,track.clearEpoch,removedBuffer);
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
@@ -493,7 +495,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             t.info.reverse=value!=0;return true; // Apply on the next play/retrigger.
         case LoopAction::solo:soloTrack=soloTrack==static_cast<int>(id)?-1:static_cast<int>(id);return true;
         case LoopAction::normalize:
-            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!hasPreparedQueuedSource(t,true))||hasCapture())return false;
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&s!=LoopState::queued)||hasCapture())return false;
             job.blockCount=0;job.length=t.clip->length;job.offset=0;job.track=id;job.revision=t.revision;
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=true;job.multiply=job.doubling=false;
             job.merge=false;

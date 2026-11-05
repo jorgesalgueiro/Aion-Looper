@@ -79,7 +79,7 @@ public:
         meterGraphHighWater[id]=meterGraphTickets[id]=ticket;meterGraphFrames[id]=frame;
         meterImmediateTickets[id]=0; // A raw component reset does not prove a playback graph.
         meterPanicKnown[id]=false;
-        meterQueuedIds[id]=0;
+        meterQueuedIds[id]=meterQueuedBufferIds[id]=0;
         (*meterWindows)[id].reset();
         meterGraphEvents->publish(MeterGraphEventKind::started,id,ticket,frame,tracks[id].clearEpoch);return true;
     }
@@ -89,8 +89,9 @@ public:
     bool startQueuedMeterWindow(std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId) noexcept {
         if(meterScope!=MeterEventScope::acceptedPlayback||id>=trackCount||!ticket||!queueId||!bufferId
             ||ticket<=meterGraphHighWater[id]||queueId!=meterQueuedIds[id]||queueId==meterQueuedWindowIds[id]
-            ||!tracks[id].clip||tracks[id].clip->waveformId!=bufferId
-            ||(tracks[id].info.state!=LoopState::queued&&tracks[id].info.state!=LoopState::playing))return false;
+            ||!tracks[id].clip||meterQueuedBufferIds[id]!=bufferId
+            ||(!waitingQueuedSource(tracks[id])&&tracks[id].info.state!=LoopState::playing
+                &&!(tracks[id].info.state==LoopState::finalizing&&job.normalize&&job.track==id&&tracks[id].finalPlay)))return false;
         meterQueuedWindowIds[id]=queueId;
         meterGraphHighWater[id]=meterGraphTickets[id]=ticket;meterGraphFrames[id]=frame;
         meterImmediateTickets[id]=0;meterPanicKnown[id]=false;
@@ -104,7 +105,7 @@ public:
     bool startQueuedMeterGraph(std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId) noexcept {
         if(!startQueuedMeterWindow(id,ticket,queueId,bufferId))return false;
         // This explicit callback origin, unlike a raw reset, owns later stops.
-        meterImmediateTickets[id]=ticket;meterPanicKnown[id]=true;meterQueuedIds[id]=0;
+        meterImmediateTickets[id]=ticket;meterPanicKnown[id]=true;meterQueuedIds[id]=meterQueuedBufferIds[id]=0;
         tracks[id].queuedSourceTicket=ticket;
         if(queuedStartMode==QueuedStartMode::messageCallback&&ticket<=retiredSourceTickets[id])cutQueuedSource(tracks[id]);
         else admitQueuedSource(tracks[id]);
@@ -137,7 +138,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     void setMeterCallbackClock(const CallbackClockStamp& callback) noexcept {meterCallbackClock=callback;}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
@@ -145,9 +146,9 @@ private:
     const MeterEventScope meterScope;
     const QueuedStartMode queuedStartMode;
     CallbackClockStamp meterCallbackClock{}; // Audio owner, supplied once before dispatch in this callback.
-    void publishMeterBuffer(unsigned id) noexcept {
+    void publishMeterBuffer(unsigned id,bool preserveQueue=false) noexcept {
         if(meterScope!=MeterEventScope::rawWindows&&tracks[id].clip)
-            meterGraphEvents->publish(MeterGraphEventKind::bufferInstalled,id,0,frame,tracks[id].clearEpoch,tracks[id].clip->waveformId);
+            meterGraphEvents->publish(MeterGraphEventKind::bufferInstalled,id,0,frame,tracks[id].clearEpoch,tracks[id].clip->waveformId,0,preserveQueue?meterQueuedIds[id]:0);
     }
     // Only successful immediate Loop.play origins call this. A raw-window reset,
     // buffer install, healthy retrigger or queued grid transition is not a birth.
@@ -158,7 +159,7 @@ private:
         const auto ticket=++meterGraphHighWater[id];
         meterImmediateTickets[id]=ticket;
         meterPanicKnown[id]=true;
-        meterQueuedIds[id]=0;
+        meterQueuedIds[id]=meterQueuedBufferIds[id]=0;
         meterGraphTickets[id]=ticket;meterGraphFrames[id]=frame;(*meterWindows)[id].reset();
         meterGraphEvents->publish(MeterGraphEventKind::immediatePlay,id,ticket,frame,tracks[id].clearEpoch,tracks[id].clip->waveformId);
     }
@@ -185,11 +186,12 @@ private:
         if(meterScope!=MeterEventScope::acceptedPlayback)return;
         if(meterQueueHighWater==std::numeric_limits<std::uint64_t>::max()){meterGraphEvents->invalidate();return;}
         meterQueuedIds[id]=++meterQueueHighWater;
+        meterQueuedBufferIds[id]=tracks[id].clip?tracks[id].clip->waveformId:0;
         publishMeterQueueFact(id,MeterGraphEventKind::queuedPlay,delay);
     }
     void publishMeterQueueEnd(unsigned id,MeterGraphEventKind kind) noexcept {
         if(meterScope!=MeterEventScope::acceptedPlayback||!meterQueuedIds[id])return;
-        publishMeterQueueFact(id,kind);meterQueuedIds[id]=0;
+        publishMeterQueueFact(id,kind);meterQueuedIds[id]=meterQueuedBufferIds[id]=0;
     }
     void publishMeterQueueFact(unsigned id,MeterGraphEventKind kind,double delay=0) noexcept {
         const auto ticket=meterImmediateTickets[id]==meterGraphTickets[id]?meterImmediateTickets[id]:0u;
@@ -332,6 +334,7 @@ private:
     std::array<std::uint32_t,trackCount> retiredSourceTickets{};
     std::array<bool,trackCount> meterPanicKnown{};
     std::array<std::uint64_t,trackCount> meterQueuedIds{};
+    std::array<std::uint64_t,trackCount> meterQueuedBufferIds{}; // Immutable play receipt; NORM changes PCM, not this identity.
     std::array<std::uint64_t,trackCount> meterQueuedWindowIds{};
     std::uint64_t meterQueueHighWater=0;
     std::array<std::uint64_t,trackCount> meterGraphFrames{};

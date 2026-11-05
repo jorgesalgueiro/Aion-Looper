@@ -295,6 +295,14 @@ void processorEarlyStartTests(bool& audioWatch){
             auto state=rpc(R"({"operation":"snapshot"})");auto grid=static_cast<std::uint64_t>(static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"]));
             if(grid<=clock()+5000){command("stopImmediate");cycle();rpc(R"({"operation":"snapshot"})");while(clock()<=grid+block)cycle();command("play");cycle();
                 state=rpc(R"({"operation":"snapshot"})");grid=static_cast<std::uint64_t>(static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"]));}
+            if(std::string_view(action)=="normalize"){
+                const auto buffer=static_cast<juce::int64>(state["tracks"][19]["waveformId"]);
+                p->setNonRealtime(true);command("normalize");cycle();p->setNonRealtime(false);
+                state=rpc(R"({"operation":"snapshot"})");
+                check(state["tracks"][19]["state"].toString()=="queued"&&!static_cast<bool>(state["tracks"][19]["queuedSourceReady"])
+                    &&static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"])==static_cast<juce::int64>(grid)
+                    &&static_cast<juce::int64>(state["tracks"][19]["waveformId"])!=buffer&&!static_cast<bool>(state["rejected"]),"Shared GUI/CLI pre-birth NORM installs PCM without creating a source or changing the grid");
+            }
             check(p->requestQueuedMeterGraphMessageThread(19),"Early Start production explicit callback");cycle();
             check(static_cast<bool>(rpc(R"({"operation":"snapshot"})")["tracks"][19]["queuedSourceReady"]),"Validated early source exposes audio-owned GUI readiness");
             if(std::string_view(action)=="normalize"){
