@@ -129,11 +129,12 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
                 // Validate against current audio ownership, not its old view.
                 if(pendingLoop.generation==generation()&&meterGraphEventsCurrent()){
                     const bool graph=pendingLoop.action==LoopAction::meterQueuedGraphRequest;
-                    const bool accepted=graph?loops.startQueuedMeterGraph(pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId):
-                        loops.startQueuedMeterWindow(pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId);
-                    if(graph)loops.reportQueuedMeterGraph(accepted,pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId);
-                    else if(pendingLoop.action==LoopAction::meterQueuedWindowRequest)
-                        loops.reportQueuedMeterWindow(accepted,pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId);
+                    if(graph)loops.submitQueuedMeterGraph(pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId,generation());
+                    else {
+                        const bool accepted=loops.startQueuedMeterWindow(pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId);
+                        if(pendingLoop.action==LoopAction::meterQueuedWindowRequest)
+                            loops.reportQueuedMeterWindow(accepted,pendingLoop.track,pendingLoop.meterGraphTicket,pendingLoop.meterQueueId,pendingLoop.meterBufferId);
+                    }
                 }
             }else if(pendingLoop.action==LoopAction::meterGraphStart){
                 // Internal telemetry must not acknowledge or reject a UI action.

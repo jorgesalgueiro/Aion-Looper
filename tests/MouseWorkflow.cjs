@@ -77,6 +77,27 @@ let socket;
         ws.close();return;
     }
 
+    if(process.argv.includes('--queued-multiply-only')){
+        await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+        await wait(s=>s.masterGain===1,'MULT audible master');
+        await mode('off');await click('#loop-action-0');await state('recording');await delay(350);await click('#loop-action-0');await state('playing');
+        await click('#native-stop-all');await state('stopped');await parameter('#bpmInput',60);await parameter('#numBars',1);await parameter('#timeSigNum',4);await mode('static');
+        for(const reverse of [false,true]){
+            if(await evaluate(`document.getElementById('loop-0-reverse').checked`)!==reverse)await click('#loop-0-reverse');
+            await evaluate(`for(const label of ['MULT','UNDO','REDO']){const e=[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()===label);e.id='queued-mult-'+label;}`);
+            await wait(s=>s.gridPosition>.02&&s.gridPosition<.1,'Early queued MULT grid',12000);await click('#loop-action-0');await state('queued');
+            const before=await wait(s=>s.tracks[0].state==='queued'&&!s.tracks[0].queuedSourceReady,'MULT before source birth');
+            for(const label of ['MULT','UNDO','REDO']){
+                await exactlyOne(()=>click('#queued-mult-'+label),'Trusted queued '+label+' pointer');
+                const after=await wait(s=>s.tracks[0].state==='queued'&&s.tracks[0].length===before.tracks[0].length*(label==='UNDO'?1:2),'Queued MULT/history completed');
+                assert.equal(after.tracks[0].scheduledFrame,before.tracks[0].scheduledFrame);assert(!after.tracks[0].queuedSourceReady);assert.equal(after.outputPeak,0);
+                assert.equal(after.tracks[0].undoCount,before.tracks[0].undoCount+(label==='UNDO'?0:1));assert.equal(after.tracks[0].redoCount,label==='UNDO'?1:0);
+            }
+            await state('playing');await wait(s=>s.outputPeak>.02,'Doubled source audible via automatic callback');await click('#native-stop-all');await state('stopped');
+        }
+        assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);
+        console.log('PASS: actual trusted queued MULT/UNDO/REDO pointers, doubled length/history, original automatic callback/grid, forward/reverse, silence and audible playback at '+process.argv[2]);ws.close();return;
+    }
     if(process.argv.includes('--queued-history-only')){
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
         await wait(s=>s.masterGain===1,'History audible master');

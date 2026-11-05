@@ -147,6 +147,18 @@ bool LoopBank::popExport(WavExport& output) noexcept {
     output.bytes.swap(exported.bytes);exported.bytes.clear();
     exportState.store(0,std::memory_order_release);return true;
 }
+void LoopBank::submitQueuedMeterGraph(std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId,std::uint32_t generation) noexcept {
+    if(!meterGraphEvents->current(generation))return;
+    if(deferredMultiplyGraph.ticket==ticket&&ticket&&deferredMultiplyGraph.track==id
+        &&deferredMultiplyGraph.queueId==queueId&&deferredMultiplyGraph.bufferId==bufferId)return; // Idempotent pending receipt.
+    if(id<trackCount&&ticket&&queueId&&bufferId&&tracks[id].multiplyQueued&&waitingQueuedSource(tracks[id])
+        &&tracks[id].queuedSourcePending&&job.track==id&&finalizationPending()
+        &&ticket>meterGraphHighWater[id]&&queueId==meterQueuedIds[id]&&queueId!=meterQueuedWindowIds[id]
+        &&meterQueuedBufferIds[id]==bufferId&&!deferredMultiplyGraph.ticket){
+        deferredMultiplyGraph={id,ticket,generation,queueId,bufferId};return;
+    }
+    reportQueuedMeterGraph(startQueuedMeterGraph(id,ticket,queueId,bufferId),id,ticket,queueId,bufferId);
+}
 void LoopBank::acceptResult() noexcept {
     if(jobState.load(std::memory_order_acquire)!=3)return;
     auto& track=tracks[job.track];
@@ -193,13 +205,15 @@ void LoopBank::acceptResult() noexcept {
         const bool queued=waitingQueuedSource(track);
         const bool play=track.finalPlay&&(job.edit||autoPlay);
         track.info.state=track.clip?(queued?LoopState::queued:play?(track.normalizeQueued&&track.info.stopPending?LoopState::stopping:LoopState::playing):LoopState::stopped):LoopState::empty;
-        track.normalizeQueued=false;
+        const bool multipliedQueue=track.multiplyQueued;track.normalizeQueued=track.multiplyQueued=false;
         if(!track.clip)track.info.length=0;
-        if(result){updateRate(track);if(!job.normalize&&!job.merge){track.phase=0;track.info.position=0;restartSource(track);}
+        if(result){updateRate(track);if(!job.normalize&&!job.merge&&!multipliedQueue){track.phase=0;track.info.position=0;restartSource(track);}
             if(resultChanged&&!((job.normalize||job.merge)&&track.activeReverse))blend(track);}
-        if(result)publishMeterBuffer(job.track,job.normalize); // NORM preserves any still-pending play receipt.
+        if(result)publishMeterBuffer(job.track,job.normalize||multipliedQueue); // Keep the immutable pending PLAY receipt.
     }else retire(result);
     result=nullptr;jobState.store(0,std::memory_order_release);
+    const auto deferred=deferredMultiplyGraph;deferredMultiplyGraph={};
+    if(deferred.ticket)submitQueuedMeterGraph(deferred.track,deferred.ticket,deferred.queueId,deferred.bufferId,deferred.generation);
 }
 bool LoopBank::finish(Track& track) noexcept {
     if(track.info.state==LoopState::armed){clear(track);return true;}
@@ -388,7 +402,7 @@ void LoopBank::clear(Track& track) noexcept {
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
     const bool muted=track.info.muted;track.info=LoopView{};track.info.muted=muted;
-    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=track.normalizeQueued=false;
+    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=track.normalizeQueued=track.multiplyQueued=false;
     if(freeCount)poolFull=false;
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
@@ -427,7 +441,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::multiply: {
             if(value!=0&&value!=1)return false;
             if(s==LoopState::multiplying)return finish(t);
-            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped)||hasCapture())return false;
+            const bool prebirth=s==LoopState::queued&&t.queuedSourcePending&&!t.queuedSourceTicket&&!t.info.stopPending;
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!prebirth)||hasCapture())return false;
             if(s==LoopState::playing&&(std::abs(t.info.playbackRate-1)>0.01f||t.rateRemaining))return false;
             if(s==LoopState::playing&&value==1){
                 if(!freeCount||growthRoom(t)<128)return false;
@@ -438,7 +453,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=false;job.multiply=job.doubling=true;
             job.merge=false;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
-            invalidatePhase(t);t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            invalidatePhase(t);t.multiplyQueued=prebirth;
+            t.finalPlay=s==LoopState::playing||prebirth;t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         }
         case LoopAction::undo:return restore(t,id,false);

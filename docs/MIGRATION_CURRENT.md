@@ -9,6 +9,27 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
+## Active slice — queued Multiply before source construction, in verification
+
+Continuing `9c4717b`. Acceptance: original queued Loop.multiply/multiplyInstant
+exactly doubles stored PCM and adds one history entry without moving PLAY receipt,
+callback deadline or grid; repeated doubling and Undo/Redo work through existing
+GUI/keyboard/CLI commands. Source birth uses the latest committed length, direction
+and effective rate. While the worker runs, one bounded conditional graph request
+waits outside the command FIFO; no old-buffer birth, false acceptance or audio-thread
+waiting. Completion revalidates receipt/generation; cancellation, cleanup, stream
+loss, prepare, full-pool and OOM must not revive audio or corrupt PCM/history.
+
+The 192-case unchanged-method reference/native source gate passes on Windows
+(maximum PCM error 4.4128859011394184e-8 at unchanged 1e-6). All 108 focused native
+lifecycle cases (including eight stream-loss cases), frontend eligibility and
+production processor suite pass. Actual Windows UI passes at 64; 128 is running.
+Linux and final regression/sanitizer checks remain pending; do not claim final
+acceptance yet.
+Baseline rejects queued MULT (`build/queued-multiply-negative-windows.log`).
+Preserved resources/reference, public IDs/schema/capacity/dependencies/logo remain
+unchanged. After-birth queued MULT/capture remains separate and disabled.
+
 ## Latest verified slice — queued history after source creation, 5 November 2026
 
 Implementation `e1e0f5c`, original-method characterization `5bc745e`, continuing

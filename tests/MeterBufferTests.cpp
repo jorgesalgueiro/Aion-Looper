@@ -1249,6 +1249,119 @@ void postbirthHistoryTests(){
     std::cout<<"PASS: post-birth history "<<cases<<" 5ms/length/rapid/Apply/versioned NORM, grid silence, analyser/data, stop/clear/prepare and full event/overlap atomic rejection cases at tracks 0/19, reverse, 64/128; exact paired stereo and no callback new/delete\n";
 }
 
+void prebirthMultiplyTests(){
+    using namespace aion;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool full=false){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        if(full)for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(48000,4096);e->setMonitoring(false);e->setTarget(1);}
+        auto owner=std::make_unique<LoopMeterLifecycle>(*f.engine,id);
+        if(full){f.command(LoopAction::record,id);for(unsigned n=0;n<4096/f.block;++n)f.cycle();f.command(LoopAction::finish,id);f.cycle(true);}else f.record(id);
+        check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Queued MULT initial buffer");
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()}){
+            e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Queued MULT direction");}
+        f.command(LoopAction::play,id);f.cycle(false,{100,true});
+        check(owner->consumeQueuedPlay(f.next(MeterGraphEventKind::queuedPlay,id)),"Queued MULT retains initial PLAY");return owner;
+    };
+    const auto waitHeld=[](){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
+        check(heldWorkerAllocations.load()>=2,"Queued MULT pauses both workers outside audio");};
+    const auto request=[](Fixture& f,LoopMeterLifecycle& owner,unsigned id,const QueuedMeterCallbackTime& receipt,bool duplicate=false){
+        check(owner.requestQueuedGraphDue(receipt,73,{73,receipt.deadlineSeconds}),"Queued MULT original due request");
+        const auto transaction=owner.queuedWindowTransaction();LoopCommand command{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};
+        command.meterGraphTicket=transaction.ticket;command.meterQueueId=transaction.queueId;command.meterBufferId=transaction.bufferId;
+        check(f.control->enqueueLoop(command),"Queued MULT paired callback");
+        if(duplicate)for(auto* e:{f.engine.get(),f.control.get()}){command.generation=e->generation();check(e->enqueueLoop(command),"Queued MULT duplicate pending request");}
+    };
+    const auto attach=[](Fixture& f,LoopMeterLifecycle& owner,unsigned id){
+        (void)f.next(MeterGraphEventKind::started,id);
+        check(owner.consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"Queued MULT graph accepted only after PCM commit");};
+    unsigned cases=0;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned stage=0;stage<4;++stage){
+        Fixture f(block);auto owner=setup(f,id,reverse);QueuedMeterCallbackTime receipt;
+        check(owner->readQueuedCallbackTime(73,{73,100},receipt),"Queued MULT original command deadline");
+        const auto before=f.view->tracks[id];const auto identity=owner->inspect();
+        if(stage>=2){heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);}
+        f.command(LoopAction::multiply,id);f.cycle(stage<2);check(!f.view->rejected,"Queued MULT before birth accepted");
+        if(stage>=2){waitHeld();
+            if(stage==3)while(f.engine->clock()<before.scheduledFrame+block){f.cycle();check(f.view->outputPeak==0,"Worker past original grid stays silent");}
+            request(f,*owner,id,receipt,true);f.cycle();MeterGraphEvent event;
+            check(!f.engine->popMeterGraphEvent(event)&&!f.view->tracks[id].queuedSourceReady
+                &&owner->queuedWindowTransaction().status==QueuedWindowStatus::pending,"In-flight MULT defers graph without false acceptance or old-buffer birth");
+            if(stage==2){const auto transaction=owner->queuedWindowTransaction();LoopCommand wrong{LoopAction::meterQueuedGraphRequest,id,0,f.engine->generation(),0,0};
+                wrong.meterGraphTicket=transaction.ticket+1;wrong.meterQueueId=transaction.queueId+(1ull<<32);wrong.meterBufferId=transaction.bufferId;
+                for(auto* e:{f.engine.get(),f.control.get()}){wrong.generation=e->generation();check(e->enqueueLoop(wrong),"Invalid callback cannot replace occupied MULT slot");}f.cycle();
+                check(!owner->consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphRejected,id))&&owner->queuedWindowTransaction().status==QueuedWindowStatus::pending&&owner->queuedWindowTransaction().ticket==transaction.ticket&&owner->queuedWindowTransaction().queueId==transaction.queueId&&owner->queuedWindowTransaction().bufferId==transaction.bufferId,"Wrong full-width callback leaves pending receipt unchanged");}
+            holdWorkerAllocation.store(false);f.cycle(true);
+        }else if(stage==1)request(f,*owner,id,receipt);
+        const auto installed=f.next(MeterGraphEventKind::bufferInstalled,id);
+        check(installed.queueId==receipt.queueId&&installed.bufferId!=receipt.bufferId,"Doubled PCM retains immutable receipt identity");
+        auto bad=installed;bad.queueId+=(1ull<<32);check(!owner->consumeBuffer(bad),"Full-width MULT continuation identity");
+        check(owner->consumeBuffer(installed)&&owner->committedBuffer()==installed.bufferId&&owner->queuedCallbackBuffer()==receipt.bufferId,"MULT buffer install retains callback authority");
+        check(owner->inspect().analyser==identity.analyser&&owner->inspect().data==identity.data,"MULT storage commit does not reset analyser");
+        if(stage<2){QueuedMeterCallbackTime current;check(owner->readQueuedCallbackTime(73,{73,100},current)&&current==receipt,"MULT cannot postpone original deadline");
+            check(f.view->tracks[id].scheduledFrame==before.scheduledFrame&&f.view->tracks[id].state==LoopState::queued,"MULT commit preserves queue/grid");
+            if(stage==0)request(f,*owner,id,receipt);f.cycle();}
+        attach(f,*owner,id);check(f.view->tracks[id].length==before.length*2&&f.view->tracks[id].undoCount==before.undoCount+1&&!f.view->tracks[id].redoCount,"MULT adds exactly one doubled history entry");
+        check(!owner->requestQueuedGraphDue(receipt,73,{73,receipt.deadlineSeconds+1}),"MULT callback one-shot");
+        bool audible=false;while(f.engine->clock()<before.scheduledFrame+2048){f.cycle();if(f.engine->clock()<=before.scheduledFrame)check(f.view->outputPeak==0,"MULT keeps original pre-grid silence");else audible=audible||f.view->outputPeak>0;}
+        check(audible,"Doubled forward/reverse source audible after grid");
+        f.command(LoopAction::clear,id);f.cycle();check(owner->consumeClear(f.next(MeterGraphEventKind::cleared,id)),"MULT source leases clear");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned cancel=0;cancel<6;++cancel){
+        Fixture f(block);auto owner=setup(f,id,reverse);QueuedMeterCallbackTime receipt;check(owner->readQueuedCallbackTime(73,{73,100},receipt),"MULT cancellation receipt");
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::multiply,id);f.cycle();waitHeld();
+        request(f,*owner,id,receipt);f.cycle();
+        if(cancel<3){f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);f.cycle();
+            auto event=f.next(cancel==0?MeterGraphEventKind::queuedStop:cancel==1?MeterGraphEventKind::queuedCancel:MeterGraphEventKind::cleared,id);
+            check(cancel==0?owner->consumeQueuedStop(event):cancel==1?owner->consumeQueuedCancel(event):owner->consumeClear(event),"Deferred MULT preserves stop/cancel/clear routing");}
+        if(cancel==5){const auto transaction=owner->queuedWindowTransaction();check(owner->teardown(),"Cleanup retires in-flight MULT ticket");check(f.control->retireQueuedSourceThrough(f.control->generation(),id,transaction.ticket),"Mirror cleanup retirement on paired control");f.cycle();}
+        holdWorkerAllocation.store(false);
+        if(cancel==3){f.prepare();check(owner->reset(),"MULT same-rate prepare resets deferred slot");}
+        else if(cancel==4){for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}check(owner->reset(),"MULT new-rate prepare resets deferred slot");}
+        else f.cycle(true);
+        MeterGraphEvent event;while(f.engine->popMeterGraphEvent(event)){
+            if(event.kind==MeterGraphEventKind::bufferInstalled)(void)owner->consumeBuffer(event);
+            else if(event.kind==MeterGraphEventKind::queuedGraphAccepted||event.kind==MeterGraphEventKind::queuedGraphRejected)(void)owner->consumeQueuedWindowResult(event);
+            else check(cancel==5&&event.kind==MeterGraphEventKind::started,"Canceled MULT emits no unrelated graph birth");}
+        for(unsigned n=0;n<400;++n){f.cycle();check(f.view->outputPeak==0,"Canceled deferred MULT never revives audio");}
+        check(!owner->requestQueuedGraphDue(receipt,73,{73,receipt.deadlineSeconds+1}),"Canceled MULT cannot retarget old receipt");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse);QueuedMeterCallbackTime receipt;check(owner->readQueuedCallbackTime(73,{73,100},receipt),"MULT OOM receipt");const auto before=f.view->tracks[id];
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,0}),"MULT OOM observed engine only");failWorkerAllocation.store(true);f.cycle(true);
+        MeterGraphEvent event;check(!failWorkerAllocation.load()&&f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId
+            &&f.view->tracks[id].undoCount==before.undoCount&&f.view->tracks[id].length==before.length&&!f.engine->popMeterGraphEvent(event),"MULT allocation failure preserves exact PCM/history/queue");
+        request(f,*owner,id,receipt);f.cycle();attach(f,*owner,id);while(f.engine->clock()<before.scheduledFrame+1024)f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block);auto owner=setup(f,id,false);QueuedMeterCallbackTime receipt;check(owner->readQueuedCallbackTime(73,{73,100},receipt),"MULT FIFO receipt");
+        f.command(LoopAction::multiply,id);f.cycle(true);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"MULT before full FIFO");
+        for(unsigned n=0;n<255;++n)f.command(LoopAction::mute,id);
+        check(!owner->requestQueuedGraphDue(receipt,73,{73,receipt.deadlineSeconds}),"MULT full FIFO must not consume receipt");f.cycle();f.cycle();request(f,*owner,id,receipt);f.cycle();attach(f,*owner,id);++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse,true);QueuedMeterCallbackTime receipt;check(owner->readQueuedCallbackTime(73,{73,100},receipt),"Full-pool MULT receipt");const auto before=f.view->tracks[id];
+        f.command(LoopAction::multiply,id);f.cycle();MeterGraphEvent event;
+        check(f.view->rejected&&f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].length==before.length
+            &&f.view->tracks[id].undoCount==before.undoCount&&f.view->tracks[id].scheduledFrame==before.scheduledFrame&&!f.engine->popMeterGraphEvent(event),"Full-pool queued MULT rejects atomically");
+        request(f,*owner,id,receipt);f.cycle();attach(f,*owner,id);++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse);QueuedMeterCallbackTime receipt;check(owner->readQueuedCallbackTime(73,{73,100},receipt),"MULT loss receipt");
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::multiply,id);f.cycle();waitHeld();request(f,*owner,id,receipt);f.cycle();
+        for(unsigned n=0;n<260;++n){f.command(LoopAction::clear,id?0:19);if(n%120==119)f.cycle();}f.cycle();
+        check(!f.engine->meterGraphEventsCurrent(),"Actual fact-stream overflow invalidates deferred MULT receipt");
+        holdWorkerAllocation.store(false);f.cycle(true);
+        const auto grid=f.view->tracks[id].scheduledFrame;while(f.engine->clock()<grid+1024){f.cycle();check(f.view->outputPeak==0&&!f.view->tracks[id].queuedSourceReady,"Lost deferred MULT callback cannot create a source");}
+        check(!owner->requestQueuedGraphDue(receipt,73,{73,receipt.deadlineSeconds+1}),"Loss blocks late MULT receipt retry");MeterGraphEvent discarded;for(auto* e:{f.engine.get(),f.control.get()})(void)e->popMeterGraphEvent(discarded);f.prepare();check(owner->reset()&&f.engine->meterGraphEventsCurrent(),"Prepare recovers MULT stream loss");++cases;
+    }
+    check(allocations.load()==0,"Queued MULT callback new/delete");
+    std::cout<<"PASS: pre-birth queued Multiply "<<cases<<" original grid/receipt/history, early/late in-flight worker and duplicate callback, forward/reverse, stop/panic/clear/cleanup/same/new-rate prepare, OOM, full pool, FIFO retry and event-stream loss; tracks 0/19, 64/128, exact paired stereo and no callback new/delete\n";
+}
+
 void prebirthNormTests(){
     using namespace aion;
     const auto setup=[](Fixture& f,unsigned id,bool reverse,bool attached=false){
@@ -1759,7 +1872,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();prebirthNormTests();queuedNormTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

@@ -149,7 +149,7 @@
         },{track:id});
         const multiply=id=>scheduler.enqueue(()=>{
             const t=snapshot.tracks[id];
-            return t.length&&['playing','stopped','multiplying'].includes(t.state)?{action:'multiply',track:id,value:0}:null;
+            return t.length&&(['playing','stopped','multiplying'].includes(t.state)||(t.state==='queued'&&!t.queuedSourceReady&&!t.stopPending))?{action:'multiply',track:id,value:0}:null;
         },{track:id});
         const merge=(id,source)=>{
             if(source==='')return;
@@ -424,7 +424,7 @@
                 r.undo.disabled=!active||!t.undoCount||!(['playing','stopped'].includes(t.state)||(t.state==='queued'&&!t.stopPending));
                 r.redo.disabled=!active||!t.redoCount||!(['playing','stopped'].includes(t.state)||(t.state==='queued'&&!t.stopPending));
                 r.reverse.checked=!!t.reverse;
-                r.mult.disabled=!active||!t.length||!['playing','stopped','multiplying'].includes(t.state)||snapshot.tracks.some((other,id)=>id!==i&&['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(other.state));
+                r.mult.disabled=!active||!t.length||!(['playing','stopped','multiplying'].includes(t.state)||(t.state==='queued'&&!t.queuedSourceReady&&!t.stopPending))||snapshot.tracks.some((other,id)=>id!==i&&['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(other.state));
                 r.normalize.disabled=!active||!t.length||!['playing','stopped','queued'].includes(t.state)||snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 const mergeBusy=snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 r.mergeSource.disabled=!active||mergeBusy;

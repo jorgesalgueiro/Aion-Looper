@@ -126,3 +126,14 @@ prior stops; the original grid still gates audible output. Global
 `loop undoGlobal` / `loop redoGlobal` share the same implementation. Stopped
 history does not start playback. Pending-stop queued history remains unavailable.
 Storage/event/overlap-capacity rejection leaves PCM, history and sources unchanged.
+
+## Queued Multiply
+
+`loop multiply TRACK` also doubles a queued loop before its source callback has
+constructed playback. It adds one local history entry, retaining the original
+PLAY receipt and grid; `loop undo TRACK` / `loop redo TRACK` use that same history.
+The native worker builds PCM outside audio processing. A graph callback arriving
+during doubling waits in one bounded audio-owner slot until completion, retaining
+its original identity. STOP/STOP ALL, DEL, cleanup or prepare still cancel playback.
+Allocation/capacity failure retains old PCM/history. Queued MULT after source
+construction or with a pending scheduled stop remains unavailable in this slice.

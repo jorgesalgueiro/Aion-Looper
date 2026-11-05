@@ -102,7 +102,11 @@ public:
     void reportQueuedMeterWindow(bool accepted,std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId) noexcept {
         if(id<trackCount)meterGraphEvents->publish(accepted?MeterGraphEventKind::queuedWindowAccepted:MeterGraphEventKind::queuedWindowRejected,id,ticket,frame,tracks[id].clearEpoch,bufferId,0,queueId);
     }
+    // A pre-birth MULT worker owns one bounded deferred graph request. The
+    // request stays pending until PCM commits; cancellation is revalidated then.
+    void submitQueuedMeterGraph(std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId,std::uint32_t generation) noexcept;
     bool startQueuedMeterGraph(std::uint32_t id,std::uint32_t ticket,std::uint64_t queueId,std::uint64_t bufferId) noexcept {
+        if(id<trackCount&&tracks[id].info.state==LoopState::finalizing&&tracks[id].multiplyQueued)return false;
         if(!startQueuedMeterWindow(id,ticket,queueId,bufferId))return false;
         // This explicit callback origin, unlike a raw reset, owns later stops.
         meterImmediateTickets[id]=ticket;meterPanicKnown[id]=true;meterQueuedIds[id]=meterQueuedBufferIds[id]=0;
@@ -138,7 +142,7 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { deferredMultiplyGraph={};meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     void setMeterCallbackClock(const CallbackClockStamp& callback) noexcept {meterCallbackClock=callback;}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
@@ -223,6 +227,7 @@ private:
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
         bool normalizeQueued = false; // NORM preserves a constructed source's future grid while the worker runs.
+        bool multiplyQueued = false; // Pre-birth doubling preserves the original PLAY receipt/grid until commit.
         SyncMode recordMode=SyncMode::off;
         double recordBarFrames=0,recordOrigin=0,recordStartSeconds=0;
         std::uint32_t plannedFrames=0,recordPrefix=0;
@@ -316,7 +321,7 @@ private:
         const auto s=t.info.state;return t.clip&&!t.queuedSourcePending&&(s==LoopState::playing||s==LoopState::stopping||s==LoopState::overdubbing||s==LoopState::substituting||s==LoopState::multiplying||(s==LoopState::finalizing&&t.playWhileFinalizing));
     }
     static bool waitingQueuedSource(const Track& t) noexcept {
-        return t.info.state==LoopState::queued||(t.info.state==LoopState::finalizing&&t.normalizeQueued&&t.finalPlay&&!t.playWhileFinalizing);
+        return t.info.state==LoopState::queued||(t.info.state==LoopState::finalizing&&(t.normalizeQueued||t.multiplyQueued)&&t.finalPlay&&!t.playWhileFinalizing);
     }
     bool hasPreparedQueuedSource(const Track& t,bool includeStopping=false) const noexcept {
         return queuedStartMode==QueuedStartMode::messageCallback&&waitingQueuedSource(t)
@@ -334,6 +339,8 @@ private:
     std::uint32_t undoSize=0,redoSize=0;
     bool hasCapture() const noexcept;
     std::uint32_t growthRoom(const Track&) const noexcept;
+    struct DeferredMultiplyGraph {std::uint32_t track=0,ticket=0,generation=0;std::uint64_t queueId=0,bufferId=0;};
+    DeferredMultiplyGraph deferredMultiplyGraph{}; // One edit worker, one pending callback; no FIFO stall.
     // Construction-time heap storage; never grow the Windows audio stack.
     std::array<std::uint32_t,trackCount> meterGraphTickets{},meterGraphHighWater{},meterImmediateTickets{};
     std::array<std::uint32_t,trackCount> retiredSourceTickets{};
