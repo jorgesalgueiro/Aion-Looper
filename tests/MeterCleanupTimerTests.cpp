@@ -388,7 +388,7 @@ void processorPostbirthMultiplyTests(bool& audioWatch){
     std::cout<<"PASS: production shared GUI/CLI no-input MULT/Undo/Redo after source construction, 5ms replacement, forward/reverse near-grid, original gate and audible PCM at 64/128\n";
 }
 void processorMultiplyWorkerMetadataTests(bool& audioWatch){
-    for(unsigned block:{64u,128u})for(bool reverse:{false,true})for(bool late:{false,true}){
+    for(unsigned block:{64u,128u})for(bool reverse:{false,true})for(bool late:{false,true})for(double tempo:{0.0,93.75,211.7}){
         std::array<std::unique_ptr<AionProcessor>,2> p{std::make_unique<AionProcessor>(),std::make_unique<AionProcessor>()};
         const auto rpc=[&](unsigned index,const char* text){auto result=p[index]->request({juce::JSON::parse(text)});check(static_cast<bool>(result["ok"]),"Worker metadata production RPC");return result;};
         for(unsigned k=0;k<2;++k){p[k]->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p[k]->prepareToPlay(48000,static_cast<int>(block));p[k]->setNonRealtime(true);
@@ -418,22 +418,35 @@ void processorMultiplyWorkerMetadataTests(bool& audioWatch){
         cycle();
         if(late)while(clock()+block<grid-48)cycle();
         for(unsigned k=0;k<2;++k){p[k]->setNonRealtime(false);command(k,"multiply");}
-        command(0,"reverse",reverse?0:1);command(0,"startDelay",.731);cycle();
+        if(!tempo){command(0,"reverse",reverse?0:1);command(0,"startDelay",.731);}cycle();
         state=rpc(0,R"({"operation":"snapshot"})");check(state["tracks"][19]["state"].toString()=="finalizing"&&!static_cast<bool>(state["rejected"]),"Live callback accepts metadata before worker result, no offline inter-command wait");
         // Switching only the test render mode settles both workers at the same
         // following sample boundary, without a product hook or audio-owner wait
         // in live mode. The preceding commands were accepted in one live block.
-        const auto target=clock()+240;for(auto& processor:p)processor->setNonRealtime(true);cycle();
+        const auto target=clock()+240;for(auto& processor:p)processor->setNonRealtime(true);
+        const auto setTempo=[&](unsigned k){auto* data=new juce::DynamicObject();juce::var request(data);
+            data->setProperty("operation","setParameter");data->setProperty("id","syncBpm");data->setProperty("value",tempo);
+            check(static_cast<bool>(p[k]->request({request})["ok"]),"Worker tempo shared GUI/CLI parameter");};
+        if(tempo){
+            // Both real workers settle at this unchanged sample clock. One BPM
+            // command reaches configureSync before result acceptance; the other
+            // follows source construction but precedes its +5ms initial event.
+            // Neither write may retarget the older, possibly audible source.
+            setTempo(0);juce::AudioBuffer<float> zero(2,0);
+            for(auto& processor:p){audioWatch=true;processor->processBlock(zero,midi);audioWatch=false;}
+            check(clock()+240==target,"Worker tempo zero-sample setup preserves sample clock");setTempo(1);
+        }
+        cycle();
         state=rpc(0,R"({"operation":"snapshot"})");const auto t=state["tracks"][19];
         check(static_cast<int>(t["length"])==1024&&static_cast<int>(t["undoCount"])==1
-            &&static_cast<bool>(t["reverse"])!=reverse&&static_cast<double>(t["startDelay"])==.731
+            &&static_cast<bool>(t["reverse"])==(tempo?reverse:!reverse)&&static_cast<double>(t["startDelay"])==(tempo?0.0:.731)
             &&static_cast<juce::int64>(t["phaseApplyFrame"])==static_cast<juce::int64>(target),"Production MULT source snapshot preserves later metadata, history and 5ms deadline");
         while(clock()<std::max(grid+1024,target+512))cycle();
-        command(1,"reverse",reverse?0:1);command(1,"startDelay",.731);for(unsigned k=0;k<2;++k)command(k,"applyStart");
+        if(!tempo){command(1,"reverse",reverse?0:1);command(1,"startDelay",.731);}for(unsigned k=0;k<2;++k)command(k,"applyStart");
         for(unsigned n=0;n<4096/block;++n)cycle();
         check(audio[0].getMagnitude(0,static_cast<int>(block))>0,"Production later Apply uses preserved metadata with audible PCM");
     }
-    std::cout<<"PASS: production shared GUI/CLI MULT then Reverse/Start before worker-result acceptance, exact paired stereo, 5ms/grid/history and later Apply at 64/128, forward/reverse, early/near-grid\n";
+    std::cout<<"PASS: production shared GUI/CLI MULT then Reverse/Start/tempo across worker/source acceptance, exact paired stereo, 5ms/grid/history and later Apply at 64/128, forward/reverse, early/near-grid\n";
 }
 void processorEarlyStartTests(bool& audioWatch){
     for(unsigned block:{64u,128u}){

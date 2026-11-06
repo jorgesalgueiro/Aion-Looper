@@ -91,7 +91,7 @@ let socket;
         fs.writeFileSync(path.join(pcmDirectory,'input-channels'),'0');await wait(s=>!s.inputAvailable,'Finalization controls no-input bus');
         await parameter('#bpmInput',60);await parameter('#numBars',1);await parameter('#timeSigNum',4);await mode('static');
         await evaluate(`for(const [label,id] of [['MULT','wait-mult'],['Q','wait-Q'],['>','wait-nudge']]){const e=[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()===label);e.id=id;}
-          window.waitActions=[];window.savedWaitEmit=__JUCE__.backend.emitEvent;__JUCE__.backend.emitEvent=function(event,payload){const request=payload?.params?.[0];if(event==='__juce__invoke'&&payload.name==='aionRequest'&&request?.operation==='loop')waitActions.push(request.action);return savedWaitEmit.apply(this,arguments);};`);
+          window.waitActions=[];window.savedWaitEmit=__JUCE__.backend.emitEvent;__JUCE__.backend.emitEvent=function(event,payload){const request=payload?.params?.[0];if(event==='__juce__invoke'&&payload.name==='aionRequest'){if(request?.operation==='loop')waitActions.push(request.action);if(request?.operation==='setParameter'&&request.id==='syncBpm')window.waitTempoRequestId=payload.resultId;}return savedWaitEmit.apply(this,arguments);};__JUCE__.backend.addEventListener('__juce__complete',message=>{if(message.promiseId===window.waitTempoRequestId)window.waitTempoAck=message.result;});`);
         for(const [button,action] of [['#wait-Q','quantizeStart'],['#wait-nudge','nudgeStart']]){
             await evaluate(`document.getElementById('loop-start-slider-0').focus()`);
             for(const [key,code] of [['End','End'],['ArrowLeft','ArrowLeft']]){await call('Input.dispatchKeyEvent',{type:'keyDown',key,code});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code});}
@@ -139,10 +139,36 @@ let socket;
             else assert.equal(after.tracks[0].redoCount,0);
             await click('#loop-action-0');await state('playing');await wait(s=>s.outputPeak>.02,'Rapid edit result remains audible');await click('#native-stop-all');await state('stopped');
         }
+        // Fresh short take keeps this parameter-ordering fixture independent
+        // of the preceding large history chain. All capture and PCM are real.
+        await click('#loop-0 .loop-track-delete');await state('empty');
+        fs.writeFileSync(path.join(pcmDirectory,'input-channels'),'2');await wait(s=>s.inputAvailable,'Tempo fixture input');
+        await click('#loop-action-0');await state('recording');await delay(120);await click('#loop-action-0');await state('playing');await click('#native-stop-all');await state('stopped');
+        fs.writeFileSync(path.join(pcmDirectory,'input-channels'),'0');await wait(s=>!s.inputAvailable,'Tempo fixture no-input doubling');
+        await mode('static');
+        for(const bpm of [93.75,211.7]){
+            await parameter('#bpmInput',137.3);await wait(s=>Math.abs(s.syncBpm-137.3)<1e-4&&s.gridPosition>.02&&s.gridPosition<.1,'Tempo fixture original grid',12000);
+            await click('#loop-action-0');await state('queued');fs.writeFileSync(path.join(pcmDirectory,'early-source-start'),'1');
+            const before=await wait(s=>s.tracks[0].queuedSourceReady,'Tempo fixture original source');
+            fs.writeFileSync(path.join(pcmDirectory,'pause-after-finalizing'),'1');
+            for(let n=0;n<100&&fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing'));++n)await delay(10);
+            assert(!fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing')));await click('#wait-mult');
+            const held=await wait(s=>s.tracks[0].state==='finalizing','Tempo fixture holds actual worker acceptance');
+            await evaluate('window.waitTempoAck=null');await parameter('#bpmInput',bpm);
+            for(let n=0;n<100&&!(await evaluate('window.waitTempoAck?.ok'));++n)await delay(10);
+            assert.equal(await evaluate('window.waitTempoAck?.ok'),true,'Actual original BPM control receives native parameter acknowledgement');
+            assert.equal((await snapshot()).frame,held.frame,'Tempo accepted before any next audio callback');
+            fs.writeFileSync(path.join(pcmDirectory,'resume-audio'),'1');
+            const after=await wait(s=>s.tracks[0].length===before.tracks[0].length*2&&Math.abs(s.syncBpm-bpm)<1e-4,'Worker accepts old source metadata and current tempo');
+            assert(!after.rejected);assert.equal(after.tracks[0].undoCount,before.tracks[0].undoCount+1);
+            if(after.frame<before.tracks[0].scheduledFrame)assert.equal(after.outputPeak,0,'Tempo cannot open the retained graph grid early');
+            await wait(s=>s.frame>=before.tracks[0].scheduledFrame&&s.outputPeak>.02,'Original queued grid remains audible after worker-time BPM');
+            await click('#native-stop-all');await state('stopped');
+        }
         await evaluate(`__JUCE__.backend.emitEvent=window.savedWaitEmit;delete window.savedWaitEmit;`);
         fs.writeFileSync(path.join(pcmDirectory,'input-channels'),'2');await wait(s=>s.inputAvailable,'Restore input after finalization control test');
         assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);
-        console.log('PASS: actual MULT finalizing job, trusted Q/nudge and range keys, rapid local/global history and MULT FIFO, deferred single native dispatch, exact state/Start, grid/nonzero PCM at '+process.argv[2]);ws.close();return;
+        console.log('PASS: actual MULT finalizing job, trusted Q/nudge and range keys, rapid local/global history and MULT FIFO, acknowledged worker-time BPM controls, deferred single native dispatch, exact state/Start, grid/nonzero PCM at '+process.argv[2]);ws.close();return;
     }
     if(process.argv.includes('--postbirth-multiply-only')){
         const fs=require('node:fs'),path=require('node:path');

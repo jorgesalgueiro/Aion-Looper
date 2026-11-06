@@ -5,11 +5,11 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
 (async()=>{
  const root=path.resolve(__dirname,'..');
  const makeBuffer=(data,rate)=>{const channels=data.map(c=>Float32Array.from(c));return {length:channels[0].length,duration:channels[0].length/rate,sampleRate:rate,numberOfChannels:channels.length,getChannelData:c=>channels[c],copyToChannel:(data,c)=>channels[c].set(data)};};
- const param=()=>({value:1,events:[],setValueAtTime(value,time){this.events.push({value,time});},linearRampToValueAtTime(){},cancelScheduledValues(){}});
+ const param=()=>({value:1,events:[],setValueAtTime(value,time){this.events.push({value,time});},setTargetAtTime(value,time,constant){this.events.push({value,time,targetConstant:constant});},linearRampToValueAtTime(){},cancelScheduledValues(){}});
  const node=()=>({connect(){},disconnect(){this.disconnected=true;},start(time,offset){this.started={time,offset};},stop(time){this.stopped=true;this.stoppedAt=time;},gain:param(),playbackRate:param()});
  class BufferSource {constructor(){Object.assign(this,node());}}
  const audio={state:'running',currentTime:0,createBuffer:(count,length,rate)=>makeBuffer(Array.from({length:count},()=>Array(length).fill(0)),rate),createBufferSource:()=>new BufferSource(),createGain:node,createChannelMerger:node,createAnalyser:node};
- const context={window:{},document:{getElementById:()=>null,createElement:()=>({}),head:{appendChild(){}}},InputManager:{getRecordingNode:()=>null},Log:{warn(){},error(...args){throw Error(args.join(" "));}},alert:()=>{throw Error("Unexpected varispeed guard");},AudioBufferSourceNode:BufferSource,effects:{},FACTORY_EFFECTS:{},console,setTimeout:()=>0,clearTimeout(){},audio};vm.createContext(context);
+ const context={window:{},document:{querySelectorAll:()=>[],getElementById:()=>null,createElement:()=>({}),head:{appendChild(){}}},InputManager:{getRecordingNode:()=>null},EffectManager:{updateFxMixTimeUI(){}},Log:{warn(){},error(...args){throw Error(args.join(" "));}},alert:()=>{throw Error("Unexpected varispeed guard");},AudioBufferSourceNode:BufferSource,effects:{},FACTORY_EFFECTS:{},console,setTimeout:()=>0,clearTimeout(){},audio};vm.createContext(context);
  vm.runInContext(fs.readFileSync(path.join(root,'resources/ui/Modules/audioEngine.js'),'utf8'),context);
  vm.runInContext(fs.readFileSync(path.join(root,'resources/ui/Modules/scales.js'),'utf8'),context);
  const loops=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');vm.runInContext(loops,context);
@@ -49,6 +49,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  globalThis.phaseSolo=value=>{state.loops[0].isMutedBySolo=value;};
  globalThis.phaseSpeed=value=>{state.loops[0].playbackRate=value;};
  globalThis.userSpeed=value=>UIManager.setLoopSpeed(0,value);
+ globalThis.tempo=value=>{const get=document.getElementById;document.getElementById=id=>id==='bpmInput'?{value}:get(id);try{SyncManager.updateSettings();}finally{document.getElementById=get;}};
  `,context);
 
  vm.runInContext(`state.undoStack=[];state.redoStack=[];UIManager.updateLoopDisplays=()=>{};
@@ -66,14 +67,16 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  const sequenceIndex=process.argv.indexOf('--only-sequence'),onlySequence=sequenceIndex<0?null:process.argv[sequenceIndex+1];
  const controls=process.argv.includes('--controls');
  const workerMetadata=process.argv.includes('--worker-metadata');
- const sequences=workerMetadata?['worker-reverse','worker-start','worker-both']:controls?['metadata','control-apply','speed-before','speed-tie']:['double','rapid','apply-chain','norm-history'];
+ const workerTempo=process.argv.includes('--worker-tempo');
+ const sourceTempo=process.argv.includes('--source-tempo'),tempoControl=workerTempo||sourceTempo;
+ const sequences=sourceTempo?['source-tempo']:workerTempo?['worker-tempo']:workerMetadata?['worker-reverse','worker-start','worker-both']:controls?['metadata','control-apply','speed-before','speed-tie']:['double','rapid','apply-chain','norm-history'];
  if(sequenceIndex>=0)assert(sequences.includes(onlySequence),'Unknown --only-sequence');
  let cases=0,sourceCount=0,samples=0,silent=0,observations=0,overlapSamples=0,distinctBufferSamples=0,maximum=0;
  const counts={};
  const ceilSample=v=>{const near=Math.round(v);return Math.abs(v-near)<=4*Number.EPSILON*Math.max(1,Math.abs(v))?near:Math.ceil(v);};
  const data=b=>Array.from({length:b.numberOfChannels},(_,c)=>Float32Array.from(b.getChannelData(c)));
  const equalData=(b,want,label)=>{assert.equal(b.numberOfChannels,want.length,label);for(let c=0;c<want.length;++c)assert.deepEqual(b.getChannelData(c),want[c],label);observations++;};
- for(const mono of [true,false])for(const rate of [8000,48000,96000])for(const size of [1,17,512,4097])for(const reverse of [false,true])for(const nearGrid of (process.argv.includes('--near-grid')?[true]:[false,true]))for(const sequence of (onlySequence?[onlySequence]:sequences)){
+ for(const mono of [true,false])for(const rate of [8000,48000,96000])for(const size of [1,17,512,4097])for(const reverse of [false,true])for(const nearGrid of (process.argv.includes('--near-grid')?[true]:[false,true]))for(const nextTempo of (tempoControl?[93.75,211.7]:[null]))for(const sequence of (onlySequence?[onlySequence]:sequences)){
   audio.currentTime=0;vm.runInContext('state.syncEnabled=false;state.bpm=120;',context);
   const raw=[Array.from({length:size},(_,i)=>Math.fround(.12+.4*Math.sin(i*.11))),Array.from({length:size},(_,i)=>Math.fround(-.08+.2*Math.cos(i*.073)))];
   const b=makeBuffer(mono?[raw[0]]:raw,rate);context.condition(b);context.setup(b);context.seedHistory();
@@ -132,7 +135,16 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
     if(sequence!=='worker-start'){context.setReverse(!reverse);if(probe)commands.push(`reverse 0 ${reverse?0:1}`);}
     if(sequence!=='worker-reverse'){context.setDelay(.731);if(probe)commands.push('delay 0 .731');}
    }
+   if(tempoControl){
+    const previousEvents=initial.playbackRate.events.length,scheduled=node.playbackRate.events.find(e=>e.time===when).value;
+    context.tempo(nextTempo);if(probe&&workerTempo)commands.push(`sync 1 ${nextTempo} 1 1`);
+    assert.equal(initial.playbackRate.events.length,previousEvents,'Tempo targets only the newest source AudioParam');
+    const target=node.playbackRate.events.at(-1);assert.equal(target.targetConstant,.05);assert.equal(target.time,audio.currentTime);
+    assert(target.time<node.started.time,'This corpus tests tempo before the initial scheduled rate, not its live exponential ramp');
+    assert.equal(node.playbackRate.events.find(e=>e.time===when).value,scheduled,'Future initial-rate event survives earlier tempo target');
+   }
    if(probe){phaseChecks.push({row:commands.length,target:ceilSample(when*rate)});commands.push('wait 0 0');}
+   if(probe&&sourceTempo)commands.push(`sync 1 ${nextTempo} 1 1`);
    assert.equal(node.started.time,when,'No-input MULT requests minimum 5ms replacement');assert.equal(node.buffer.length,length*2);
    assert.equal(before.stoppedAt,when);assert.equal(before.buffer,old);assert.equal(before.loopEnd,duration);assert.deepEqual(before.started,start);
    assert.equal(context.graph(),graph);assert.equal(graph.nodes.volume,volume);assert.equal(graph.nodes.analyser,analyser);
@@ -143,6 +155,11 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
    context.applyPhase();const last=remember();if(probe)commands.push('apply 0 0');assert.equal(first.stoppedAt,last.started.time);render(frame+Math.ceil(rate*.001));
   }
   const doubled=doubleAt();
+  if(tempoControl){
+   render(frame+Math.ceil(rate*.010));const when=audio.currentTime+.05;
+   context.applyPhase();const applied=remember();assert.equal(applied.started.time,when);
+   if(probe){phaseChecks.push({row:commands.length,target:ceilSample(when*rate)});commands.push('apply 0 0');}
+  }
   if(controls){
    const replacementAt=ceilSample(doubled.started.time*rate);
    render(sequence==='speed-tie'?replacementAt:frame+Math.ceil(rate*.001));
@@ -179,16 +196,16 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   if(probe){const run=spawnSync(probe,['--callback-start'],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:32*1024*1024});assert.equal(run.status,0,run.stderr);
    const rows=run.stdout.trim().split(/\r?\n/).map(l=>l.split(' ').map(Number));assert.equal(rows.length,commands.length);
    rows.forEach((row,i)=>assert.equal(row[0],1,'Native post-birth MULT rejected '+commands[i]+' '+JSON.stringify({mono,rate,size,reverse,nearGrid,sequence})));
-   for(const c of phaseChecks)assert.equal(rows[c.row][4],c.target,'MULT/history replacement must be 5ms '+JSON.stringify({mono,rate,size,reverse,nearGrid,sequence,command:commands[c.row]}));
+   for(const c of phaseChecks)assert.equal(rows[c.row][4],c.target,'Original source replacement deadline '+JSON.stringify({mono,rate,size,reverse,nearGrid,sequence,command:commands[c.row]}));
    for(const {row,want} of infoChecks){assert.equal(rows[row][1],want[0]);assert.equal(rows[row][5],want[2]);assert.equal(rows[row][6],want[3]);}
    for(const c of checks)for(const actual of rows[c.row].slice(6,8)){const error=Math.abs(actual-c.value);maximum=Math.max(maximum,error);assert(error<=1e-6,'Post-birth MULT PCM '+JSON.stringify({error,actual,expected:c.value,mono,rate,size,reverse,nearGrid,sequence}));}
   }
   counts[sequence]=(counts[sequence]??0)+1;cases++;
  }
  if(!onlySequence){
-  if(controls||workerMetadata)assert.equal(overlapSamples,0,'Sequential MULT/Apply control sources stop at the next source birth without overlap');
+  if(controls||workerMetadata||tempoControl)assert.equal(overlapSamples,0,'Sequential MULT/Apply control sources stop at the next source birth without overlap');
   else assert(overlapSamples>0,'Corpus includes audible independently stopped overlap');
  }
  assert(distinctBufferSamples>0);
- console.log(JSON.stringify({result:'PASS',mode:probe?'native_source_comparison':'reference_only',cases,sourceCount,observations,predictedFrames:samples,preGridSilentFrames:silent,overlapSamples,distinctBufferSamples,counts,maximumAbsoluteError:probe?maximum:null,tolerance:probe?1e-6:null,scope:workerMetadata?'Unchanged synchronous no-input MULT then Reverse/Start metadata versus native commands before worker-result acceptance; source snapshots, exact 5ms deadline/grid and PCM, no advancing worker clock or tempo/speed claim':controls?'Unchanged no-input MULT followed by Reverse/Start metadata, Apply and speed before/at the 5ms source deadline; captured buffers/direction/offset/rate and grid; source model only, delayed worker and tempo excluded':'Unchanged no-input MULT/startMultiply/multiplyInstant, source buffers/lengths/5ms stops, original grid, rapid doubles, pending Applies, Undo/NORM and cleanup; source model, browser rendering and worker latency excluded'}));
+ console.log(JSON.stringify({result:'PASS',mode:probe?'native_source_comparison':'reference_only',cases,sourceCount,observations,predictedFrames:samples,preGridSilentFrames:silent,overlapSamples,distinctBufferSamples,counts,maximumAbsoluteError:probe?maximum:null,tolerance:probe?1e-6:null,scope:sourceTempo?'Unchanged tempo target after MULT source construction, before its initial-rate event; old and replacement source PCM, current-metadata Apply and original grid; no live exponential-ramp claim':workerTempo?'Unchanged SyncManager.updateSettings during native no-input MULT worker finalization, before the replacement initial-rate event; source snapshots, grid and PCM; no advancing worker clock, live exponential ramp or hardware claim':workerMetadata?'Unchanged synchronous no-input MULT then Reverse/Start metadata versus native commands before worker-result acceptance; source snapshots, exact 5ms deadline/grid and PCM, no advancing worker clock or tempo/speed claim':controls?'Unchanged no-input MULT followed by Reverse/Start metadata, Apply and speed before/at the 5ms source deadline; captured buffers/direction/offset/rate and grid; source model only, delayed worker and tempo excluded':'Unchanged no-input MULT/startMultiply/multiplyInstant, source buffers/lengths/5ms stops, original grid, rapid doubles, pending Applies, Undo/NORM and cleanup; source model, browser rendering and worker latency excluded'}));
 })().catch(error=>{console.error(error);process.exitCode=1;});

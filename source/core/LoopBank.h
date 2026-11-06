@@ -211,7 +211,7 @@ private:
     };
     std::uint64_t nextWaveformId=1; // Worker-only, survives prepare after join.
     std::uint64_t nextMergeSerial=1; // Audio-only, survives prepare.
-    struct SourceMetadata {double startDelay=0;bool reverse=false;};
+    struct SourceMetadata {double startDelay=0;bool reverse=false;double rate=1,origin=0;bool master=false;};
     struct Track {
         LoopView info{};
         Clip* clip = nullptr; // Immutable samples; one audio lease plus any in-flight job lease.

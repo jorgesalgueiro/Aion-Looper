@@ -15,6 +15,40 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### In acceptance: MULT worker/source tempo ordering
+
+The next focused comparison reproduced a BPM-ordering error during no-input
+MULT finalization (original-JS maximum PCM error **0.1245821860**, tolerance
+**1e-6**). Replacement sources now retain the rate/master origin captured at
+accepted MULT, alongside their existing Reverse/Start snapshot. Subsequent tempo
+metadata remains current for later Apply. A failed worker replacement delivers
+that accepted tempo to the surviving old source; the new OOM regression failed
+before this recovery repair and retains exact stereo/history/identity assertions.
+A second unchanged-JS corpus reproduced an old-source error (**0.0034077666**)
+when BPM changed after source construction but before its +5ms initial rate.
+The future-source rate guard now protects tempo writes as well as Speed writes.
+No queues/capacities, public IDs, serialized state, preserved UI or dependency
+versions change. No allocation, lock or full-buffer work was added to processing.
+
+Acceptance in progress: `--worker-tempo` and `--source-tempo` in
+`tests/QueuedMultiplySources.cjs`, real held-worker Engine cases including OOM,
+and production GUI/CLI parameter ordering before/after source construction.
+The existing 240 post-birth MULT cases remain; 48 tempo/recovery cases are added.
+The production metadata test retains its original eight Reverse/Start cases and
+adds sixteen tempo cases at 64/128, early/near-grid and both directions.
+`TestMouseWorkflow.ps1 -FinalizingControlsOnly` also changes the original BPM
+control while the actual worker finalizer is paused and waits for its native
+parameter acknowledgement. It preserves all prior Q/nudge and rapid FIFO cases.
+
+**Scope:** these tempo targets precede the future initial-rate event, which
+overrides them before the replacement starts. The source oracle does not model
+an audible exponential ramp; live ramp/timestamp ties, advancing worker-latency
+sound, physical drivers and release acceptance remain separate. Failure logs:
+`build/multiply-worker-tempo-repro-windows.log`,
+`build/multiply-worker-tempo-oom-repro-windows.log`, and
+`build/multiply-source-tempo-repro-windows.log`. Completion evidence is pending
+Windows/Linux acceptance; do not infer a pass from the earlier checkpoint below.
+
 ### Verified repairs: finalization admission and source-boundary fades
 
 Implementation snapshots `e4e88a2`, diagnostic `b4aad45`, DSP repair `d006ef5`.

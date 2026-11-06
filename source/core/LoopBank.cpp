@@ -218,6 +218,7 @@ void LoopBank::acceptResult() noexcept {
         if(!track.clip)track.info.length=0;
         if(result){if(sourceMultiply)track.phaseRate=effectiveRateFor(track,result->length);else updateRate(track);if(!job.normalize&&!job.merge&&!multipliedQueue&&!sourceMultiply){track.phase=0;track.info.position=0;restartSource(track);}
             if(resultChanged&&!sourceMultiply&&!((job.normalize||job.merge)&&track.activeReverse))blend(track);}
+        else if(sourceMultiply)updateRate(track,true); // A failed replacement leaves the surviving source in charge of accepted tempo controls.
         if(result)publishMeterBuffer(job.track,job.normalize||multipliedQueue); // Keep the immutable pending PLAY receipt.
     }else retire(result);
     result=nullptr;jobState.store(0,std::memory_order_release);
@@ -461,7 +462,9 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(t.clip->length>growthRoom(t))return false;
             job.blockCount=0;job.length=0;job.offset=0;job.track=id;job.revision=t.revision;
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=false;job.multiply=job.doubling=true;
-            job.merge=false;job.multiplyMetadata={t.info.startDelay,t.info.reverse};
+            job.merge=false;job.multiplyMetadata={t.info.startDelay,t.info.reverse,
+                effectiveRateFor(t,t.clip->length*2),sync.origin,
+                sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(id))};
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
             if(!sourceDouble)invalidatePhase(t);
             t.multiplyQueued=prebirth;t.multiplySource=sourceDouble;
@@ -720,12 +723,14 @@ void LoopBank::beginBlock() noexcept {acceptResult();for(auto& track:tracks)trac
 bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool master,bool replacePending,Clip* sourceBuffer,const SourceMetadata* metadata) noexcept {
     const auto deadline=SyncClock::deadline(target*rate);
     auto* source=sourceBuffer?sourceBuffer:track.clip;
-    const double sourceRate=sourceBuffer?effectiveRateFor(track,source->length):track.phaseRate;
+    const double sourceRate=metadata?metadata->rate:sourceBuffer?effectiveRateFor(track,source->length):track.phaseRate;
     // Source construction belongs to the accepted MULT command. A later
     // metadata edit during its worker copy must not rewrite that source.
     const auto reverse=metadata?metadata->reverse:track.info.reverse;
     const double length=source->length,shift=(metadata?metadata->startDelay:track.info.startDelay)*length;
-    const double offset=master?(target-sync.origin/rate)*sourceRate*rate-shift:shift;
+    const bool followMaster=metadata?metadata->master:master;
+    const double sourceOrigin=metadata?metadata->origin:sync.origin;
+    const double offset=followMaster?(target-sourceOrigin/rate)*sourceRate*rate-shift:shift;
     double residual=static_cast<double>(deadline)-target*rate;
     // deadline() already removes representational noise at integral samples.
     // Keep its source phase integral too: a tiny negative residual otherwise
@@ -967,11 +972,15 @@ void LoopBank::updateRate(Track& track,bool directSpeedEdit) noexcept {
     const auto target=effectiveRateFor(track,track.info.length);
     track.phaseRate=std::max(0.001,target); // JS source offset uses Number before AudioParam float conversion.
     const auto next=static_cast<float>(track.phaseRate);
+    // The newest source is owned by the in-flight MULT snapshot. A tempo
+    // target before its future initial-rate event cannot rewrite that source
+    // or affect the older source that is waiting to stop at its replacement.
+    if(track.info.state==LoopState::finalizing&&track.multiplySource)return;
     // Metadata and the current source AudioParam can differ: a future source
     // retains its initial-rate event at its start time. Unchanged clock polls
     // must not replay an older user control into that source after it starts.
     if(next==previousControl&&!directSpeedEdit)return;
-    if(directSpeedEdit&&track.info.phaseApplyFrame>frame)return;
+    if(track.info.phaseApplyFrame>frame)return;
     if(directSpeedEdit&&track.info.phaseApplyFrame==frame){
         // A later AudioParam write at the same start timestamp wins.
         for(unsigned at=phaseRead;at!=phaseWrite;at=(at+1)%phaseCapacity){auto& e=phaseEvents[at];

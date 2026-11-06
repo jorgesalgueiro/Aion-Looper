@@ -1270,6 +1270,43 @@ void postbirthMultiplyTests(){
         while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
         check(heldWorkerAllocations.load()>=2,"Post-birth MULT pauses workers outside callback");};
     unsigned cases=0;
+    // Failed source construction must preserve the old clip AND deliver a
+    // tempo edit to its surviving graph, just as a rejected MULT would.
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(double bpm:{93.75,211.7}){
+        Fixture f(block);auto owner=setup(f,id,reverse);const auto before=f.view->tracks[id];const auto grid=before.scheduledFrame;
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,0}),"Queue only observed failed MULT");f.cycle();
+        for(unsigned n=0;heldWorkerAllocations.load()<1&&n<10000;++n)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        check(heldWorkerAllocations.load()>=1,"Pause only failed MULT worker outside audio");
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,bpm,1,4,4,false});
+        failWorkerAllocation.store(true);holdWorkerAllocation.store(false);
+        watch=true;for(auto* e:{f.engine.get(),f.control.get()})e->process(nullptr,0,0,{},true);watch=false;
+        f.cycle();check(f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId
+            &&f.view->tracks[id].length==before.length&&!f.view->tracks[id].undoCount,"Failed MULT keeps immutable PCM/history while accepting tempo metadata");
+        bool heard=false;while(f.engine->clock()<grid+2048){f.cycle();if(f.engine->clock()>grid)heard=heard||f.view->outputPeak>0;}
+        check(heard,"Rejected MULT tempo recovery remains audible");f.command(LoopAction::clear,id);f.cycle();++cases;
+    }
+    // A tempo edit during worker copying must equal the same edit after
+    // immutable source construction, before its future initial-rate event.
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool near:{false,true})for(double bpm:{93.75,211.7}){
+        Fixture f(block);auto owner=setup(f,id,reverse);const auto grid=f.view->tracks[id].scheduledFrame;
+        if(near)while(f.engine->clock()+block<grid-3840)f.cycle();
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::multiply,id);f.cycle();waitHeld();
+        const auto frame=f.engine->clock();f.engine->configureSync({SyncMode::fixed,bpm,1,4,4,false});
+        holdWorkerAllocation.store(false);
+        // Accept both actual worker results at the same sample frame. This is
+        // offline fixture settlement, not a wait on a real-time callback.
+        watch=true;for(auto* e:{f.engine.get(),f.control.get()})e->process(nullptr,0,0,{},true);watch=false;
+        check(f.engine->clock()==frame&&f.control->clock()==frame,"Tempo worker settlement does not advance fixture audio time");
+        f.control->configureSync({SyncMode::fixed,bpm,1,4,4,false});f.cycle();
+        check(!f.view->rejected&&f.view->tracks[id].length==1024&&f.view->tracks[id].undoCount==1
+            &&f.view->tracks[id].phaseApplyFrame==frame+240&&owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Tempo preserves MULT source deadline, PCM/history and original receipt");
+        bool heard=false;while(f.engine->clock()<grid+2048){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Worker-time tempo retains original volume grid");else heard=heard||f.view->outputPeak>0;}
+        check(heard,"Worker-time tempo has exact nonzero paired stereo PCM");
+        f.command(LoopAction::applyStart,id);for(unsigned n=0;n<4096/block;++n)f.cycle();
+        check(f.view->outputPeak>0,"Following Apply uses current tempo metadata without source-snapshot rollback");
+        f.command(LoopAction::clear,id);f.cycle();++cases;
+    }
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool late:{false,true})for(unsigned edits=0;edits<3;++edits){
         Fixture f(block);auto owner=setup(f,id,reverse);const auto grid=f.view->tracks[id].scheduledFrame;
         heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::multiply,id);f.cycle();waitHeld();
@@ -1367,7 +1404,7 @@ void postbirthMultiplyTests(){
         f.command(LoopAction::multiply,id);f.cycle();check(f.view->rejected&&f.view->tracks[id].length==512&&!f.view->tracks[id].undoCount,"Original varispeed guard applies after source construction");++cases;
     }
     check(allocations.load()==0,"Post-birth MULT has no callback new/delete");
-    std::cout<<"PASS: post-birth no-input Multiply "<<cases<<" 5ms/source-length/history/rapid/Apply/NORM and pending-source metadata/speed and held-worker Reverse/Start cases, original grid, delayed worker across grid, cancel/cleanup/prepare/OOM/full pool/event/overlap and input/varispeed guards; tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";
+    std::cout<<"PASS: post-birth no-input Multiply "<<cases<<" 5ms/source-length/history/rapid/Apply/NORM and pending-source metadata/speed and held-worker Reverse/Start/tempo cases, original grid, delayed worker across grid, cancel/cleanup/prepare/OOM/full pool/event/overlap and input/varispeed guards; tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";
 }
 
 void prebirthMultiplyTests(){
