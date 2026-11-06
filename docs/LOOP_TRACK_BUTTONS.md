@@ -40,7 +40,9 @@ than 128 captured samples preserve PCM/history and resume the same source.
 Compare unchanged `startMultiply`/`processMultiplyData`, original source PCM and
 post-commit Apply/Undo/Redo. Cover forward/reverse, early/near-grid, captures that
 finish before/after the grid, timestamped 64/128 GUI/CLI controls, DEL/panic/prepare,
-OOM/pool exhaustion, pending sources and zero callback new/delete. These tests and real native pointers pass for their documented Windows/Linux
-scope. Pending-stop capture remains guarded. Preserve the unexplained initial
+OOM/pool exhaustion, pending sources and zero callback new/delete. Audio/ownership
+comparisons pass on Windows/Linux; original pointer checks pass on Windows.
+Linux WebKit interaction remains pending. Pending-stop capture stays guarded.
+Preserve the unexplained initial
 integrated mouse missing-target observation and its diagnostic reruns; do not
 claim it fixed. Queued MERGE eligibility is next.
