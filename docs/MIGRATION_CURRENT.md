@@ -55,7 +55,7 @@ exactly-one-after assertions. Its failed log remains
 `build/loop-buttons-wait-ui-instrumentation-failure-windows.log`. Original failed
 Linux edit and diagnostic logs remain; no tolerance was relaxed or case removed.
 
-### Current follow-up: rapid accepted history/MULT gestures
+### Verified follow-up: rapid accepted history/MULT gestures
 
 A failing production-resolver regression (`build/loop-buttons-rapid-repro-windows.log`)
 showed that accepted UNDO/REDO or a second MULT could disappear when dispatched
@@ -73,14 +73,59 @@ history behind a real held worker. The first pointer fixture had no valid global
 history: original MULT creates local history only. It now uses a real trusted
 keyboard/mouse overdub to seed global history, preserving that reference rule;
 failed evidence is retained as `build/loop-buttons-rapid-ui-fixture-failure-windows.log`.
-Final cross-platform frontend/CLI and pointer acceptance is pending for this follow-up.
+Implementation `f92c791`. Windows/Linux Standalone builds, all **4/4** affected
+frontend/bridge/CLI/asset CTests (12.83s /8.89s), and complete production processor
+suites pass. Actual Windows 64/128 Q/nudge plus five rapid local/global history/
+MULT pointer sequences pass. No assertions or original history semantics were
+weakened. Logs: `build/loop-buttons-rapid-{frontend,production,ctest,ui}-*`;
+Linux build log `build/loop-buttons-rapid-build-linux.log`.
+
+Reproduce with existing per-OS caches (CMake/CTest resolution is retained below):
+
+```powershell
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_mouse_host aion_midi_processor_tests --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -FinalizingControlsOnly
+ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R '^(cli_finalization_admission|native_frontend_commands|native_bridge_lifecycle|original_ui_bytes)$'
+```
+
+```sh
+cmake --build build/linux --target AionLooper_Standalone aion_midi_processor_tests --parallel 2
+./build/linux/aion_midi_processor_tests
+ctest --test-dir build/linux --parallel 2 --no-tests=error --output-on-failure -R '^(cli_finalization_admission|native_frontend_commands|native_bridge_lifecycle|original_ui_bytes)$'
+```
+
+For the DSP repair, build `aion_core_tests aion_start_probe aion_reference_probe`,
+run `aion_core_tests --start-phase`, `--loop-edits` and the full executable.
+Its 17-test CTest selection is
+`^(cli_finalization_admission|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_(start_phase|queued_early_restart|queued_early_rtrg|queued_history|multiply_worker_metadata|multiply_source_controls|queued_multiply_sources|queued_multiply|multiply|reverse|history|normalization|sync))$`.
+The integrated pointer regression command was `./tools/TestMouseWorkflow.ps1 -SkipMidi`.
+ASan/UBSan used the existing `build/overlap-asan/aion_core_tests --loop-edits`,
+with `ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1`.
+
+After all acceptance processes ended, the existing ignored warmed callback harness
+was relinked against the current per-OS core libraries and run Windows then Linux.
+Initial 512-frame capture, stopped doubling to 1024, constructed queued source,
+no-input MULT/history and playback at 48kHz, forward/reverse, 512 warm callbacks;
+worker settlement is outside measurement. No benchmark code changed.
+
+| Observed maximum measured callback | 64 samples | 128 samples |
+| --- | ---: | ---: |
+| Windows Release | 87.8us | 230.6us |
+| Native WSL Linux Release | 96.7us | 124.6us |
+| Block deadline | 1333.33us | 2666.67us |
+
+This single-loop observation is not a worst-case/full-capacity, long-session,
+physical-latency or platform-ranking claim. Existing harness caches:
+`build/postbirth-multiply-bench-{windows,linux}`; results and build logs:
+`build/loop-buttons-final-bench-*`.
 
 Common-DSP/reference/core/sanitizer evidence above is reused because this follow-up
 changes admission only. Remaining limits: synthetic inputs are not physical MIDI,
 driver latency or device evidence; Linux WebKit interaction/listening and broader
-browser transition envelopes are not established. Next core slice after this
-follow-up passes: constructed queued-source MULT with live input, then remaining
-merge eligibility. FX/presets and dry/wet SAVE follow the core work.
+browser transition envelopes are not established. Next core slice: verify worker-time Speed/tempo musical ordering using the
+existing source-control oracle, then constructed queued-source MULT with live
+input and remaining merge eligibility. FX/presets and dry/wet SAVE follow the core work.
 
 ## Latest verified slice — Reverse/Start ordering during Multiply copying, 6 November 2026
 
