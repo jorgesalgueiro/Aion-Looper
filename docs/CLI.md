@@ -33,6 +33,23 @@ the existing native IDs, not display track numbers. MIDI Learn still requires
 an incoming routed MIDI message. Native input availability, queue bounds,
 capture exclusivity and state guards remain enforced.
 
+MERGE also uses the shared loop command:
+
+```sh
+python tools/aion.py loop merge 1 1
+```
+
+This merges source **Loop 2** into destination **Loop 1**: the destination track
+argument is 1-based, while the generic action's numeric `value` retains the
+native **0-based source ID**. A queued source is supported before and after graph
+construction; its stored audio is copied/mixed without changing its playback grid.
+An empty destination stays stopped; an existing destination gains one local/global
+Undo entry. The original editor asks whether to clear the source after success.
+Declining preserves it. Queued destinations remain guarded. As with other generic
+loop actions, native capture/worker/state guards apply; a rejected command is not
+replayed. Raw `clearMergedSource` requires the current destination merge serial,
+source identity and clear epoch; clients must not blindly clear a source.
+
 If multiple Standalone instances are running, select explicitly:
 
 ```sh

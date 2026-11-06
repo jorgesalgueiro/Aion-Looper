@@ -15,6 +15,57 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### Active slice: MERGE from a queued source
+
+Acceptance: read the original source's stored PCM before/after queued graph birth,
+without changing its PLAY receipt, immutable graph/reversed snapshot or audible
+grid. Clone into empty destinations stopped with source tempo metadata; mix into
+ordinary existing destinations with one local/global Undo entry. Confirm clearing
+only the same source waveform/clear epoch after a successful merge. Queued
+**destinations** remain guarded and are the next separate lifecycle slice.
+
+Implementation extends only source-state admission and the original confirmation
+eligibility to `queued`. Existing worker mixing, lease ownership, IDs, serial
+fences, history, RPC and generic CLI command stay shared. `loop merge 1 1` means
+source Loop 2 into destination Loop 1; see CLI.md for index conventions.
+Original assets/reference and logo remain untouched.
+
+Windows evidence so far: new unchanged-JS queued-source oracle **48 cases**, exact
+stereo WAVs, maximum committed playback error **7.74698645e-8** (unchanged 1e-6
+limit); actual Engine **32 cases**, 64/128, source tracks 0/19, pre-birth and
+constructed forward/reversed graphs, exact paired nonzero source PCM/grid,
+clone/mix/history/confirmation and zero callback new/delete. Retained MERGE
+OOM/clear/prepare/full-pool tests plus queued OOM/pending STOP/no resurrection pass.
+Standalone/mouse host and complete production processor suite pass; seven affected
+CTest gates pass. New CLI indexing regression also passes. Windows UI rerun and
+native Linux build/audio/sanitizer acceptance are being completed before closure.
+
+New fixture repairs retain original assertions: timeline reset must precede sync
+configuration; graph-owner tests initialise the event generation and consume the
+real buffer receipt. Restoration must await its own 50ms confirmation. A sequential
+CDP MERGE/STOP test also observed an extra dialog with ambiguous command timing;
+it now uses the existing test host's real-callback finalization pause handshake,
+asserts an actual pending job, then queues STOP before resume. No product timer,
+assertion or tolerance changed. Original failures remain in
+`build/queued-merge-source-{repro,ui,ui-final}-windows.log`.
+The earlier `#loop-action-0` missing-target observation from the MULT session
+remains unresolved/unreproduced, independently of these fixture repairs.
+
+Reproduce focused checks with existing caches:
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --merge
+./build/windows-core/Release/aion_core_tests.exe --queued-merge-source
+node tests/MergeParity.cjs build/windows-core/Release/aion_start_probe.exe --queued-source
+./tools/TestMouseWorkflow.ps1 -MergeOnly
+```
+
+CTest selection:
+`^(cli_finalization_admission|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_merge|js_native_merge_queued_source|js_native_sync)$`,
+with `--no-tests=error --output-on-failure --parallel 2`. New selectors supplement
+full-suite coverage. No package, dependency upgrade, wrapper or push.
+
 ### Implemented preview: queued-source MULT input capture
 
 Snapshots **27a726c**, strict-GCC formatting/diagnostics **69863dd**, gated-source

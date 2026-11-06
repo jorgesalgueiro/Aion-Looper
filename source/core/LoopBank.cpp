@@ -273,7 +273,7 @@ bool LoopBank::clearMergedSource(std::uint32_t id,double serial) noexcept {
     if(merged.mergeSerial!=static_cast<std::uint64_t>(serial)||merged.mergeSource>=trackCount)return false;
     auto& source=tracks[merged.mergeSource];
     if(!source.clip||source.clip->waveformId!=merged.mergeSourceWaveform||source.clearEpoch!=merged.mergeSourceClearEpoch||
-       (source.info.state!=LoopState::playing&&source.info.state!=LoopState::stopped))return false;
+       (source.info.state!=LoopState::playing&&source.info.state!=LoopState::stopped&&source.info.state!=LoopState::queued))return false;
     ++source.clearEpoch;clear(source);return true;
 }
 void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
@@ -441,7 +441,9 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             const auto sourceId=static_cast<std::uint32_t>(value);
             if(sourceId==id||hasCapture()||(s!=LoopState::empty&&s!=LoopState::playing&&s!=LoopState::stopped))return false;
             const auto& source=tracks[sourceId];
-            if(!source.clip||(source.info.state!=LoopState::playing&&source.info.state!=LoopState::stopped))return false;
+            // Stored source PCM is independent of its pending PLAY/graph. Pin
+            // only the clip; do not reset the source receipt, phase or grid.
+            if(!source.clip||(source.info.state!=LoopState::playing&&source.info.state!=LoopState::stopped&&source.info.state!=LoopState::queued))return false;
             if(!t.clip&&source.clip->length>available())return false;
             job.blockCount=0;job.length=0;job.offset=0;job.track=id;job.revision=t.revision;
             job.base=t.clip;job.baseLength=t.info.length;job.edit=t.clip!=nullptr;

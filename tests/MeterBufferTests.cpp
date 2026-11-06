@@ -1249,6 +1249,66 @@ void postbirthHistoryTests(){
     std::cout<<"PASS: post-birth history "<<cases<<" 5ms/length/rapid/Apply/versioned NORM, grid silence, analyser/data, stop/clear/prepare and full event/overlap atomic rejection cases at tracks 0/19, reverse, 64/128; exact paired stereo and no callback new/delete\n";
 }
 
+// MERGE reads immutable stored PCM; it must not take ownership of the source's
+// pending PLAY receipt, constructed graph, reversed snapshot or original grid.
+void queuedMergeSourceTests(){
+    using namespace aion;
+    unsigned cases=0;
+    for(unsigned block:{64u,128u})for(unsigned source:{0u,19u})for(bool graph:{false,true})for(bool reverse:{false,true})for(bool clone:{false,true}){
+        Fixture f(block);const unsigned dest=19-source;
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        const auto value=[&](LoopAction action,unsigned id,double v,bool paired=true){
+            check(f.engine->enqueueLoop({action,id,++f.request,f.engine->generation(),0,v}),"Queued MERGE observed command");
+            if(paired)check(f.control->enqueueLoop({action,id,f.request,f.control->generation(),0,v}),"Queued MERGE paired command");
+        };
+        if(!clone){f.record(dest);f.command(LoopAction::stopImmediate,dest);f.cycle();}
+        MeterGraphEvent event;while(f.engine->popMeterGraphEvent(event)){}
+        auto owner=std::make_unique<LoopMeterLifecycle>(*f.engine,source);
+        value(LoopAction::mute,dest,1);f.record(source);
+        check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,source)),"Queued MERGE source immutable buffer receipt");
+        f.command(LoopAction::stopImmediate,source);f.cycle();
+        while(f.engine->popMeterGraphEvent(event)){}
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,4,4,false});
+        value(LoopAction::reverse,source,reverse?1:0);f.command(LoopAction::play,source);f.cycle();
+        const auto q=f.next(MeterGraphEventKind::queuedPlay,source);check(owner->consumeQueuedPlay(q),"Queued MERGE source owns PLAY receipt");
+        const auto grid=f.view->tracks[source].scheduledFrame;
+        if(graph){
+            while(f.engine->clock()+4096<grid)f.cycle();
+            check(owner->requestQueuedGraph(q.queueId,q.bufferId),"Queued MERGE constructs source inside callback window");
+            const auto request=owner->queuedWindowTransaction();LoopCommand mirror{LoopAction::meterQueuedGraphRequest,source,0,f.control->generation(),0,0};
+            mirror.meterGraphTicket=request.ticket;mirror.meterQueueId=request.queueId;mirror.meterBufferId=request.bufferId;
+            check(f.control->enqueueLoop(mirror),"Queued MERGE mirrored source construction");f.cycle();
+            (void)f.next(MeterGraphEventKind::started,source);
+            check(owner->consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,source)),"Queued MERGE constructed graph acknowledged");
+        }
+        const auto before=f.view->tracks[source];check(before.state==LoopState::queued,"Queued MERGE fixture is genuinely waiting");
+        value(LoopAction::merge,dest,source,false);f.cycle(true);
+        const auto merged=f.view->tracks[dest];
+        check(!f.view->rejected&&merged.mergeSerial&&merged.length==512&&merged.state==LoopState::stopped
+            &&merged.undoCount==(clone?0u:1u),"Queued source clone/mix commits stopped with expected history");
+        check(f.view->tracks[source].waveformId==before.waveformId&&f.view->tracks[source].scheduledFrame==grid
+            &&f.view->tracks[source].state==LoopState::queued,"MERGE preserves source identity and grid");
+        if(!clone){value(LoopAction::undo,dest,0,false);f.cycle();value(LoopAction::redo,dest,0,false);f.cycle();
+            check(f.view->tracks[dest].mergeSerial==0,"Queued source destination history invalidates confirmation");}
+        if(!graph){
+            while(f.engine->clock()+4096<grid)f.cycle();
+            check(owner->requestQueuedGraph(q.queueId,q.bufferId),"Pre-birth MERGE retains original receipt");
+            const auto request=owner->queuedWindowTransaction();LoopCommand mirror{LoopAction::meterQueuedGraphRequest,source,0,f.control->generation(),0,0};
+            mirror.meterGraphTicket=request.ticket;mirror.meterQueueId=request.queueId;mirror.meterBufferId=request.bufferId;
+            check(f.control->enqueueLoop(mirror),"Pre-birth MERGE mirrored original receipt");f.cycle();
+        }
+        bool audible=false;while(f.engine->clock()<grid+2048){f.cycle();audible=audible||f.view->outputPeak>0;}
+        check(audible&&f.view->tracks[source].state==LoopState::playing,"Queued MERGE source resumes exact nonzero paired stereo at original grid");
+        value(LoopAction::clearMergedSource,dest,static_cast<double>(merged.mergeSerial),false);
+        if(clone)check(f.control->enqueueLoop({LoopAction::clear,source,0,f.control->generation(),0,0}),"Mirror explicit confirmed source clear");
+        f.cycle();check(f.view->tracks[source].state==(clone?LoopState::empty:LoopState::playing),"Only current completion clears source after grid");
+        ++cases;
+    }
+    check(allocations.load()==0,"Queued MERGE zero callback new/delete");
+    std::cout<<"PASS: queued-source MERGE "<<cases<<" actual Engine 64/128, original PLAY receipt/grid, reversed source, paired stereo, clone/mix/history/confirmation and zero callback new/delete\n";
+}
+
 void postbirthMultiplyTests(){
     using namespace aion;
     const auto setup=[](Fixture& f,unsigned id,bool reverse,bool full=false){
@@ -2112,7 +2172,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

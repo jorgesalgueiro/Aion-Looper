@@ -56,6 +56,15 @@ const root=path.resolve(__dirname,'..');
  snapshot=committed(6);notice.observe(snapshot);notice.cancel();timers.shift()();assert.equal(clears.length,1,'STOP ALL cancels scheduled confirmation');
  snapshot=committed(7);notice.observe(snapshot);snapshot={...snapshot,tracks:[{...snapshot.tracks[0],waveformId:999},snapshot.tracks[1]]};timers.shift()();assert.equal(clears.length,1,'Undo/new destination PCM cancels earlier confirmation');
  snapshot=committed(8);notice.observe(snapshot);notice.confirm=()=>{snapshot={...snapshot,generation:99};return true;};timers.shift()();assert.equal(clears.length,1,'Recheck after blocking confirmation');
+ // A native queued source represents the original playing loop before its grid.
+ // Source PCM/clear ownership remains required before AND after the dialog.
+ for(const after of ['queued','playing','recording']){
+  snapshot={generation:1,tracks:[{mergeSerial:0,clearEpoch:0},{waveformId:8,clearEpoch:2,state:'queued'}]};
+  const localTimers=[],localClears=[];
+  const local=new native.window.AionMerge({current:()=>snapshot,schedule:fn=>localTimers.push(fn),confirm:()=>{snapshot.tracks[1].state=after;return true;},clear:(...v)=>localClears.push(v)});
+  local.observe(snapshot);snapshot=committed(10);local.observe(snapshot);localTimers.shift()();
+  assert.equal(localClears.length,after==='recording'?0:1,'Queued confirmation rechecks current source ownership after modal dialog');
+ }
  console.log('PASS: merge success-only confirmation, exact text, repeat/reload/generation/DEL/source replacement and post-dialog guards');}
 const original=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8').replace(/\r\n/g,'\n');
 const adapter=fs.readFileSync(path.join(root,'resources/native/loop-view.js'),'utf8');

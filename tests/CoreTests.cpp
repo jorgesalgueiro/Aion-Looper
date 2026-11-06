@@ -60,6 +60,7 @@ void startPhaseTests();
 void stutterTests();
 void exportTests();
 void mergeTests();
+void queuedMergeSourceTests();
 void midiTests();
 void waveformTests();
 void liveInputTests();
@@ -104,6 +105,8 @@ int main(int argc,char** argv) {
     if(argc==2&&std::string_view(argv[1])=="--queued-norm"){queuedNormTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--norm-pending"){normPendingTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--start-phase"){startPhaseTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--merge"){mergeTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--queued-merge-source"){queuedMergeSourceTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--loop-edits"){loopTests();reverseTests();historyTests();multiplyTests();startPhaseTests();mergeTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-overlap"){meterOverlapTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-queued"){meterQueuedTests();return 0;}

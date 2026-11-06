@@ -46,3 +46,17 @@ for changed in ('generation', 'clear', 'timeout', 'late-ready'):
     assert not reply['ok'] and not reply['applied']
     assert all(c['operation'] == 'snapshot' for c in calls), 'No blind admission/replay after generation change or timeout'
 print('PASS: CLI finalization admission for eleven source/history actions, bounded timeout, generation/DEL fencing and no admitted-command replay')
+
+# Generic MERGE retains native zero-based source values and one submission;
+# source queued admission itself is verified by production audio/UI tests.
+calls = []
+def merge_invoke(endpoint, request):
+    calls.append(request.copy())
+    if request['operation'] == 'snapshot':
+        return {'ok': True, 'generation': 7, 'tracks': [{'state': 'stopped', 'clearEpoch': 4}, {'state': 'queued', 'clearEpoch': 5}]}
+    return {'ok': True}
+with patch.object(api, 'instances', return_value=[('endpoint', {'instance': 'test'})]), patch.object(api, 'invoke', merge_invoke):
+    assert api.main(['loop', 'merge', '1', '1'])['ok']
+assert [c['operation'] for c in calls] == ['snapshot', 'loop']
+assert calls[-1]['track'] == 0 and calls[-1]['value'] == 1 and calls[-1]['action'] == 'merge'
+print('PASS: CLI MERGE uses one shared processor command and preserves destination/source index conventions')

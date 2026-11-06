@@ -216,7 +216,7 @@
                 const serial=t.mergeSerial??0;if(this.seen[id]===serial)return;this.seen[id]=serial;
                 if(!serial)return;
                 const generation=snapshot.generation,epoch=t.clearEpoch,source=t.mergeSource,cancelEpoch=this.epoch;
-                const valid=()=>{const s=this.current(),dest=s?.tracks[id],src=s?.tracks[source];return cancelEpoch===this.epoch&&s?.generation===generation&&dest?.clearEpoch===epoch&&dest.mergeSerial===serial&&dest.waveformId===t.waveformId&&src?.waveformId===t.mergeSourceWaveform&&src?.clearEpoch===t.mergeSourceClearEpoch&&['playing','stopped'].includes(src.state);};
+                const valid=()=>{const s=this.current(),dest=s?.tracks[id],src=s?.tracks[source];return cancelEpoch===this.epoch&&s?.generation===generation&&dest?.clearEpoch===epoch&&dest.mergeSerial===serial&&dest.waveformId===t.waveformId&&src?.waveformId===t.mergeSourceWaveform&&src?.clearEpoch===t.mergeSourceClearEpoch&&['playing','stopped','queued'].includes(src.state);};
                 this.schedule(()=>{if(valid()&&this.confirm(`Merge successful. Clear Source Loop ${source+1}?`)&&valid())this.clear(id,source,serial);});
             });
         }

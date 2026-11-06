@@ -80,6 +80,29 @@ void mergeTests(){
   for(unsigned frame=0;frame<2048;frame+=block){std::fill_n(l,block,0.0f);std::fill_n(r,block,0.0f);watch=true;engine->process(channels,2,block);watch=false;for(int i=0;i<block;++i){rendered[(frame+i)*2]=l[i];rendered[(frame+i)*2+1]=r[i];}}
   if(renderedReference.empty())renderedReference=rendered;else check(renderedReference==rendered,"merge actual rendered stereo PCM invariant at 64/128");
  }
+ // Queued source pinning uses the same failure/confirmation guarantees as
+ // ordinary MERGE. A pending source STOP cannot make stored PCM unavailable.
+ for(bool clone:{false,true}){
+  auto queuedBank=std::make_unique<LoopBank>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);auto& q=*queuedBank;
+  q.prepare(8192,0);q.resetMeterGraphEvents(7);seed(q,1,512);if(!clone)seed(q,0,512);
+  apply(q,A::stopAll,0);q.configureSync({SyncMode::fixed,137.3,1,4,4,false,false});
+  watch=true;q.tick({});watch=false;check(apply(q,A::play,1),"Queued MERGE source play");
+  check(q.view()[1].state==LoopState::queued,"Queued MERGE OOM fixture waits for grid");
+  MeterGraphEvent queuedEvent{},event{};while(q.popMeterGraphEvent(event,7))if(event.kind==MeterGraphEventKind::queuedPlay)queuedEvent=event;
+  watch=true;const bool constructed=q.startQueuedMeterGraph(1,1,queuedEvent.queueId,queuedEvent.bufferId);watch=false;check(constructed,"Queued MERGE OOM source owns constructed graph before STOP");
+  const auto originalSource=bytes(q,1);const auto originalDest=clone?std::vector<std::uint8_t>{}:bytes(q,0);
+  const auto waveform=q.view()[1].waveformId;const auto grid=q.view()[1].scheduledFrame;
+  failWorkerAllocation.store(true);check(apply(q,A::merge,0,1),"Queued MERGE OOM admitted");wait(q);
+  check(q.view()[0].finalizationFailed&&q.view()[0].mergeSerial==0&&q.view()[0].undoCount==0
+      &&q.view()[1].waveformId==waveform&&q.view()[1].scheduledFrame==grid&&bytes(q,1)==originalSource,"Queued MERGE OOM preserves both source ownership and destination history");
+  check(clone?q.view()[0].state==LoopState::empty:bytes(q,0)==originalDest,"Queued MERGE OOM preserves destination PCM");
+  check(apply(q,A::stop,1)&&q.view()[1].stopPending,"Queued MERGE source pending STOP");
+  check(apply(q,A::merge,0,1),"Queued MERGE retry reads pending-stop source");wait(q);
+  const auto serial=q.view()[0].mergeSerial;check(serial&&bytes(q,1)==originalSource,"Queued MERGE retry leaves source PCM untouched");
+  check(q.clearMergedSource(0,static_cast<double>(serial))&&q.view()[1].state==LoopState::empty,"Confirmed queued source clear retires pending PLAY and STOP");
+  watch=true;for(unsigned n=0;n<100000;++n)q.tick({});watch=false;
+  check(q.view()[1].state==LoopState::empty,"Confirmed queued source never resurrects at old grid");
+ }
  check(allocations.load()==0,"merge zero callback new/delete");
  std::cout<<"PASS: merge clone/mix/history, bounded pins, DEL/reset/OOM/full-pool and no callback new/delete\n";
 }

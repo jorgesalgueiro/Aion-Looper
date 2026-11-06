@@ -34,11 +34,45 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
  assert.equal(dialogs[1],'Merge successful. Clear Source Loop 2?');assert.equal(s.tracks[2].length,sourceMeta.length);assert.equal(s.tracks[2].originalBpm,sourceMeta.originalBpm);assert.equal(s.tracks[2].dynamicRecorded,sourceMeta.dynamicRecorded);assert.equal(s.tracks[2].undoCount,0);
  assert.deepEqual(await save(2,'Clone'),source,'Clone keeps exact stereo PCM after clearing source');
  await delay(150);assert(!(await evaluate(`!!document.querySelector('#merge-src-0 option[value="1"]')`)),'Cleared source is removed from original selector');
+ // Source-side queued MERGE must preserve the original pending PLAY/graph.
+ // The existing host hook constructs an early graph through production code.
+ for(const graph of [false,true]){
+  if(graph){acceptSourceClear=false;const count=dialogs.length;await go(0,2);await wait(s=>s.tracks[0].state==='stopped'&&s.tracks[0].mergeSerial&&dialogs.length===count+1,'restore source for constructed graph');}
+  assert((await rpc({operation:'loop',action:'stopImmediate',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);
+  await wait(s=>s.tracks[0].state==='stopped','queued source starts stopped');
+  const expected=await save(0,'QueuedSource'+graph);
+  for(const [id,value] of [['syncBars',64],['syncBpm',120],['syncMode',1]])assert((await rpc({operation:'setParameter',id,value})).ok);
+  if(graph)assert((await rpc({operation:'loop',action:'reverse',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:1})).ok);
+  await click('#loop-action-0');await wait(s=>s.tracks[0].state==='queued','source waits on original grid');
+  if(graph){fs.writeFileSync(path.join(directory,'early-source-start'),'1');await wait(s=>s.tracks[0].queuedSourceReady,'constructed reversed queued source');}
+  const queued=await snapshot(),count=dialogs.length;acceptSourceClear=false;
+  await go(4,0);s=await wait(s=>s.tracks[4].mergeSerial&&dialogs.length===count+1,'queued source clone and decline');
+  assert.equal(s.tracks[0].state,'queued');assert.equal(s.tracks[0].scheduledFrame,queued.tracks[0].scheduledFrame);
+  assert.equal(s.tracks[0].waveformId,queued.tracks[0].waveformId);assert.equal(s.tracks[0].queuedSourceReady,graph);
+  assert.deepEqual(await save(4,'QueuedClone'+graph),expected,'Queued source clones exact stored stereo WAV');
+  assert.deepEqual(await save(0,'QueuedUnchanged'+graph),expected,'MERGE preserves queued source stored PCM');
+  acceptSourceClear=true;await go(5,0);s=await wait(s=>s.tracks[5].mergeSerial&&s.tracks[0].state==='empty'&&dialogs.length===count+2,'confirm queued source clear');
+  assert.equal(s.tracks[5].state,'stopped');assert.deepEqual(await save(5,'QueuedConfirmed'+graph),expected);
+  // Reuse the original empty clone destinations on the second pass.
+  for(const track of [4,5])assert((await rpc({operation:'loop',action:'clear',track,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);
+  await wait(s=>s.tracks[4].state==='empty'&&s.tracks[5].state==='empty','queued clone cleanup');
+  assert((await rpc({operation:'setParameter',id:'syncMode',value:0})).ok);
+ }
+ acceptSourceClear=false;const restoreCount=dialogs.length;await go(0,2);await wait(s=>s.tracks[0].state==='stopped'&&s.tracks[0].mergeSerial&&dialogs.length===restoreCount+1,'restore panic destination');
  // Panic invalidates both a pending and an already published completion; an old
  // clear-source confirmation must not outlive it, even if the worker wins first.
  const dialogCount=dialogs.length;
+ // Pause only between real callbacks after this job enters finalizing. Awaiting
+ // two CDP roundtrips can otherwise deliver STOP after the valid 50ms prompt.
+ fs.writeFileSync(path.join(directory,'pause-after-finalizing'),'1');
+ for(let n=0;n<100&&fs.existsSync(path.join(directory,'pause-after-finalizing'));++n)await delay(10);
+ assert(!fs.existsSync(path.join(directory,'pause-after-finalizing')),'Owned host arms MERGE finalization pause');
  assert((await rpc({operation:'loop',action:'merge',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:2})).ok);
+ for(let n=0;n<200&&!fs.existsSync(path.join(directory,'audio-paused'));++n)await delay(10);
+ assert(fs.existsSync(path.join(directory,'audio-paused')),'Audio owner pauses actual MERGE before result acceptance');
+ await wait(s=>s.tracks[0].state==='finalizing','Actual MERGE worker remains pending');
  assert((await rpc({operation:'loop',action:'stopAll',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);
+ fs.writeFileSync(path.join(directory,'resume-audio'),'1');
  s=await wait(s=>s.tracks[0].state==='stopped'&&s.tracks[0].mergeSerial===0,'panic cancels completion');await delay(250);assert.equal(dialogs.length,dialogCount);assert.equal(s.tracks[2].length,sourceMeta.length);
  acceptSourceClear=false;await go(3,2);s=await wait(s=>s.tracks[3].mergeSerial>0&&dialogs.length===dialogCount+1,'clone for active-source guard');const serial=s.tracks[3].mergeSerial;
  for(const action of ['play','overdub']){
