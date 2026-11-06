@@ -15,7 +15,7 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-### Active slice: queued-destination MERGE
+### Implemented preview: queued-destination MERGE
 
 Acceptance: unchanged `mergeLoops` mutates stored destination PCM without a source
 restart. Preserve pending PLAY/graph ownership and the original audible grid;
@@ -31,18 +31,33 @@ remain valid if their deadline arrives during MERGE finalization. Original GO
 now admits queued destinations. CLI uses the same existing `loop merge DEST VALUE`
 processor command (see CLI.md). Preserved UI/reference assets and logo unchanged.
 
-Windows checks completed so far: unchanged-JS **96 cases**, **240 exact stereo WAV
-exports** (mono sources duplicated for the established native stereo export),
-8/48/96kHz, pre-birth/constructed source, pending Start and Undo/Redo; maximum PCM
-error **8.25520550e-8**, unchanged **1e-6** limit. Engine **120 cases** at 64/128,
-tracks 0/19, both queued sources, real meter owner/receipt continuation, workers
-held across grid/phase deadlines, OOM, STOP/clear/prepare and zero callback new/delete.
-Standalone/production processor build and suite PASS. Real original MERGE pointer/
-dialog/export/Undo/Redo cases PASS 64/128, including queued forward/reversed
-destinations, closed audible gate and exact restored WAV. **8/8** affected CTest
-gates PASS (**58.85s**); new destination native oracle executed separately.
-Retained MERGE/source gates and NORM regressions are being completed; native Linux
-build/audio/sanitizer acceptance follows the coherent snapshot sync.
+Snapshot **e820035**, building on **92737c7**. Executed acceptance:
+
+| Verification | Result / exact scope |
+| --- | --- |
+| Unchanged-JS source/audio oracle, each OS | **96 PASS**, **240 exact stereo WAV exports**, **2,418,240 compared sample frames**, mono/stereo 8/48/96kHz, pre-birth/constructed source, pending Start and Undo/Redo. Mono source exports are duplicated stereo, as in the native contract. Maximum PCM error **8.25520550e-8**, unchanged **1e-6** limit |
+| Actual Engine, each OS | **120 PASS**, 64/128, tracks 0/19; stopped/queued sources, real meter owner and full-width PLAY receipt continuation, workers held across grid/phase deadlines, global history/confirmation invalidation, OOM, STOP/clear/prepare and zero callback new/delete |
+| Retained MERGE/source gates, each OS | `--merge` and **32** `--queued-merge-source` cases PASS: exact PCM/history, reversed ownership, pending STOP, full-pool/DEL/prepare/OOM and no stale clear |
+| Shared NORM lifetime regression, each OS | **108 queued**, **96 pre-birth**, plus pending/active Apply/RTRG (**48** playback, **20** cancellation, **8** OOM, **4** full-pool) cases PASS; no callback new/delete |
+| Standalone + complete production processor suite | Build/suite PASS each OS; Linux isolated rerun passes after the timeout observation below. Real external CLI actions at 64/128 pass; no new RPC, duplicated DSP or state schema |
+| Focused CTest | Windows **8/8**, **58.85s**, plus new native destination oracle separately. Linux **9/9**, **166.25s**, including the new native oracle. Windows sync probe was then relinked to the current core and that gate rechecked separately |
+| Actual Windows WebView pointer/dialog/export | PASS 64/128: queued forward/reversed destinations before/after graph birth, original GO, clone/source confirmations and guards, exact saved WAV/source preservation, Undo/Redo and closed volume gate. Retained source MERGE/panic tests remain |
+| Native Linux Debug ASan/UBSan/leaks | `--queued-merge-destination` (**120**), `--merge` and `--queued-norm` (**108**) PASS, no diagnostics |
+
+No Linux WebKit interaction, physical device/controller/latency, wrapper/DAW,
+Apple, full-bank or long-session acceptance was executed. Existing full-core
+baseline is reused with the affected suites above; this is preview acceptance,
+not a release-ready claim. No package or push.
+
+One first Linux production run timed out in the existing external CLI
+`loop finish 1` **8-second** subprocess check, while the ASan run was also active.
+The isolated full production rerun passes at unchanged deadlines, including both
+CLI block sizes. Cause is **unresolved/unreproduced**; concurrency is an observation,
+not an established diagnosis. No product/timeout/assertion change was made.
+Preserve `build/queued-merge-dest-production-linux.log` and the failed test's
+mailbox artifacts at `build/queued-merge-dest-cli-timeout` (moved from its own
+untracked UUID directory without deleting/overwriting files). Successful rerun:
+`build/queued-merge-dest-production-isolated-linux.log`. Investigate if it recurs.
 
 The first regression rejected `merge 0 1` on a genuinely queued destination:
 `build/queued-merge-dest-repro-windows.log`. Fixture corrections preserve every
@@ -52,19 +67,47 @@ The source oracle uses unchanged original methods with node IO stubs; it does no
 claim full browser resampling/envelopes or advancing-worker audio equivalence.
 The earlier missing-button observation remains unresolved/unreproduced.
 
+Primary Windows logs: `build/queued-merge-dest-{native,final-core,merge,source-core,queued-norm,prebirth-norm,norm-pending,production,ctest,ui,sync-current}-windows.log`;
+Linux: `build/queued-merge-dest-{build,core,merge,source-core,queued-norm,prebirth-norm,norm-pending,production-isolated,ctest,sanitizer-queued-merge-destination,sanitizer-merge,sanitizer-queued-norm}-linux.log`.
+
+After acceptance processes ended, identical ignored warmed harnesses ran Windows
+then Linux, using the current core: 48kHz stereo, 512-frame clips, 512 warm
+callbacks, pre-birth/constructed forward/reverse destination, two observations
+per combination (**16 total each OS**), live worker acceptance, Undo/Redo, original
+grid playback and serial-validated source clear. Setup/worker sleeps/offline
+waits/telemetry consumption are outside measured callbacks. Maximum observed:
+Windows **176.1us /289.4us**, Linux **186.886us /195.849us** at **64 /128** samples
+(deadlines **1333.33us /2666.67us**). This is not worst-case/full-bank performance,
+round-trip latency or a platform ranking. No performance-gain claim.
+Harness: `build/queued-merge-dest-bench-src/{CMakeLists.txt,bench.cpp}`;
+SHA256 of bench.cpp `ea15def12ed90c6533110475fdfbd20da51ceae043d77f86faa02adecbca026d`.
+Independent `build/queued-merge-dest-bench-{windows,linux}` caches import each OS's
+current core; target `queued_bench`; logs `build/queued-merge-dest-bench-{build-,}OS.log`.
+
 Focused commands (existing caches; resolve CMake/CTest as documented below):
 
 ```powershell
-cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe --parallel 2
 ./build/windows-core/Release/aion_core_tests.exe --queued-merge-destination
 node tests/QueuedMergeSources.cjs --native build/windows-core/Release/aion_start_probe.exe
 ./tools/TestMouseWorkflow.ps1 -MergeOnly
 ```
 
-Linux substitutes its native `build/linux` cache and executable paths. No package,
-dependency upgrade, wrapper, version bump or push. Next after acceptance: remaining
-scheduled-stop MERGE eligibility and the integrated core-button bug-fixing pass;
-FX/SAVE/presets remain later.
+Linux substitutes its native `build/linux` cache and executable paths. Retained
+core selectors: `--merge`, `--queued-merge-source`, `--queued-norm`,
+`--prebirth-norm`, `--norm-pending`; production suite `aion_midi_processor_tests`.
+Sanitizers: existing `build/overlap-asan`, `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1
+UBSAN_OPTIONS=halt_on_error=1`, with the three selectors in the table above.
+CTest regex: `^(cli_finalization_admission|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_merge|js_native_merge_queued_source|original_merge_queued_destination|js_native_sync)$`
+with `--no-tests=error --output-on-failure --parallel 2`; add
+`js_native_merge_queued_destination` for Linux's executed nine-gate run. Its
+Windows native comparison was executed directly. Build Standalone/mouse/processor
+as in the previous checkpoint; Linux omits the Windows mouse host. No dependency
+upgrade, wrapper or version bump.
+
+**Next:** scheduled-stop MERGE eligibility, then the integrated core-button
+bug-fixing pass. Keep both unresolved observations visible. FX/SAVE/presets remain
+later; queued-source/destination functionality above is implemented preview.
 
 ### Implemented preview: MERGE from a queued source
 

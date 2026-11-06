@@ -15,7 +15,7 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | MULT | Ordinary capture/doubling, queued pre-birth doubling, constructed and active/gated source input capture verified in the native preview | Retain recorder-quantum/worker-latency and platform/interaction limits in MIGRATION_CURRENT |
 | UNDO / REDO | Local/global worker history, queued sources and exact stereo gates | Rapid finalization FIFO verified for local/global history and MULT; retain lifecycle/concurrency limits in MIGRATION_CURRENT |
 | NORM | Native immutable edit, no-history semantics and queued-source gates | Retain OOM/cancellation and current finalization dispatch checks |
-| DEL; MERGE source / GO | Native cleanup and immutable worker merge, original confirmation/history/PCM gates | Queued-source clone/mix verified in Windows/Linux audio and Windows pointer tests; queued-destination acceptance in progress; scheduled-stop eligibility remains pending |
+| DEL; MERGE source / GO | Native cleanup and immutable worker merge, original confirmation/history/PCM gates | Queued-source clone/mix verified in Windows/Linux audio and Windows pointer tests; queued-destination audio/ownership and Windows pointer checks also pass; scheduled-stop eligibility remains pending |
 | Waveform click WAV | Native stored-PCM export, filenames, bounded leases and picker lifecycle | OS cancel/overwrite and non-Windows dialogs remain separate checks |
 | SAVE (Dry/Wet) | **Unported; disabled** | Native wet rendering, chain state, rate/pan/volume, three-second tail, paired filenames and lifecycle checks; dry-only export is not equivalent |
 | FX, FULL PRESET, CHAIN PRESET, manual chain, per-effect controls | **Unported; disabled**, except the independently ported Reverse control | Native effects/state/presets plus original GUI and shared CLI, deterministic sound and interaction acceptance |
@@ -24,8 +24,9 @@ Finalization dispatch, rapid queued history/MULT and the integral-sample source
 fade repair are verified. Worker/source pre-start tempo ordering is verified.
 Queued-source input capture and main FINISH now have shared GUI/CLI, original-JS
 PCM/WAV and 64/128 ownership/pointer coverage. Queued-source MERGE now passes
-its Windows/Linux audio and Windows interaction gates. Next address queued
-destinations and other guarded merge states before the effects/SAVE/preset engine. The owner confirmed core
+its Windows/Linux audio and Windows interaction gates. Queued destinations now pass those gates too. Next address
+scheduled-stop merge states and integrated core-button bugs before the
+effects/SAVE/preset engine. The owner confirmed core
 looping/editing first. Each functional
 slice must pass its relevant Windows/Linux tests before the next. The final
 integrated pass must exercise combinations rather than merely enable controls.
