@@ -161,12 +161,17 @@ def main(argv=None):
         status = invoke(endpoint, {'operation': 'snapshot'})
         if not status.get('ok'):
             return status
-        if args.command == 'loop' and args.action in ('applyStart', 'quantizeStart', 'nudgeStart', 'speed', 'retrigger', 'normalize'):
+        if args.command == 'loop' and args.action in (
+                'applyStart', 'quantizeStart', 'nudgeStart', 'speed', 'retrigger', 'normalize',
+                'undo', 'redo', 'undoGlobal', 'redoGlobal', 'multiply'):
             # Wait before admission; never blindly replay an admitted command.
             generation = status['generation']
-            clear_epoch = status['tracks'][args.track]['clearEpoch']
+            global_history = args.action in ('undoGlobal', 'redoGlobal')
+            clear_epoch = (tuple(t['clearEpoch'] for t in status['tracks']) if global_history
+                           else status['tracks'][args.track]['clearEpoch'])
             deadline = time.monotonic() + 3
-            while status['tracks'][args.track]['state'] == 'finalizing':
+            while (any(t['state'] == 'finalizing' for t in status['tracks']) if global_history
+                   else status['tracks'][args.track]['state'] == 'finalizing'):
                 if time.monotonic() >= deadline:
                     return {'ok': False, 'applied': False, 'error': 'Loop is still finalizing; command was not submitted'}
                 time.sleep(.01)
@@ -175,7 +180,8 @@ def main(argv=None):
                     return status
                 if status.get('generation') != generation:
                     return {'ok': False, 'applied': False, 'error': 'Audio configuration changed before command admission'}
-                if status['tracks'][args.track]['clearEpoch'] != clear_epoch:
+                if (tuple(t['clearEpoch'] for t in status['tracks']) if global_history
+                        else status['tracks'][args.track]['clearEpoch']) != clear_epoch:
                     return {'ok': False, 'applied': False, 'error': 'Loop was cleared before command admission'}
                 if time.monotonic() >= deadline:
                     return {'ok': False, 'applied': False, 'error': 'Finalization admission deadline expired; command was not submitted'}

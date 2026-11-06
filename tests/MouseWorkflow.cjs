@@ -82,6 +82,11 @@ let socket;
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
         await wait(s=>s.masterGain===1,'Finalization controls audible master');await mode('off');
         await click('#loop-action-0');await state('recording');await delay(350);await click('#loop-action-0');await state('playing');
+        // Original MULT creates local history only. A real overdub supplies
+        // the global Undo/Redo receipt used later; never invent one for MULT.
+        const toggleOD=async()=>{await evaluate(`document.activeElement.blur()`);await call('Input.dispatchKeyEvent',{type:'keyDown',key:'+',code:'NumpadAdd',windowsVirtualKeyCode:107});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'+',code:'NumpadAdd',windowsVirtualKeyCode:107});};
+        await toggleOD();await click('#loop-action-0');await state('overdubbing');await delay(80);await click('#loop-action-0');await state('playing');await toggleOD();
+        await wait(s=>s.nextUndo===0,'Actual overdub owns global history');
         await click('#native-stop-all');await state('stopped');
         fs.writeFileSync(path.join(pcmDirectory,'input-channels'),'0');await wait(s=>!s.inputAvailable,'Finalization controls no-input bus');
         await parameter('#bpmInput',60);await parameter('#numBars',1);await parameter('#timeSigNum',4);await mode('static');
@@ -109,10 +114,35 @@ let socket;
             await wait(s=>s.frame>=before.tracks[0].scheduledFrame&&s.outputPeak>.02,'Edited doubled source audible at original grid');
             await click('#native-stop-all');await state('stopped');
         }
+        // Queue trusted clicks before the first job is admitted. The original
+        // controls are enabled at click time, then the actual worker is held.
+        await mode('off');
+        await evaluate(`for(const label of ['UNDO','REDO','NORM']){const e=[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()===label);e.id='wait-'+label;}`);
+        for(const [first,button,action,factor] of [
+          ['multiply','#btnGlobalUndo','undoGlobal',1],['normalize','#btnGlobalRedo','redoGlobal',2],
+          ['multiply','#wait-UNDO','undo',1],['normalize','#wait-REDO','redo',2],
+          ['multiply','#wait-mult','multiply',4]]){
+            const before=await snapshot();
+            const count=await evaluate(`waitActions.filter(a=>a===${JSON.stringify(action)}).length`);
+            fs.writeFileSync(path.join(pcmDirectory,'pause-after-finalizing'),'1');
+            for(let n=0;n<100&&fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing'));++n)await delay(10);
+            assert(!fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing')),'Arm real finalizing pause before queued pointers');
+            await pauseDispatch();await click(first==='multiply'?'#wait-mult':'#wait-NORM');await click(button);
+            await evaluate(`(()=>{const queue=window.pausedHoldQueue,pump=window.savedHoldPump;AionCommandQueue.prototype.pump=pump;delete window.pauseHoldQueue;delete window.pausedHoldQueue;delete window.savedHoldPump;void pump.call(queue);})()`);
+            const held=await wait(s=>s.tracks[0].state==='finalizing','First real queued edit owns worker');await delay(60);
+            assert.equal(await evaluate(`waitActions.filter(a=>a===${JSON.stringify(action)}).length`),count+(first===action?1:0),'Second accepted gesture remains unsubmitted during finalization');
+            assert.equal((await snapshot()).frame,held.frame,'Real audio clock remains held between callbacks');
+            fs.writeFileSync(path.join(pcmDirectory,'resume-audio'),'1');
+            const after=await wait(s=>s.tracks[0].state==='stopped'&&s.tracks[0].length===before.tracks[0].length*factor,'Accepted rapid '+first+' / '+action+' completes');
+            assert(!after.rejected);assert.equal(await evaluate(`waitActions.filter(a=>a===${JSON.stringify(action)}).length`),count+(first===action?2:1),'Exactly one dispatch per accepted rapid gesture');
+            if(action==='undo'||action==='undoGlobal'){assert.equal(after.tracks[0].waveformId,before.tracks[0].waveformId);assert.equal(after.tracks[0].redoCount,1);}
+            else assert.equal(after.tracks[0].redoCount,0);
+            await click('#loop-action-0');await state('playing');await wait(s=>s.outputPeak>.02,'Rapid edit result remains audible');await click('#native-stop-all');await state('stopped');
+        }
         await evaluate(`__JUCE__.backend.emitEvent=window.savedWaitEmit;delete window.savedWaitEmit;`);
         fs.writeFileSync(path.join(pcmDirectory,'input-channels'),'2');await wait(s=>s.inputAvailable,'Restore input after finalization control test');
         assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);
-        console.log('PASS: actual MULT finalizing job, trusted Q/nudge and range keys, deferred single native dispatch, exact Start, original grid/nonzero PCM at '+process.argv[2]);ws.close();return;
+        console.log('PASS: actual MULT finalizing job, trusted Q/nudge and range keys, rapid local/global history and MULT FIFO, deferred single native dispatch, exact state/Start, grid/nonzero PCM at '+process.argv[2]);ws.close();return;
     }
     if(process.argv.includes('--postbirth-multiply-only')){
         const fs=require('node:fs'),path=require('node:path');

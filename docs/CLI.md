@@ -27,7 +27,7 @@ python tools/aion.py midi save
 
 The JSON quoting above is valid in PowerShell and Bash. Named track arguments
 are **1..20**. Loop actions and values use the native handler's conventions;
-for example `loop volume 1 0.8`, `loop pan 1 -3`, `loop undo 1`, `loop redo 1`,
+for example `loop volume 1 0.8`, `loop pan 1 3`, `loop undo 1`, `loop redo 1`,
 `loop normalize 1`, `loop reverse 1 1`, and `loop stopAll`. MIDI target IDs are
 the existing native IDs, not display track numbers. MIDI Learn still requires
 an incoming routed MIDI message. Native input availability, queue bounds,
@@ -63,6 +63,31 @@ native request outcome. It fails if the audio owner rejects it or a concurrent
 controller advances past its outcome before it can be observed. `applied:true`
 means the engine accepted the action, not that recording/finalization/export has
 finished. Inspect `status` for those longer workflows.
+
+Apply, Q, nudge, Speed, RTRG, NORM, MULT and local Undo/Redo convenience commands
+wait for their target to leave `finalizing` **before submission**, using a three-second admission
+deadline. Generation changes, track deletion or an expired admission deadline
+return `applied:false` without submitting that action. Existing mailbox lock and
+response timeouts can add elapsed time; a late snapshot cannot authorize an
+expired gesture. An intervening controller can still change the state after the
+snapshot: native state guards then reject it explicitly, with no automatic replay.
+Raw `request` bypasses this client wait and keeps the native guards. Global Undo/Redo
+wait for all finalizing tracks, then let the audio owner select the current global
+history target. Clearing any track during that global wait cancels admission.
+MULT retains its original local-only history behavior; this wait does not create
+a global history entry.
+
+```sh
+python tools/aion.py loop applyStart 1
+python tools/aion.py loop quantizeStart 1
+python tools/aion.py loop nudgeStart 1 -1
+python tools/aion.py loop speed 1 0.5
+python tools/aion.py loop retrigger 1
+python tools/aion.py loop normalize 1
+```
+
+Pan uses the original integer range **0..10**, with **5** at center; volume uses
+**0..2**. Speed and other state-dependent controls keep their native restrictions.
 
 Unported drone/sampler/tracker/FX and remaining persistence/routing features are
 not implemented by the CLI. Unknown operations are rejected. Newly ported

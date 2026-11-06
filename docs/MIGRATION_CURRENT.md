@@ -9,57 +9,78 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Active work — loop-track completion and finalization dispatch, 6 November 2026
+## Active work — core loop-track buttons, 6 November 2026
 
-The owner requested all loop-track buttons followed by integrated bug fixing.
-See [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) for the compact inventory:
-SAVE Dry/Wet and the FX/preset engine are unported, not silently completed by
-existing dry WAV export. Constructed queued input-capture MULT remains guarded.
+Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
+[LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
+eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-Current repair retains GUI Apply/Q/nudge/Speed/RTRG/NORM gestures in the existing
-bounded FIFO while their track is finalizing. CLI convenience commands wait at
-admission for at most three seconds, fence generation/DEL, and submit once.
-Raw Apply now rejects finalization instead of falsely acknowledging an unapplied
-release; Q/nudge retain atomic rollback. No audio queue, IDs or storage were added.
-The UI still disables genuinely unavailable actions; this also protects gestures
-accepted earlier but dispatched after a worker edit starts.
+### Verified repairs: finalization admission and source-boundary fades
 
-Acceptance: wait without loss or premature admission, resume exactly once with
-current committed PCM, preserve metadata/mixer/DEL/panic priority, expiry and
-cancellation; raw requests must not report false success. Windows frontend,
-CLI admission unit, complete `--loop-edits`, production processor and actual
-WebView2 Q/nudge pointers during held real MULT finalization pass at 64/128.
-Standalone CLI/WebView smoke also passes. Windows **12/12** selected reference/frontend/bridge/CLI CTests pass
-(412.80s). The first Linux edit run failed an existing exact history assertion;
-five immediate reruns and twenty diagnostic reruns passed. A later diagnostic
-run reproduced it: setup clocks **3328 /3392**, first unequal output frame **658**,
-maximum error **0.00207536**. Linux production processor passes; its original
-reference integration run is still in progress. These are dispatch/state checks; existing audio sound
-comparisons must still pass and no new full browser or hardware parity is claimed.
+Implementation snapshots `e4e88a2`, diagnostic `b4aad45`, DSP repair `d006ef5`.
+GUI Apply/Q/nudge/Speed/RTRG/NORM gestures use the existing bounded FIFO wait
+sentinel through their target's finalization. CLI waits before admission, with a
+three-second deadline plus existing bounded mailbox exchanges, generation/DEL
+fences, and no replay of admitted commands. Raw Apply now rejects an unapplied
+finalization request; Q/nudge retain atomic rollback. Mixer/metadata/DEL/panic
+priority, queue bounds/expiry and all IDs/state remain unchanged.
 
-Test-host-only pause stops between callbacks after a real job enters finalizing;
-no state/PCM snapshots are forged and no pause enters product DSP. The first UI
-observer incorrectly attempted to replace frozen `AionNative.request` and counted
-zero commands despite applied metadata. It now observes actual JUCE backend
-invocations, retaining both the zero-before-resume and exactly-one-after assertions.
-The failed log is preserved as `build/loop-buttons-wait-ui-instrumentation-failure-windows.log`.
-Other evidence uses `build/loop-buttons-wait-*`. Nothing packaged or pushed.
+The first Linux edit run exposed an intermittent pre-existing exact history
+failure. Reproduction with failure-only diagnostics: setup clocks **3328 /3392**,
+first unequal output frame **658**, maximum PCM error **0.00207536**. A nearly
+integral source deadline was snapped by `deadline()`, while its tiny negative
+phase residual wrapped zero to length-epsilon and restarted the boundary fade.
+The phase residual now follows the same **four-double-epsilon representation-noise
+bound** as `deadline()`. Genuine fractional delays/source offsets remain. The
+new deterministic source regression at clocks 3945/4009 failed before the fix;
+exact cursor/stereo PCM/fade and old history assertions all remain unchanged.
+`--start-phase` is a focused test selection, not a product command.
 
-The history failure exposed integral-sample numerical noise in `schedulePhase`:
-`deadline()` snapped a nearly integral target, but its tiny negative phase residual
-wrapped a zero source offset to length-epsilon. Crossing that boundary on the next
-sample restarted the fade. A deterministic 8kHz source test at clocks 3945/4009
-failed before the fix (`build/loop-buttons-roundoff-repro-windows.log`). The phase
-residual now follows the **same four-double-epsilon representation-noise bound**
-as `deadline`; genuine fractional delays and source offsets remain untouched.
-Both exact cursor and stereo PCM/fade invariance assertions remain, alongside the
-unchanged history comparison and failure-only clock/error diagnostics. Windows
-`--start-phase` and `--loop-edits` pass. Final Windows/Linux original-JS and
-production/UI acceptance is in progress; do not advance to a new button yet.
-No tolerance was relaxed or failing case deleted. `--start-phase` is a focused
-core test selection, not a product command. CLI also rejects a delayed ready
-snapshot that returns after its admission deadline; mailbox exchanges retain
-their existing bounded response/lock timeouts.
+| Executed verification for d006ef5 | Result |
+| --- | --- |
+| Windows/Linux Standalone builds and complete production processor suites | PASS; real external CLI and MidiBuffer, state/timer/lifetime checks, tracked zero callback new/delete |
+| Full Windows/Linux core audio/ownership audits | PASS each; retained source/history/Multiply/cancellation/OOM/overflow and 64/128 cases |
+| Original-JS/source/frontend/bridge/CLI CTests | **17/17 PASS each**; Windows 547.01s, Linux 759.72s, parallel 2 |
+| Reproduced intermittent history failure | **50 consecutive Linux `--loop-edits` runs PASS** with repair; exact assertions retained |
+| Native WSL Debug ASan/UBSan/leaks `--loop-edits` | PASS, no diagnostics |
+| Actual Windows held-worker Q/nudge pointers | PASS at 64/128; native dispatch observed before/after pause, exact Start and continuing nonzero PCM |
+| Integrated Windows pointer/PCM workflow | PASS at 64/128: main/holds, Start/Q/nudge, Speed/reset, RTRG/STUT, MULT/history, LIVE, waveform export and MERGE; no physical device opened |
+| Standalone CLI/WebView smoke before DSP-only repair | PASS; same processor generation, original controls, current bridge, no product AudioContext |
+
+Logs: `build/loop-buttons-wait-*` (initial dispatch repair),
+`build/loop-buttons-roundoff-*` (final common DSP acceptance). The first UI spy
+attempt incorrectly replaced frozen `AionNative.request`; the corrected test
+observes actual JUCE backend invocations and retains both zero-before-resume and
+exactly-one-after assertions. Its failed log remains
+`build/loop-buttons-wait-ui-instrumentation-failure-windows.log`. Original failed
+Linux edit and diagnostic logs remain; no tolerance was relaxed or case removed.
+
+### Current follow-up: rapid accepted history/MULT gestures
+
+A failing production-resolver regression (`build/loop-buttons-rapid-repro-windows.log`)
+showed that accepted UNDO/REDO or a second MULT could disappear when dispatched
+behind a worker edit. Their resolvers now wait before deciding current history
+or PCM eligibility; global history waits for the bank's finalizers before choosing
+its current target. CLI extends its same admission policy to these actions;
+global waits fence the bank's clear epochs. No DSP or state schema changed.
+
+All original eligibility combinations remain covered: current finalizing controls
+stay disabled, but an earlier accepted click survives until dispatch. Real FIFO
+unit checks cover latest history target/depth, tracks 0/19, DEL/panic cancellation
+and eleven CLI action kinds, including a global target on another track.
+Actual Windows 64/128 pointers queue MULT/UNDO, NORM/REDO, repeated MULT and global
+history behind a real held worker. The first pointer fixture had no valid global
+history: original MULT creates local history only. It now uses a real trusted
+keyboard/mouse overdub to seed global history, preserving that reference rule;
+failed evidence is retained as `build/loop-buttons-rapid-ui-fixture-failure-windows.log`.
+Final cross-platform frontend/CLI and pointer acceptance is pending for this follow-up.
+
+Common-DSP/reference/core/sanitizer evidence above is reused because this follow-up
+changes admission only. Remaining limits: synthetic inputs are not physical MIDI,
+driver latency or device evidence; Linux WebKit interaction/listening and broader
+browser transition envelopes are not established. Next core slice after this
+follow-up passes: constructed queued-source MULT with live input, then remaining
+merge eligibility. FX/presets and dry/wet SAVE follow the core work.
 
 ## Latest verified slice — Reverse/Start ordering during Multiply copying, 6 November 2026
 

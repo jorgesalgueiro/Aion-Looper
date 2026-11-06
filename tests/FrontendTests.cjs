@@ -995,10 +995,11 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  const start=source.indexOf('        const restoreHistory=');const end=source.indexOf('        const multiply=',start);assert(start>=0&&end>start);
  for(const state of ['empty','queued','playing','stopped','finalizing'])for(const ready of [false,true])for(const stopPending of [false,true])for(const count of [0,1])for(const redo of [false,true])for(const global of [false,true]){
   let action;const t={state,stopPending,queuedSourceReady:ready,undoCount:count,redoCount:count};
-  const c={snapshot:{tracks:[t],nextUndo:0,nextRedo:0},scheduler:{enqueue:resolver=>{action=resolver();}}};vm.createContext(c);
+  const wait=Symbol('wait'),c={window:{AionCommandQueue:{wait}},snapshot:{tracks:[t],nextUndo:0,nextRedo:0},scheduler:{enqueue:resolver=>{action=resolver();}}};vm.createContext(c);
   vm.runInContext(source.slice(start,end)+'restoreHistory('+redo+','+(global?'null':'0')+');',c);
   const enabled=count>0&&(['playing','stopped'].includes(state)||(state==='queued'&&!stopPending));
-  assert.equal(!!action,enabled,'Shared local/global history dispatch guard');
+  if(state==='finalizing')assert.equal(action,wait,'Accepted history gesture waits without a premature depth decision');
+  else assert.equal(!!action,enabled,'Shared local/global history dispatch guard');
   const lines=source.split('\n').filter(l=>l.includes('r.undo.disabled=')||l.includes('r.redo.disabled='));assert.equal(lines.length,2);
   const r={undo:{},redo:{}};const ui={r,t,active:true};vm.createContext(ui);vm.runInContext(lines.join('\n'),ui);
   assert.equal(r.undo.disabled,!enabled);assert.equal(r.redo.disabled,!enabled);
@@ -1013,13 +1014,30 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  assert(start>=0&&end>start);let cases=0;
  for(const state of ['empty','armed','recording','queued','playing','stopped','stopping','finalizing','multiplying','overdubbing','substituting'])for(const ready of [false,true])for(const stopPending of [false,true])for(const length of [0,512])for(const inputAvailable of [false,true]){
   let action;const t={state,queuedSourceReady:ready,stopPending,length};const snapshot={tracks:[t],inputAvailable};
-  const c={snapshot,scheduler:{enqueue:resolver=>{action=resolver();}}};vm.createContext(c);vm.runInContext(source.slice(start,end)+'multiply(0);',c);
+  const wait=Symbol('wait'),c={window:{AionCommandQueue:{wait}},snapshot,scheduler:{enqueue:resolver=>{action=resolver();}}};vm.createContext(c);vm.runInContext(source.slice(start,end)+'multiply(0);',c);
   const enabled=length>0&&(['playing','stopped','multiplying'].includes(state)||(state==='queued'&&!stopPending&&(!ready||!inputAvailable)));
-  assert.equal(!!action,enabled,'MULT shared dispatch guard');
+  if(state==='finalizing')assert.equal(action,wait,'Accepted MULT waits for committed PCM');
+  else assert.equal(!!action,enabled,'MULT shared dispatch guard');
   const line=source.split('\n').find(l=>l.includes('r.mult.disabled='));assert(line);const r={mult:{}};
   const ui={r,t,i:0,active:true,snapshot};vm.createContext(ui);vm.runInContext(line,ui);assert.equal(r.mult.disabled,!enabled,'Original MULT control eligibility');cases++;
  }
  console.log('PASS: '+cases+' shared MULT dispatch/control states including queued pre-birth, no-input constructed source, empty, pending-stop and input-capture exclusion');
+}
+
+// An accepted edit gesture must survive a preceding edit's worker commit.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const start=source.indexOf('        const restoreHistory='),end=source.indexOf('        const merge=',start);
+ assert(start>=0&&end>start);
+ for(const kind of ['undo','redo','undoGlobal','redoGlobal','multiply']){
+  let resolver;const wait=Symbol('wait'),track={state:'finalizing',length:512,undoCount:1,redoCount:1};
+  const c={window:{AionCommandQueue:{wait}},snapshot:{tracks:[track],nextUndo:0,nextRedo:0,inputAvailable:false},scheduler:{enqueue:r=>{resolver=r;}}};vm.createContext(c);
+  const call=kind==='multiply'?'multiply(0)':`restoreHistory(${kind.startsWith('redo')},${kind.endsWith('Global')?'null':'0'})`;
+  vm.runInContext(source.slice(start,end)+call+';',c);
+  assert.equal(resolver(),wait,'Accepted '+kind+' must remain pending while its preceding edit commits');
+  track.state='stopped';assert.equal(resolver().action,kind,'Resumed '+kind+' resolves current history/PCM');
+ }
+ console.log('PASS: accepted local/global history and MULT gestures wait for their preceding edit');
 }
 
 // Run the real source-control resolver through its FIFO, including cancellation.
@@ -1042,5 +1060,17 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  native.document={getElementById:()=>null};native.snapshot.syncMode=0;vm.runInContext(code.slice(begin,end)+'globalThis.speed=speedCommand;',native);
  assert.equal(native.speed(0,.5),native.window.AionCommandQueue.wait,'Half/reset/speed waits through finalization');
  native.snapshot.tracks[0].state='playing';assert.equal(native.speed(0,.5).value,.5);
- console.log('PASS: actual source-control FIFO waits/resumes exactly once, speed guard, immediate metadata/mixer/panic and DEL supersession');
+ const from=code.indexOf('        const restoreHistory='),to=code.indexOf('        const merge=',from);
+ vm.runInContext(code.slice(from,to)+'globalThis.history=restoreHistory;globalThis.mult=multiply;',native);
+ for(const kind of ['undo','redo','undoGlobal','redoGlobal','multiply'])for(const id of [0,19]){
+  native.snapshot.tracks[id]={state:'finalizing',length:512,undoCount:0,redoCount:0};native.snapshot.nextUndo=native.snapshot.nextRedo=-1;
+  const before=native.calls.length;
+  if(kind==='multiply')native.mult(id);else native.history(kind.startsWith('redo'),kind.endsWith('Global')?null:id);
+  await native.scheduler.pump();assert.equal(native.calls.length,before,'No premature history-depth/PCM decision: '+kind);
+  Object.assign(native.snapshot.tracks[id],{state:'stopped',undoCount:1,redoCount:1});native.snapshot.nextUndo=native.snapshot.nextRedo=id;
+  await native.scheduler.pump();assert.equal(native.calls.length,before+1);assert.equal(native.calls.at(-1).action,kind);
+ }
+ native.snapshot.tracks[0].state='finalizing';native.mult(0);native.sendControl('clear',0);await native.scheduler.pump();assert.equal(native.calls.at(-1).action,'clear');assert.equal(native.scheduler.items.length,0,'DEL cancels deferred MULT');
+ native.history(false,null);native.scheduler.enqueue(()=>({action:'stopAll',track:0}),{stop:true});await native.scheduler.pump();assert.equal(native.calls.at(-1).action,'stopAll');assert.equal(native.scheduler.items.length,0,'Panic cancels deferred global history');
+ console.log('PASS: actual source/history/MULT FIFO waits/resumes once, latest history target/depth, speed guard, immediate mixer and DEL/panic supersession');
 })().catch(error=>{console.error(error);process.exitCode=1;});

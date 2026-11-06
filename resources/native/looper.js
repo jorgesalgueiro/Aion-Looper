@@ -141,6 +141,7 @@
             },notify:message=>notify(message)});
         const command=(action,track,value=0)=>scheduler.enqueue(()=>window.AionLoopControlWait(snapshot,action,track)?window.AionCommandQueue.wait:({action,track,value}),{track:action==='clearAll'?null:track,clearTrack:action==='clear',barrier:action==='clearAll'});
         const restoreHistory=(redo,id=null)=>scheduler.enqueue(()=>{
+            if(id===null?snapshot.tracks.some(t=>t.state==='finalizing'):snapshot.tracks[id]?.state==='finalizing')return window.AionCommandQueue.wait;
             const target=id??snapshot[redo?'nextRedo':'nextUndo'],t=snapshot.tracks[target];
             // Original empty history is a no-op. Resolve at dispatch so a rapid
             // repeated gesture uses the last acknowledged depth, not stale UI.
@@ -149,6 +150,7 @@
         },{track:id});
         const multiply=id=>scheduler.enqueue(()=>{
             const t=snapshot.tracks[id];
+            if(t.state==='finalizing')return window.AionCommandQueue.wait;
             return t.length&&(['playing','stopped','multiplying'].includes(t.state)||(t.state==='queued'&&!t.stopPending&&(!t.queuedSourceReady||!snapshot.inputAvailable)))?{action:'multiply',track:id,value:0}:null;
         },{track:id});
         const merge=(id,source)=>{
