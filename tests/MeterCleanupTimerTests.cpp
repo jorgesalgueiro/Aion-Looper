@@ -407,12 +407,15 @@ void processorMultiplyWorkerMetadataTests(bool& audioWatch){
             data->setProperty("generation",static_cast<int>(p[k]->inspectCallbackClockAudioThread().generation));data->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis())+4000);
             check(static_cast<bool>(p[k]->request({request})["ok"]),"Worker metadata shared GUI/CLI command");};
         cycle();for(unsigned k=0;k<2;++k)command(k,"record");for(unsigned n=0;n<512/block;++n)cycle();for(unsigned k=0;k<2;++k)command(k,"finish");cycle();
-        for(unsigned k=0;k<2;++k)command(k,"stopImmediate");cycle();
+        for(unsigned k=0;k<2;++k)command(k,"stopImmediate");
+        cycle();
         for(unsigned k=0;k<2;++k){command(k,"reverse",reverse?1:0);p[k]->setPlayConfigDetails(0,2,48000,static_cast<int>(block));
             rpc(k,R"({"operation":"setParameter","id":"syncMode","value":1})");rpc(k,R"({"operation":"setParameter","id":"syncBpm","value":60})");}cycle();
-        for(unsigned k=0;k<2;++k)command(k,"play");cycle();
+        for(unsigned k=0;k<2;++k)command(k,"play");
+        cycle();
         auto state=rpc(0,R"({"operation":"snapshot"})");const auto grid=static_cast<std::uint64_t>(static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"]));
-        for(auto& processor:p)check(processor->requestQueuedMeterGraphMessageThread(19),"Worker metadata production graph birth");cycle();
+        for(auto& processor:p)check(processor->requestQueuedMeterGraphMessageThread(19),"Worker metadata production graph birth");
+        cycle();
         if(late)while(clock()+block<grid-48)cycle();
         for(unsigned k=0;k<2;++k){p[k]->setNonRealtime(false);command(k,"multiply");}
         command(0,"reverse",reverse?0:1);command(0,"startDelay",.731);cycle();
@@ -427,7 +430,8 @@ void processorMultiplyWorkerMetadataTests(bool& audioWatch){
             &&static_cast<juce::int64>(t["phaseApplyFrame"])==static_cast<juce::int64>(target),"Production MULT source snapshot preserves later metadata, history and 5ms deadline");
         while(clock()<std::max(grid+1024,target+512))cycle();
         command(1,"reverse",reverse?0:1);command(1,"startDelay",.731);for(unsigned k=0;k<2;++k)command(k,"applyStart");
-        for(unsigned n=0;n<4096/block;++n)cycle();check(audio[0].getMagnitude(0,static_cast<int>(block))>0,"Production later Apply uses preserved metadata with audible PCM");
+        for(unsigned n=0;n<4096/block;++n)cycle();
+        check(audio[0].getMagnitude(0,static_cast<int>(block))>0,"Production later Apply uses preserved metadata with audible PCM");
     }
     std::cout<<"PASS: production shared GUI/CLI MULT then Reverse/Start before worker-result acceptance, exact paired stereo, 5ms/grid/history and later Apply at 64/128, forward/reverse, early/near-grid\n";
 }
