@@ -83,6 +83,26 @@ void startPhaseTests(){
  for(unsigned i=0;i<360;++i)bank.tick({});check(bank.view()[0].phaseApplyFrame==0,"later other-track source retained");
  for(unsigned n=0;n<300;++n){check(bank.apply(A::retrigger,n%2),"ring-wrapped RTRG accepted");for(unsigned i=0;i<41;++i)bank.tick({});}
  bank.apply(A::retrigger,0);bank.apply(A::stopAll,0);for(unsigned i=0;i<500;++i)bank.tick({});check(bank.view()[0].state==LoopState::stopped&&bank.view()[1].state==LoopState::stopped,"panic cancels pending RTRG on every track");watch=false;
+ // Exact sample deadlines must not turn a zero source offset into length-epsilon.
+ // These two clocks reproduced the intermittent Undo/Redo fade mismatch.
+ for(const auto action:{A::retrigger,A::applyStart}){
+  std::vector<Stereo> reference;
+  for(const unsigned tap:{3945u,4009u}){
+   bank.prepare(4096,40,8000);watch=true;check(bank.apply(A::record,0),"roundoff seed");
+   for(unsigned i=0;i<256;++i)bank.tick({.1f+.3f*std::sin(i*.11f),-.07f+.2f*std::cos(i*.073f)});
+   check(bank.apply(A::finish,0),"roundoff seed finish");watch=false;wait(bank);
+   watch=true;bank.apply(A::stopImmediate,0);while(bank.syncView().frame<tap)bank.tick({});
+   check(bank.apply(A::play,0)&&bank.apply(action,0),"roundoff source admission");
+   const unsigned delay=action==A::retrigger?40:400;
+   check(bank.view()[0].phaseApplyFrame==tap+delay,"roundoff exact event deadline");
+   for(unsigned i=0;i<delay;++i)bank.tick({});
+   watch=false;std::vector<Stereo> pcm(512);watch=true;
+   for(auto& value:pcm)value=bank.tick({});watch=false;
+   check(bank.view()[0].position==0,"zero-offset source retains exact cursor after two cycles");
+   if(reference.empty())reference=pcm;else for(unsigned i=0;i<pcm.size();++i)
+    check(reference[i].left==pcm[i].left&&reference[i].right==pcm[i].right,"source PCM/fade is exact across represented sample clocks");
+  }
+ }
  // Production Engine: same timestamped controls, actual PCM and exact block invariance.
  for(const unsigned variant:{0u,1u,2u,3u}){
  std::vector<float> reference;

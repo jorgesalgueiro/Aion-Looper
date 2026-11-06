@@ -29,8 +29,12 @@ current committed PCM, preserve metadata/mixer/DEL/panic priority, expiry and
 cancellation; raw requests must not report false success. Windows frontend,
 CLI admission unit, complete `--loop-edits`, production processor and actual
 WebView2 Q/nudge pointers during held real MULT finalization pass at 64/128.
-Standalone CLI/WebView smoke also passes. Linux/reference integration is pending
-for this snapshot. These are dispatch/state checks; existing audio sound
+Standalone CLI/WebView smoke also passes. Windows **12/12** selected reference/frontend/bridge/CLI CTests pass
+(412.80s). The first Linux edit run failed an existing exact history assertion;
+five immediate reruns and twenty diagnostic reruns passed. A later diagnostic
+run reproduced it: setup clocks **3328 /3392**, first unequal output frame **658**,
+maximum error **0.00207536**. Linux production processor passes; its original
+reference integration run is still in progress. These are dispatch/state checks; existing audio sound
 comparisons must still pass and no new full browser or hardware parity is claimed.
 
 Test-host-only pause stops between callbacks after a real job enters finalizing;
@@ -40,6 +44,22 @@ zero commands despite applied metadata. It now observes actual JUCE backend
 invocations, retaining both the zero-before-resume and exactly-one-after assertions.
 The failed log is preserved as `build/loop-buttons-wait-ui-instrumentation-failure-windows.log`.
 Other evidence uses `build/loop-buttons-wait-*`. Nothing packaged or pushed.
+
+The history failure exposed integral-sample numerical noise in `schedulePhase`:
+`deadline()` snapped a nearly integral target, but its tiny negative phase residual
+wrapped a zero source offset to length-epsilon. Crossing that boundary on the next
+sample restarted the fade. A deterministic 8kHz source test at clocks 3945/4009
+failed before the fix (`build/loop-buttons-roundoff-repro-windows.log`). The phase
+residual now follows the **same four-double-epsilon representation-noise bound**
+as `deadline`; genuine fractional delays and source offsets remain untouched.
+Both exact cursor and stereo PCM/fade invariance assertions remain, alongside the
+unchanged history comparison and failure-only clock/error diagnostics. Windows
+`--start-phase` and `--loop-edits` pass. Final Windows/Linux original-JS and
+production/UI acceptance is in progress; do not advance to a new button yet.
+No tolerance was relaxed or failing case deleted. `--start-phase` is a focused
+core test selection, not a product command. CLI also rejects a delayed ready
+snapshot that returns after its admission deadline; mailbox exchanges retain
+their existing bounded response/lock timeouts.
 
 ## Latest verified slice — Reverse/Start ordering during Multiply copying, 6 November 2026
 

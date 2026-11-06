@@ -726,7 +726,12 @@ bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool ma
     const auto reverse=metadata?metadata->reverse:track.info.reverse;
     const double length=source->length,shift=(metadata?metadata->startDelay:track.info.startDelay)*length;
     const double offset=master?(target-sync.origin/rate)*sourceRate*rate-shift:shift;
-    double phase=std::fmod(offset+(static_cast<double>(deadline)-target*rate)*sourceRate,length);
+    double residual=static_cast<double>(deadline)-target*rate;
+    // deadline() already removes representational noise at integral samples.
+    // Keep its source phase integral too: a tiny negative residual otherwise
+    // wraps zero to length-epsilon and starts a spurious loop-boundary fade.
+    if(std::abs(residual)<=4*std::numeric_limits<double>::epsilon()*std::max(1.0,std::abs(target*rate)))residual=0;
+    double phase=std::fmod(offset+residual*sourceRate,length);
     if(phase<0)phase+=length;
     while(phaseRead!=phaseWrite&&phaseEvents[phaseRead].epoch!=tracks[phaseEvents[phaseRead].track].phaseEpoch){
         retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;

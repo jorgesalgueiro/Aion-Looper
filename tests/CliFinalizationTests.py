@@ -20,12 +20,12 @@ for action in ('applyStart', 'quantizeStart', 'nudgeStart', 'speed', 'retrigger'
         assert api.main(['loop', action, '1', '-1' if action == 'nudgeStart' else '0.5' if action == 'speed' else '0'])['ok']
     assert [c['operation'] for c in calls] == ['snapshot'] * 3 + ['loop']
 
-for changed in ('generation', 'clear', 'timeout'):
+for changed in ('generation', 'clear', 'timeout', 'late-ready'):
     calls = []
     def invoke(endpoint, request):
         calls.append(request.copy())
-        return {'ok': True, 'generation': 8 if changed == 'generation' and len(calls) > 1 else 7, 'tracks': [{'state': 'finalizing', 'clearEpoch': 5 if changed == 'clear' and len(calls) > 1 else 4}]}
-    with patch.object(api, 'instances', return_value=[('endpoint', {'instance': 'test'})]), patch.object(api, 'invoke', invoke), patch.object(api.time, 'sleep'), patch.object(api.time, 'monotonic', side_effect=(0, 1, 4)):
+        return {'ok': True, 'generation': 8 if changed == 'generation' and len(calls) > 1 else 7, 'tracks': [{'state': 'playing' if changed == 'late-ready' and len(calls) > 1 else 'finalizing', 'clearEpoch': 5 if changed == 'clear' and len(calls) > 1 else 4}]}
+    with patch.object(api, 'instances', return_value=[('endpoint', {'instance': 'test'})]), patch.object(api, 'invoke', invoke), patch.object(api.time, 'sleep'), patch.object(api.time, 'monotonic', side_effect=(0, 1, 4, 4)):
         reply = api.main(['loop', 'applyStart', '1'])
     assert not reply['ok'] and not reply['applied']
     assert all(c['operation'] == 'snapshot' for c in calls), 'No blind admission/replay after generation change or timeout'

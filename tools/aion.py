@@ -177,6 +177,8 @@ def main(argv=None):
                     return {'ok': False, 'applied': False, 'error': 'Audio configuration changed before command admission'}
                 if status['tracks'][args.track]['clearEpoch'] != clear_epoch:
                     return {'ok': False, 'applied': False, 'error': 'Loop was cleared before command admission'}
+                if time.monotonic() >= deadline:
+                    return {'ok': False, 'applied': False, 'error': 'Finalization admission deadline expired; command was not submitted'}
         request = {'operation': 'loop' if args.command == 'loop' else 'exportLoop',
                    'track': args.track, 'generation': status['generation']}
         if args.command == 'loop':
