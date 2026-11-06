@@ -1251,6 +1251,88 @@ void postbirthHistoryTests(){
 
 // MERGE reads immutable stored PCM; it must not take ownership of the source's
 // pending PLAY receipt, constructed graph, reversed snapshot or original grid.
+void queuedMergeDestinationTests(){
+    using namespace aion;unsigned cases=0;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool sourceQueued=false){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        f.record(19-id);f.command(LoopAction::stopImmediate,19-id);f.cycle();
+        MeterGraphEvent event;while(f.engine->popMeterGraphEvent(event)){}
+        auto owner=std::make_unique<LoopMeterLifecycle>(*f.engine,id);f.record(id);
+        check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Queued destination owns initial buffer");
+        f.command(LoopAction::stopImmediate,id);f.cycle();while(f.engine->popMeterGraphEvent(event)){}
+        for(auto* e:{f.engine.get(),f.control.get()}){e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Queued destination reverse metadata");}
+        if(sourceQueued){f.command(LoopAction::play,19-id);f.cycle();(void)f.next(MeterGraphEventKind::queuedPlay,19-id);}
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);
+        check(owner->consumeQueuedPlay(q),"Queued destination owns original PLAY receipt");return owner;
+    };
+    const auto birth=[](Fixture& f,unsigned id,LoopMeterLifecycle& owner){
+        MeterGraphEvent q{};q.queueId=owner.queuedIntentId();q.bufferId=owner.queuedCallbackBuffer();
+        check(owner.requestQueuedGraph(q.queueId,q.bufferId),"Queued destination source request");
+        const auto request=owner.queuedWindowTransaction();LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};
+        mirror.meterGraphTicket=request.ticket;mirror.meterQueueId=request.queueId;mirror.meterBufferId=request.bufferId;
+        check(f.control->enqueueLoop(mirror),"Queued destination mirrored graph");f.cycle();
+        (void)f.next(MeterGraphEventKind::started,id);check(owner.consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"Queued destination graph accepted");
+    };
+    const auto merge=[](Fixture& f,unsigned id,bool paired=true){
+        check(f.engine->enqueueLoop({LoopAction::merge,id,++f.request,f.engine->generation(),0,static_cast<double>(19-id)}),"Queued destination MERGE observed");
+        if(paired)check(f.control->enqueueLoop({LoopAction::merge,id,f.request,f.control->generation(),0,static_cast<double>(19-id)}),"Queued destination MERGE paired");
+    };
+    const auto held=[](){const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<until)std::this_thread::yield();
+        check(heldWorkerAllocations.load()>=2,"Queued destination workers paused outside callback");};
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool graph:{false,true})for(bool delay:{false,true})for(bool sourceQueued:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse,sourceQueued);MeterGraphEvent q{};q.queueId=owner->queuedIntentId();q.bufferId=owner->queuedCallbackBuffer();
+        if(graph)birth(f,id,*owner);const auto before=f.view->tracks[id],source=f.view->tracks[19-id];const auto grid=before.scheduledFrame;
+        if(delay&&graph){while(f.engine->clock()+block<grid-960)f.cycle();f.command(LoopAction::applyStart,id);f.cycle();
+            check(f.view->tracks[id].phaseApplyFrame>grid,"Accepted pending phase occurs after grid during worker");}
+        const auto revision=f.view->tracks[id].sourceRevision;
+        if(delay){heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);}
+        merge(f,id);f.cycle(!delay);
+        if(delay){held();check(f.view->tracks[id].state==LoopState::finalizing,"Queued destination stays finalizing while held");
+            if(!graph)birth(f,id,*owner);
+            while(f.engine->clock()<grid+4096){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"MERGE cannot open source gate before grid");}
+            check(!f.view->tracks[id].phaseApplyFrame&&f.view->tracks[id].sourceRevision>revision&&f.view->outputPeak>0,"Pending phase/grid advance without waiting for MERGE");
+            holdWorkerAllocation.store(false);f.cycle(true);
+        }
+        const auto installed=f.next(MeterGraphEventKind::bufferInstalled,id);
+        if(!graph&&!delay){check(installed.queueId==q.queueId,"MERGE explicitly retains original pre-birth PLAY receipt");
+            auto wrong=installed;wrong.queueId+=(1ull<<32);check(!owner->consumeBuffer(wrong),"MERGE rejects mismatched full-width queue continuation");}
+        check(owner->consumeBuffer(installed),"MERGE result is consumed by real meter owner");
+        const auto after=f.view->tracks[id];check(!f.view->rejected&&!after.finalizationFailed&&after.length==before.length&&after.waveformId!=before.waveformId
+            &&after.undoCount==1&&!after.redoCount&&after.mergeSerial&&f.view->nextUndo==static_cast<int>(id),"Queued destination commits once with local/global history");
+        check(f.view->tracks[19-id].waveformId==source.waveformId&&f.view->tracks[19-id].length==source.length&&f.view->tracks[19-id].state==source.state
+            &&f.view->tracks[19-id].scheduledFrame==source.scheduledFrame,"Queued destination MERGE preserves stopped/queued source receipt");
+        if(!delay){check(after.state==LoopState::queued&&after.scheduledFrame==grid,"Queued MERGE retains grid after result");if(!graph)birth(f,id,*owner);}
+        bool heard=false;while(f.engine->clock()<grid+8192){f.cycle();heard=heard||f.view->outputPeak>0;}
+        check(heard&&f.view->tracks[id].state==LoopState::playing,"Queued destination remains audibly playing after grid");
+        f.command(LoopAction::undoGlobal,id);f.cycle();check(f.view->tracks[id].waveformId==before.waveformId&&!f.view->tracks[id].mergeSerial,"Global Undo restores destination and invalidates completion");
+        f.command(LoopAction::redoGlobal,id);f.cycle();check(f.view->tracks[id].waveformId==after.waveformId&&!f.view->tracks[id].mergeSerial,"Global Redo restores merged destination without stale clear");
+        f.command(LoopAction::clear,id);f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned cancel=0;cancel<6;++cancel){
+        Fixture f(block);auto owner=setup(f,id,reverse);birth(f,id,*owner);
+        if(cancel==5){f.command(LoopAction::stop,id);f.cycle();check(f.view->tracks[id].stopPending,"Queued destination has accepted STOP");}
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);merge(f,id);f.cycle();held();
+        if(cancel==5)while(f.engine->clock()<=f.view->tracks[id].scheduledFrame||f.view->tracks[id].scheduledFrame)f.cycle();
+        if(cancel<3){f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);f.cycle();}
+        holdWorkerAllocation.store(false);
+        if(cancel==3)f.prepare();else if(cancel==4)for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}else f.cycle(true);
+        for(unsigned n=0;n<400;++n)f.cycle();
+        check(f.view->tracks[id].state==((cancel==2||cancel==4)?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].scheduledFrame&&!f.view->tracks[id].mergeSerial,"Queued MERGE clear/panic/prepare/STOP never resurrects source or confirmation");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse);birth(f,id,*owner);const auto before=f.view->tracks[id];
+        failWorkerAllocation.store(true);merge(f,id,false);f.cycle(true);
+        check(!failWorkerAllocation.load()&&f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId
+            &&f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].scheduledFrame==before.scheduledFrame&&!f.view->tracks[id].undoCount&&!f.view->tracks[id].mergeSerial,"Queued MERGE OOM preserves original source, PCM and history");
+        while(f.engine->clock()<before.scheduledFrame+2048)f.cycle();++cases;
+    }
+    check(allocations.load()==0,"Queued destination MERGE zero callback new/delete");
+    std::cout<<"PASS: queued-destination MERGE "<<cases<<" Engine 64/128 ownership/phase/grid, in-flight graph, history, OOM/cancellation and zero callback new/delete\n";
+}
+
 void queuedMergeSourceTests(){
     using namespace aion;
     unsigned cases=0;
@@ -2172,7 +2254,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

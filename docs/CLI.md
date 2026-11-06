@@ -45,7 +45,8 @@ native **0-based source ID**. A queued source is supported before and after grap
 construction; its stored audio is copied/mixed without changing its playback grid.
 An empty destination stays stopped; an existing destination gains one local/global
 Undo entry. The original editor asks whether to clear the source after success.
-Declining preserves it. Queued destinations remain guarded. As with other generic
+Declining preserves it. Queued destinations also retain their original playback
+grid and source snapshots during the mix. As with other generic
 loop actions, native capture/worker/state guards apply; a rejected command is not
 replayed. Raw `clearMergedSource` requires the current destination merge serial,
 source identity and clear epoch; clients must not blindly clear a source.

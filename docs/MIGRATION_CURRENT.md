@@ -15,6 +15,57 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### Active slice: queued-destination MERGE
+
+Acceptance: unchanged `mergeLoops` mutates stored destination PCM without a source
+restart. Preserve pending PLAY/graph ownership and the original audible grid;
+constructed forward sources see the in-place mix, constructed reversed sources
+retain their independent old snapshot. Keep pending Start/history sources, one
+local/global history entry, immutable worker pins, source preservation and all
+confirmation/cancellation/OOM guards. Source/destination may both be queued.
+
+The existing queued NORM lifetime flag is renamed `queuedStoredEdit` internally
+and shared by MERGE. No public IDs/schema/parameters change. Result telemetry
+explicitly continues the pending PLAY receipt, and already accepted phase changes
+remain valid if their deadline arrives during MERGE finalization. Original GO
+now admits queued destinations. CLI uses the same existing `loop merge DEST VALUE`
+processor command (see CLI.md). Preserved UI/reference assets and logo unchanged.
+
+Windows checks completed so far: unchanged-JS **96 cases**, **240 exact stereo WAV
+exports** (mono sources duplicated for the established native stereo export),
+8/48/96kHz, pre-birth/constructed source, pending Start and Undo/Redo; maximum PCM
+error **8.25520550e-8**, unchanged **1e-6** limit. Engine **120 cases** at 64/128,
+tracks 0/19, both queued sources, real meter owner/receipt continuation, workers
+held across grid/phase deadlines, OOM, STOP/clear/prepare and zero callback new/delete.
+Standalone/production processor build and suite PASS. Real original MERGE pointer/
+dialog/export/Undo/Redo cases PASS 64/128, including queued forward/reversed
+destinations, closed audible gate and exact restored WAV. **8/8** affected CTest
+gates PASS (**58.85s**); new destination native oracle executed separately.
+Retained MERGE/source gates and NORM regressions are being completed; native Linux
+build/audio/sanitizer acceptance follows the coherent snapshot sync.
+
+The first regression rejected `merge 0 1` on a genuinely queued destination:
+`build/queued-merge-dest-repro-windows.log`. Fixture corrections preserve every
+numerical threshold: align sync after a nonzero clock (original zero-origin grid
+fallback is intentional), and export mono oracle buffers as duplicated stereo.
+The source oracle uses unchanged original methods with node IO stubs; it does not
+claim full browser resampling/envelopes or advancing-worker audio equivalence.
+The earlier missing-button observation remains unresolved/unreproduced.
+
+Focused commands (existing caches; resolve CMake/CTest as documented below):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --queued-merge-destination
+node tests/QueuedMergeSources.cjs --native build/windows-core/Release/aion_start_probe.exe
+./tools/TestMouseWorkflow.ps1 -MergeOnly
+```
+
+Linux substitutes its native `build/linux` cache and executable paths. No package,
+dependency upgrade, wrapper, version bump or push. Next after acceptance: remaining
+scheduled-stop MERGE eligibility and the integrated core-button bug-fixing pass;
+FX/SAVE/presets remain later.
+
 ### Implemented preview: MERGE from a queued source
 
 Acceptance: read the original source's stored PCM before/after queued graph birth,

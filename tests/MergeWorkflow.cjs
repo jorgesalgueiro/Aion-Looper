@@ -30,8 +30,33 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
  await click('#loop-0 button[title="REDO"]');await wait(s=>s.tracks[0].undoCount===1&&s.tracks[0].redoCount===0,'redo merge');assert.deepEqual(await save(0,'Redo'),mixed);
  const undoneConfirmation=await rpc({operation:'loop',action:'clearMergedSource',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:mixedSerial});assert(undoneConfirmation.ok);
  s=await wait(s=>s.lastRequestId===undoneConfirmation.requestId,'Undo invalidates old completion');assert(s.rejected&&s.tracks[1].waveformId===sourceMeta.waveformId,'Undo/Redo cannot leave an old destructive confirmation valid');
- acceptSourceClear=true;await go(2,1);s=await wait(s=>s.tracks[2].mergeSerial>0&&s.tracks[2].state==='stopped'&&s.tracks[1].state==='empty'&&dialogs.length===2,'clone and accept source clear');
- assert.equal(dialogs[1],'Merge successful. Clear Source Loop 2?');assert.equal(s.tracks[2].length,sourceMeta.length);assert.equal(s.tracks[2].originalBpm,sourceMeta.originalBpm);assert.equal(s.tracks[2].dynamicRecorded,sourceMeta.dynamicRecorded);assert.equal(s.tracks[2].undoCount,0);
+ // Destination-side queued MERGE retains the original source grid/phase.
+ for(const graph of [false,true]){
+  assert((await rpc({operation:'loop',action:'stopAll',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);
+  await wait(s=>s.tracks[0].state==='stopped'&&s.tracks[1].state==='stopped','stop before queued destination');
+  const beforeBytes=await save(0,'QueuedDestBefore'+graph);
+  for(const [id,value] of [['syncBars',64],['syncBpm',120],['syncMode',1],['masterGain',1]])assert((await rpc({operation:'setParameter',id,value})).ok);
+  assert((await rpc({operation:'loop',action:'reverse',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:graph?1:0})).ok);
+  await click('#loop-action-0');await wait(s=>s.tracks[0].state==='queued','destination queued');
+  if(graph){fs.writeFileSync(path.join(directory,'early-source-start'),'1');await wait(s=>s.tracks[0].queuedSourceReady,'queued destination reversed source constructed');}
+  const before=await snapshot(),count=dialogs.length;acceptSourceClear=false;await go(0,1);
+  s=await wait(s=>s.tracks[0].mergeSerial&&dialogs.length===count+1,'queued destination MERGE commit/decline');
+  assert.equal(s.tracks[0].state,'queued');assert.equal(s.tracks[0].queuedSourceReady,graph);assert.equal(s.tracks[0].scheduledFrame,before.tracks[0].scheduledFrame);
+  assert.equal(s.tracks[0].length,before.tracks[0].length);assert.equal(s.tracks[0].undoCount,before.tracks[0].undoCount+1);assert.equal(s.outputPeak,0,'Queued destination remains inaudible before original grid');
+  assert.equal(s.tracks[1].waveformId,sourceMeta.waveformId);assert.deepEqual(await save(1,'QueuedDestSource'+graph),source);
+  const mixedBytes=await save(0,'QueuedDestMixed'+graph);assert.notDeepEqual(mixedBytes,beforeBytes);
+  await click('#loop-0 button[title="UNDO"]');await wait(s=>s.tracks[0].waveformId===before.tracks[0].waveformId,'queued destination Undo identity');
+  assert.deepEqual(await save(0,'QueuedDestUndo'+graph),beforeBytes);
+  await click('#loop-0 button[title="REDO"]');await wait(s=>s.tracks[0].undoCount===before.tracks[0].undoCount+1&&s.tracks[0].mergeSerial===0,'queued destination Redo invalidates confirmation');
+  assert.deepEqual(await save(0,'QueuedDestRedo'+graph),mixedBytes);
+  s=await snapshot();assert.equal(s.outputPeak,0,'History replacements retain original closed volume gate');
+  assert((await rpc({operation:'loop',action:'stopAll',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);
+  await wait(s=>s.tracks[0].state==='stopped','queued destination stop');
+  for(const [id,value] of [['masterGain',0],['syncMode',0]])assert((await rpc({operation:'setParameter',id,value})).ok);
+ }
+ const cloneDialogCount=dialogs.length;
+ acceptSourceClear=true;await go(2,1);s=await wait(s=>s.tracks[2].mergeSerial>0&&s.tracks[2].state==='stopped'&&s.tracks[1].state==='empty'&&dialogs.length===cloneDialogCount+1,'clone and accept source clear');
+ assert.equal(dialogs[cloneDialogCount],'Merge successful. Clear Source Loop 2?');assert.equal(s.tracks[2].length,sourceMeta.length);assert.equal(s.tracks[2].originalBpm,sourceMeta.originalBpm);assert.equal(s.tracks[2].dynamicRecorded,sourceMeta.dynamicRecorded);assert.equal(s.tracks[2].undoCount,0);
  assert.deepEqual(await save(2,'Clone'),source,'Clone keeps exact stereo PCM after clearing source');
  await delay(150);assert(!(await evaluate(`!!document.querySelector('#merge-src-0 option[value="1"]')`)),'Cleared source is removed from original selector');
  // Source-side queued MERGE must preserve the original pending PLAY/graph.

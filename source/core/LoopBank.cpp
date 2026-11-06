@@ -213,13 +213,13 @@ void LoopBank::acceptResult() noexcept {
         }else track.info.finalizationFailed=true;
         const bool queued=waitingQueuedSource(track);
         const bool play=track.finalPlay&&(job.edit||autoPlay);
-        track.info.state=track.clip?(queued?LoopState::queued:play?(track.normalizeQueued&&track.info.stopPending?LoopState::stopping:LoopState::playing):LoopState::stopped):LoopState::empty;
-        const bool multipliedQueue=track.multiplyQueued;track.normalizeQueued=track.multiplyQueued=track.multiplySource=false;
+        track.info.state=track.clip?(queued?LoopState::queued:play?(track.queuedStoredEdit&&track.info.stopPending?LoopState::stopping:LoopState::playing):LoopState::stopped):LoopState::empty;
+        const bool multipliedQueue=track.multiplyQueued;track.queuedStoredEdit=track.multiplyQueued=track.multiplySource=false;
         if(!track.clip)track.info.length=0;
         if(result){if(sourceMultiply)track.phaseRate=effectiveRateFor(track,result->length);else updateRate(track);if(!job.normalize&&!job.merge&&!multipliedQueue&&!sourceMultiply){track.phase=0;track.info.position=0;restartSource(track);}
             if(resultChanged&&!sourceMultiply&&!((job.normalize||job.merge)&&track.activeReverse))blend(track);}
         else if(sourceMultiply)updateRate(track,true); // A failed replacement leaves the surviving source in charge of accepted tempo controls.
-        if(result)publishMeterBuffer(job.track,job.normalize||multipliedQueue); // Keep the immutable pending PLAY receipt.
+        if(result)publishMeterBuffer(job.track,job.normalize||job.merge||multipliedQueue); // Keep the immutable pending PLAY receipt.
     }else retire(result);
     result=nullptr;jobState.store(0,std::memory_order_release);
     const auto deferred=deferredMultiplyGraph;deferredMultiplyGraph={};
@@ -289,7 +289,7 @@ void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     // It still needs the same initial phase and reverse buffer as a playing source.
     const bool starting=track.info.state==LoopState::playing||track.info.state==LoopState::stopping
         ||(track.info.state==LoopState::multiplying&&track.multiplyCaptureSource)
-        ||(track.info.state==LoopState::finalizing&&(track.normalizeQueued||track.multiplySource)&&track.playWhileFinalizing);
+        ||(track.info.state==LoopState::finalizing&&(track.queuedStoredEdit||track.multiplySource)&&track.playWhileFinalizing);
     track.activeReverse=starting&&(preparedQueue?track.queuedSourceReverse:track.info.reverse);
     if(track.clip&&starting){
         if(!preparedQueue){track.rate=track.targetRate=static_cast<float>(track.phaseRate);track.rateRemaining=0;track.rateIncrement=0;}
@@ -419,7 +419,7 @@ void LoopBank::clear(Track& track) noexcept {
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
     const bool muted=track.info.muted;track.info=LoopView{};track.info.muted=muted;
-    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=track.normalizeQueued=track.multiplyQueued=track.multiplySource=track.multiplyCaptureSource=false;
+    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=track.queuedStoredEdit=track.multiplyQueued=track.multiplySource=track.multiplyCaptureSource=false;
     if(freeCount)poolFull=false;
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
@@ -439,7 +439,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::merge: {
             if(!std::isfinite(value)||value<0||value>=trackCount||value!=std::floor(value))return false;
             const auto sourceId=static_cast<std::uint32_t>(value);
-            if(sourceId==id||hasCapture()||(s!=LoopState::empty&&s!=LoopState::playing&&s!=LoopState::stopped))return false;
+            if(sourceId==id||hasCapture()||(s!=LoopState::empty&&s!=LoopState::playing&&s!=LoopState::stopped&&s!=LoopState::queued))return false;
             const auto& source=tracks[sourceId];
             // Stored source PCM is independent of its pending PLAY/graph. Pin
             // only the clip; do not reset the source receipt, phase or grid.
@@ -454,7 +454,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             job.sourceBpm=source.info.originalBpm;job.sourceDynamic=source.info.dynamicRecorded;
             if(job.base)job.base->leases.fetch_add(1,std::memory_order_relaxed);
             job.mergeSource->leases.fetch_add(1,std::memory_order_relaxed);
-            t.finalPlay=t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            t.queuedStoredEdit=s==LoopState::queued;
+            t.finalPlay=s==LoopState::playing||t.queuedStoredEdit;t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         }
         case LoopAction::multiply: {
@@ -570,8 +571,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=true;job.multiply=job.doubling=false;
             job.merge=false;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
-            t.normalizeQueued=s==LoopState::queued;
-            t.finalPlay=s==LoopState::playing||t.normalizeQueued;t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            t.queuedStoredEdit=s==LoopState::queued;
+            t.finalPlay=s==LoopState::playing||t.queuedStoredEdit;t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         case LoopAction::retrigger: {
             const bool prepared=hasPreparedQueuedSource(t);
@@ -818,7 +819,7 @@ void LoopBank::applyPhaseEvents() noexcept {
         const bool valid=event.epoch==track.phaseEpoch;
         if(valid&&event.frame>frame)break;
         phaseRead=(phaseRead+1)%phaseCapacity;
-        const bool normalizing=track.info.state==LoopState::finalizing&&track.playWhileFinalizing&&(job.normalize||track.multiplySource)&&job.track==event.track;
+        const bool normalizing=track.info.state==LoopState::finalizing&&track.playWhileFinalizing&&(job.normalize||job.merge||track.multiplySource)&&job.track==event.track;
         if(!valid||!track.clip||(track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopping&&!hasPreparedQueuedSource(track,true)&&!(track.info.state==LoopState::multiplying&&track.multiplyCaptureSource)&&!normalizing)){
             retire(event.reverseClip);retire(event.forwardClip);
             if(event.retainedSlot<phaseCapacity){const auto& voice=retainedSources[event.retainedSlot];
@@ -1034,7 +1035,7 @@ void LoopBank::schedules(Track& track) noexcept {
     }
     if(track.endAt&&frame>=track.endAt){
         track.endAt=0;
-        if(state==LoopState::stopping||(state==LoopState::finalizing&&track.normalizeQueued&&track.info.stopPending))stop(track);
+        if(state==LoopState::stopping||(state==LoopState::finalizing&&track.queuedStoredEdit&&track.info.stopPending))stop(track);
         else if(state==LoopState::recording)(void)finish(track);
     }
 }

@@ -227,7 +227,7 @@ private:
         std::uint64_t revision = 0, clearEpoch = 0, sourceRevision = 0;
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
-        bool normalizeQueued = false; // NORM preserves a constructed source's future grid while the worker runs.
+        bool queuedStoredEdit = false; // NORM/MERGE preserve an in-place edit's queued grid while the worker runs.
         bool multiplyQueued = false; // Pre-birth doubling preserves the original PLAY receipt/grid until commit.
         bool multiplySource = false; // MULT retains the constructed source until its 5ms replacement.
         bool multiplyCaptureSource = false; // Input capture begun on a constructed, future grid-gated source.
@@ -325,7 +325,7 @@ private:
         const auto s=t.info.state;return t.clip&&!t.queuedSourcePending&&(s==LoopState::playing||s==LoopState::stopping||s==LoopState::overdubbing||s==LoopState::substituting||s==LoopState::multiplying||(s==LoopState::finalizing&&t.playWhileFinalizing));
     }
     static bool waitingQueuedSource(const Track& t) noexcept {
-        return t.info.state==LoopState::queued||(t.info.state==LoopState::multiplying&&t.multiplyCaptureSource&&t.startAt)||(t.info.state==LoopState::finalizing&&(t.normalizeQueued||t.multiplyQueued||t.multiplySource)&&t.finalPlay&&!t.playWhileFinalizing);
+        return t.info.state==LoopState::queued||(t.info.state==LoopState::multiplying&&t.multiplyCaptureSource&&t.startAt)||(t.info.state==LoopState::finalizing&&(t.queuedStoredEdit||t.multiplyQueued||t.multiplySource)&&t.finalPlay&&!t.playWhileFinalizing);
     }
     bool hasPreparedQueuedSource(const Track& t,bool includeStopping=false) const noexcept {
         return queuedStartMode==QueuedStartMode::messageCallback&&waitingQueuedSource(t)

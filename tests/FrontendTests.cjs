@@ -1083,3 +1083,15 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  native.history(false,null);native.scheduler.enqueue(()=>({action:'stopAll',track:0}),{stop:true});await native.scheduler.pump();assert.equal(native.calls.at(-1).action,'stopAll');assert.equal(native.scheduler.items.length,0,'Panic cancels deferred global history');
  console.log('PASS: actual source/history/MULT FIFO waits/resumes once, latest history target/depth, speed guard, immediate mixer and DEL/panic supersession');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+// Original GO is usable during queued destination playback, including before
+// source birth; capture/worker/conflicting source selection remains guarded.
+{
+ const code=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const line=code.split('\n').find(l=>l.includes('r.mergeGo.disabled='));assert(line);
+ for(const state of ['empty','queued','playing','stopped','stopping','finalizing','recording'])for(const active of [false,true])for(const busy of [false,true])for(const selected of ['', '1','0']){
+  const r={mergeGo:{},mergeSource:{value:selected}},scope={r,t:{state},active,mergeBusy:busy,sources:[1]};vm.runInNewContext(line,scope);
+  assert.equal(r.mergeGo.disabled,!active||busy||!['empty','queued','playing','stopped'].includes(state)||selected!=='1');
+ }
+ console.log('PASS: original MERGE GO eligibility includes queued destination and retains source/busy guards');
+}

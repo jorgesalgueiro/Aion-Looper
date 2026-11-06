@@ -1,0 +1,133 @@
+// MERGE into a queued destination: unchanged stored-buffer and graph methods.
+// Default is reference-only; --native PROBE checks source PCM and stereo export.
+// Audio nodes are IO stubs; this compares source PCM, not browser resampling/envelopes.
+const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),assert=require('node:assert/strict'),{spawnSync}=require('node:child_process');
+(async()=>{
+ const root=path.resolve(__dirname,'..'),inputCapture=false;
+ const makeBuffer=(data,rate)=>{const channels=data.map(c=>Float32Array.from(c));return {length:channels[0].length,duration:channels[0].length/rate,sampleRate:rate,numberOfChannels:channels.length,getChannelData:c=>channels[c],copyToChannel:(data,c)=>channels[c].set(data)};};
+ const param=()=>({value:1,events:[],setValueAtTime(value,time){this.events.push({value,time});},setTargetAtTime(value,time,constant){this.events.push({value,time,targetConstant:constant});},linearRampToValueAtTime(){},cancelScheduledValues(){}});
+ const node=()=>({connect(){},disconnect(){this.disconnected=true;},start(time,offset){this.started={time,offset};},stop(time){this.stopped=true;this.stoppedAt=time;},gain:param(),playbackRate:param()});
+ class BufferSource {constructor(){Object.assign(this,node());}}
+ const audio={state:'running',currentTime:0,createBuffer:(count,length,rate)=>makeBuffer(Array.from({length:count},()=>Array(length).fill(0)),rate),createBufferSource:()=>new BufferSource(),createGain:node,createChannelMerger:node,createAnalyser:node};
+ const context={window:{},document:{querySelectorAll:()=>[],getElementById:()=>null,createElement:()=>({}),head:{appendChild(){}}},InputManager:{getRecordingNode:()=>inputCapture?node():null},AudioWorkletNode:class {constructor(){this.port={postMessage(){}};}connect(){}disconnect(){}},EffectManager:{updateFxMixTimeUI(){}},Log:{warn(){},error(...args){throw Error(args.join(" "));}},alert:()=>{throw Error("Unexpected varispeed guard");},AudioBufferSourceNode:BufferSource,effects:{},FACTORY_EFFECTS:{},console,setTimeout:()=>0,clearTimeout(){},audio};vm.createContext(context);
+ vm.runInContext(fs.readFileSync(path.join(root,'resources/ui/Modules/audioEngine.js'),'utf8'),context);
+ vm.runInContext(fs.readFileSync(path.join(root,'resources/ui/Modules/scales.js'),'utf8'),context);
+ const loops=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8');vm.runInContext(loops,context);
+ const match=/\/\/ Remove DC Offset\s+for \(let c = 0; c < finalBuffer.numberOfChannels; c\+\+\)/.exec(loops);assert(match);
+ const start=match.index+match[0].indexOf('for ('),brace=loops.indexOf('{',start);let end=brace+1,depth=1;
+ for(;depth;end++){assert(end<loops.length);if(loops[end]==='{')depth++;if(loops[end]==='}')depth--;}
+ vm.runInContext(`const state={audioContext:audio,syncEnabled:false,loops:[],customEffects:{}};
+ UIManager.updateLoop=()=>{}; UIManager.updateStatus=()=>{};state.playingSources={};
+ globalThis.condition=b=>{AudioEngine.seamlessLoopCrossfade(b,0.015);const finalBuffer=b;${loops.slice(start,end)}};
+ globalThis.setup=b=>{const loop=new Loop(0);loop.audioBuffer=b;loop.duration=b.duration;loop.state='playing';state.loops=[loop];loop.graph=new AudioGraph(loop);if(!loop.graph.build())throw Error('Reference graph failed');};
+ globalThis.toggle=()=>state.loops[0].toggleEffect('reverse');
+ globalThis.setReverse=value=>{if(state.loops[0].effects.reverse!==value)state.loops[0].toggleEffect('reverse');};
+ globalThis.restart=()=>state.loops[0].graph.retrigger(0,state.loops[0]);
+ globalThis.stored=()=>state.loops[0].audioBuffer;
+ globalThis.source=()=>state.loops[0].graph.source.buffer;
+ globalThis.sourceNode=()=>state.loops[0].graph.source;
+ globalThis.volumeEvents=()=>state.loops[0].graph.nodes.volume.gain.events;
+ globalThis.normalize=()=>state.loops[0].normalize();
+ globalThis.edit=async(take,offset,feedback)=>{const finalBuffer=take;${loops.slice(start,end)};AudioEngine.seamlessLoopCrossfade(take,0.008);await AudioEngine.mixBuffersCircular(state.loops[0].audioBuffer,take,offset,feedback);};`,context);
+
+ vm.runInContext(`state.bpm=120;state.bars=1;state.timeSig={num:4};state.masterStartTime=0;state.loopLength=2;
+ globalThis.setDelay=value=>UIManager.setLoopStartDelay(0,value);
+ globalThis.configure=(mode,bpm,origin,num)=>{state.syncEnabled=mode!==0;state.syncMode=mode===1?'static':mode===2?'dynamic':'off';state.bpm=bpm;state.masterStartTime=origin;state.timeSig.num=num;state.loopLength=60/bpm*num;state.loops[0].originalBpm=120;};
+ globalThis.nudge=direction=>UIManager.nudgeLoopStart(0,direction);
+ globalThis.quantize=()=>UIManager.quantizeLoopStart(0);
+ globalThis.delayValue=()=>state.loops[0].startDelay;
+ globalThis.rtrg=()=>state.loops[0].retrigger();
+ globalThis.stopped=()=>{state.loops[0].state="stopped";};
+ globalThis.grid=()=>SyncManager.getNextGridTime();
+ globalThis.scheduledPlay=time=>state.loops[0].play(time);
+ globalThis.scheduleStop=()=>state.loops[0].scheduleStop();
+ globalThis.stopTime=()=>state.loops[0].graph.source.stoppedAt;
+ globalThis.cleanup=()=>{const source=state.loops[0].graph.source;state.loops[0]._teardown();return {source,stopped:state.loops[0].state==='stopped',detached:state.loops[0].graph===null};};
+ globalThis.applyPhase=()=>state.loops[0].restart(audio.currentTime+0.05);
+ globalThis.rate=()=>Math.fround(state.loops[0].effectivePlaybackRate);
+ globalThis.offset=()=>state.loops[0].graph.startOffset;
+ globalThis.phaseSolo=value=>{state.loops[0].isMutedBySolo=value;};
+ globalThis.phaseSpeed=value=>{state.loops[0].playbackRate=value;};
+ globalThis.userSpeed=value=>UIManager.setLoopSpeed(0,value);
+ globalThis.tempo=value=>{const get=document.getElementById;document.getElementById=id=>id==='bpmInput'?{value}:get(id);try{SyncManager.updateSettings();}finally{document.getElementById=get;}};
+ `,context);
+
+ vm.runInContext(`state.undoStack=[];state.redoStack=[];UIManager.updateLoopDisplays=()=>{};
+ globalThis.seedHistory=()=>{state.undoStack=[];state.redoStack=[];const l=state.loops[0];l.state='stopped';l.graph=null;l.multiplyInstant();};
+ globalThis.restore=redo=>state.loops[0][redo?'redo':'undo']();
+ globalThis.queue=()=>{state.loops[0].state='queued';};
+ globalThis.info=()=>{const l=state.loops[0];return [l.audioBuffer.length,l.state,l.undoStack.length,l.redoStack.length];};`,context);
+
+ vm.runInContext(`globalThis.direction=()=>state.loops[0].effects.reverse;
+ globalThis.graph=()=>state.loops[0].graph;
+ globalThis.teardown=()=>state.loops[0]._teardown();
+ globalThis.multiply=()=>state.loops[0].multiply();
+ globalThis.wav=()=>AudioEngine.bufferToWAV(state.loops[0].audioBuffer);
+ globalThis.endCapture=async chunks=>{state.loops[0].multiply();await LoopManager.processMultiplyData(chunks,0);};`,context);
+
+ vm.runInContext(`globalThis.setupMerge=(base,source)=>{
+  const dest=new Loop(0),src=new Loop(1);dest.audioBuffer=base;dest.duration=base.duration;dest.state='queued';dest.originalBpm=120;
+  src.audioBuffer=source;src.duration=source.duration;src.state='stopped';state.loops=[dest,src];state.undoStack=[];state.redoStack=[];
+ };
+ globalThis.merge=()=>LoopManager.mergeLoops(0,'1');
+ globalThis.stereoWav=(b=state.loops[0].audioBuffer)=>{
+  if(b.numberOfChannels===1){const stereo=state.audioContext.createBuffer(2,b.length,b.sampleRate);stereo.copyToChannel(b.getChannelData(0),0);stereo.copyToChannel(b.getChannelData(0),1);b=stereo;}
+  return AudioEngine.bufferToWAV(b);
+ };`,context);
+ const nativeIndex=process.argv.indexOf('--native'),probe=nativeIndex<0?null:process.argv[nativeIndex+1];
+ if(nativeIndex>=0)assert(probe,'--native requires aion_start_probe');
+ const ceilSample=v=>{const near=Math.round(v);return Math.abs(v-near)<=4*Number.EPSILON*Math.max(1,Math.abs(v))?near:Math.ceil(v);};
+ const data=b=>Array.from({length:b.numberOfChannels},(_,c)=>Float32Array.from(b.getChannelData(c)));
+ let cases=0,wavCases=0,samples=0,maximum=0;
+ for(const rate of [8000,48000,96000])for(const mono of [true,false])for(const size of [17,512])for(const reverse of [false,true])for(const sequence of ['prebirth','constructed','apply','undo-redo']){
+  audio.currentTime=0;audio.sampleRate=rate;
+  const raw=n=>[Array.from({length:n},(_,i)=>Math.fround(.12+.4*Math.sin(i*.11))),Array.from({length:n},(_,i)=>Math.fround(-.08+.2*Math.cos(i*.073)))];
+  const baseRaw=raw(size),sourceRaw=raw(773);if(mono){baseRaw[1]=baseRaw[0].slice();sourceRaw[1]=sourceRaw[0].slice();}
+  const base=makeBuffer(mono?[baseRaw[0]]:baseRaw,rate),source=makeBuffer(mono?[sourceRaw[0]]:sourceRaw,rate);
+  context.condition(base);context.condition(source);context.setupMerge(base,source);
+  vm.runInContext('globalThis.sourceWav=()=>stereoWav(state.loops[1].audioBuffer);',context);
+  const expectedSource=Buffer.from(context.sourceWav());
+  const commands=[`prepare 81920 ${rate}`];
+  const seed=(id,raw)=>{commands.push(`record ${id} 0`);for(let i=0;i<raw[0].length;++i)commands.push(`tick 0 ${raw[0][i]} ${raw[1][i]}`);commands.push(`finish ${id} 0`,'wait 0 0',`stop ${id} 0`);};
+  seed(0,baseRaw);seed(1,sourceRaw);commands.push('timeline 0 0');
+  let frame=0;const voices=[],checks=[],wavs=[];
+  const remember=()=>{const node=context.sourceNode();assert(node.started);assert(!voices.some(v=>v.node===node));voices.push({node});};
+  const sample=(node,at)=>{
+   const start=node.started.time*rate,stop=node.stoppedAt===undefined?Infinity:node.stoppedAt*rate;
+   if(at<ceilSample(start)||at>=ceilSample(stop))return null;
+   let speed=1,cursor=start,advance=0;
+   for(const e of [...node.playbackRate.events].sort((a,b)=>a.time-b.time)){
+    const when=e.time*rate;if(when>at)break;if(when>cursor){advance+=(when-cursor)*speed;cursor=when;}speed=Math.fround(e.value);
+   }
+   advance+=(at-cursor)*speed;const b=node.buffer,length=b.length,phase=((node.started.offset*rate+advance)%length+length)%length,i=Math.floor(phase),next=(i+1)%length,f=Math.fround(phase-i);
+   const value=c=>{const v=b.getChannelData(c);return Math.fround(v[i]+Math.fround(v[next]-v[i])*f);};return [value(0),value(mono?0:1)];
+  };
+  let gate=Infinity;
+  const render=until=>{for(;frame<until;++frame){let l=0,r=0;for(const {node} of voices){const v=sample(node,frame);if(v){l=Math.fround(l+v[0]);r=Math.fround(r+v[1]);}}
+   const want=frame<gate?0:(l+r)*.5*Math.SQRT1_2;checks.push({row:commands.length,want});commands.push('tick 0 0');samples++;
+  }audio.currentTime=frame/rate;};
+  render(64);context.configure(1,137.3,(frame-frame*120/137.3)/rate,1);context.setReverse(reverse);context.setDelay(.217);
+  commands.push('sync 1 137.3 1 1',`reverse 0 ${reverse?1:0}`,'delay 0 .217');const grid=context.grid();gate=ceilSample(grid*rate);commands.push('play 0 0');
+  if(sequence!=='prebirth'){await context.scheduledPlay(grid);remember();commands.push('birth 0 0');}
+  if(sequence==='apply'){context.applyPhase();remember();commands.push('apply 0 0');}
+  await context.merge();commands.push('merge 0 1','wait 0 0');wavs.push({row:commands.length,want:Buffer.from(context.stereoWav())});commands.push('export 0 0');
+  assert.equal(context.info()[2],1,'MERGE adds one local undo');
+  if(sequence==='prebirth'){await context.scheduledPlay(grid);remember();commands.push('birth 0 0');}
+  if(sequence==='undo-redo'){
+   context.restore(false);remember();commands.push('undo 0 0');wavs.push({row:commands.length,want:Buffer.from(context.stereoWav())});commands.push('export 0 0');
+   render(frame+Math.ceil(rate*.002));context.restore(true);remember();commands.push('redo 0 0');wavs.push({row:commands.length,want:Buffer.from(context.stereoWav())});commands.push('export 0 0');
+  }
+  const inspectRow=commands.length;commands.push('inspect 0 0');
+  render(gate+Math.ceil(rate*.06));wavs.push({row:commands.length,want:expectedSource});commands.push('export 1 0');
+  if(probe){
+   const run=spawnSync(probe,['--callback-start'],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:64*1024*1024});assert.equal(run.status,0,run.stderr);
+   const rows=run.stdout.trim().split(/\r?\n/);assert.equal(rows.length,commands.length);
+   for(let i=0;i<commands.length;++i)if(!commands[i].startsWith('export '))assert.equal(Number(rows[i].split(' ')[0]),1,`${rate}/${mono}/${size}/${reverse}/${sequence}: ${commands[i]}`);
+   for(const {row,want} of wavs){assert.deepEqual(Buffer.from(rows[row],'hex'),want,`${rate}/${mono}/${size}/${reverse}/${sequence}: exact stereo export (duplicated mono), history/source preservation`);wavCases++;}
+   const meta=rows[inspectRow].split(' ').map(Number);assert.equal(meta[1],size);assert.equal(meta[5],1);assert.equal(meta[6],0);assert(meta[2]===9||sequence==='undo-redo'&&meta[2]===2);
+   for(const {row,want} of checks){const actual=rows[row].split(' ').map(Number).slice(-2);for(const value of actual){const error=Math.abs(value-want);maximum=Math.max(maximum,error);assert(error<=1e-6,`${rate}/${mono}/${size}/${reverse}/${sequence} frame ${rows[row]} want ${want}; gate=${gate} grid=${grid} voices=${JSON.stringify(voices.map(v=>v.node.started))}`);}}
+  }
+  cases++;
+ }
+ console.log(JSON.stringify({result:'PASS',mode:probe?'native':'reference-only',cases,wavCases,samples,maximumAbsoluteError:probe?maximum:null,tolerance:1e-6,scope:'Unchanged mergeLoops/mixBuffersCircular, actual original Loop.play/restart/Undo/Redo source snapshots and gate; node IO stubs, no browser envelopes/resampler or advancing worker-latency claim'}));
+})().catch(e=>{console.error(e);process.exitCode=1;});
