@@ -1407,21 +1407,22 @@ void postbirthMultiplyTests(){
     std::cout<<"PASS: post-birth no-input Multiply "<<cases<<" 5ms/source-length/history/rapid/Apply/NORM and pending-source metadata/speed and held-worker Reverse/Start/tempo cases, original grid, delayed worker across grid, cancel/cleanup/prepare/OOM/full pool/event/overlap and input/varispeed guards; tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";
 }
 
-void queuedMultiplyInputTests(){
+void queuedMultiplyInputTests(bool gatedOnly=false){
     using namespace aion;
-    const auto setup=[](Fixture& f,unsigned id,bool reverse,unsigned capacity=81920){
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,unsigned capacity=81920,SyncMode mode=SyncMode::fixed){
         f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
         f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
         for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(48000,capacity);e->configureSync({SyncMode::off,120,1,1,4,false});e->setMonitoring(false);e->setTarget(1);}
         auto owner=std::make_unique<LoopMeterLifecycle>(*f.engine,id);f.record(id);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Input MULT seed clip");
         f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
-        for(auto* e:{f.engine.get(),f.control.get()}){e->configureSync({SyncMode::fixed,137.3,1,1,4,false});check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Input MULT source direction");}
+        for(auto* e:{f.engine.get(),f.control.get()}){e->configureSync({mode,137.3,1,1,4,false});check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Input MULT source direction");}
         f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);check(owner->consumeQueuedPlay(q)&&owner->requestQueuedGraph(q.queueId,q.bufferId),"Input MULT explicit graph birth");
         const auto request=owner->queuedWindowTransaction();LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};mirror.meterGraphTicket=request.ticket;mirror.meterQueueId=request.queueId;mirror.meterBufferId=request.bufferId;
         check(f.control->enqueueLoop(mirror),"Input MULT paired graph birth");f.cycle();(void)f.next(MeterGraphEventKind::started,id);check(owner->consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"Input MULT owns source");return owner;
     };
     const auto enqueue=[](Fixture& f,unsigned id,std::uint64_t at,bool finish=false){for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({finish?LoopAction::finish:LoopAction::multiply,id,++f.request,e->generation(),at,1}),"Timestamped input MULT action");};
     unsigned cases=0;
+    if(!gatedOnly){
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool near:{false,true})for(bool pending:{false,true})for(unsigned take:{0u,127u,128u,513u,4096u}){
         Fixture f(block);auto owner=setup(f,id,reverse);const auto before=f.view->tracks[id];const auto grid=before.scheduledFrame;
         if(near)while(f.engine->clock()+block<grid-48)f.cycle();
@@ -1472,6 +1473,17 @@ void queuedMultiplyInputTests(){
         for(unsigned n=0;n<127;++n)f.command(LoopAction::applyStart,id);f.cycle();enqueue(f,id,0);for(unsigned n=0;n<256/block;++n)f.cycle();enqueue(f,id,0);f.cycle(true);
         check(f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId&&!f.view->tracks[id].undoCount,"Full phase FIFO rejects input replacement before PCM/history mutation");
         f.command(LoopAction::clear,id);for(unsigned n=0;n<128;++n)f.cycle();check(f.view->tracks[id].state==LoopState::empty,"Rejected input replacement releases phase/worker leases on clear");++cases;
+    }
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);auto owner=setup(f,id,reverse,81920,reverse?SyncMode::dynamic:SyncMode::fixed);const auto before=f.view->tracks[id];const auto grid=before.scheduledFrame;
+        f.command(LoopAction::retrigger,id);f.cycle();const auto active=f.engine->clock()+384;while(f.engine->clock()<active)f.cycle();
+        check(f.view->tracks[id].state==LoopState::playing&&f.engine->clock()<grid&&f.view->outputPeak==0,"RTRG source is playing while original graph remains volume gated");
+        enqueue(f,id,0);for(unsigned n=0;n<256/block;++n)f.cycle();const auto deadline=f.engine->clock()+240;enqueue(f,id,0);f.cycle(true);
+        check(f.view->tracks[id].length==768&&f.view->tracks[id].undoCount==1&&f.view->tracks[id].phaseApplyFrame==deadline
+            &&f.view->outputPeak==0&&owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Gated playing capture retains original 5ms replacement, local history and closed volume");
+        bool heard=false;while(f.engine->clock()<grid+2048){f.cycle();if(f.engine->clock()>grid)heard=heard||f.view->outputPeak>0;else check(f.view->outputPeak==0,"Gated playing capture retains original grid");}
+        check(heard,"Gated playing capture is audible with exact paired stereo");f.command(LoopAction::clear,id);f.cycle();++cases;
     }
     check(allocations.load()==0,"Input MULT has no callback new/delete");
     std::cout<<"PASS: queued-source input MULT "<<cases<<" timestamped short/append/grid-crossing/pending-source/Undo/Redo, local-only history, cancellation/prepare/OOM/full pool, tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";

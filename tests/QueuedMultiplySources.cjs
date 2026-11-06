@@ -72,7 +72,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  const workerMetadata=process.argv.includes('--worker-metadata');
  const workerTempo=process.argv.includes('--worker-tempo');
  const sourceTempo=process.argv.includes('--source-tempo'),tempoControl=workerTempo||sourceTempo;
- const sequences=inputCapture?['capture-short','capture-append','capture-grid','capture-pending']:sourceTempo?['source-tempo']:workerTempo?['worker-tempo']:workerMetadata?['worker-reverse','worker-start','worker-both']:controls?['metadata','control-apply','speed-before','speed-tie']:['double','rapid','apply-chain','norm-history'];
+ const sequences=inputCapture?['capture-short','capture-append','capture-grid','capture-pending','capture-gated-playing']:sourceTempo?['source-tempo']:workerTempo?['worker-tempo']:workerMetadata?['worker-reverse','worker-start','worker-both']:controls?['metadata','control-apply','speed-before','speed-tie']:['double','rapid','apply-chain','norm-history'];
  if(sequenceIndex>=0)assert(sequences.includes(onlySequence),'Unknown --only-sequence');
  let cases=0,wavCases=0,sourceCount=0,samples=0,silent=0,observations=0,overlapSamples=0,distinctBufferSamples=0,maximum=0;
  const counts={};
@@ -85,8 +85,8 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   const b=makeBuffer(mono?[raw[0]]:raw,rate);context.condition(b);context.setup(b);context.seedHistory();
   const commands=probe?[`prepare 81920 ${rate}`,'record 0 0',...raw[0].map((v,i)=>`tick 0 ${v}${mono?'':' '+raw[1][i]}`),'finish 0 0','wait 0 0','stop 0 0','multiply 0 0','wait 0 0']:[];
   let frame=size,bpm=137.3,origin=frame-frame*120/bpm,destroyed=false;
-  audio.currentTime=frame/rate;context.configure(1,bpm,origin/rate,1);context.setReverse(reverse);context.setDelay(.217);
-  if(probe)commands.push(`sync 1 ${bpm} 1 1`,`reverse 0 ${reverse?1:0}`,'delay 0 .217');
+  const syncMode=inputCapture&&sequence==='capture-gated-playing'&&nearGrid?2:1;audio.currentTime=frame/rate;context.configure(syncMode,bpm,origin/rate,1);context.setReverse(reverse);context.setDelay(.217);
+  if(probe)commands.push(`sync ${syncMode} ${bpm} 1 1`,`reverse 0 ${reverse?1:0}`,'delay 0 .217');
   const sources=[],checks=[],phaseChecks=[],wavChecks=[];
   let gate=Infinity;
   const remember=()=>{
@@ -124,7 +124,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   render(Math.max(frame,gate-Math.ceil(rate*.1)));await context.scheduledPlay(grid);if(probe)commands.push('birth 0 0');
   const initial=remember(),graph=context.graph(),volume=graph.nodes.volume,analyser=graph.nodes.analyser;
   const volumeEvents=JSON.stringify(context.volumeEvents());assert.equal(initial.started.time,grid);
-  render(gate-Math.ceil(rate*(nearGrid?.001:.080)));
+  render(gate-Math.ceil(rate*(nearGrid?(sequence==='capture-gated-playing'?.010:.001):.080)));
   const infoChecks=[];
   const inspect=()=>{if(probe){infoChecks.push({row:commands.length,want:context.info()});commands.push('inspect 0 0');}};
   const doubleAt=()=>{
@@ -153,6 +153,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
    assert.equal(context.graph(),graph);assert.equal(graph.nodes.volume,volume);assert.equal(graph.nodes.analyser,analyser);
    assert.equal(JSON.stringify(context.volumeEvents()),volumeEvents,'MULT retains the original post-effect grid gate');observations+=10;inspect();return node;
   };
+  if(inputCapture&&sequence==='capture-gated-playing'){context.rtrg();remember();if(probe)commands.push('rtrg 0 0');render(frame+Math.ceil(rate*.006));assert(frame<gate,'Early replacement is still volume gated');if(probe){infoChecks.push({row:commands.length,want:context.info(),state:2});commands.push('inspect 0 0');}}
   if(inputCapture&&sequence==='capture-pending'){context.applyPhase();remember();if(probe)commands.push('apply 0 0');render(frame+Math.ceil(rate*.001));}
   if(sequence==='apply-chain'){
    context.applyPhase();const first=remember();if(probe)commands.push('apply 0 0');render(frame+Math.ceil(rate*.001));

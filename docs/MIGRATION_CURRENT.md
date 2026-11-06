@@ -29,10 +29,10 @@ source leases and 5ms replacement admission. DEL/panic/prepare, OOM and full
 phase/pool failure preserve the existing cancellation/rollback rules. No new IDs,
 persistence schema, parameters, queues, dependencies or preserved UI assets.
 
-Windows iteration evidence: **192** original-JS capture/source cases pass
+Windows iteration evidence: **192** base plus **48** gated-playing original-JS capture/source cases pass
 (8/48/96kHz, mono/stereo, forward/reverse, early/near grid, short/appended/grid-crossing
 and pending Start source); maximum PCM error **8.74844245e-8**, limit **1e-6**.
-**204** real Engine cases pass at 64/128, tracks 0/19, exact paired stereo,
+**212** real Engine cases pass at 64/128, tracks 0/19, exact paired stereo,
 local-only history/Undo/Redo, main FINISH, held-worker clear/panic, prepare,
 OOM/pool/phase-FIFO exhaustion and zero callback new/delete. Existing **288**
 no-input MULT and loop-edit suites pass. Complete production processor tests
@@ -48,13 +48,44 @@ is now enabled through the same shared action. The source probe now passes its
 explicit Multiply argument instead of discarding it; all existing zero-valued
 calls retain their behavior.
 
-Final acceptance remains pending: exact original stereo WAV comparisons, Linux
-build/reference/Engine/processor checks, sanitizers, affected existing source
-regressions and integrated mouse/CLI smoke. Do not mark the slice complete based
-on this iteration evidence. Recorder nodes are IO stubs in the JS oracle; native
-sample scheduling is real, but browser worklet-quantum timing, physical input
-latency and Linux WebKit interaction are separate. Logs: `build/queued-input-*`.
-The next functional slice remains queued MERGE eligibility after acceptance.
+Exact stored stereo WAV comparisons pass: **96** base plus **24** gated-playing
+files match the unchanged encoder byte for byte. The new gated-playing comparison
+reproduced a lost 5ms replacement (`0` versus expected frame `3796`, 8kHz mono
+17-frame base). An early RTRG had already moved the source to playing while its
+original volume gate was still closed. Capture now recognises that queued-origin
+source too; ordinary post-grid capture is unchanged. Additional cases cover both
+static/dynamic modes. Failure: `build/queued-input-gated-repro-windows.log`.
+New Windows gated reference/212-case core/full processor/actual 64/128 pointers
+pass. Linux gated follow-up remains pending; broader primary acceptance below is
+reused only for paths not changed by the gated admission predicate.
+
+Primary Linux Standalone, new **204** Engine cases, retained **288** no-input MULT,
+loop-edit and complete production suites pass. Linux **23/23** reference/frontend/
+bridge/CLI gates pass (**1154.89s**); Windows retained **21/21** gates pass
+(**615.05s**) with its new input/WAV corpus run directly. Linux Debug ASan/UBSan/
+leaks pass the baseline 204-case input corpus and loop edits, no diagnostics.
+Strict GCC compilation first rejected a compressed conditional; formatting repair
+`69863dd` passed without changing DSP. Windows integrated Mouse/Export/MERGE
+passes at 64 and 128; actual Standalone CLI/WebView smoke passes with master at
+zero. The synthetic mouse host is hardware free; the real Standalone smoke is
+not a physical driver/input latency acceptance claim.
+
+One initial integrated mouse run failed to find `#loop-action-0` after held-STOP
+cancellation. Its cause is **unresolved/unreproduced**: a diagnostic full 64 run and
+full 128 run pass all original assertions. Keep this observation separately; no
+product repair or zero-bug claim follows from the reruns. Failure log:
+`build/queued-input-integrated-ui-windows.log`; passing reruns:
+`build/queued-input-integrated-diagnostic-windows.log` and
+`build/queued-input-integrated-final128-windows.log`. Missing-target failures now
+report the document, ready state, native/card presence, button IDs and runtime
+errors; no gesture, delay, hold threshold, assertion or tolerance was removed.
+
+Final acceptance still needs the Linux gated-only reference/Engine/processor/
+sanitisers and warmed capture callback measurements. Recorder nodes are IO stubs
+in the JS oracle; native sample scheduling is real, but browser worklet-quantum
+timing, physical input latency and Linux WebKit interaction are separate. Logs:
+`build/queued-input-*`. The next functional slice remains queued MERGE eligibility
+after acceptance; retain the unresolved UI observation for further investigation.
 
 ### Verified repair: MULT worker/source tempo ordering
 

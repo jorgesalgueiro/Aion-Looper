@@ -30,7 +30,7 @@ let socket;
     const wait=async (predicate,label,timeout=7000)=>{const end=Date.now()+timeout;let value;while(Date.now()<end){value=await snapshot();if(predicate(value)){await delay(100);return value;}await delay(35);}assert.fail(label+': '+JSON.stringify(value));};
     const state=(wanted,id=0)=>wait(s=>s.tracks[id].state===wanted,`Loop ${id+1} -> ${wanted}`);
     const click=async (selector,{outside=false,hold=20}={})=>{
-        const rect=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing target '+${JSON.stringify(selector)}+'; document='+location.href+'; ready='+document.readyState+'; native='+!!document.getElementById('native-stop-all')+'; loop='+!!document.getElementById('loop-0')+'; body='+document.body.innerText.slice(0,200));e.scrollIntoView({block:'center',inline:${JSON.stringify(selector.startsWith('#live_mm_')?'center':'nearest')},behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,disabled:!!e.disabled,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};})()`);
+        const rect=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing target '+${JSON.stringify(selector)}+'; document='+location.href+'; ready='+document.readyState+'; native='+!!document.getElementById('native-stop-all')+'; loop='+!!document.getElementById('loop-0')+'; buttons='+JSON.stringify([...document.querySelectorAll('#loop-0 button')].map(b=>[b.id,b.textContent.trim().slice(0,12)]))+'; errors='+JSON.stringify(window.mouseErrors)+'; body='+document.body.innerText.slice(0,200));e.scrollIntoView({block:'center',inline:${JSON.stringify(selector.startsWith('#live_mm_')?'center':'nearest')},behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,disabled:!!e.disabled,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};})()`);
         assert(!rect.disabled&&rect.hit,'Mouse target blocked: '+selector+' '+JSON.stringify(rect));
         // Queue ordered input before waiting for CDP acknowledgements: response
         // latency must not turn a requested short click into a >=600ms hold.
@@ -203,6 +203,7 @@ let socket;
             fs.writeFileSync(path.join(pcmDirectory,'early-source-start'),'1');
             const before=await wait(s=>s.tracks[0].state==='queued'&&s.tracks[0].queuedSourceReady&&s.inputAvailable,'Input MULT constructed source and input route');
             const grid=before.tracks[0].scheduledFrame;
+            if(!near&&reverse){await exactlyOne(()=>click('#loop-0 button[title="RTRG"]'),'Early gated RTRG pointer');const gated=await state('playing');assert(gated.frame<grid&&gated.outputPeak===0,'Active RTRG retains the original future volume gate');}
             if(near)await wait(s=>s.frame>=grid-24000&&s.frame<grid-12000,'Input MULT near original grid',12000);
             await exactlyOne(()=>click('#postbirth-mult-MULT'),'Trusted queued input MULT start');const capture=await state('multiplying');
             if(capture.frame<grid)assert.equal(capture.outputPeak,0,'Input capture cannot open original volume gate');

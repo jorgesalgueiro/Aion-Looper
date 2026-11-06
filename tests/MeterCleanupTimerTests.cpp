@@ -374,6 +374,8 @@ void processorQueuedInputMultiplyTests(bool& audioWatch){
         state=rpc(R"({"operation":"snapshot"})");const auto grid=static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"]);
         check(p->requestQueuedMeterGraphMessageThread(19),"Construct queued source before no-input MULT");cycle();
         state=rpc(R"({"operation":"snapshot"})");check(static_cast<bool>(state["inputAvailable"])&&static_cast<bool>(state["tracks"][19]["queuedSourceReady"]),"Production no-input constructed source");
+        if(!late&&reverse){command("retrigger");const auto active=clock()+384;while(clock()<active)cycle();state=rpc(R"({"operation":"snapshot"})");
+            check(state["tracks"][19]["state"].toString()=="playing"&&static_cast<float>(state["outputPeak"])==0,"Production RTRG is active behind original grid before capture");}
         if(late)while(clock()+block<static_cast<std::uint64_t>(grid)-48)cycle();
         command("multiply");cycle();state=rpc(R"({"operation":"snapshot"})");
         check(state["tracks"][19]["state"].toString()=="multiplying"&&!static_cast<bool>(state["rejected"]),"Production GUI/CLI starts capture on constructed source with available input");

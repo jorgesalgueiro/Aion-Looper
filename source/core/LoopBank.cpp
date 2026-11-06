@@ -459,7 +459,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(value!=0&&value!=1)return false;
             if(s==LoopState::multiplying)return finish(t);
             const bool prebirth=s==LoopState::queued&&t.queuedSourcePending&&!t.queuedSourceTicket&&!t.info.stopPending;
-            const bool queuedCapture=value==1&&hasPreparedQueuedSource(t);
+            const bool queuedCapture=value==1&&(hasPreparedQueuedSource(t)||(s==LoopState::playing&&t.queuedGainAt>frame));
             const bool sourceDouble=value==0&&(hasPreparedQueuedSource(t)||s==LoopState::playing);
             if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!prebirth&&!sourceDouble&&!queuedCapture)||hasCapture())return false;
             if((s==LoopState::playing||sourceDouble||queuedCapture)&&(std::abs(t.info.playbackRate-1)>0.01f||(!sourceDouble&&t.rateRemaining)))return false;
