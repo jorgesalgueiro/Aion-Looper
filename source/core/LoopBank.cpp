@@ -169,7 +169,7 @@ void LoopBank::acceptResult() noexcept {
             const bool master=sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(job.track));
             // Reserve the replacement and every overlap lease before installing PCM/history.
             if(track.storageVersion==std::numeric_limits<std::uint64_t>::max()
-                ||!schedulePhase(track,job.track,static_cast<double>(frame)/rate+.005,master,true,result)){
+                ||!schedulePhase(track,job.track,static_cast<double>(frame)/rate+.005,master,true,result,&job.multiplyMetadata)){
                 retire(result);result=nullptr;
             }else {freezeHistorySources(track,job.track);++track.storageVersion;}
         }
@@ -461,7 +461,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(t.clip->length>growthRoom(t))return false;
             job.blockCount=0;job.length=0;job.offset=0;job.track=id;job.revision=t.revision;
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=false;job.multiply=job.doubling=true;
-            job.merge=false;
+            job.merge=false;job.multiplyMetadata={t.info.startDelay,t.info.reverse};
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
             if(!sourceDouble)invalidatePhase(t);
             t.multiplyQueued=prebirth;t.multiplySource=sourceDouble;
@@ -716,11 +716,14 @@ void LoopBank::completeOfflineEdits() noexcept {
     acceptResult();
 }
 void LoopBank::beginBlock() noexcept {acceptResult();for(auto& track:tracks)track.info.peak=0;}
-bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool master,bool replacePending,Clip* sourceBuffer) noexcept {
+bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool master,bool replacePending,Clip* sourceBuffer,const SourceMetadata* metadata) noexcept {
     const auto deadline=SyncClock::deadline(target*rate);
     auto* source=sourceBuffer?sourceBuffer:track.clip;
     const double sourceRate=sourceBuffer?effectiveRateFor(track,source->length):track.phaseRate;
-    const double length=source->length,shift=track.info.startDelay*length;
+    // Source construction belongs to the accepted MULT command. A later
+    // metadata edit during its worker copy must not rewrite that source.
+    const auto reverse=metadata?metadata->reverse:track.info.reverse;
+    const double length=source->length,shift=(metadata?metadata->startDelay:track.info.startDelay)*length;
     const double offset=master?(target-sync.origin/rate)*sourceRate*rate-shift:shift;
     double phase=std::fmod(offset+(static_cast<double>(deadline)-target*rate)*sourceRate,length);
     if(phase<0)phase+=length;
@@ -772,11 +775,11 @@ bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool ma
         phaseEvents[at]=phaseEvents[before];at=before;
     }
     double sourceOffset=std::fmod(offset,length);if(sourceOffset<0)sourceOffset+=length;
-    auto* reverseClip=track.info.reverse?source:nullptr;
-    auto* forwardClip=!track.info.reverse?sourceBuffer:nullptr;
+    auto* reverseClip=reverse?source:nullptr;
+    auto* forwardClip=!reverse?sourceBuffer:nullptr;
     if(forwardClip)forwardClip->leases.fetch_add(1,std::memory_order_relaxed);
     if(reverseClip)reverseClip->leases.fetch_add(1,std::memory_order_relaxed);
-    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,track.info.reverse,replacePending,target,sourceOffset,static_cast<float>(sourceRate),retainedSlot,reverseClip,forwardClip,sourceBuffer?track.storageVersion+1:track.storageVersion};phaseWrite=next;
+    phaseEvents[at]={deadline,track.phaseEpoch,phase,id,reverse,replacePending,target,sourceOffset,static_cast<float>(sourceRate),retainedSlot,reverseClip,forwardClip,sourceBuffer?track.storageVersion+1:track.storageVersion};phaseWrite=next;
     track.info.phaseApplyFrame=std::max(track.info.phaseApplyFrame,deadline);return true;
 }
 void LoopBank::invalidatePhase(Track& track) noexcept {

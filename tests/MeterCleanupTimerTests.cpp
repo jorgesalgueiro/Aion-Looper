@@ -387,6 +387,50 @@ void processorPostbirthMultiplyTests(bool& audioWatch){
     }
     std::cout<<"PASS: production shared GUI/CLI no-input MULT/Undo/Redo after source construction, 5ms replacement, forward/reverse near-grid, original gate and audible PCM at 64/128\n";
 }
+void processorMultiplyWorkerMetadataTests(bool& audioWatch){
+    for(unsigned block:{64u,128u})for(bool reverse:{false,true})for(bool late:{false,true}){
+        std::array<std::unique_ptr<AionProcessor>,2> p{std::make_unique<AionProcessor>(),std::make_unique<AionProcessor>()};
+        const auto rpc=[&](unsigned index,const char* text){auto result=p[index]->request({juce::JSON::parse(text)});check(static_cast<bool>(result["ok"]),"Worker metadata production RPC");return result;};
+        for(unsigned k=0;k<2;++k){p[k]->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p[k]->prepareToPlay(48000,static_cast<int>(block));p[k]->setNonRealtime(true);
+            rpc(k,R"({"operation":"setParameter","id":"syncMode","value":0})");rpc(k,R"({"operation":"setParameter","id":"masterGain","value":1})");rpc(k,R"({"operation":"setParameter","id":"inputMonitor","value":0})");}
+        std::array<juce::AudioBuffer<float>,2> audio{juce::AudioBuffer<float>(2,static_cast<int>(block)),juce::AudioBuffer<float>(2,static_cast<int>(block))};
+        juce::MidiBuffer midi;midi.ensureSize(256);unsigned cycles=0;
+        const auto clock=[&]{return p[0]->inspectCallbackClockAudioThread().endFrame;};
+        const auto cycle=[&]{const auto frame=clock();
+            for(unsigned k=0;k<2;++k){check(p[k]->inspectCallbackClockAudioThread().endFrame==frame,"Paired production metadata clocks");
+                for(unsigned n=0;n<block;++n){const auto value=.3f*static_cast<float>(std::sin((frame+n)*.037));audio[k].setSample(0,static_cast<int>(n),value);audio[k].setSample(1,static_cast<int>(n),-.5f*value);}
+                audioWatch=true;p[k]->processBlock(audio[k],midi);audioWatch=false;}
+            for(unsigned channel=0;channel<2;++channel)for(unsigned n=0;n<block;++n)check(audio[0].getSample(static_cast<int>(channel),static_cast<int>(n))==audio[1].getSample(static_cast<int>(channel),static_cast<int>(n)),"Worker metadata RPC preserves exact paired production stereo");
+            if(++cycles%4==0)for(unsigned k=0;k<2;++k)rpc(k,R"({"operation":"snapshot"})");};
+        const auto command=[&](unsigned k,const char* action,double value=0){auto* data=new juce::DynamicObject();juce::var request(data);
+            data->setProperty("operation","loop");data->setProperty("action",action);data->setProperty("track",19);data->setProperty("value",value);
+            data->setProperty("generation",static_cast<int>(p[k]->inspectCallbackClockAudioThread().generation));data->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis())+4000);
+            check(static_cast<bool>(p[k]->request({request})["ok"]),"Worker metadata shared GUI/CLI command");};
+        cycle();for(unsigned k=0;k<2;++k)command(k,"record");for(unsigned n=0;n<512/block;++n)cycle();for(unsigned k=0;k<2;++k)command(k,"finish");cycle();
+        for(unsigned k=0;k<2;++k)command(k,"stopImmediate");cycle();
+        for(unsigned k=0;k<2;++k){command(k,"reverse",reverse?1:0);p[k]->setPlayConfigDetails(0,2,48000,static_cast<int>(block));
+            rpc(k,R"({"operation":"setParameter","id":"syncMode","value":1})");rpc(k,R"({"operation":"setParameter","id":"syncBpm","value":60})");}cycle();
+        for(unsigned k=0;k<2;++k)command(k,"play");cycle();
+        auto state=rpc(0,R"({"operation":"snapshot"})");const auto grid=static_cast<std::uint64_t>(static_cast<juce::int64>(state["tracks"][19]["scheduledFrame"]));
+        for(auto& processor:p)check(processor->requestQueuedMeterGraphMessageThread(19),"Worker metadata production graph birth");cycle();
+        if(late)while(clock()+block<grid-48)cycle();
+        for(unsigned k=0;k<2;++k){p[k]->setNonRealtime(false);command(k,"multiply");}
+        command(0,"reverse",reverse?0:1);command(0,"startDelay",.731);cycle();
+        state=rpc(0,R"({"operation":"snapshot"})");check(state["tracks"][19]["state"].toString()=="finalizing"&&!static_cast<bool>(state["rejected"]),"Live callback accepts metadata before worker result, no offline inter-command wait");
+        // Switching only the test render mode settles both workers at the same
+        // following sample boundary, without a product hook or audio-owner wait
+        // in live mode. The preceding commands were accepted in one live block.
+        const auto target=clock()+240;for(auto& processor:p)processor->setNonRealtime(true);cycle();
+        state=rpc(0,R"({"operation":"snapshot"})");const auto t=state["tracks"][19];
+        check(static_cast<int>(t["length"])==1024&&static_cast<int>(t["undoCount"])==1
+            &&static_cast<bool>(t["reverse"])!=reverse&&static_cast<double>(t["startDelay"])==.731
+            &&static_cast<juce::int64>(t["phaseApplyFrame"])==static_cast<juce::int64>(target),"Production MULT source snapshot preserves later metadata, history and 5ms deadline");
+        while(clock()<std::max(grid+1024,target+512))cycle();
+        command(1,"reverse",reverse?0:1);command(1,"startDelay",.731);for(unsigned k=0;k<2;++k)command(k,"applyStart");
+        for(unsigned n=0;n<4096/block;++n)cycle();check(audio[0].getMagnitude(0,static_cast<int>(block))>0,"Production later Apply uses preserved metadata with audible PCM");
+    }
+    std::cout<<"PASS: production shared GUI/CLI MULT then Reverse/Start before worker-result acceptance, exact paired stereo, 5ms/grid/history and later Apply at 64/128, forward/reverse, early/near-grid\n";
+}
 void processorEarlyStartTests(bool& audioWatch){
     for(unsigned block:{64u,128u}){
         auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
@@ -1525,7 +1569,7 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     processorEarlyStartTests(audioWatch);
     processorQueuedHistoryTests(audioWatch);
     processorQueuedMultiplyTests(audioWatch);
-    processorPostbirthMultiplyTests(audioWatch);
+    processorPostbirthMultiplyTests(audioWatch);processorMultiplyWorkerMetadataTests(audioWatch);
     processorDueDeliveryTests(audioWatch);
     panicDispatcherTests(audioWatch);
     queuedAdapterTests(audioWatch);

@@ -211,6 +211,7 @@ private:
     };
     std::uint64_t nextWaveformId=1; // Worker-only, survives prepare after join.
     std::uint64_t nextMergeSerial=1; // Audio-only, survives prepare.
+    struct SourceMetadata {double startDelay=0;bool reverse=false;};
     struct Track {
         LoopView info{};
         Clip* clip = nullptr; // Immutable samples; one audio lease plus any in-flight job lease.
@@ -254,6 +255,7 @@ private:
         SyncMode recordMode=SyncMode::off;
         std::uint32_t outputFrames=0;
         bool edit = false, normalize = false, multiply = false, doubling = false;
+        SourceMetadata multiplyMetadata{}; // Audio-owned command snapshot, immutable while the worker runs.
         bool merge = false, mergeNotify = false, sourceDynamic = false;
         Clip* mergeSource = nullptr;
         std::uint32_t sourceTrack = 20;
@@ -287,7 +289,7 @@ private:
 
     void invalidatePhase(Track&) noexcept;
     void applyPhaseEvents() noexcept;
-    bool schedulePhase(Track&,std::uint32_t,double,bool,bool replacePending=false,Clip* sourceBuffer=nullptr) noexcept;
+    bool schedulePhase(Track&,std::uint32_t,double,bool,bool replacePending=false,Clip* sourceBuffer=nullptr,const SourceMetadata* metadata=nullptr) noexcept;
     float& sample(Track&, std::uint32_t frame, std::uint32_t channel) noexcept;
     bool finish(Track&) noexcept;
     void acceptResult() noexcept;

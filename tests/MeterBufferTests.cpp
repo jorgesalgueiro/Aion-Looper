@@ -1270,6 +1270,27 @@ void postbirthMultiplyTests(){
         while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
         check(heldWorkerAllocations.load()>=2,"Post-birth MULT pauses workers outside callback");};
     unsigned cases=0;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool late:{false,true})for(unsigned edits=0;edits<3;++edits){
+        Fixture f(block);auto owner=setup(f,id,reverse);const auto grid=f.view->tracks[id].scheduledFrame;
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::multiply,id);f.cycle();waitHeld();
+        const auto send=[&](Engine& engine,LoopAction action,double value){check(engine.enqueueLoop({action,id,++f.request,engine.generation(),0,value}),"Queue metadata during held MULT worker");};
+        if(edits!=1)send(*f.engine,LoopAction::reverse,reverse?0.:1.);
+        if(edits!=0)send(*f.engine,LoopAction::startDelay,.731);
+        f.cycle();check(!f.view->rejected&&f.view->tracks[id].state==LoopState::finalizing
+            &&f.view->tracks[id].reverse==(edits==1?reverse:!reverse)&&f.view->tracks[id].startDelay==(edits==0?0.:.731),"Worker-time metadata is accepted without changing current source");
+        if(late)while(f.engine->clock()<grid+512)f.cycle();else for(unsigned n=0;n<4;++n)f.cycle();
+        holdWorkerAllocation.store(false);const auto target=f.engine->clock()+240;f.cycle(true);
+        check(f.view->tracks[id].phaseApplyFrame==target&&f.view->tracks[id].length==1024&&f.view->tracks[id].undoCount==1
+            &&owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"MULT completion retains accepted source metadata with original history/5ms deadline");
+        while(f.engine->clock()<std::max(grid+1024,target+512))f.cycle();
+        // The following Apply must use the later accepted metadata, not restore
+        // the MULT snapshot into user-visible state or lose the edit.
+        if(edits!=1)send(*f.control,LoopAction::reverse,reverse?0.:1.);
+        if(edits!=0)send(*f.control,LoopAction::startDelay,.731);
+        f.command(LoopAction::applyStart,id);for(unsigned n=0;n<4096/block;++n)f.cycle();
+        check(f.view->outputPeak>0,"Later Apply remains audible after worker-time metadata");
+        f.command(LoopAction::clear,id);f.cycle();++cases;
+    }
     // A completed MULT has constructed its 5ms replacement already. Later
     // metadata belongs to the next source, and a speed write before the future
     // initial-rate event must not retarget either the old or replacement voice.
@@ -1346,7 +1367,7 @@ void postbirthMultiplyTests(){
         f.command(LoopAction::multiply,id);f.cycle();check(f.view->rejected&&f.view->tracks[id].length==512&&!f.view->tracks[id].undoCount,"Original varispeed guard applies after source construction");++cases;
     }
     check(allocations.load()==0,"Post-birth MULT has no callback new/delete");
-    std::cout<<"PASS: post-birth no-input Multiply "<<cases<<" 5ms/source-length/history/rapid/Apply/NORM and pending-source metadata/speed cases, original grid, delayed worker across grid, cancel/cleanup/prepare/OOM/full pool/event/overlap and input/varispeed guards; tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";
+    std::cout<<"PASS: post-birth no-input Multiply "<<cases<<" 5ms/source-length/history/rapid/Apply/NORM and pending-source metadata/speed and held-worker Reverse/Start cases, original grid, delayed worker across grid, cancel/cleanup/prepare/OOM/full pool/event/overlap and input/varispeed guards; tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";
 }
 
 void prebirthMultiplyTests(){

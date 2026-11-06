@@ -65,7 +65,8 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  if(nativeIndex>=0)assert(probe,'--native requires the current aion_start_probe path');
  const sequenceIndex=process.argv.indexOf('--only-sequence'),onlySequence=sequenceIndex<0?null:process.argv[sequenceIndex+1];
  const controls=process.argv.includes('--controls');
- const sequences=controls?['metadata','control-apply','speed-before','speed-tie']:['double','rapid','apply-chain','norm-history'];
+ const workerMetadata=process.argv.includes('--worker-metadata');
+ const sequences=workerMetadata?['worker-reverse','worker-start','worker-both']:controls?['metadata','control-apply','speed-before','speed-tie']:['double','rapid','apply-chain','norm-history'];
  if(sequenceIndex>=0)assert(sequences.includes(onlySequence),'Unknown --only-sequence');
  let cases=0,sourceCount=0,samples=0,silent=0,observations=0,overlapSamples=0,distinctBufferSamples=0,maximum=0;
  const counts={};
@@ -123,7 +124,15 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   const doubleAt=()=>{
    const before=context.sourceNode(),old=before.buffer,duration=before.loopEnd,start={...before.started},length=context.stored().length;
    const when=audio.currentTime+.005;context.multiply();const node=remember();
-   if(probe){commands.push('multiply 0 0');phaseChecks.push({row:commands.length,target:ceilSample(when*rate)});commands.push('wait 0 0');}
+   if(probe)commands.push('multiply 0 0');
+   if(workerMetadata){
+    // JS doubling/restart is synchronous. Its following metadata writes cannot
+    // change the constructed source. Native writes are deliberately delivered
+    // before beginBlock/wait accepts the asynchronous worker result.
+    if(sequence!=='worker-start'){context.setReverse(!reverse);if(probe)commands.push(`reverse 0 ${reverse?0:1}`);}
+    if(sequence!=='worker-reverse'){context.setDelay(.731);if(probe)commands.push('delay 0 .731');}
+   }
+   if(probe){phaseChecks.push({row:commands.length,target:ceilSample(when*rate)});commands.push('wait 0 0');}
    assert.equal(node.started.time,when,'No-input MULT requests minimum 5ms replacement');assert.equal(node.buffer.length,length*2);
    assert.equal(before.stoppedAt,when);assert.equal(before.buffer,old);assert.equal(before.loopEnd,duration);assert.deepEqual(before.started,start);
    assert.equal(context.graph(),graph);assert.equal(graph.nodes.volume,volume);assert.equal(graph.nodes.analyser,analyser);
@@ -177,9 +186,9 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   counts[sequence]=(counts[sequence]??0)+1;cases++;
  }
  if(!onlySequence){
-  if(controls)assert.equal(overlapSamples,0,'Sequential MULT/Apply control sources stop at the next source birth without overlap');
+  if(controls||workerMetadata)assert.equal(overlapSamples,0,'Sequential MULT/Apply control sources stop at the next source birth without overlap');
   else assert(overlapSamples>0,'Corpus includes audible independently stopped overlap');
  }
  assert(distinctBufferSamples>0);
- console.log(JSON.stringify({result:'PASS',mode:probe?'native_source_comparison':'reference_only',cases,sourceCount,observations,predictedFrames:samples,preGridSilentFrames:silent,overlapSamples,distinctBufferSamples,counts,maximumAbsoluteError:probe?maximum:null,tolerance:probe?1e-6:null,scope:controls?'Unchanged no-input MULT followed by Reverse/Start metadata, Apply and speed before/at the 5ms source deadline; captured buffers/direction/offset/rate and grid; source model only, delayed worker and tempo excluded':'Unchanged no-input MULT/startMultiply/multiplyInstant, source buffers/lengths/5ms stops, original grid, rapid doubles, pending Applies, Undo/NORM and cleanup; source model, browser rendering and worker latency excluded'}));
+ console.log(JSON.stringify({result:'PASS',mode:probe?'native_source_comparison':'reference_only',cases,sourceCount,observations,predictedFrames:samples,preGridSilentFrames:silent,overlapSamples,distinctBufferSamples,counts,maximumAbsoluteError:probe?maximum:null,tolerance:probe?1e-6:null,scope:workerMetadata?'Unchanged synchronous no-input MULT then Reverse/Start metadata versus native commands before worker-result acceptance; source snapshots, exact 5ms deadline/grid and PCM, no advancing worker clock or tempo/speed claim':controls?'Unchanged no-input MULT followed by Reverse/Start metadata, Apply and speed before/at the 5ms source deadline; captured buffers/direction/offset/rate and grid; source model only, delayed worker and tempo excluded':'Unchanged no-input MULT/startMultiply/multiplyInstant, source buffers/lengths/5ms stops, original grid, rapid doubles, pending Applies, Undo/NORM and cleanup; source model, browser rendering and worker latency excluded'}));
 })().catch(error=>{console.error(error);process.exitCode=1;});
