@@ -79,6 +79,10 @@ let socket;
 
     if(process.argv.includes('--finalizing-controls-only')){
         const fs=require('node:fs'),path=require('node:path');
+        // Audio pauses first; the message timer acknowledges it in a later turn.
+        // A finalizing telemetry reply can legitimately precede that file.
+        const pausedAudio=async()=>{for(let n=0;n<200&&!fs.existsSync(path.join(pcmDirectory,'audio-paused'));++n)await delay(10);
+            assert(fs.existsSync(path.join(pcmDirectory,'audio-paused')),'Audio owner acknowledges pause between real callbacks');};
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
         await wait(s=>s.masterGain===1,'Finalization controls audible master');await mode('off');
         await click('#loop-action-0');await state('recording');await delay(350);await click('#loop-action-0');await state('playing');
@@ -103,7 +107,7 @@ let socket;
             for(let n=0;n<100&&fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing'));++n)await delay(10);
             assert(!fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing')),'Owned host arms pause before MULT');
             await click('#wait-mult');const held=await wait(s=>s.tracks[0].state==='finalizing','Actual MULT worker result remains unaccepted');
-            assert(fs.existsSync(path.join(pcmDirectory,'audio-paused')),'Audio paused between real callbacks');
+            await pausedAudio();
             const count=await evaluate(`waitActions.filter(a=>a===${JSON.stringify(action)}).length`);await click(button);await delay(60);
             assert.equal(await evaluate(`waitActions.filter(a=>a===${JSON.stringify(action)}).length`),count,'Source action stays in real frontend FIFO while finalizing');
             assert.equal((await snapshot()).frame,held.frame,'No audio advancement during owned pause');
@@ -129,7 +133,7 @@ let socket;
             assert(!fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing')),'Arm real finalizing pause before queued pointers');
             await pauseDispatch();await click(first==='multiply'?'#wait-mult':'#wait-NORM');await click(button);
             await evaluate(`(()=>{const queue=window.pausedHoldQueue,pump=window.savedHoldPump;AionCommandQueue.prototype.pump=pump;delete window.pauseHoldQueue;delete window.pausedHoldQueue;delete window.savedHoldPump;void pump.call(queue);})()`);
-            const held=await wait(s=>s.tracks[0].state==='finalizing','First real queued edit owns worker');await delay(60);
+            const held=await wait(s=>s.tracks[0].state==='finalizing','First real queued edit owns worker');await pausedAudio();await delay(60);
             assert.equal(await evaluate(`waitActions.filter(a=>a===${JSON.stringify(action)}).length`),count+(first===action?1:0),'Second accepted gesture remains unsubmitted during finalization');
             assert.equal((await snapshot()).frame,held.frame,'Real audio clock remains held between callbacks');
             fs.writeFileSync(path.join(pcmDirectory,'resume-audio'),'1');
@@ -153,7 +157,7 @@ let socket;
             fs.writeFileSync(path.join(pcmDirectory,'pause-after-finalizing'),'1');
             for(let n=0;n<100&&fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing'));++n)await delay(10);
             assert(!fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing')));await click('#wait-mult');
-            const held=await wait(s=>s.tracks[0].state==='finalizing','Tempo fixture holds actual worker acceptance');
+            const held=await wait(s=>s.tracks[0].state==='finalizing','Tempo fixture holds actual worker acceptance');await pausedAudio();
             await evaluate('window.waitTempoAck=null');await parameter('#bpmInput',bpm);
             for(let n=0;n<100&&!(await evaluate('window.waitTempoAck?.ok'));++n)await delay(10);
             assert.equal(await evaluate('window.waitTempoAck?.ok'),true,'Actual original BPM control receives native parameter acknowledgement');

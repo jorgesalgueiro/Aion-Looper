@@ -130,10 +130,12 @@ private:
         // Owned integration-test pause between callbacks, after an actual job
         // enters finalizing. The real UI/bridge remain live; no forged snapshots.
         const auto armPause=pcmDirectory.getChildFile("pause-after-finalizing");
-        if(armPause.existsAsFile()){(void)armPause.deleteFile();pauseAfterFinalizing.store(true,std::memory_order_release);}
+        if(armPause.existsAsFile()){(void)armPause.deleteFile();(void)pcmDirectory.getChildFile("audio-paused").deleteFile();pauseAfterFinalizing.store(true,std::memory_order_release);}
         const auto resume=pcmDirectory.getChildFile("resume-audio");
         if(resume.existsAsFile()){(void)resume.deleteFile();audioPauseRequested.store(false,std::memory_order_release);(void)pcmDirectory.getChildFile("audio-paused").deleteFile();}
-        else if(audioPaused.load(std::memory_order_acquire))(void)pcmDirectory.getChildFile("audio-paused").replaceWithText("1");
+        else if(audioPauseRequested.load(std::memory_order_acquire)&&audioPaused.load(std::memory_order_acquire))
+            (void)pcmDirectory.getChildFile("audio-paused").replaceWithText("1");
+        else (void)pcmDirectory.getChildFile("audio-paused").deleteFile();
         // Test-only bus routing, changed solely on the message thread after an
         // audio-owner pause handshake. No production RPC/parameter is added.
         const auto inputs=pcmDirectory.getChildFile("input-channels");
