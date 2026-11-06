@@ -15,7 +15,7 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-### In acceptance: MULT worker/source tempo ordering
+### Verified repair: MULT worker/source tempo ordering
 
 The next focused comparison reproduced a BPM-ordering error during no-input
 MULT finalization (original-JS maximum PCM error **0.1245821860**, tolerance
@@ -30,7 +30,7 @@ The future-source rate guard now protects tempo writes as well as Speed writes.
 No queues/capacities, public IDs, serialized state, preserved UI or dependency
 versions change. No allocation, lock or full-buffer work was added to processing.
 
-Acceptance in progress: `--worker-tempo` and `--source-tempo` in
+Acceptance: `--worker-tempo` and `--source-tempo` in
 `tests/QueuedMultiplySources.cjs`, real held-worker Engine cases including OOM,
 and production GUI/CLI parameter ordering before/after source construction.
 The existing 240 post-birth MULT cases remain; 48 tempo/recovery cases are added.
@@ -46,8 +46,84 @@ an audible exponential ramp; live ramp/timestamp ties, advancing worker-latency
 sound, physical drivers and release acceptance remain separate. Failure logs:
 `build/multiply-worker-tempo-repro-windows.log`,
 `build/multiply-worker-tempo-oom-repro-windows.log`, and
-`build/multiply-source-tempo-repro-windows.log`. Completion evidence is pending
-Windows/Linux acceptance; do not infer a pass from the earlier checkpoint below.
+`build/multiply-source-tempo-repro-windows.log`. Product snapshot **82971d6**;
+verified test-host acknowledgement repair **2978a46**. The first UI rerun caught
+an asynchronous fixture race: finalizing telemetry can precede the message-thread
+pause file. The fixture now awaits a fresh audio-owner acknowledgement and the
+host retires stale markers on arm/resume. Exact frozen-clock, native dispatch,
+state/PCM and original pointer assertions remain. Failed logs are retained as
+`build/multiply-tempo-acceptance-ui{,-recovery}-windows.log`; final passing log is
+`build/multiply-tempo-acceptance-ui-final-windows.log`. No product timing was
+changed to repair this fixture.
+
+| Executed for this repair | Result |
+| --- | --- |
+| Windows/Linux Standalone builds and complete production processor suites | PASS each; original eight metadata cases plus sixteen real GUI/CLI BPM-order cases, exact paired stereo and tracked zero callback new/delete |
+| Focused real Engine post-birth MULT corpus | **288 PASS each OS**, including 48 new tempo/OOM cases, tracks 0/19 and 64/128; existing 240 cases retained |
+| Affected loop-edit/core ownership suites | PASS each OS: capture/finalization, reverse, history, Multiply, Start and MERGE; cancellation, OOM, pool exhaustion and zero callback new/delete |
+| Selected reference/frontend/bridge/CLI CTests | **21/21 PASS each**; Windows **614.66s**, Linux **951.10s**, parallel 2; no passing corpus rerun for the fixture-only repair |
+| New original-JS tempo corpora | 192 cases each before/after source construction; mono/stereo, 8/48/96kHz, 1/17/512/4097 frames, both BPM directions, forward/reverse and early/near-grid; native PCM <=1e-6. Windows observed maximum **5.86491305e-8** |
+| Adjacent STUT source PCM oracle | PASS each OS, unchanged 1e-6 threshold |
+| Native Linux Debug ASan/UBSan/leaks | `--postbirth-multiply` and `--loop-edits` PASS, no diagnostics |
+| Actual Windows original controls/bridge/PCM | Final fresh-acknowledgement run PASS at 64/128: Q/nudge, range keys, rapid local/global history and MULT FIFO, acknowledged worker-time BPM, retained grid and nonzero output |
+
+Logs: Windows `build/multiply-source-tempo-{build,core,edits,production-build,production}-windows.log`,
+`build/multiply-tempo-acceptance-ctest-windows.log`; native WSL
+`build/multiply-tempo-{build,core,edits,production,sanitizer-build,sanitizer}-linux.log`
+and `build/multiply-tempo-acceptance-ctest-linux.log`. Separate STUT summaries are
+`build/multiply-tempo-stutter-{windows,linux}.log`. CTest summary logs retain the
+per-test results; its shared `Testing/Temporary/LastTest.log` contains the separate
+STUT run, not the full selection's raw stdout. Do not use that temporary file as
+the 21-gate log.
+
+Reproduce with existing per-OS caches and the CMake/CTest resolution below:
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --postbirth-multiply
+./build/windows-core/Release/aion_core_tests.exe --loop-edits
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_mouse_host aion_midi_processor_tests --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -FinalizingControlsOnly
+```
+
+Linux uses `cmake --build build/linux --target AionLooper_Standalone aion_midi_processor_tests aion_core_tests aion_start_probe aion_reference_probe --parallel 2`,
+then `./build/linux/aion_core_tests --postbirth-multiply`, `--loop-edits`, and
+`./build/linux/aion_midi_processor_tests`. The exact 21-gate selection, with
+`ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R REGEX`
+or Linux `--test-dir build/linux` without `-C`, is
+`^(cli_finalization_admission|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_(start_phase|queued_early_restart|queued_early_rtrg|queued_history|multiply_worker_tempo|multiply_source_tempo|multiply_worker_metadata|multiply_source_controls|queued_multiply_sources|queued_multiply|multiply|reverse|history|normalization|sync)|original_multiply_(worker_tempo|source_tempo))$`.
+Run `^js_native_stutter$` separately. Sanitizers use the existing
+`cmake --build build/overlap-asan --target aion_core_tests --parallel 2`, then
+`ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests`
+with each focused selector above. No wrapper builds, dependencies or packages.
+
+After all acceptance processes ended, the unchanged ignored warmed callback
+harness was relinked with the current Windows/Linux libraries and run sequentially
+(Windows then Linux). Same 48kHz, initial 512-frame capture, stopped doubling,
+constructed queued source, no-input MULT/history and playback, forward/reverse,
+512 warm callbacks and worker settlement outside measurement as the prior run.
+
+| Maximum measured callback (single-loop observation) | 64 samples | 128 samples |
+| --- | ---: | ---: |
+| Windows Release | 167.4us | 134.0us |
+| Native WSL Linux Release | 115.301us | 183.901us |
+| Block deadline | 1333.33us | 2666.67us |
+
+Existing harness caches `build/postbirth-multiply-bench-{windows,linux}`;
+commands `cmake --build CACHE --target queued_bench --parallel 2` (Windows adds
+`--config Release`) and `CACHE/queued_bench` (Windows `CACHE/Release/queued_bench.exe`).
+Build/measurement logs: `build/multiply-tempo-bench{,-build}-{windows,linux}.log`.
+This is not worst-case/full-capacity, an audible live-tempo-ramp measurement,
+long-session evidence, hardware latency or a platform performance ranking.
+No full core suite was repeated: the preceding full audits are reused with the
+new affected core/reference/processor/sanitizer/UI evidence above.
+
+**Next:** constructed queued-source MULT with available input, retaining capture
+across the original audible grid; then remaining queued MERGE eligibility.
+The checklist defines the next observable acceptance before any guard is enabled.
+FX/SAVE/presets follow core looping/editing. Linux WebKit interaction/listening,
+physical devices and broader browser/ramp/worker-latency sound remain separate.
 
 ### Verified repairs: finalization admission and source-boundary fades
 
@@ -157,9 +233,8 @@ physical-latency or platform-ranking claim. Existing harness caches:
 Common-DSP/reference/core/sanitizer evidence above is reused because this follow-up
 changes admission only. Remaining limits: synthetic inputs are not physical MIDI,
 driver latency or device evidence; Linux WebKit interaction/listening and broader
-browser transition envelopes are not established. Next core slice: verify worker-time Speed/tempo musical ordering using the
-existing source-control oracle, then constructed queued-source MULT with live
-input and remaining merge eligibility. FX/presets and dry/wet SAVE follow the core work.
+browser transition envelopes are not established. Worker/source pre-start tempo ordering is now verified above. Next core slice:
+constructed queued-source MULT with live input and remaining merge eligibility. FX/presets and dry/wet SAVE follow the core work.
 
 ## Latest verified slice — Reverse/Start ordering during Multiply copying, 6 November 2026
 

@@ -10,7 +10,7 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | RECORD / FINISH / PLAY / STOP / STOP NOW / CANCEL; held DEL | Shared GUI/CLI processor; original input/sync and actual 64/128 mouse/keyboard PCM gates retained | Physical device/latency and long-session checks are separate |
 | MUTE / UNM, SOLO, volume, pan, feedback | Shared native controls; original mixer comparisons and MIDI volume/pan gates retained | FX-dependent interactions remain pending |
 | Start, Q, left/right nudge | Original phase/PCM comparisons; finalization dispatch repair in current checkpoint | Broader overlapping browser transitions remain limited as recorded in REFERENCE_AUDIT |
-| Speed, 1/2, 1x | Native rate controls and original source tests; shared finalization dispatch wait | Source rate/tempo edits during worker jobs need dedicated audio-order comparison |
+| Speed, 1/2, 1x | Native rate controls and original source tests; shared finalization dispatch wait | Pre-start source/worker tempo ordering verified; live exponential tempo ramps remain outside that comparison |
 | RTRG / STUT | Native shared commands, unchanged-JS source/fragment/progress and real pointer/lifetime gates | Retain documented transition-envelope limits |
 | MULT | Ordinary input capture/doubling, queued before source birth, and no-input constructed sources verified | Constructed queued source with input capture is still deliberately guarded |
 | UNDO / REDO | Local/global worker history, queued sources and exact stereo gates | Rapid finalization FIFO verified for local/global history and MULT; retain lifecycle/concurrency limits in MIGRATION_CURRENT |
@@ -21,11 +21,24 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | FX, FULL PRESET, CHAIN PRESET, manual chain, per-effect controls | **Unported; disabled**, except the independently ported Reverse control | Native effects/state/presets plus original GUI and shared CLI, deterministic sound and interaction acceptance |
 
 Finalization dispatch, rapid queued history/MULT and the integral-sample source
-fade repair are verified. Next verify worker-time Speed/tempo sound ordering,
-implement the guarded input-capture MULT slice, and address remaining merge
+fade repair are verified. Worker/source pre-start tempo ordering is verified.
+Next implement the guarded input-capture MULT slice and address remaining merge
 eligibility before the effects/SAVE/preset engine. The owner confirmed core
 looping/editing first. Each functional
 slice must pass its relevant Windows/Linux tests before the next. The final
 integrated pass must exercise combinations rather than merely enable controls.
 No new effects implementation, dependency, package or product redesign is implied
 by this inventory. Existing sessions, IDs, expanded capacity and logo are preserved.
+
+Next input-capture MULT acceptance (not enabled by the tempo repair): a constructed
+queued source corresponds to the original JS playing graph before its audible
+grid. An available input must start capture immediately and retain that graph's
+original volume gate; crossing the grid must not end capture. A second press
+appends the conditioned input and creates one local history entry, while fewer
+than 128 captured samples preserve PCM/history and resume the same source.
+Compare unchanged `startMultiply`/`processMultiplyData`, original source PCM and
+post-commit Apply/Undo/Redo. Cover forward/reverse, early/near-grid, captures that
+finish before/after the grid, timestamped 64/128 GUI/CLI controls, DEL/panic/prepare,
+OOM/pool exhaustion, pending sources and zero callback new/delete. Keep the current
+input guard until these tests and real native pointers pass on their documented
+Windows/Linux scope. Queued MERGE eligibility follows that slice.
