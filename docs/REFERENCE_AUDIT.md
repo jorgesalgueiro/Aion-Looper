@@ -1034,3 +1034,39 @@ controls only. Actions received during worker copying, tempo changes, browser
 envelopes/resampling, real command latency, listening/devices, Linux WebKit and
 long sessions remain unverified. Existing GUI/CLI routes are unchanged; no new
 physical-device, UI or release acceptance is inferred from this source model.
+
+
+## Reverse/Start metadata accepted while Multiply copies — 6 November 2026
+
+The original no-input multiplyInstant copies synchronously and invokes restart
+before a following toggleEffect('reverse') or setLoopStartDelay can execute.
+Those later metadata edits cannot rewrite the constructed source. Baseline
+`b32912b` instead read live metadata when accepting its asynchronous result.
+The retained negative (`build/multiply-worker-metadata-repro-windows.log`) shows
+an 8kHz/17-frame forward source error of 0.18018454279563184 against 1e-6.
+
+`9887a0f` snapshots only Reverse/Start in the immutable job at admission. Source
+construction at completion +5ms uses that snapshot for direction, phase and leases;
+current metadata remains available to a subsequent Apply. No public fields/IDs,
+assets, audio-thread work bounds, ownership queues or phase reservation policy
+change. Stopped/pre-birth behavior is retained. Speed, tempo/global sync and Apply
+received during worker copying are not covered by this fix.
+
+`QueuedMultiplySources.cjs --worker-metadata` runs 288 unchanged-JS/native cases:
+three 96-case groups for Reverse alone, Start alone and both, with stereo/mono,
+8/48/96kHz, lengths 1/17/512/4097, reverse and early/near-grid. Native metadata is
+submitted before worker-result acceptance at the same sample frame; no synthetic
+worker-clock advance is inferred from that oracle. All previous default/control
+cases and tolerances remain. The 48 new held-worker Engine cases explicitly
+advance before/across the original grid and compare every stereo sample to an
+unchanged-control engine. Both then Apply the later metadata, verifying it was
+not lost. The suite retains all 192 previous cases (240 total).
+
+Eight paired real-processor RPC cases deliver MULT and metadata in one live block,
+then use the existing offline-render mode only for deterministic result settlement
+at the next boundary. Exact source/history/deadline/stereo and following Apply
+checks share GUI/CLI routes, with no new product hook or live wait. Actual trusted
+Windows pointers retain the separate MULT/Undo/Redo workflow scope. Final commands,
+per-platform evidence, sanitizer results and limits are in MIGRATION_CURRENT.md.
+Worker/command latency, browser envelopes/resampling, Linux WebKit, listening,
+physical devices and long-session/full-capacity performance remain separate.

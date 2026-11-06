@@ -9,7 +9,129 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Latest verified slice — controls after Multiply source construction, 5 November 2026
+## Latest verified slice — Reverse/Start ordering during Multiply copying, 6 November 2026
+
+Implementation `9887a0f`, test formatting `ee15161`, continuing `b32912b`.
+A no-input MULT followed by a Reverse or Start metadata edit before worker-result
+acceptance previously constructed its replacement from the **later** metadata.
+The unchanged JS performs its doubling/restart synchronously, so following
+metadata edits cannot rewrite that source. A reproduced 8kHz/17-frame forward
+case differed by **0.18018454279563184**, against the unchanged **1e-6** limit:
+`build/multiply-worker-metadata-repro-windows.log`.
+
+MULT now captures two scalar metadata fields in its existing immutable job before
+publication. Completion uses them to construct the reserved source, including
+forward/reverse buffer leases and Start phase, without restoring them into the
+user's current metadata. A later Apply uses the newer accepted controls. The
+existing completion-now +5ms replacement, original volume grid, history, bounded
+reservations/rollback and worker ownership remain. Stopped and before-birth paths
+keep their existing behavior. No audio allocation/free, locks, I/O, full-clip work,
+new queue or unbounded loop was introduced. No public ID/state schema, dependency,
+frontend, preserved asset or logo changed; GUI/CLI retain one shared native action.
+
+Acceptance covers Reverse alone, Start alone and both while a no-input Multiply
+job is uncommitted. The replacement must use the accepted MULT metadata; newer
+metadata must stay visible and apply to a following source. Current/old sources,
+original silence grid, exact deadlines/PCM/history, cancellation and OOM safety
+must remain intact. Speed/tempo and Apply received during the job are separate.
+
+| Verification | Executed evidence |
+| --- | --- |
+| New source-order oracle | Windows/Linux **288/288 PASS each**, 576 sources, 4,032 observations, 7,087,512 predicted frames including 6,169,656 silent pre-grid frames; max absolute error **5.8649130496579716e-8**, unchanged **1e-6** tolerance on both OS |
+| Native ownership/audio | Windows/Linux Release **240 cases each PASS**, including 48 new held-worker cases; tracks 0/19, reverse, 64/128, exact paired stereo and tracked zero callback new/delete. Full `--loop-edits` and `--meter-queued` PASS on both |
+| Shared production processor | Both Standalone builds and full processor suites PASS, including eight new paired GUI/CLI metadata-ordering cases and existing external CLI/MIDI/state/timer checks, zero tracked processBlock new/delete |
+| Actual interaction regression | Four Windows WebView2 synthetic-PCM MULT/Undo/Redo pointer cases PASS, reverse at 64/128, original grid silence/audibility; this does not force metadata arrival during the worker |
+| Reference/regression integration | Windows/Linux **13/13 CTests PASS each**, parallel 2 (464.37s /683.41s). Includes old 384-source corpus, 384 post-commit control cases, pre-birth MULT and related phase/sync/history/NORM/reverse, frontend and asset checks |
+| Sanitizers | Native WSL Debug **240 cases PASS** under ASan/UBSan/leak detection, no diagnostics |
+
+Reproduce using existing caches (VS CMake/CTest resolution retained below):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe --parallel 2
+foreach ($selection in '--postbirth-multiply','--loop-edits','--meter-queued') { & ./build/windows-core/Release/aion_core_tests.exe $selection; if ($LASTEXITCODE) { throw $selection } }
+$metadataGate = '^(original_ui_bytes|native_frontend_commands|original_multiply_worker_metadata|js_native_(multiply_worker_metadata|multiply_source_controls|queued_multiply_sources|queued_multiply|multiply|reverse|history|normalization|start_phase|sync))$'
+ctest --test-dir build/windows-core -C Release --parallel 2 --no-tests=error --output-on-failure -R $metadataGate
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_midi_processor_tests aion_mouse_host --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -PostbirthMultiplyOnly
+```
+
+```sh
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+for selection in --postbirth-multiply --loop-edits --meter-queued; do ./build/linux/aion_core_tests "$selection" || exit; done
+./build/linux/aion_midi_processor_tests
+metadata_gate='^(original_ui_bytes|native_frontend_commands|original_multiply_worker_metadata|js_native_(multiply_worker_metadata|multiply_source_controls|queued_multiply_sources|queued_multiply|multiply|reverse|history|normalization|start_phase|sync))$'
+ctest --test-dir build/linux --parallel 2 --no-tests=error --output-on-failure -R "$metadata_gate"
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+env ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --postbirth-multiply
+```
+
+The new oracle can run alone with `node tests/QueuedMultiplySources.cjs --worker-metadata --native PROBE`;
+omit `--native PROBE` for explicit reference-only assertions.
+Final logs are under `build/multiply-worker-metadata-*`: per-OS `core`,
+`production`, `ctest` and preserved raw `regression-results`; Windows
+`serial-build`, `production-build`, `ui`, `loop-edits`, `meter-queued`; Linux
+`build`, `edits`, `queued`, `asan-build`, `asan`. Both `format-build` logs verify
+the formatting-only test fix; unchanged passing runtime suites were not rerun
+for line breaks. Verification ran concurrently; its durations are not runtime
+or comparative build-performance measurements.
+
+After all verification jobs stopped, the existing ignored warmed benchmark was
+rebuilt against the current per-OS core libraries and run Windows then Linux.
+48kHz stereo, one 512-frame loop, 512 warm callbacks; queued graph birth, no-input
+MULT admission, worker settlement **outside measurement**, Undo/Redo/Undo, playback
+through the original grid and clear. Only Engine.process is timed; no forced
+worker delay or metadata interaction is simulated by this performance harness.
+
+| Platform | Maximum measured MULT admission | Maximum any measured callback, 64 /128 samples |
+| --- | ---: | ---: |
+| Windows Release | 69.8us | 90.7us /115.9us |
+| Native WSL Linux Release | 109.817us | 89.1us /167.659us |
+
+Block deadlines are 1333.33us /2666.67us. These observations do not establish
+worst-case/full-capacity or long-session performance, worker/command latency,
+physical round-trip latency or OS rankings. Existing harness paths:
+`build/postbirth-multiply-bench-src`, `build/postbirth-multiply-bench-{windows,linux}`;
+current results `build/multiply-worker-metadata-bench-{windows,linux}.jsonl`.
+No benchmark source changes or distributables were needed.
+
+`QueuedMultiplySources.cjs --worker-metadata` adds three groups of 96 cases,
+executing unchanged synchronous MULT then metadata writes. Native commands are
+sent before `wait`/beginBlock accepts the worker result at the same sample frame.
+It checks the source model at mono/stereo, 8/48/96kHz, lengths 1/17/512/4097,
+forward/reverse and early/1ms-before-grid. It does not emulate copying latency,
+clock advancement during the copy, browser rendering, envelopes or resampling.
+The 48 new Engine cases hold both workers outside the callback and advance audio
+before/across the original grid. Only the observed engine receives metadata
+edits; all stereo samples must equal an unchanged-control engine through commit,
+replacement and playback. Updating the control engine before a later Apply then
+checks that the newer metadata was preserved. `--postbirth-multiply` now runs
+240 cases (48 new plus all 192 previous lifecycle/control/capacity cases).
+
+Eight new production cases use shared GUI/CLI RPC on two real processors. MULT
+and metadata enter one live callback; no worker result is accepted between those
+commands. The existing explicit offline-render mode settles both jobs at the
+same next sample boundary for exact paired PCM/deadline comparison. This uses no
+product hook and does not add live audio waiting. Existing external CLI/state/
+MIDI/timer regressions remain in the complete processor suite. Actual pointer
+checks retain their narrower MULT/Undo/Redo scope; they do not force this race.
+
+Initial iteration evidence is retained: an accidental old-corpus invocation after
+a sandbox write failure is **not** the new negative; the separately named repro
+above is. Two overlapping MSBuild invocations caused an object-write conflict;
+both finished, MeterBufferTests.cpp was rebuilt serially, and only the final build/
+runtime results count. Four new test-loop indentation warnings were corrected
+without changing behavior/assertions; exact-float assertions intentionally retain
+the test target's existing float-equality warning policy. No cases or tolerances
+were removed/loosened. No distributable or push.
+
+Next: define and verify worker-time Apply/Speed ordering and tempo changes during
+the worker or pending replacement. Then port input-present MULT on constructed
+grid-gated sources. Input-capture/pending-stop guards remain. Full browser audio,
+Linux WebKit interaction, real worker/command latency, listening/devices and long
+sessions/full-capacity performance remain unverified; wrappers/DAWs/Apple deferred.
+
+## Previous verification slice — controls after Multiply source construction, 5 November 2026
 
 Test snapshot `8af29d7`, coverage-assertion correction `c9861d9`, continuing
 `2bc723f`. This is regression coverage of the existing implementation, not a new
