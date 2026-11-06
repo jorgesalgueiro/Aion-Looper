@@ -29,6 +29,7 @@ public:
             choices.push_back({exportDirectory,filename,std::move(done)});
         };
         (void)pcmDirectory.getChildFile("early-source-start").deleteFile();
+        for(const auto* name:{"pause-after-finalizing","resume-audio","audio-paused"})(void)pcmDirectory.getChildFile(name).deleteFile();
         (void)pcmDirectory.getChildFile("input-channels").deleteFile();(void)pcmDirectory.getChildFile("input-channels-ack").deleteFile();
         processor = std::make_unique<AionProcessor>(nativePicker?AionProcessor::ExportDestination{}:std::move(picker));
         processor->setPlayConfigDetails(2, 2, 48000, blockSize);
@@ -62,6 +63,9 @@ public:
                 midi.clear();MidiPacket packet{};std::uint32_t midiSequence=0;
                 for(unsigned n=0;n<256&&midiPackets.pop(packet);++n){midi.addEvent(packet.bytes.data(),packet.size,packet.offset);midiSequence=packet.sequence;}
                 processor->processBlock(buffer, midi);
+                if(pauseAfterFinalizing.load(std::memory_order_acquire)&&processor->inspectAudioThread().track.state==aion::LoopState::finalizing){
+                    pauseAfterFinalizing.store(false,std::memory_order_release);audioPauseRequested.store(true,std::memory_order_release);
+                }
                 if(midiSequence)midiAcknowledged.store(midiSequence,std::memory_order_release);
                 pcmClock.store(frame,std::memory_order_release);
                 if(navigationActive.load(std::memory_order_acquire)){
@@ -123,6 +127,13 @@ private:
     struct Choice {juce::File directory;juce::String filename;std::function<void(juce::File)> done;};
     std::vector<Choice> choices;
     void timerCallback() override {
+        // Owned integration-test pause between callbacks, after an actual job
+        // enters finalizing. The real UI/bridge remain live; no forged snapshots.
+        const auto armPause=pcmDirectory.getChildFile("pause-after-finalizing");
+        if(armPause.existsAsFile()){(void)armPause.deleteFile();pauseAfterFinalizing.store(true,std::memory_order_release);}
+        const auto resume=pcmDirectory.getChildFile("resume-audio");
+        if(resume.existsAsFile()){(void)resume.deleteFile();audioPauseRequested.store(false,std::memory_order_release);(void)pcmDirectory.getChildFile("audio-paused").deleteFile();}
+        else if(audioPaused.load(std::memory_order_acquire))(void)pcmDirectory.getChildFile("audio-paused").replaceWithText("1");
         // Test-only bus routing, changed solely on the message thread after an
         // audio-owner pause handshake. No production RPC/parameter is added.
         const auto inputs=pcmDirectory.getChildFile("input-channels");
@@ -181,7 +192,7 @@ private:
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
     int blockSize = 64;
-    std::atomic<bool> running{false},audioPauseRequested{false},audioPaused{false};
+    std::atomic<bool> running{false},audioPauseRequested{false},audioPaused{false},pauseAfterFinalizing{false};
     int pendingInputChannels=-1;
     std::thread audio;
     std::unique_ptr<AionProcessor> processor;

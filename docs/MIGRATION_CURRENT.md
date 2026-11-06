@@ -9,6 +9,38 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
+## Active work — loop-track completion and finalization dispatch, 6 November 2026
+
+The owner requested all loop-track buttons followed by integrated bug fixing.
+See [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) for the compact inventory:
+SAVE Dry/Wet and the FX/preset engine are unported, not silently completed by
+existing dry WAV export. Constructed queued input-capture MULT remains guarded.
+
+Current repair retains GUI Apply/Q/nudge/Speed/RTRG/NORM gestures in the existing
+bounded FIFO while their track is finalizing. CLI convenience commands wait at
+admission for at most three seconds, fence generation/DEL, and submit once.
+Raw Apply now rejects finalization instead of falsely acknowledging an unapplied
+release; Q/nudge retain atomic rollback. No audio queue, IDs or storage were added.
+The UI still disables genuinely unavailable actions; this also protects gestures
+accepted earlier but dispatched after a worker edit starts.
+
+Acceptance: wait without loss or premature admission, resume exactly once with
+current committed PCM, preserve metadata/mixer/DEL/panic priority, expiry and
+cancellation; raw requests must not report false success. Windows frontend,
+CLI admission unit, complete `--loop-edits`, production processor and actual
+WebView2 Q/nudge pointers during held real MULT finalization pass at 64/128.
+Standalone CLI/WebView smoke also passes. Linux/reference integration is pending
+for this snapshot. These are dispatch/state checks; existing audio sound
+comparisons must still pass and no new full browser or hardware parity is claimed.
+
+Test-host-only pause stops between callbacks after a real job enters finalizing;
+no state/PCM snapshots are forged and no pause enters product DSP. The first UI
+observer incorrectly attempted to replace frozen `AionNative.request` and counted
+zero commands despite applied metadata. It now observes actual JUCE backend
+invocations, retaining both the zero-before-resume and exactly-one-after assertions.
+The failed log is preserved as `build/loop-buttons-wait-ui-instrumentation-failure-windows.log`.
+Other evidence uses `build/loop-buttons-wait-*`. Nothing packaged or pushed.
+
 ## Latest verified slice — Reverse/Start ordering during Multiply copying, 6 November 2026
 
 Implementation `9887a0f`, test formatting `ee15161`, continuing `b32912b`.

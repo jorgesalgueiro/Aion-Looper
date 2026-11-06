@@ -642,6 +642,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             t.info.startDelay=previous;return false; // FIFO rejection preserves accepted state.
         }
         case LoopAction::applyStart: {
+            if(s==LoopState::finalizing)return false; // Never acknowledge an unapplied release as success.
             if((s!=LoopState::playing&&!hasPreparedQueuedSource(t))||!t.clip)return true;
             const bool master=sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(id));
             return schedulePhase(t,id,static_cast<double>(frame)/rate+0.05,master);

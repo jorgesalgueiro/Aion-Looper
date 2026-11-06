@@ -77,6 +77,43 @@ let socket;
         ws.close();return;
     }
 
+    if(process.argv.includes('--finalizing-controls-only')){
+        const fs=require('node:fs'),path=require('node:path');
+        await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+        await wait(s=>s.masterGain===1,'Finalization controls audible master');await mode('off');
+        await click('#loop-action-0');await state('recording');await delay(350);await click('#loop-action-0');await state('playing');
+        await click('#native-stop-all');await state('stopped');
+        fs.writeFileSync(path.join(pcmDirectory,'input-channels'),'0');await wait(s=>!s.inputAvailable,'Finalization controls no-input bus');
+        await parameter('#bpmInput',60);await parameter('#numBars',1);await parameter('#timeSigNum',4);await mode('static');
+        await evaluate(`for(const [label,id] of [['MULT','wait-mult'],['Q','wait-Q'],['>','wait-nudge']]){const e=[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()===label);e.id=id;}
+          window.waitActions=[];window.savedWaitEmit=__JUCE__.backend.emitEvent;__JUCE__.backend.emitEvent=function(event,payload){const request=payload?.params?.[0];if(event==='__juce__invoke'&&payload.name==='aionRequest'&&request?.operation==='loop')waitActions.push(request.action);return savedWaitEmit.apply(this,arguments);};`);
+        for(const [button,action] of [['#wait-Q','quantizeStart'],['#wait-nudge','nudgeStart']]){
+            await evaluate(`document.getElementById('loop-start-slider-0').focus()`);
+            for(const [key,code] of [['End','End'],['ArrowLeft','ArrowLeft']]){await call('Input.dispatchKeyEvent',{type:'keyDown',key,code});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code});}
+            await wait(s=>Math.abs(s.tracks[0].startDelay-.999)<1e-12,'Trusted range keys set Start');
+            await evaluate(`document.activeElement.blur()`);await wait(s=>s.gridPosition>.02&&s.gridPosition<.1,'Finalization controls early grid',12000);
+            await click('#loop-action-0');await state('queued');fs.writeFileSync(path.join(pcmDirectory,'early-source-start'),'1');
+            const before=await wait(s=>s.tracks[0].queuedSourceReady,'Finalization controls constructed source');
+            fs.writeFileSync(path.join(pcmDirectory,'pause-after-finalizing'),'1');
+            for(let n=0;n<100&&fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing'));++n)await delay(10);
+            assert(!fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing')),'Owned host arms pause before MULT');
+            await click('#wait-mult');const held=await wait(s=>s.tracks[0].state==='finalizing','Actual MULT worker result remains unaccepted');
+            assert(fs.existsSync(path.join(pcmDirectory,'audio-paused')),'Audio paused between real callbacks');
+            const count=await evaluate(`waitActions.filter(a=>a===${JSON.stringify(action)}).length`);await click(button);await delay(60);
+            assert.equal(await evaluate(`waitActions.filter(a=>a===${JSON.stringify(action)}).length`),count,'Source action stays in real frontend FIFO while finalizing');
+            assert.equal((await snapshot()).frame,held.frame,'No audio advancement during owned pause');
+            fs.writeFileSync(path.join(pcmDirectory,'resume-audio'),'1');
+            const length=before.tracks[0].length*2,expected=action==='quantizeStart'?1:(.999+.0625/(length/48000))-1;
+            const after=await wait(s=>s.tracks[0].length===length&&Math.abs(s.tracks[0].startDelay-expected)<1e-12,'Deferred original source action applies after commit');
+            assert(!after.rejected);assert.equal(await evaluate(`waitActions.filter(a=>a===${JSON.stringify(action)}).length`),count+1,'One admitted gesture after finalization');
+            await wait(s=>s.frame>=before.tracks[0].scheduledFrame&&s.outputPeak>.02,'Edited doubled source audible at original grid');
+            await click('#native-stop-all');await state('stopped');
+        }
+        await evaluate(`__JUCE__.backend.emitEvent=window.savedWaitEmit;delete window.savedWaitEmit;`);
+        fs.writeFileSync(path.join(pcmDirectory,'input-channels'),'2');await wait(s=>s.inputAvailable,'Restore input after finalization control test');
+        assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);
+        console.log('PASS: actual MULT finalizing job, trusted Q/nudge and range keys, deferred single native dispatch, exact Start, original grid/nonzero PCM at '+process.argv[2]);ws.close();return;
+    }
     if(process.argv.includes('--postbirth-multiply-only')){
         const fs=require('node:fs'),path=require('node:path');
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);

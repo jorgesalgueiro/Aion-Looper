@@ -161,6 +161,22 @@ def main(argv=None):
         status = invoke(endpoint, {'operation': 'snapshot'})
         if not status.get('ok'):
             return status
+        if args.command == 'loop' and args.action in ('applyStart', 'quantizeStart', 'nudgeStart', 'speed', 'retrigger', 'normalize'):
+            # Wait before admission; never blindly replay an admitted command.
+            generation = status['generation']
+            clear_epoch = status['tracks'][args.track]['clearEpoch']
+            deadline = time.monotonic() + 3
+            while status['tracks'][args.track]['state'] == 'finalizing':
+                if time.monotonic() >= deadline:
+                    return {'ok': False, 'applied': False, 'error': 'Loop is still finalizing; command was not submitted'}
+                time.sleep(.01)
+                status = invoke(endpoint, {'operation': 'snapshot'})
+                if not status.get('ok'):
+                    return status
+                if status.get('generation') != generation:
+                    return {'ok': False, 'applied': False, 'error': 'Audio configuration changed before command admission'}
+                if status['tracks'][args.track]['clearEpoch'] != clear_epoch:
+                    return {'ok': False, 'applied': False, 'error': 'Loop was cleared before command admission'}
         request = {'operation': 'loop' if args.command == 'loop' else 'exportLoop',
                    'track': args.track, 'generation': status['generation']}
         if args.command == 'loop':

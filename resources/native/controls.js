@@ -22,6 +22,11 @@
         if(Number.isNaN(speed))return null;
         return sync?(speed<0.38?0.25:speed<0.75?0.5:speed<1.5?1:2):speed;
     };
+    // Resolve source/edit gestures after committed PCM is available. Metadata,
+    // mixer controls, panic and deletion remain immediately dispatchable.
+    window.AionLoopControlWait=(snapshot,action,track)=>
+        ['applyStart','quantizeStart','nudgeStart','speed','retrigger','normalize'].includes(action)
+        &&snapshot?.tracks?.[track]?.state==='finalizing';
     // Original updateLoopDisplays status text, including its spacing and pending STOP.
     window.AionLoopStatus=(track,sampleRate)=>({
         symbol:({empty:'( )',armed:'(A)',recording:'(R)',playing:'[>]',stopped:'[S]',stopping:'[.]',overdubbing:'(O)',substituting:'(-)',multiplying:'(M)',queued:'[Q]',finalizing:'[..]'})[track.state]||'( )',

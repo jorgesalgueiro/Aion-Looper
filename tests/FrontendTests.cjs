@@ -1021,3 +1021,26 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: '+cases+' shared MULT dispatch/control states including queued pre-birth, no-input constructed source, empty, pending-stop and input-capture exclusion');
 }
+
+// Run the real source-control resolver through its FIFO, including cancellation.
+(async()=>{
+ const code=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const native={window:{},snapshot:{tracks:Array.from({length:20},()=>({state:'playing'}))},calls:[],Date};vm.createContext(native);
+ vm.runInContext(fs.readFileSync(path.join(root,'resources/native/controls.js'),'utf8'),native);
+ native.scheduler=new native.window.AionCommandQueue({ready:()=>true,run:async c=>native.calls.push(c),notify:m=>{throw Error(m);}});
+ const line=code.split('\n').find(l=>l.includes('const command=(action,track,value=0)'));assert(line);
+ vm.runInContext(line+'globalThis.sendControl=command;',native);
+ for(const action of ['applyStart','quantizeStart','nudgeStart','retrigger','normalize'])for(const id of [0,19]){
+  native.snapshot.tracks[id].state='finalizing';const before=native.calls.length;native.sendControl(action,id,action==='nudgeStart'?-1:0);
+  await native.scheduler.pump();assert.equal(native.calls.length,before,'Finalizing source gesture is retained, not dispatched/lost: '+action);
+  native.snapshot.tracks[id].state='playing';await native.scheduler.pump();assert.equal(native.calls.length,before+1);assert.equal(native.calls.at(-1).action,action);assert.equal(native.calls.at(-1).track,id);
+ }
+ native.snapshot.tracks[0].state='finalizing';native.sendControl('applyStart',0);native.sendControl('clear',0);await native.scheduler.pump();
+ assert.equal(native.calls.at(-1).action,'clear');assert(!native.scheduler.items.some(i=>i.track===0),'DEL supersedes finalization-waiting Apply');
+ for(const action of ['startDelay','reverse','volume','feedback','pan','mute','solo','stopImmediate','stopAll'])assert.equal(native.window.AionLoopControlWait(native.snapshot,action,0),false,'Immediate metadata/mixer/cancellation path '+action);
+ const begin=code.indexOf('        const speedCommand='),end=code.indexOf('        const halfSpeed=',begin);
+ native.document={getElementById:()=>null};native.snapshot.syncMode=0;vm.runInContext(code.slice(begin,end)+'globalThis.speed=speedCommand;',native);
+ assert.equal(native.speed(0,.5),native.window.AionCommandQueue.wait,'Half/reset/speed waits through finalization');
+ native.snapshot.tracks[0].state='playing';assert.equal(native.speed(0,.5).value,.5);
+ console.log('PASS: actual source-control FIFO waits/resumes exactly once, speed guard, immediate metadata/mixer/panic and DEL supersession');
+})().catch(error=>{console.error(error);process.exitCode=1;});

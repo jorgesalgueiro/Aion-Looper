@@ -44,6 +44,8 @@ void startPhaseTests(){
  bank.setStartDelay(0,0.01);check(bank.apply(A::nudgeStart,0,-1)&&std::abs(bank.view()[0].startDelay-(0.01-(60.0/999.0/16.0)/(257.0/8000.0)+1))<1e-14&&bank.view()[0].state==LoopState::stopped&&bank.view()[0].phaseApplyFrame==0,"stopped left nudge wraps without playing");
  bank.apply(A::clear,0);check(bank.view()[0].startDelay==0&&bank.view()[0].phaseApplyFrame==0,"DEL clears phase and pending restart");watch=false;
  bank.prepare(8192,0,8000);watch=true;bank.apply(A::record,0);for(unsigned i=0;i<4000;++i)bank.tick({0.1f,0.2f});bank.apply(A::finish,0);watch=false;wait(bank);
+ watch=true;check(bank.apply(A::normalize,0),"prepare real finalizing clip for Q/nudge rejection");bank.setStartDelay(0,.731);
+ check(!bank.apply(A::quantizeStart,0)&&!bank.apply(A::nudgeStart,0,1)&&bank.view()[0].startDelay==.731&&!bank.view()[0].phaseApplyFrame,"finalizing Q/nudge reject atomically on a nontrivial recorded clip");watch=false;wait(bank);
  watch=true;bank.setStartDelay(0,std::nextafter(0.125,0.0));check(bank.apply(A::quantizeStart,0)&&bank.view()[0].startDelay==0,"Q below half matches JavaScript without adding rounding noise");
  bank.setStartDelay(0,0.125);check(bank.apply(A::quantizeStart,0)&&bank.view()[0].startDelay==0.25,"Q exact half rounds upward on four divisions");
  bank.setStartDelay(0,0.375);check(bank.apply(A::quantizeStart,0)&&bank.view()[0].startDelay==0.5,"Q repeated half rounding");
@@ -60,7 +62,8 @@ void startPhaseTests(){
  check(!bank.apply(A::retrigger,0),"empty RTRG rejected");bank.apply(A::record,0);
  check(!bank.apply(A::retrigger,0),"recording RTRG rejected");
  for(unsigned i=0;i<257;++i)bank.tick({0.1f,0.2f});bank.apply(A::finish,0);
- check(!bank.apply(A::retrigger,0),"finalizing RTRG rejected");watch=false;wait(bank);watch=true;
+ check(!bank.apply(A::retrigger,0),"finalizing RTRG rejected");
+ bank.setStartDelay(0,.731);check(!bank.apply(A::applyStart,0)&&bank.view()[0].startDelay==.731&&!bank.view()[0].phaseApplyFrame,"finalizing Apply rejects without false success or metadata mutation");watch=false;wait(bank);watch=true;
  bank.setStartDelay(0,0.731);bank.apply(A::applyStart,0);
  const auto tap=bank.syncView().frame;
  check(bank.apply(A::retrigger,0)&&bank.view()[0].startDelay==0&&bank.view()[0].phaseApplyFrame==tap+40,"playing RTRG resets Start and schedules 5ms source");

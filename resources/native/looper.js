@@ -139,7 +139,7 @@
                 const reply=await rpc({operation:'renameLoop',track:c.track,name:c.name});
                 if(!reply.ok)throw Error(reply.error||'Name was not changed');
             },notify:message=>notify(message)});
-        const command=(action,track,value=0)=>scheduler.enqueue(()=>({action,track,value}),{track:action==='clearAll'?null:track,clearTrack:action==='clear',barrier:action==='clearAll'});
+        const command=(action,track,value=0)=>scheduler.enqueue(()=>window.AionLoopControlWait(snapshot,action,track)?window.AionCommandQueue.wait:({action,track,value}),{track:action==='clearAll'?null:track,clearTrack:action==='clear',barrier:action==='clearAll'});
         const restoreHistory=(redo,id=null)=>scheduler.enqueue(()=>{
             const target=id??snapshot[redo?'nextRedo':'nextUndo'],t=snapshot.tracks[target];
             // Original empty history is a no-op. Resolve at dispatch so a rapid
@@ -164,6 +164,7 @@
             scheduler.enqueue(()=>({action:'clearMergedSource',track:dest,value:serial}),{track:source});
         }});
         const speedCommand=(track,value)=>{
+            if(window.AionLoopControlWait(snapshot,'speed',track))return window.AionCommandQueue.wait;
             const sync=snapshot.syncMode!==0,rate=window.AionLoopSpeed(value,sync);
             if(rate===null)return null;
             const slider=document.getElementById(`loop-speed-slider-${track}`);

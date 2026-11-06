@@ -1,4 +1,4 @@
-param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi, [switch] $QueuedNormOnly, [switch] $QueuedHistoryOnly, [switch] $QueuedMultiplyOnly, [switch] $PostbirthMultiplyOnly)
+param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi, [switch] $QueuedNormOnly, [switch] $QueuedHistoryOnly, [switch] $QueuedMultiplyOnly, [switch] $PostbirthMultiplyOnly, [switch] $FinalizingControlsOnly)
 $ErrorActionPreference = 'Stop'
 if ($SkipMidi -and $MidiOnly) { throw 'SkipMidi cannot be combined with MidiOnly.' }
 $repo = Split-Path -Parent $PSScriptRoot
@@ -19,7 +19,10 @@ foreach ($block in $Blocks) {
         $preview = Start-Process -FilePath $hostPath -ArgumentList "$block" -WindowStyle Hidden -PassThru
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $savedArguments
         $env:WEBVIEW2_USER_DATA_FOLDER = $savedProfile
-        if ($PostbirthMultiplyOnly) {
+        if ($FinalizingControlsOnly) {
+            & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block --finalizing-controls-only
+            if ($LASTEXITCODE -ne 0) { throw "Finalizing control workflow failed at $block samples" }
+        } elseif ($PostbirthMultiplyOnly) {
             & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block --postbirth-multiply-only
             if ($LASTEXITCODE -ne 0) { throw "Post-birth Multiply workflow failed at $block samples" }
         } elseif ($QueuedMultiplyOnly) {
@@ -35,19 +38,20 @@ foreach ($block in $Blocks) {
             & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Mouse workflow failed at $block samples." }
         }
-        if (!$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$MergeOnly -and !$MidiOnly) {
+        if (!$FinalizingControlsOnly -and !$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$MergeOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/ExportWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "WAV export workflow failed at $block samples." }
         }
-        if (!$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$ExportOnly -and !$MidiOnly) {
+        if (!$FinalizingControlsOnly -and !$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$ExportOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/MergeWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Merge workflow failed at $block samples." }
         }
-        if (!$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$SkipMidi -and !$ExportOnly -and !$MergeOnly) {
+        if (!$FinalizingControlsOnly -and !$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$SkipMidi -and !$ExportOnly -and !$MergeOnly) {
             & node (Join-Path $repo 'tests/MidiWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "MIDI workflow failed at $block samples." }
         }
-        if ($PostbirthMultiplyOnly) { Write-Output "PASS: focused post-birth no-input MULT workflow at $block samples." }
+        if ($FinalizingControlsOnly) { Write-Output "PASS: finalizing source controls at $block samples." }
+        elseif ($PostbirthMultiplyOnly) { Write-Output "PASS: focused post-birth no-input MULT workflow at $block samples." }
         elseif ($QueuedMultiplyOnly) { Write-Output "PASS: focused queued-MULT processor/editor mouse workflow at $block samples." }
         elseif ($QueuedHistoryOnly) { Write-Output "PASS: focused queued-history processor/editor mouse workflow at $block samples." }
         elseif ($QueuedNormOnly) { Write-Output "PASS: focused queued-NORM processor/editor mouse workflow at $block samples." }
