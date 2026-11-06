@@ -15,77 +15,115 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-### In acceptance: queued-source MULT input capture
+### Implemented preview: queued-source MULT input capture
 
-Baseline `d6c91e0` is reused. The unchanged-JS recorder/source fixture reproduced
-rejection of `multiply 0 1` after source construction; failure log
-`build/queued-input-repro-windows.log`. The shared existing Multiply action now
-starts native capture with available input even before the graph's audible grid.
-A private audio-owned flag keeps recorder ownership separate from that gate;
-opening the graph does not end capture or cancel older Start replacements.
-Short takes below 128 samples preserve PCM/history/source identity. Successful
-append uses the existing worker/DC/splice kernel, local-only history, immutable
-source leases and 5ms replacement admission. DEL/panic/prepare, OOM and full
-phase/pool failure preserve the existing cancellation/rollback rules. No new IDs,
-persistence schema, parameters, queues, dependencies or preserved UI assets.
+Snapshots **27a726c**, strict-GCC formatting/diagnostics **69863dd**, gated-source
+repair **f2560d2**. Baseline `d6c91e0` is reused. The existing shared Multiply
+command now starts capture with available input after a queued graph has been
+constructed. Recorder ownership stays separate from the original audible grid:
+opening playback does not finish capture or discard older Start replacements.
+A second MULT or main FINISH appends through the existing worker/DC/splice kernel,
+adds local-only history and admits the replacement 5ms after result acceptance.
+Takes below 128 samples retain PCM/history/source identity. Existing DEL/panic/
+prepare, OOM, pool and phase-FIFO rollback remain. No new IDs, persistence schema,
+parameters, queues, dependencies, logo or preserved UI changes.
 
-Windows iteration evidence: **192** base plus **48** gated-playing original-JS capture/source cases pass
-(8/48/96kHz, mono/stereo, forward/reverse, early/near grid, short/appended/grid-crossing
-and pending Start source); maximum PCM error **8.74844245e-8**, limit **1e-6**.
-**212** real Engine cases pass at 64/128, tracks 0/19, exact paired stereo,
-local-only history/Undo/Redo, main FINISH, held-worker clear/panic, prepare,
-OOM/pool/phase-FIFO exhaustion and zero callback new/delete. Existing **288**
-no-input MULT and loop-edit suites pass. Complete production processor tests
-pass, including eight new shared GUI/CLI capture cases. Actual native pointers
-pass input/no-input MULT, main FINISH, pre-grid silence, grid-crossing capture,
-waveform identity/Undo/Redo and subsequent nonzero PCM at 64/128.
+An early RTRG can already be playing behind that same closed grid. The new
+comparison reproduced its lost replacement deadline (**0 vs expected 3796** at
+8kHz). Capture now recognises this queued-origin state too, including static/
+dynamic cases; ordinary post-grid capture is unchanged. Failure logs:
+`build/queued-input-repro-windows.log` (original admission rejection) and
+`build/queued-input-gated-repro-windows.log` (gated deadline). The old unported-
+input guard assertion was implementation-coupled: it is replaced by stronger
+capture/audio/lifetime cases below. Its varispeed guard and all 288 old no-input
+cases remain. The probe now forwards its Multiply argument; old zero calls retain
+behavior. Full suites include the new cases; `--gated-input-multiply` is a focused
+follow-up selector, not a product command.
 
-The former unported-input rejection assertion was implementation-coupled. It is
-replaced by the stronger capture/source/PCM/lifetime cases above; its varispeed
-rejection and all prior no-input cases remain. Frontend eligibility still covers
-all original empty/pending-stop/recording combinations; constructed-source input
-is now enabled through the same shared action. The source probe now passes its
-explicit Multiply argument instead of discarding it; all existing zero-valued
-calls retain their behavior.
+| Executed verification | Result / exact scope |
+| --- | --- |
+| Original-JS input/source comparisons, Windows and Linux | **192 base + 48 gated-playing cases**, **96 + 24 exact stereo WAVs** each OS; mono/stereo source PCM <=1e-6, maximum observed **8.74844245e-8**. 8/48/96kHz, forward/reverse, short/append/grid crossing, pending Start overlap, static/dynamic gated origins |
+| Real Engine | **212 PASS each OS**, tracks 0/19, 64/128; timestamped MULT/main FINISH, exact paired stereo, local history/Undo/Redo, held-worker clear/panic, prepare, OOM/pool/phase-FIFO exhaustion, zero callback new/delete |
+| Standalone and complete production processor suites | PASS each OS, including shared GUI/CLI input capture and active-but-gated RTRG, exact 5ms/length/history and subsequent audible PCM |
+| Existing source/reference/frontend/bridge/CLI gates | Windows **21/21 PASS**, **615.05s**; Linux **23/23 PASS**, **1154.89s**, including the new base input oracle. Gated follow-up runs separately; unchanged passing paths are reused |
+| Retained no-input MULT and loop edits | **288** old source cases plus capture/reverse/history/Multiply/Start/MERGE suites PASS each OS |
+| Native Linux Debug ASan/UBSan/leaks | Baseline **204** input cases + loop edits PASS; latest gated-only **8** cases PASS, no diagnostics. No full unchanged suite repeated after the gated-only admission repair |
+| Actual Windows new original controls | PASS at 64/128: queued and already-active/gated RTRG input capture, crossing grid, main FINISH/MULT, stored identity/Undo/Redo, original silence gate and nonzero playback, input/no-input bus lifecycle |
+| Integrated Windows Mouse/Export/MERGE | Passing full 64 and 128 reruns preserve all original hold/keyboard/Start/STUT/clear/export/MERGE assertions; see unresolved observation below |
+| Running Standalone CLI/WebView | PASS: external instance/status/parameter roundtrip, same processor generation, original UI, no product AudioContext; browser sound oracles also pass. Master stays zero. This is not physical input/driver latency validation |
 
-Exact stored stereo WAV comparisons pass: **96** base plus **24** gated-playing
-files match the unchanged encoder byte for byte. The new gated-playing comparison
-reproduced a lost 5ms replacement (`0` versus expected frame `3796`, 8kHz mono
-17-frame base). An early RTRG had already moved the source to playing while its
-original volume gate was still closed. Capture now recognises that queued-origin
-source too; ordinary post-grid capture is unchanged. Additional cases cover both
-static/dynamic modes. Failure: `build/queued-input-gated-repro-windows.log`.
-New Windows gated reference/212-case core/full processor/actual 64/128 pointers
-pass. Linux gated follow-up remains pending; broader primary acceptance below is
-reused only for paths not changed by the gated admission predicate.
-
-Primary Linux Standalone, new **204** Engine cases, retained **288** no-input MULT,
-loop-edit and complete production suites pass. Linux **23/23** reference/frontend/
-bridge/CLI gates pass (**1154.89s**); Windows retained **21/21** gates pass
-(**615.05s**) with its new input/WAV corpus run directly. Linux Debug ASan/UBSan/
-leaks pass the baseline 204-case input corpus and loop edits, no diagnostics.
-Strict GCC compilation first rejected a compressed conditional; formatting repair
-`69863dd` passed without changing DSP. Windows integrated Mouse/Export/MERGE
-passes at 64 and 128; actual Standalone CLI/WebView smoke passes with master at
-zero. The synthetic mouse host is hardware free; the real Standalone smoke is
-not a physical driver/input latency acceptance claim.
-
-One initial integrated mouse run failed to find `#loop-action-0` after held-STOP
-cancellation. Its cause is **unresolved/unreproduced**: a diagnostic full 64 run and
-full 128 run pass all original assertions. Keep this observation separately; no
-product repair or zero-bug claim follows from the reruns. Failure log:
-`build/queued-input-integrated-ui-windows.log`; passing reruns:
+GCC initially rejected a compressed conditional under Werror; formatting repair
+passed without DSP changes. One initial integrated 64 mouse run failed to find
+`#loop-action-0` after held-STOP cancellation. Its cause is **unresolved and not
+reproduced**: diagnostic full 64 and full 128 reruns pass. Do not claim this
+observation fixed or infer zero bugs. Failure log
+`build/queued-input-integrated-ui-windows.log`; reruns
 `build/queued-input-integrated-diagnostic-windows.log` and
 `build/queued-input-integrated-final128-windows.log`. Missing-target failures now
-report the document, ready state, native/card presence, button IDs and runtime
-errors; no gesture, delay, hold threshold, assertion or tolerance was removed.
+report document/ready state, native/card presence, button IDs and runtime errors.
+No gesture, hold threshold, assertion or tolerance was removed or relaxed.
 
-Final acceptance still needs the Linux gated-only reference/Engine/processor/
-sanitisers and warmed capture callback measurements. Recorder nodes are IO stubs
-in the JS oracle; native sample scheduling is real, but browser worklet-quantum
-timing, physical input latency and Linux WebKit interaction are separate. Logs:
-`build/queued-input-*`. The next functional slice remains queued MERGE eligibility
-after acceptance; retain the unresolved UI observation for further investigation.
+Primary logs: Windows `build/queued-input-{wav-native,finish-core,existing-mult,edits,production,ui-final,acceptance-ctest,cli-ui}-windows.log`;
+Linux `build/queued-input-{fixed-build,core,existing-mult,edits,production,acceptance-ctest,sanitizer-build,sanitizer}-linux.log`.
+Follow-up logs on both OS: `build/queued-input-gated-{build,native,core,production}-OS.log`
+(Windows production build is `gated-production-build`), plus Windows `gated-ui`
+and Linux `gated-sanitizer{,-build}`. Original/reference assets are unchanged.
+
+Reproduce using existing caches (CMake/CTest resolution as below):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --queued-input-multiply
+./build/windows-core/Release/aion_core_tests.exe --postbirth-multiply
+./build/windows-core/Release/aion_core_tests.exe --loop-edits
+node tests/QueuedMultiplySources.cjs --input-capture --native build/windows-core/Release/aion_start_probe.exe
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_mouse_host aion_midi_processor_tests --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -PostbirthMultiplyOnly
+./tools/TestMouseWorkflow.ps1 -SkipMidi
+./tools/TestCliUi.ps1 -PythonPath 'C:/Users/jorge/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe'
+```
+
+Linux substitutes `build/linux`, no `--config`, and executable paths without
+`Release/` or `.exe`. The input oracle now includes all 240 cases; the executed
+follow-up used `--only-sequence capture-gated-playing`, reusing the 192-case pass.
+Use the prior 21-test regex below for Windows. For the executed Linux 23-gate
+selection, add `multiply_input_source` inside its `js_native_(...)` alternatives
+and `input_source` inside `original_multiply_(...)`. CTest uses `--parallel 2
+--no-tests=error --output-on-failure`. Native ASan cache: build
+`build/overlap-asan --target aion_core_tests --parallel 2`, then
+`ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests`
+with `--queued-input-multiply`, `--loop-edits`, or focused
+`--gated-input-multiply` for the separately executed follow-up.
+
+After all acceptance processes ended, the same local ignored warmed harness ran
+Windows then Linux, with current libraries, at 48kHz: 512-frame seed, 512 warm
+callbacks, queued source, 4096-frame live input capture across its original grid,
+main FINISH, live result acceptance, Undo/Redo/playback/clear, forward/reverse.
+Worker readiness polling and setup are outside callback measurement. No offline
+wait is included in measured finish/result callbacks.
+
+| Maximum measured callback (single-loop observation) | 64 samples | 128 samples |
+| --- | ---: | ---: |
+| Windows Release | 103.2us | 122.0us |
+| Native WSL Linux Release | 71.065us | 116.243us |
+| Block deadline | 1333.33us | 2666.67us |
+
+Local harness `build/queued-input-bench-src/{CMakeLists.txt,bench.cpp}`; identical
+source SHA256 `232aeefbc4607123461a64cb05aead22b106673cab4b64322ccc258c1097b23e`.
+Caches `build/queued-input-bench-{windows,linux}` import the current per-OS core
+library. Build with `cmake --build CACHE --target queued_bench --parallel 2`
+(Windows `--config Release`), then run `CACHE/queued_bench` (Windows
+`CACHE/Release/queued_bench.exe`). Logs `build/queued-input-{final-bench-build,bench}-OS.log`.
+This is not worst-case/full-bank, long-session, physical latency or a platform
+performance ranking. No version bump, wrapper, package or push.
+
+Recorder nodes in the JS oracle are IO stubs; it compares unchanged capture
+handlers/conditioning/source clocks and stored stereo bytes. Browser recorder
+quantum timing, broader envelopes/advancing worker latency, physical devices and
+Linux WebKit interaction remain separate. **Next:** retain/investigate the UI
+observation if it recurs; queued MERGE eligibility is the next functional slice.
+FX/SAVE/presets remain after core loop editing.
 
 ### Verified repair: MULT worker/source tempo ordering
 
