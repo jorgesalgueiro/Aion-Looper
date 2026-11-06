@@ -51,7 +51,7 @@ foreach ($block in $Blocks) {
             if ($LASTEXITCODE -ne 0) { throw "MIDI workflow failed at $block samples." }
         }
         if ($FinalizingControlsOnly) { Write-Output "PASS: finalizing source controls at $block samples." }
-        elseif ($PostbirthMultiplyOnly) { Write-Output "PASS: focused post-birth no-input MULT workflow at $block samples." }
+        elseif ($PostbirthMultiplyOnly) { Write-Output "PASS: focused post-birth input/no-input MULT workflow at $block samples." }
         elseif ($QueuedMultiplyOnly) { Write-Output "PASS: focused queued-MULT processor/editor mouse workflow at $block samples." }
         elseif ($QueuedHistoryOnly) { Write-Output "PASS: focused queued-history processor/editor mouse workflow at $block samples." }
         elseif ($QueuedNormOnly) { Write-Output "PASS: focused queued-NORM processor/editor mouse workflow at $block samples." }

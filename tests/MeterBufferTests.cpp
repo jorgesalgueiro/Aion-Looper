@@ -1399,12 +1399,82 @@ void postbirthMultiplyTests(){
     }
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
         Fixture f(block);auto owner=setup(f,id,reverse);
-        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::multiply,id,++f.request,e->generation(),0,1}),"Queue unported input-capture request");f.cycle();check(f.view->rejected,"Constructed queued input capture remains explicitly guarded");
+        // Input capture now has dedicated source/grid/PCM/ownership acceptance below.
         for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::speed,id,++f.request,e->generation(),0,.5}),"Set requested varispeed");f.cycle();
         f.command(LoopAction::multiply,id);f.cycle();check(f.view->rejected&&f.view->tracks[id].length==512&&!f.view->tracks[id].undoCount,"Original varispeed guard applies after source construction");++cases;
     }
     check(allocations.load()==0,"Post-birth MULT has no callback new/delete");
     std::cout<<"PASS: post-birth no-input Multiply "<<cases<<" 5ms/source-length/history/rapid/Apply/NORM and pending-source metadata/speed and held-worker Reverse/Start/tempo cases, original grid, delayed worker across grid, cancel/cleanup/prepare/OOM/full pool/event/overlap and input/varispeed guards; tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";
+}
+
+void queuedMultiplyInputTests(){
+    using namespace aion;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,unsigned capacity=81920){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(48000,capacity);e->configureSync({SyncMode::off,120,1,1,4,false});e->setMonitoring(false);e->setTarget(1);}
+        auto owner=std::make_unique<LoopMeterLifecycle>(*f.engine,id);f.record(id);check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id)),"Input MULT seed clip");
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()}){e->configureSync({SyncMode::fixed,137.3,1,1,4,false});check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Input MULT source direction");}
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);check(owner->consumeQueuedPlay(q)&&owner->requestQueuedGraph(q.queueId,q.bufferId),"Input MULT explicit graph birth");
+        const auto request=owner->queuedWindowTransaction();LoopCommand mirror{LoopAction::meterQueuedGraphRequest,id,0,f.control->generation(),0,0};mirror.meterGraphTicket=request.ticket;mirror.meterQueueId=request.queueId;mirror.meterBufferId=request.bufferId;
+        check(f.control->enqueueLoop(mirror),"Input MULT paired graph birth");f.cycle();(void)f.next(MeterGraphEventKind::started,id);check(owner->consumeQueuedWindowResult(f.next(MeterGraphEventKind::queuedGraphAccepted,id)),"Input MULT owns source");return owner;
+    };
+    const auto enqueue=[](Fixture& f,unsigned id,std::uint64_t at,bool finish=false){for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({finish?LoopAction::finish:LoopAction::multiply,id,++f.request,e->generation(),at,1}),"Timestamped input MULT action");};
+    unsigned cases=0;
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool near:{false,true})for(bool pending:{false,true})for(unsigned take:{0u,127u,128u,513u,4096u}){
+        Fixture f(block);auto owner=setup(f,id,reverse);const auto before=f.view->tracks[id];const auto grid=before.scheduledFrame;
+        if(near)while(f.engine->clock()+block<grid-48)f.cycle();
+        if(pending){f.command(LoopAction::applyStart,id);f.cycle();}
+        const auto start=f.engine->clock()+19;const auto length=take==4096?static_cast<unsigned>(grid-start+257):take;
+        enqueue(f,id,start);enqueue(f,id,start+length,pending);
+        while(f.engine->clock()<start+length+block){f.cycle(true);
+            if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Input MULT retains original pre-grid volume gate");
+            if(f.engine->clock()>grid&&f.engine->clock()<=start+length)check(f.view->tracks[id].state==LoopState::multiplying,"Audible grid cannot finish active input capture");}
+        const auto t=f.view->tracks[id];check(!f.view->rejected&&t.length==before.length+(length>=128?length:0)
+            &&t.undoCount==(length>=128?1u:0u)&&(length<128?t.waveformId==before.waveformId:t.waveformId!=before.waveformId),"Exact timestamped append length, local history and short-take identity");
+        if(length>=128)check(owner->consumeBuffer(f.next(MeterGraphEventKind::bufferInstalled,id))&&f.view->nextUndo==-1,"Input MULT preserves local-only history and analyser ownership");
+        bool heard=false;while(f.engine->clock()<grid+2048){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Committed input MULT retains original graph grid");else heard=heard||f.view->outputPeak>0;}
+        check(heard,"Input MULT remains audible with exact paired stereo");
+        if(length>=128){f.command(LoopAction::undo,id);f.cycle();check(f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].length==before.length,"Input MULT Undo restores original clip");
+            f.command(LoopAction::redo,id);f.cycle();check(f.view->tracks[id].waveformId==t.waveformId&&f.view->tracks[id].length==t.length,"Input MULT Redo restores appended clip");}
+        f.command(LoopAction::clear,id);f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<5;++cancel){
+        Fixture f(block);auto owner=setup(f,id,true);enqueue(f,id,0);for(unsigned n=0;n<256/block;++n)f.cycle();
+        check(f.view->tracks[id].state==LoopState::multiplying,"Input MULT cancellation begins in active capture");
+        if(cancel==4){for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}}
+        else {f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:cancel==2?LoopAction::clear:LoopAction::clearAll,id);f.cycle(true);}
+        for(unsigned n=0;n<128;++n)f.cycle();const auto t=f.view->tracks[id];
+        check(cancel<2?(t.state==LoopState::stopped&&t.length==768&&t.undoCount==1):(t.state==LoopState::empty&&!t.length&&!t.undoCount),"Input MULT stop commits once; clear/prepare cancels PCM and pending source");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block);auto owner=setup(f,id,true);const auto before=f.view->tracks[id];
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,1}),"Observed OOM capture only");for(unsigned n=0;n<256/block;++n)f.cycle();
+        failWorkerAllocation.store(true);check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,1}),"Observed OOM finish only");f.cycle(true);
+        check(f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].length==before.length&&!f.view->tracks[id].undoCount,"Input MULT OOM retains exact old source/PCM/history");
+        while(f.engine->clock()<before.scheduledFrame+2048)f.cycle();f.command(LoopAction::clear,id);f.cycle();++cases;
+        Fixture full(block);auto fullOwner=setup(full,id,false,8192);enqueue(full,id,0);for(unsigned n=0;n<9000/block+1;++n)full.cycle(true);
+        check(full.view->tracks[id].length==8192&&full.view->tracks[id].undoCount==1&&full.view->poolFull,"Input MULT auto-finishes at exact shared memory boundary");full.command(LoopAction::clear,id);full.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<3;++cancel){
+        Fixture f(block);auto owner=setup(f,id,true);enqueue(f,id,0);for(unsigned n=0;n<256/block;++n)f.cycle();
+        heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);enqueue(f,id,0);f.cycle();
+        const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
+        check(heldWorkerAllocations.load()>=2,"Input finalization holds real workers outside audio");
+        f.command(cancel==0?LoopAction::clear:cancel==1?LoopAction::clearAll:LoopAction::stopAll,id);f.cycle();
+        holdWorkerAllocation.store(false);f.cycle(true);for(unsigned n=0;n<32;++n)f.cycle();const auto t=f.view->tracks[id];
+        check(cancel<2?(t.state==LoopState::empty&&!t.length&&!t.undoCount):(t.state==LoopState::stopped&&t.length==768&&t.undoCount==1),"Held input finalizer obeys DEL/bank clear/panic without stale playback");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block);auto owner=setup(f,id,false);const auto before=f.view->tracks[id];
+        for(unsigned n=0;n<127;++n)f.command(LoopAction::applyStart,id);f.cycle();enqueue(f,id,0);for(unsigned n=0;n<256/block;++n)f.cycle();enqueue(f,id,0);f.cycle(true);
+        check(f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId&&!f.view->tracks[id].undoCount,"Full phase FIFO rejects input replacement before PCM/history mutation");
+        f.command(LoopAction::clear,id);for(unsigned n=0;n<128;++n)f.cycle();check(f.view->tracks[id].state==LoopState::empty,"Rejected input replacement releases phase/worker leases on clear");++cases;
+    }
+    check(allocations.load()==0,"Input MULT has no callback new/delete");
+    std::cout<<"PASS: queued-source input MULT "<<cases<<" timestamped short/append/grid-crossing/pending-source/Undo/Redo, local-only history, cancellation/prepare/OOM/full pool, tracks 0/19, reverse, 64/128, exact paired stereo and zero callback new/delete\n";
 }
 
 void prebirthMultiplyTests(){
@@ -2030,7 +2100,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();postbirthMultiplyTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

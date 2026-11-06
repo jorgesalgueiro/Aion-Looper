@@ -15,6 +15,47 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### In acceptance: queued-source MULT input capture
+
+Baseline `d6c91e0` is reused. The unchanged-JS recorder/source fixture reproduced
+rejection of `multiply 0 1` after source construction; failure log
+`build/queued-input-repro-windows.log`. The shared existing Multiply action now
+starts native capture with available input even before the graph's audible grid.
+A private audio-owned flag keeps recorder ownership separate from that gate;
+opening the graph does not end capture or cancel older Start replacements.
+Short takes below 128 samples preserve PCM/history/source identity. Successful
+append uses the existing worker/DC/splice kernel, local-only history, immutable
+source leases and 5ms replacement admission. DEL/panic/prepare, OOM and full
+phase/pool failure preserve the existing cancellation/rollback rules. No new IDs,
+persistence schema, parameters, queues, dependencies or preserved UI assets.
+
+Windows iteration evidence: **192** original-JS capture/source cases pass
+(8/48/96kHz, mono/stereo, forward/reverse, early/near grid, short/appended/grid-crossing
+and pending Start source); maximum PCM error **8.74844245e-8**, limit **1e-6**.
+**204** real Engine cases pass at 64/128, tracks 0/19, exact paired stereo,
+local-only history/Undo/Redo, main FINISH, held-worker clear/panic, prepare,
+OOM/pool/phase-FIFO exhaustion and zero callback new/delete. Existing **288**
+no-input MULT and loop-edit suites pass. Complete production processor tests
+pass, including eight new shared GUI/CLI capture cases. Actual native pointers
+pass input/no-input MULT, main FINISH, pre-grid silence, grid-crossing capture,
+waveform identity/Undo/Redo and subsequent nonzero PCM at 64/128.
+
+The former unported-input rejection assertion was implementation-coupled. It is
+replaced by the stronger capture/source/PCM/lifetime cases above; its varispeed
+rejection and all prior no-input cases remain. Frontend eligibility still covers
+all original empty/pending-stop/recording combinations; constructed-source input
+is now enabled through the same shared action. The source probe now passes its
+explicit Multiply argument instead of discarding it; all existing zero-valued
+calls retain their behavior.
+
+Final acceptance remains pending: exact original stereo WAV comparisons, Linux
+build/reference/Engine/processor checks, sanitizers, affected existing source
+regressions and integrated mouse/CLI smoke. Do not mark the slice complete based
+on this iteration evidence. Recorder nodes are IO stubs in the JS oracle; native
+sample scheduling is real, but browser worklet-quantum timing, physical input
+latency and Linux WebKit interaction are separate. Logs: `build/queued-input-*`.
+The next functional slice remains queued MERGE eligibility after acceptance.
+
 ### Verified repair: MULT worker/source tempo ordering
 
 The next focused comparison reproduced a BPM-ordering error during no-input

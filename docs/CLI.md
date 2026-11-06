@@ -160,8 +160,8 @@ PLAY receipt and grid; `loop undo TRACK` / `loop redo TRACK` use that same histo
 The native worker builds PCM outside audio processing. A graph callback arriving
 during doubling waits in one bounded audio-owner slot until completion, retaining
 its original identity. STOP/STOP ALL, DEL, cleanup or prepare still cancel playback.
-Allocation/capacity failure retains old PCM/history. After source construction, no-input fallback is described below. Queued input
-capture and pending scheduled stops remain unavailable.
+Allocation/capacity failure retains old PCM/history. After source construction, input/no-input behavior is described below. Pending
+scheduled stops remain unavailable.
 
 ## Constructed-source Multiply without input
 
@@ -172,4 +172,17 @@ commits doubled storage/history only after reserving a replacement source for
 5ms after audio-owner completion. Playing no-input doubling uses the same timing.
 The GUI/keyboard and CLI share this implementation. OOM or event/overlap-capacity
 failure preserves old storage/history; inspect `finalizationFailed` in snapshot.
-Queued source capture with input and pending-stop queued Multiply remain guarded.
+Pending-stop queued Multiply remains guarded.
+
+## Constructed-source Multiply with input
+
+With native input available, `loop multiply TRACK` starts capture on an already
+constructed queued graph, retaining its original audible grid. Recording starts
+at the accepted command; crossing the grid starts playback while capture continues.
+A second `loop multiply TRACK` or `loop finish TRACK` appends the conditioned take,
+adds one local history entry and schedules the replacement source 5ms after worker
+completion. Fewer than 128 captured samples leave the old PCM/history unchanged.
+Undo/Redo restores the corresponding stored clip. The original MULT/main FINISH
+buttons and CLI use this same processor path; no input flag is required from the
+client. This extension is in cross-platform acceptance; see MIGRATION_CURRENT.md.
+

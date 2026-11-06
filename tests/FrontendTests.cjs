@@ -1007,7 +1007,7 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  console.log('PASS: local/global history dispatch and original controls enabled before/after queued graph birth, excluding pending stops');
 }
 
-// Queued MULT shares the existing action and only opens the pre-birth path.
+// Queued MULT shares one action for pre-birth doubling and constructed-source input capture.
 {
  const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
  const start=source.indexOf('const multiply=id=>scheduler.enqueue('),end=source.indexOf('const merge=',start);
@@ -1015,13 +1015,13 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  for(const state of ['empty','armed','recording','queued','playing','stopped','stopping','finalizing','multiplying','overdubbing','substituting'])for(const ready of [false,true])for(const stopPending of [false,true])for(const length of [0,512])for(const inputAvailable of [false,true]){
   let action;const t={state,queuedSourceReady:ready,stopPending,length};const snapshot={tracks:[t],inputAvailable};
   const wait=Symbol('wait'),c={window:{AionCommandQueue:{wait}},snapshot,scheduler:{enqueue:resolver=>{action=resolver();}}};vm.createContext(c);vm.runInContext(source.slice(start,end)+'multiply(0);',c);
-  const enabled=length>0&&(['playing','stopped','multiplying'].includes(state)||(state==='queued'&&!stopPending&&(!ready||!inputAvailable)));
+  const enabled=length>0&&(['playing','stopped','multiplying'].includes(state)||(state==='queued'&&!stopPending));
   if(state==='finalizing')assert.equal(action,wait,'Accepted MULT waits for committed PCM');
   else assert.equal(!!action,enabled,'MULT shared dispatch guard');
   const line=source.split('\n').find(l=>l.includes('r.mult.disabled='));assert(line);const r={mult:{}};
   const ui={r,t,i:0,active:true,snapshot};vm.createContext(ui);vm.runInContext(line,ui);assert.equal(r.mult.disabled,!enabled,'Original MULT control eligibility');cases++;
  }
- console.log('PASS: '+cases+' shared MULT dispatch/control states including queued pre-birth, no-input constructed source, empty, pending-stop and input-capture exclusion');
+ console.log('PASS: '+cases+' shared MULT dispatch/control states including queued pre-birth, constructed-source input/no-input, empty and pending-stop exclusion');
 }
 
 // An accepted edit gesture must survive a preceding edit's worker commit.

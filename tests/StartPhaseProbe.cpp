@@ -18,7 +18,7 @@ int main(int argc,char** argv){
   else if(op=="record")ok=bank.apply(A::record,id);
   else if(op=="finish")ok=bank.apply(A::finish,id);
   else if(op=="merge")ok=bank.apply(A::merge,id,static_cast<float>(value));
-  else if(op=="multiply")ok=bank.apply(A::multiply,id);
+  else if(op=="multiply")ok=bank.apply(A::multiply,id,static_cast<float>(value));
   else if(op=="undoGlobal")ok=bank.apply(A::undoGlobal,id);
   else if(op=="redoGlobal")ok=bank.apply(A::redoGlobal,id);
   else if(op=="normalize")ok=bank.apply(A::normalize,id);

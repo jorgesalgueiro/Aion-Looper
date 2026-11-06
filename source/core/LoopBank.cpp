@@ -233,7 +233,7 @@ bool LoopBank::finish(Track& track) noexcept {
         for(std::uint32_t i=0;i<track.blockCount;++i)freeBlocks[freeCount++]=track.blocks[i];
         track.blockCount=track.captureLength=0;
         if(track.info.state==LoopState::recording)clear(track);
-        else track.info.state=LoopState::playing;
+        else {track.info.state=track.multiplyCaptureSource&&track.startAt?LoopState::queued:LoopState::playing;track.multiplyCaptureSource=false;}
         return true;
     }
     if(finalizationPending())return false;
@@ -241,6 +241,12 @@ bool LoopBank::finish(Track& track) noexcept {
     job.track=static_cast<std::uint32_t>(&track-tracks.data());job.revision=track.revision;
     job.normalize=false;job.multiply=track.info.state==LoopState::multiplying;job.doubling=false;
     job.merge=false;
+    const bool queuedCapture=track.multiplyCaptureSource;
+    const bool waitingCapture=queuedCapture&&track.startAt;
+    if(queuedCapture){track.multiplySource=true;
+        job.multiplyMetadata={track.info.startDelay,track.info.reverse,effectiveRateFor(track,track.clip->length+job.length),sync.origin,
+            sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(job.track))};}
+    track.multiplyCaptureSource=false;
     job.edit=track.info.state!=LoopState::recording;job.base=track.clip;job.baseLength=track.info.length;
     job.recordMode=track.recordMode;job.outputFrames=job.length;
     if(!job.edit){
@@ -252,7 +258,7 @@ bool LoopBank::finish(Track& track) noexcept {
     }
     if(job.edit)job.base->leases.fetch_add(1,std::memory_order_relaxed);
     job.feedback=track.info.state==LoopState::substituting?0.0:track.info.feedback;job.offset=track.captureOffset;
-    track.blockCount=0;track.captureLength=0;track.finalPlay=true;track.playWhileFinalizing=job.edit;
+    track.blockCount=0;track.captureLength=0;track.finalPlay=true;track.playWhileFinalizing=job.edit&&!waitingCapture;
     track.info.state=LoopState::finalizing;
     jobState.store(1,std::memory_order_release);return true;
 }
@@ -282,6 +288,7 @@ void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     // A queued source can reach its start grid with a later STOP already armed.
     // It still needs the same initial phase and reverse buffer as a playing source.
     const bool starting=track.info.state==LoopState::playing||track.info.state==LoopState::stopping
+        ||(track.info.state==LoopState::multiplying&&track.multiplyCaptureSource)
         ||(track.info.state==LoopState::finalizing&&(track.normalizeQueued||track.multiplySource)&&track.playWhileFinalizing);
     track.activeReverse=starting&&(preparedQueue?track.queuedSourceReverse:track.info.reverse);
     if(track.clip&&starting){
@@ -412,7 +419,7 @@ void LoopBank::clear(Track& track) noexcept {
     if(soloTrack==static_cast<int>(id))soloTrack=-1;
     (void)apply(LoopAction::pan,id,5);
     const bool muted=track.info.muted;track.info=LoopView{};track.info.muted=muted;
-    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=track.normalizeQueued=track.multiplyQueued=track.multiplySource=false;
+    track.phase=0;track.phaseRate=1;track.rate=track.targetRate=1;track.rateRemaining=0;track.playWhileFinalizing=track.normalizeQueued=track.multiplyQueued=track.multiplySource=track.multiplyCaptureSource=false;
     if(freeCount)poolFull=false;
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
@@ -452,12 +459,14 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(value!=0&&value!=1)return false;
             if(s==LoopState::multiplying)return finish(t);
             const bool prebirth=s==LoopState::queued&&t.queuedSourcePending&&!t.queuedSourceTicket&&!t.info.stopPending;
+            const bool queuedCapture=value==1&&hasPreparedQueuedSource(t);
             const bool sourceDouble=value==0&&(hasPreparedQueuedSource(t)||s==LoopState::playing);
-            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!prebirth&&!sourceDouble)||hasCapture())return false;
-            if((s==LoopState::playing||sourceDouble)&&(std::abs(t.info.playbackRate-1)>0.01f||(!sourceDouble&&t.rateRemaining)))return false;
-            if(s==LoopState::playing&&value==1){
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!prebirth&&!sourceDouble&&!queuedCapture)||hasCapture())return false;
+            if((s==LoopState::playing||sourceDouble||queuedCapture)&&(std::abs(t.info.playbackRate-1)>0.01f||(!sourceDouble&&t.rateRemaining)))return false;
+            if((s==LoopState::playing||queuedCapture)&&value==1){
                 if(!freeCount||growthRoom(t)<128)return false;
-                invalidatePhase(t);t.captureLength=t.captureOffset=0;t.info.finalizationFailed=false;s=LoopState::multiplying;poolFull=false;return true;
+                if(!queuedCapture)invalidatePhase(t);t.multiplyCaptureSource=queuedCapture;
+                t.captureLength=t.captureOffset=0;t.info.finalizationFailed=false;s=LoopState::multiplying;poolFull=false;return true;
             }
             if(t.clip->length>growthRoom(t))return false;
             job.blockCount=0;job.length=0;job.offset=0;job.track=id;job.revision=t.revision;
@@ -807,7 +816,7 @@ void LoopBank::applyPhaseEvents() noexcept {
         if(valid&&event.frame>frame)break;
         phaseRead=(phaseRead+1)%phaseCapacity;
         const bool normalizing=track.info.state==LoopState::finalizing&&track.playWhileFinalizing&&(job.normalize||track.multiplySource)&&job.track==event.track;
-        if(!valid||!track.clip||(track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopping&&!hasPreparedQueuedSource(track,true)&&!normalizing)){
+        if(!valid||!track.clip||(track.info.state!=LoopState::playing&&track.info.state!=LoopState::stopping&&!hasPreparedQueuedSource(track,true)&&!(track.info.state==LoopState::multiplying&&track.multiplyCaptureSource)&&!normalizing)){
             retire(event.reverseClip);retire(event.forwardClip);
             if(event.retainedSlot<phaseCapacity){const auto& voice=retainedSources[event.retainedSlot];
                 if(voice.used&&voice.track==event.track&&voice.epoch==event.epoch)releaseRetained(event.retainedSlot);}
@@ -830,7 +839,7 @@ void LoopBank::applyPhaseEvents() noexcept {
             // old activation deadline so it cannot restart this source again.
             track.queuedGainAt=track.startAt;
             if(track.info.state==LoopState::finalizing)track.playWhileFinalizing=true;
-            else track.info.state=track.info.stopPending?LoopState::stopping:LoopState::playing;
+            else if(track.info.state!=LoopState::multiplying)track.info.state=track.info.stopPending?LoopState::stopping:LoopState::playing;
             track.startAt=0;track.tailRemaining=0;
         }
         ++track.sourceRevision;
@@ -900,7 +909,7 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         }
         // Scheduled/space-limited capture can finish inside this sample.
         if(nonRealtime)completeOfflineEdits();
-        const bool audible=t.clip&&!t.queuedSourcePending&&(v.state==LoopState::playing||v.state==LoopState::stopping||v.state==LoopState::overdubbing||v.state==LoopState::substituting||v.state==LoopState::multiplying||(v.state==LoopState::finalizing&&t.playWhileFinalizing));
+        const bool audible=t.clip&&!t.queuedSourcePending&&!(t.multiplyCaptureSource&&t.startAt)&&(v.state==LoopState::playing||v.state==LoopState::stopping||v.state==LoopState::overdubbing||v.state==LoopState::substituting||v.state==LoopState::multiplying||(v.state==LoopState::finalizing&&t.playWhileFinalizing));
         if(t.rateRemaining){t.rate+=t.rateIncrement;if(--t.rateRemaining==0)t.rate=t.targetRate;}
         if(t.panRemaining){t.panGain.left+=t.panIncrement.left;t.panGain.right+=t.panIncrement.right;if(--t.panRemaining==0)t.panGain=t.panTarget;}
         Stereo out{};
@@ -1016,7 +1025,7 @@ void LoopBank::schedules(Track& track) noexcept {
         }
         else if(queued){
             if(state==LoopState::finalizing)track.playWhileFinalizing=true;
-            else state=track.info.stopPending?LoopState::stopping:LoopState::playing;
+            else if(state!=LoopState::multiplying)state=track.info.stopPending?LoopState::stopping:LoopState::playing;
             track.tailRemaining=0;restartSource(track,queuedStartMode==QueuedStartMode::messageCallback&&track.queuedSourceTicket);blend(track);
         }
     }

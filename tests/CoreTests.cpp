@@ -49,6 +49,7 @@ void queuedHistoryTests();
 void postbirthHistoryTests();
 void prebirthMultiplyTests();
 void postbirthMultiplyTests();
+void queuedMultiplyInputTests();
 void playbackClockTests();
 void callbackAudibleTimeTests();
 void callbackClockTests();
@@ -93,6 +94,7 @@ int main(int argc,char** argv) {
     if(argc==2&&std::string_view(argv[1])=="--meter-playback"){meterPlaybackTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-stops"){meterStopTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-panic"){meterPanicTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--queued-input-multiply"){queuedMultiplyInputTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--postbirth-multiply"){postbirthMultiplyTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--prebirth-multiply"){prebirthMultiplyTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--postbirth-history"){postbirthHistoryTests();return 0;}

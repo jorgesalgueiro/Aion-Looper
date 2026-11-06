@@ -197,8 +197,27 @@ let socket;
             await click('#native-stop-all');await state('stopped');
         }
         fs.writeFileSync(path.join(pcmDirectory,'input-channels'),'2');await wait(s=>s.inputAvailable,'Restore synthetic input bus');
+        for(const reverse of [false,true])for(const near of [false,true]){
+            if(await evaluate(`document.getElementById('loop-0-reverse').checked`)!==reverse)await click('#loop-0-reverse');
+            await wait(s=>s.gridPosition>.02&&s.gridPosition<.1,'Input MULT early grid',12000);await click('#loop-action-0');await state('queued');
+            fs.writeFileSync(path.join(pcmDirectory,'early-source-start'),'1');
+            const before=await wait(s=>s.tracks[0].state==='queued'&&s.tracks[0].queuedSourceReady&&s.inputAvailable,'Input MULT constructed source and input route');
+            const grid=before.tracks[0].scheduledFrame;
+            if(near)await wait(s=>s.frame>=grid-24000&&s.frame<grid-12000,'Input MULT near original grid',12000);
+            await exactlyOne(()=>click('#postbirth-mult-MULT'),'Trusted queued input MULT start');const capture=await state('multiplying');
+            if(capture.frame<grid)assert.equal(capture.outputPeak,0,'Input capture cannot open original volume gate');
+            if(near)await wait(s=>s.frame>grid+2400&&s.tracks[0].state==='multiplying'&&s.outputPeak>.02,'Capture continues across audible grid');
+            if(near)assert.equal(await evaluate(`document.getElementById('loop-action-0').textContent`),'FINISH');
+            await exactlyOne(()=>click(near?'#loop-action-0':'#postbirth-mult-MULT'),'Trusted input MULT/main FINISH');
+            const after=await wait(s=>s.tracks[0].length>before.tracks[0].length&&['playing','queued'].includes(s.tracks[0].state),'Input append commits');
+            assert.equal(after.tracks[0].undoCount,Math.min(5,before.tracks[0].undoCount+1));assert.notEqual(after.tracks[0].waveformId,before.tracks[0].waveformId);
+            if(after.frame<grid)assert.equal(after.outputPeak,0,'Committed append retains pre-grid silence');
+            await exactlyOne(()=>click('#postbirth-mult-UNDO'),'Input MULT Undo pointer');await wait(s=>s.tracks[0].waveformId===before.tracks[0].waveformId&&s.tracks[0].length===before.tracks[0].length,'Input Undo restores original identity/length');
+            await exactlyOne(()=>click('#postbirth-mult-REDO'),'Input MULT Redo pointer');await wait(s=>s.tracks[0].waveformId===after.tracks[0].waveformId&&s.tracks[0].length===after.tracks[0].length,'Input Redo restores appended identity/length');
+            await wait(s=>s.frame>=grid&&s.outputPeak>.02,'Input MULT result audible at retained grid');await click('#native-stop-all');await state('stopped');
+        }
         assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);
-        console.log('PASS: actual no-input constructed-source MULT/UNDO/REDO pointers, history/doubled length, original grid silence/audible PCM, reverse and controlled bus lifetime at '+process.argv[2]);ws.close();return;
+        console.log('PASS: actual input/no-input constructed-source MULT/UNDO/REDO pointers, capture across grid, main FINISH and append/history, original grid silence/audible PCM, reverse and controlled bus lifetime at '+process.argv[2]);ws.close();return;
     }
     if(process.argv.includes('--queued-multiply-only')){
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
