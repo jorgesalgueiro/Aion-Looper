@@ -78,11 +78,18 @@ void historyTests(){
   for(const auto& c:{LoopCommand{A::play,0,7,generation,frame+32,0},LoopCommand{A::undo,0,8,generation,frame+301,0},LoopCommand{A::redo,0,9,generation,frame+617,0},LoopCommand{A::reverse,0,10,generation,frame+1001,1},LoopCommand{A::undoGlobal,0,11,generation,frame+1201,0},LoopCommand{A::redoGlobal,0,12,generation,frame+1701,0}})check(engine.enqueueLoop(c),"timestamped history command");
  };
  ready(*e64);ready(*e128);
+ const auto setup64=e64->clock(),setup128=e128->clock();
  std::vector<float> l64(2048),r64(2048),l128(2048),r128(2048);EngineView v64{},v128{};
  watch=true;
  for(unsigned offset=0;offset<2048;offset+=64){float* channels[]={l64.data()+offset,r64.data()+offset};e64->process(channels,2,64);while(e64->popView(v64)){};}
  for(unsigned offset=0;offset<2048;offset+=128){float* channels[]={l128.data()+offset,r128.data()+offset};e128->process(channels,2,128);while(e128->popView(v128)){};}
  watch=false;
+ if(l64!=l128||r64!=r128){
+  double maximum=0;unsigned first=2048;
+  for(unsigned i=0;i<2048;++i){if((l64[i]!=l128[i]||r64[i]!=r128[i])&&first==2048)first=i;
+   maximum=std::max(maximum,std::max(std::abs(double(l64[i])-l128[i]),std::abs(double(r64[i])-r128[i])));}
+  std::cerr<<"History setup clocks "<<setup64<<" / "<<setup128<<", first unequal frame "<<first<<", max error "<<maximum<<'\n';
+ }
  check(l64==l128&&r64==r128,"Undo/Redo exact 64/128 playback and transition invariance");
  check(v64.lastRequestId==12&&!v64.rejected&&v64.tracks[0].undoCount==1&&v64.tracks[0].redoCount==0&&v64.nextUndo==0&&v128.lastRequestId==12,"history commands acknowledged at both block sizes");
  check(allocations.load()==0,"Undo/Redo/history transfer must never allocate/free in callback");
