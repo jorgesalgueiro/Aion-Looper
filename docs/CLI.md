@@ -185,4 +185,3 @@ completion. Fewer than 128 captured samples leave the old PCM/history unchanged.
 Undo/Redo restores the corresponding stored clip. The original MULT/main FINISH
 buttons and CLI use this same processor path; no input flag is required from the
 client. This extension is in cross-platform acceptance; see MIGRATION_CURRENT.md.
-

@@ -465,7 +465,8 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if((s==LoopState::playing||sourceDouble||queuedCapture)&&(std::abs(t.info.playbackRate-1)>0.01f||(!sourceDouble&&t.rateRemaining)))return false;
             if((s==LoopState::playing||queuedCapture)&&value==1){
                 if(!freeCount||growthRoom(t)<128)return false;
-                if(!queuedCapture)invalidatePhase(t);t.multiplyCaptureSource=queuedCapture;
+                if(!queuedCapture)invalidatePhase(t);
+                t.multiplyCaptureSource=queuedCapture;
                 t.captureLength=t.captureOffset=0;t.info.finalizationFailed=false;s=LoopState::multiplying;poolFull=false;return true;
             }
             if(t.clip->length>growthRoom(t))return false;
