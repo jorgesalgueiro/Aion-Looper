@@ -567,13 +567,13 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             t.info.reverse=value!=0;return true; // Apply on the next play/retrigger.
         case LoopAction::solo:soloTrack=soloTrack==static_cast<int>(id)?-1:static_cast<int>(id);return true;
         case LoopAction::normalize:
-            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&s!=LoopState::queued)||hasCapture())return false;
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&s!=LoopState::queued&&s!=LoopState::stopping)||hasCapture())return false;
             job.blockCount=0;job.length=t.clip->length;job.offset=0;job.track=id;job.revision=t.revision;
             job.base=t.clip;job.baseLength=t.info.length;job.edit=true;job.normalize=true;job.multiply=job.doubling=false;
             job.merge=false;
             job.base->leases.fetch_add(1,std::memory_order_relaxed);
-            t.queuedStoredEdit=s==LoopState::queued;
-            t.finalPlay=s==LoopState::playing||t.queuedStoredEdit;t.playWhileFinalizing=s==LoopState::playing;t.info.finalizationFailed=false;
+            t.queuedStoredEdit=s==LoopState::queued||s==LoopState::stopping;
+            t.finalPlay=s==LoopState::playing||t.queuedStoredEdit;t.playWhileFinalizing=s==LoopState::playing||s==LoopState::stopping;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         case LoopAction::retrigger: {
             const bool prepared=hasPreparedQueuedSource(t);

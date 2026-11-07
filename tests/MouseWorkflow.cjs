@@ -53,6 +53,39 @@ let socket;
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
     await wait(s=>s.audioReady&&s.inputAvailable&&s.inputPeak>0.1,'Synthetic native input active');
     await evaluate(`window.mouseErrors=[];window.addEventListener('error',e=>window.mouseErrors.push(e.message));document.documentElement.style.scrollBehavior='auto'`);
+    if(process.argv.includes('--stopping-norm-only')){
+        await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+        await wait(s=>s.masterGain===1,'Stopping NORM audible master');
+        await mode('off');await click('#loop-action-0');await state('recording');await delay(350);await click('#loop-action-0');await state('playing');
+        await click('#native-stop-all');await state('stopped');
+        await evaluate(`(()=>{const e=[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()==='NORM');e.id='stopping-norm-test';})()`);
+        const rendered=async(selector,text)=>{let ready=false;for(let n=0;n<180;++n){ready=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});return e&&!e.disabled&&(${JSON.stringify(text)}===null||e.textContent===${JSON.stringify(text)});})()`);if(ready)return;await delay(40);}assert.fail('Control not rendered/enabled: '+selector);};
+        for(const reverse of [false,true]){
+            await mode('off');if(await evaluate(`document.getElementById('loop-0-reverse').checked`)!==reverse)await click('#loop-0-reverse');
+            await rendered('#loop-action-0','PLAY');await click('#loop-action-0');await state('playing');
+            await parameter('#numBars',64);await parameter('#timeSigNum',1);await parameter('#bpmInput',120);await mode('static');
+            await rendered('#loop-action-0','STOP');await click('#loop-action-0');const before=await state('stopping');assert(before.tracks[0].scheduledFrame>before.frame);
+            for(let n=0;n<2;++n){
+                await rendered('#stopping-norm-test',null);await exactlyOne(()=>click('#stopping-norm-test'),'Trusted stopping NORM pointer');
+                const after=await wait(s=>s.tracks[0].state==='stopping'&&s.tracks[0].waveformId!==before.tracks[0].waveformId,'NORM returns to original scheduled STOP');
+                for(const key of ['length','scheduledFrame','undoCount','redoCount','reverse'])assert.equal(after.tracks[0][key],before.tracks[0][key],'Stopping NORM preserves '+key);
+                await wait(s=>s.outputPeak>.02,'Stopping NORM keeps actual playback audible');
+            }
+            await click('#native-stop-all');await state('stopped');
+            // Independently exercise the real audio STOP deadline after a GUI edit.
+            await mode('off');await parameter('#numBars',1);await parameter('#bpmInput',30);
+            await rendered('#loop-action-0','PLAY');await click('#loop-action-0');await state('playing');await mode('static');
+            await wait(s=>s.gridPosition>.05&&s.gridPosition<.15,'Early two-second STOP grid',12000);
+            await rendered('#loop-action-0','STOP');await click('#loop-action-0');const deadline=await state('stopping');
+            await rendered('#stopping-norm-test',null);await exactlyOne(()=>click('#stopping-norm-test'),'NORM before natural STOP');
+            const committed=await wait(s=>s.tracks[0].waveformId!==deadline.tracks[0].waveformId,'Stopping NORM committed before/at STOP');
+            const stopped=await state('stopped');assert.equal(stopped.tracks[0].waveformId,committed.tracks[0].waveformId);assert.equal(stopped.tracks[0].scheduledFrame,0);
+            await wait(s=>s.outputPeak===0&&s.frame>=deadline.tracks[0].scheduledFrame,'Original scheduled STOP silences actual PCM');
+        }
+        assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);
+        console.log('PASS: original NORM trusted pointers during forward/reversed scheduled STOP, repeated no-history edits, retained deadline/PCM and natural stop at '+process.argv[2]);ws.close();return;
+    }
+
     if(process.argv.includes('--queued-norm-only')){
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
         await wait(s=>s.masterGain===1,'Queued NORM audible master');

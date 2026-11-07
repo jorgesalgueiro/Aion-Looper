@@ -44,6 +44,7 @@ void meterQueuedTests();
 void meterOverlapTests();
 void normPendingTests();
 void queuedNormTests();
+void stoppingNormTests();
 void prebirthNormTests();
 void queuedHistoryTests();
 void postbirthHistoryTests();
@@ -104,6 +105,7 @@ int main(int argc,char** argv) {
     if(argc==2&&std::string_view(argv[1])=="--postbirth-history"){postbirthHistoryTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--queued-history"){queuedHistoryTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--prebirth-norm"){prebirthNormTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--stopping-norm"){stoppingNormTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--queued-norm"){queuedNormTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--norm-pending"){normPendingTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--start-phase"){startPhaseTests();return 0;}

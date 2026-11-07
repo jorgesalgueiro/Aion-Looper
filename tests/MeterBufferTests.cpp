@@ -1029,6 +1029,56 @@ void queuedTripleCapacityTests(){
     check(allocations.load()==0,"Atomic three-slot reservation performs no callback new/delete");
     std::cout<<"PASS: three-slot atomic rejection with 126 occupied slots, two-slot cross-track admission, panic/clear release and recovery at tracks 0/19, 64/128; no callback new/delete\n";
 }
+void stoppingNormTests(){
+    using namespace aion;unsigned cases=0;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool unity,bool phase=false){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();f.record(id);
+        f.command(LoopAction::overdub,id);f.cycle();f.command(LoopAction::finish,id);f.cycle(true);
+        if(unity){f.command(LoopAction::normalize,id);f.cycle(true);}
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Stopping NORM source direction");
+        f.command(LoopAction::play,id);f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+        if(phase)f.command(LoopAction::applyStart,id);
+        f.command(LoopAction::stop,id);f.cycle();check(f.view->tracks[id].state==LoopState::stopping&&f.view->tracks[id].undoCount==1,"NORM fixture has real STOP deadline and existing history");
+    };
+    const auto held=[](){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
+        check(heldWorkerAllocations.load()>=2,"Stopping NORM worker allocation held outside processing");};
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool unity:{false,true})for(bool delayed:{false,true})for(bool phase:{false,true}){
+        Fixture f(block);setup(f,id,reverse,unity,phase);const auto before=f.view->tracks[id];
+        if(delayed){heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);}
+        f.command(LoopAction::normalize,id);f.cycle(!delayed);
+        if(delayed){held();check(!f.view->rejected&&f.view->tracks[id].state==LoopState::finalizing,"Stopping NORM enters bounded worker path");
+            while(f.engine->clock()<before.scheduledFrame+512)f.cycle();
+            check(!f.view->tracks[id].scheduledFrame&&!f.view->tracks[id].phaseApplyFrame,"STOP and earlier phase deadlines resolve while NORM is pending");
+            holdWorkerAllocation.store(false);f.cycle(true);
+        }else{check(!f.view->rejected&&f.view->tracks[id].state==LoopState::stopping&&f.view->tracks[id].scheduledFrame==before.scheduledFrame,"NORM retains exact stopping state and deadline");
+            while(f.engine->clock()<before.scheduledFrame+512)f.cycle();}
+        const auto after=f.view->tracks[id];check(after.state==LoopState::stopped&&!after.scheduledFrame&&!after.finalizationFailed
+            &&after.waveformId!=before.waveformId&&after.length==before.length&&after.undoCount==before.undoCount&&after.redoCount==before.redoCount,"Changed/no-op NORM commits without new history or post-STOP revival");
+        f.command(LoopAction::undoGlobal,id);f.cycle();check(f.view->tracks[id].state==LoopState::stopped&&f.view->tracks[id].redoCount==1,"NORM preserves preexisting global history after STOP");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);setup(f,id,reverse,false);const auto before=f.view->tracks[id];failWorkerAllocation.store(true);
+        check(f.engine->enqueueLoop({LoopAction::normalize,id,++f.request,f.engine->generation(),0,0}),"Stopping NORM OOM observed engine only");f.cycle(true);
+        check(!failWorkerAllocation.load()&&f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId
+            &&f.view->tracks[id].state==LoopState::stopping&&f.view->tracks[id].scheduledFrame==before.scheduledFrame&&f.view->tracks[id].undoCount==before.undoCount,"NORM OOM preserves original PCM/history/STOP");
+        while(f.engine->clock()<before.scheduledFrame+512)f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned cancel=0;cancel<6;++cancel){
+        Fixture f(block);setup(f,id,reverse,false);heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);f.command(LoopAction::normalize,id);f.cycle();held();
+        if(cancel<4){f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:cancel==2?LoopAction::clear:LoopAction::clearAll,id);f.cycle();}
+        holdWorkerAllocation.store(false);
+        if(cancel==4)f.prepare();else if(cancel==5)for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}else f.cycle(true);
+        for(unsigned n=0;n<400;++n)f.cycle();
+        check(f.view->tracks[id].state==((cancel==2||cancel==3||cancel==5)?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].scheduledFrame,"Stopping NORM cancel/prepare never revives playback");++cases;
+    }
+    check(allocations.load()==0,"Stopping NORM zero callback new/delete");
+    std::cout<<"PASS: stopping NORM "<<cases<<" Engine 64/128, forward/reverse changed/no-op, exact STOP/phase deadlines, preserved history, OOM/clear/prepare and zero callback new/delete\n";
+}
+
 void queuedNormTests(){
     using namespace aion;
     const auto setup=[](Fixture& f,unsigned id,bool reverse,bool unity){
@@ -2328,7 +2378,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

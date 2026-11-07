@@ -15,6 +15,32 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### Active acceptance: NORM during scheduled STOP — 7 November 2026
+
+Small slice: original `Loop.normalize` is enabled whenever stored PCM exists,
+including a loop after `Loop.scheduleStop`. Native previously rejected/disabled
+that state. Extend existing NORM admission and the shared stored-edit lifetime;
+retain the exact STOP/phase deadlines and audible source, forward shared PCM vs
+reversed snapshot behavior, no new local/global history, and worker OOM/clear/
+prepare safety. GUI uses original NORM; CLI uses existing `loop normalize TRACK`.
+No IDs/schema/DSP kernel/reference/preserved assets or dependencies change.
+
+Acceptance so far: Windows **120** Engine 64/128 cases PASS for changed/repeated
+NORM, tracks 0/19, reverse, phase events, worker held past STOP, existing global
+history, exact paired stereo OOM and cancellation/prepare; no callback new/delete.
+The reused unchanged-JS source/deadline oracle adds `--normalize` without changing
+old MERGE cases: **48 PASS**, **96 exact stereo WAV exports**, **2,271,888 frames**,
+max error **1.14235381e-7**, unchanged **1e-6** limit. It covers mono/stereo,
+8/48/96kHz, 17/512-frame clips, forward/reverse and repeated/no-op normalization.
+Node IO stubs exclude browser gain/STOP envelopes, resampling and advancing-worker
+sound. Initial rejection is retained in `build/stopping-norm-repro-windows.log`.
+
+Before accepting: finish production suites, actual Windows NORM pointers at
+64/128, retained NORM/MERGE/reference/frontend checks and Linux build/audio/
+ASan/UBSan acceptance; measure scoped warmed callback cost. Do not start the next
+slice until these pass. Reuse prior platform/device limits and keep the earlier
+missing-button/CLI-timeout observations visible. No package or push.
+
 ### Implemented preview: scheduled-stop MERGE — 7 November 2026
 
 Small slice: unchanged original `mergeLoops` admits a stored source and/or
