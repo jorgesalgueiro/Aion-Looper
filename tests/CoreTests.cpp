@@ -46,6 +46,7 @@ void normPendingTests();
 void queuedNormTests();
 void stoppingNormTests();
 void stoppingHistoryTests();
+void stoppingMultiplyTests();
 void prebirthNormTests();
 void queuedHistoryTests();
 void postbirthHistoryTests();
@@ -107,6 +108,7 @@ int main(int argc,char** argv) {
     if(argc==2&&std::string_view(argv[1])=="--queued-history"){queuedHistoryTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--prebirth-norm"){prebirthNormTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--stopping-history"){stoppingHistoryTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--stopping-multiply"){stoppingMultiplyTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--stopping-norm"){stoppingNormTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--queued-norm"){queuedNormTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--norm-pending"){normPendingTests();return 0;}

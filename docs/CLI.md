@@ -186,6 +186,17 @@ prior stops; the original grid still gates audible output. Global
 history does not start playback. Pending-stop queued history remains unavailable.
 Storage/event/overlap-capacity rejection leaves PCM, history and sources unchanged.
 
+## Multiply during scheduled STOP
+
+`loop multiply TRACK` doubles stored PCM while the loop awaits scheduled STOP,
+even with input available. It adds one local Undo entry; the sounding source,
+its old length/rate and any earlier Start event keep their original STOP deadline.
+The playhead uses the new stored duration, as in the original interface. The
+MULT button and keyboard use the same processor command. Undo/Redo and NORM may
+then edit storage without restarting that source. A delayed worker can commit
+after STOP but cannot revive playback; allocation/capacity failure preserves
+the previous PCM/history. This does not enable pending-stop queued MULT.
+
 ## Queued Multiply
 
 `loop multiply TRACK` also doubles a queued loop before its source callback has

@@ -1029,6 +1029,66 @@ void queuedTripleCapacityTests(){
     check(allocations.load()==0,"Atomic three-slot reservation performs no callback new/delete");
     std::cout<<"PASS: three-slot atomic rejection with 126 occupied slots, two-slot cross-track admission, panic/clear release and recovery at tracks 0/19, 64/128; no callback new/delete\n";
 }
+void stoppingMultiplyTests(){
+    using namespace aion;unsigned cases=0;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool pending=false,unsigned capacity=81920){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(48000,capacity,{true,48000,0});e->setMonitoring(false);e->setTarget(1);}
+        f.command(LoopAction::record,id);for(unsigned n=0;n<(capacity==8192?4096u:512u)/f.block;++n)f.cycle();f.command(LoopAction::finish,id);f.cycle(true);
+        f.command(LoopAction::stopImmediate,id);f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Stopping MULT source direction");
+        f.command(LoopAction::play,id);f.cycle();for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+        if(pending)f.command(LoopAction::applyStart,id);f.command(LoopAction::stop,id);f.cycle();
+        check(f.view->tracks[id].state==LoopState::stopping,"MULT fixture owns scheduled STOP");
+    };
+    const auto held=[](){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(!heldWorkerAllocations.load()&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
+        check(heldWorkerAllocations.load()>0,"Stopping MULT worker held outside processing");};
+    // The control engine never edits storage. Compare every stereo sample through
+    // STOP, including an older future Apply and a worker finishing after STOP.
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool pending:{false,true})for(bool delayed:{false,true})for(bool input:{false,true}){
+        Fixture f(block);setup(f,id,reverse,pending);const auto before=f.view->tracks[id];
+        if(delayed){heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);}
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,input?1.:0.}),"Observed stopping MULT");f.cycle(!delayed);
+        if(delayed){held();check(!f.view->rejected&&f.view->tracks[id].state==LoopState::finalizing,"Stopping MULT uses bounded worker, never capture");
+            while(f.engine->clock()<before.scheduledFrame+512)f.cycle();holdWorkerAllocation.store(false);f.cycle(true);
+        }else{
+            const auto now=f.view->tracks[id];check(!f.view->rejected&&now.state==LoopState::stopping&&now.scheduledFrame==before.scheduledFrame&&now.stutterClock,"MULT preserves STOP and visual duration clock");
+            check(now.phaseApplyFrame==(before.phaseApplyFrame>f.engine->clock()?before.phaseApplyFrame:0),"MULT retains pending phase, schedules no restart");
+            for(bool redo:{false,true}){check(f.engine->enqueueLoop({redo?LoopAction::redo:LoopAction::undo,id,++f.request,f.engine->generation(),0,0}),"Stopping MULT local history");f.cycle();}
+            while(f.engine->clock()<before.scheduledFrame+512)f.cycle();
+        }
+        const auto after=f.view->tracks[id];check(after.state==LoopState::stopped&&!after.scheduledFrame&&!after.stutterClock&&!after.finalizationFailed
+            &&after.length==2*before.length&&after.waveformId!=before.waveformId&&after.undoCount==1&&!after.redoCount,"Stopping MULT doubles stored PCM, one local history entry, no STOP revival");
+        f.command(LoopAction::clear,id);for(unsigned n=0;n<16;++n)f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);setup(f,id,reverse,true);const auto before=f.view->tracks[id];failWorkerAllocation.store(true);
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,1}),"Stopping MULT OOM observed only");f.cycle(true);
+        check(!failWorkerAllocation.load()&&f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId&&!f.view->tracks[id].undoCount
+            &&f.view->tracks[id].state==LoopState::stopping&&f.view->tracks[id].scheduledFrame==before.scheduledFrame,"OOM preserves original PCM/history/STOP atomically");
+        while(f.engine->clock()<before.scheduledFrame+512)f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<6;++cancel){
+        Fixture f(block);setup(f,id,true,true);heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,0}),"Stopping MULT before cancellation");f.cycle();held();
+        if(cancel<4){f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:cancel==2?LoopAction::clear:LoopAction::clearAll,id);f.cycle();}
+        holdWorkerAllocation.store(false);
+        if(cancel==4)f.prepare();else if(cancel==5)for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}else f.cycle(true);
+        for(unsigned n=0;n<400;++n)f.cycle();check(f.view->tracks[id].state==((cancel==2||cancel==3||cancel==5)?LoopState::empty:LoopState::stopped)
+            &&!f.view->tracks[id].scheduledFrame&&!f.view->tracks[id].phaseApplyFrame&&!f.view->tracks[id].stutterClock,"Stopping MULT cancellation/prepare cannot revive owned audio");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block);setup(f,id,false,false,8192);for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({});
+        for(unsigned other=0;other<LoopBank::trackCount;++other)if(other!=id&&f.view->freeFrames){f.record(other);f.command(LoopAction::stopImmediate,other);f.cycle();}
+        const auto before=f.view->tracks[id];check(!f.view->freeFrames,"Stopping MULT fills growth pool");
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,0}),"Full-pool stopping MULT");f.cycle();
+        check(f.view->rejected&&f.view->tracks[id].waveformId==before.waveformId&&!f.view->tracks[id].undoCount&&f.view->tracks[id].scheduledFrame==before.scheduledFrame,"Growth rejection preserves PCM/history/STOP");++cases;
+    }
+    check(allocations.load()==0,"Stopping MULT zero callback new/delete");std::cout<<"PASS: stopping MULT "<<cases<<" Engine 64/128 exact retained-source stereo, STOP/phase, input/no-input, worker delay/OOM/cancel/prepare/full pool and zero callback new/delete\n";
+}
+
 void stoppingHistoryTests(){
     using namespace aion;unsigned cases=0;
     const auto setup=[](Fixture& f,unsigned id,bool reverse,bool lengthChange,bool pending=false,unsigned capacity=81920){
@@ -2424,7 +2484,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();stoppingHistoryTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();stoppingHistoryTests();stoppingMultiplyTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

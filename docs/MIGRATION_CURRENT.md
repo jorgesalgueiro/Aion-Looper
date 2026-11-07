@@ -15,6 +15,38 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### Active acceptance: MULT during scheduled STOP — 7 November 2026
+
+Small slice: unchanged `Loop.multiply/multiplyInstant` doubles stored PCM during
+scheduled STOP, even with input available, without restarting that graph or
+changing its old buffer/rate/STOP deadline. One local history entry, original
+visual progress on the doubled duration, older Start sources, Undo/Redo and NORM
+must remain correct. Worker failure/capacity rejection preserves old PCM/history;
+completion after STOP and DEL/panic/prepare must never revive playback.
+
+Native admission, original MULT control/shared GUI/CLI dispatch and worker
+ownership now implement this case. Reuse bounded source/history leases, the
+existing stored-edit deadline flag and history visual clock. No public IDs/state
+schema, DSP kernel, dependencies, reference/preserved UI or logo changes.
+`loop multiply TRACK` already uses this same processor; pending-stop queued MULT
+and RTRG eligibility remain separate gaps.
+
+Initial unchanged-JS rejection: `build/stopping-multiply-repro-windows.log`.
+Windows new source comparison **96 PASS**, **360 exact stereo WAVs**,
+**4,543,776 frames**, peak error **6.26096477e-8** (unchanged **1e-6**);
+progress <=**1e-12**. New actual Engine **100 PASS**, tracks 0/19, 64/128,
+forward/reverse, input/no-input, pending Apply, delayed worker through STOP,
+local Undo/Redo, OOM/cancellation/prepare/full pool, exact stereo against an
+unedited sounding source, zero callback new/delete. Frontend admission PASS.
+Remaining acceptance in progress: retained regressions, real Windows pointers,
+Linux regression/sanitizers and Standalone production/CLI checks. Do not advance
+to another feature or package while these are pending.
+
+Source comparison extends `QueuedMergeSources.cjs --multiply` using unchanged
+reference methods and node IO stubs/raw PCM; browser gain/STOP envelopes,
+resampling, advancing worker sound and pre-start future-source visual suppression
+are excluded. Engine delayed-worker checks separately cover real STOP/ownership.
+
 ### Implemented preview: Undo/Redo during scheduled STOP — 7 November 2026
 
 Original `Loop.undo/redo` changes stored PCM/history without restarting a stopping

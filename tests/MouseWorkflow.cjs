@@ -53,6 +53,30 @@ let socket;
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
     await wait(s=>s.audioReady&&s.inputAvailable&&s.inputPeak>0.1,'Synthetic native input active');
     await evaluate(`window.mouseErrors=[];window.addEventListener('error',e=>window.mouseErrors.push(e.message));document.documentElement.style.scrollBehavior='auto'`);
+    if(process.argv.includes('--stopping-multiply-only')){
+        await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+        await wait(s=>s.masterGain===1,'Stopping MULT audible master');await mode('off');
+        await click('#loop-action-0');await state('recording');await delay(350);await click('#loop-action-0');await state('playing');await click('#native-stop-all');await state('stopped');
+        await evaluate(`(()=>{for(const text of ['UNDO','REDO','MULT','NORM'])[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()===text).id='stopping-mult-'+text;})()`);
+        const rendered=async selector=>{for(let n=0;n<180;++n){if(await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});return e&&!e.disabled;})()`))return;await delay(40);}assert.fail('MULT control not rendered/enabled: '+selector);};
+        for(const reverse of [false,true]){
+            await mode('off');if(await evaluate(`document.getElementById('loop-0-reverse').checked`)!==reverse)await click('#loop-0-reverse');
+            await click('#loop-action-0');await state('playing');await parameter('#numBars',64);await parameter('#timeSigNum',1);await parameter('#bpmInput',120);await mode('static');
+            await click('#loop-action-0');const before=await state('stopping');await rendered('#stopping-mult-MULT');await exactlyOne(()=>click('#stopping-mult-MULT'),'Trusted stopping MULT');
+            const doubled=await wait(s=>s.tracks[0].state==='stopping'&&s.tracks[0].length===before.tracks[0].length*2,'Stopping MULT doubles without input capture');
+            assert.equal(doubled.tracks[0].scheduledFrame,before.tracks[0].scheduledFrame);assert.equal(doubled.tracks[0].undoCount,before.tracks[0].undoCount+1);assert(doubled.tracks[0].stutterClock);assert.equal(doubled.tracks[0].sourceRevision,before.tracks[0].sourceRevision);
+            await wait(s=>s.outputPeak>.02,'Stopping MULT retains audible PCM');
+            await rendered('#stopping-mult-UNDO');await exactlyOne(()=>click('#stopping-mult-UNDO'),'Undo stopping MULT');await wait(s=>s.tracks[0].waveformId===before.tracks[0].waveformId,'MULT undo exact storage');
+            await rendered('#stopping-mult-REDO');await exactlyOne(()=>click('#stopping-mult-REDO'),'Redo stopping MULT');await wait(s=>s.tracks[0].waveformId===doubled.tracks[0].waveformId,'MULT redo exact storage');
+            await rendered('#stopping-mult-NORM');await exactlyOne(()=>click('#stopping-mult-NORM'),'Normalize doubled stopping storage');await wait(s=>s.tracks[0].state==='stopping'&&s.tracks[0].waveformId!==doubled.tracks[0].waveformId,'NORM commits after stopping MULT');
+            assert.equal((await snapshot()).tracks[0].scheduledFrame,before.tracks[0].scheduledFrame);await click('#native-stop-all');await state('stopped');
+        }
+        await mode('off');await parameter('#numBars',1);await parameter('#bpmInput',30);await click('#loop-action-0');await state('playing');await mode('static');
+        await wait(s=>s.gridPosition>.05&&s.gridPosition<.15,'Early natural MULT STOP grid',12000);await click('#loop-action-0');const deadline=await state('stopping');
+        await rendered('#stopping-mult-MULT');await exactlyOne(()=>click('#stopping-mult-MULT'),'MULT before natural STOP');await wait(s=>s.tracks[0].length===deadline.tracks[0].length*2,'Natural STOP doubled storage');
+        const stopped=await state('stopped');assert.equal(stopped.tracks[0].scheduledFrame,0);assert(!stopped.tracks[0].stutterClock);await wait(s=>s.frame>=deadline.tracks[0].scheduledFrame&&s.outputPeak===0,'Original STOP silences retained MULT source');
+        assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);console.log('PASS: original MULT/Undo/Redo/NORM pointers during scheduled STOP, waveform/length/history/source/clock/deadline and natural PCM silence at '+process.argv[2]);ws.close();return;
+    }
     if(process.argv.includes('--stopping-history-only')){
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
         await wait(s=>s.masterGain===1,'Stopping history audible master');await mode('off');

@@ -220,7 +220,7 @@ private:
         Clip* forwardHold = nullptr; // Forward source buffer retained across a stored-buffer history swap.
         std::uint64_t storageVersion=1,forwardVersion=0; // Logical buffer identity; history clones can reuse immutable PCM.
         bool activeReverse = false;
-        bool historyClock = false; // Stopping history changes visual duration without replacing its source.
+        bool historyClock = false; // Stopping history/MULT change visual duration without replacing the source.
         bool queuedSourcePending = false; // Audio-owned source admission, independent of raw meter resets.
         double queuedSourcePhase=0,queuedStartFraction=0; // Fractional source time retained across inaudible rate edits.
         bool queuedSourceReverse=false; // Source controls captured at early graph birth, not at its grid.
@@ -228,7 +228,7 @@ private:
         std::uint64_t revision = 0, clearEpoch = 0, sourceRevision = 0;
         std::uint32_t captureLength = 0, captureOffset = 0;
         bool finalPlay = false, playWhileFinalizing = false;
-        bool queuedStoredEdit = false; // NORM/MERGE preserve an in-place edit's queued grid while the worker runs.
+        bool queuedStoredEdit = false; // NORM/MERGE/stopping MULT preserve owned deadlines while the worker runs.
         bool multiplyQueued = false; // Pre-birth doubling preserves the original PLAY receipt/grid until commit.
         bool multiplySource = false; // MULT retains the constructed source until its 5ms replacement.
         bool multiplyCaptureSource = false; // Input capture begun on a constructed, future grid-gated source.
