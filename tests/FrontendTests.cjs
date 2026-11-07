@@ -1012,6 +1012,7 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
   const lines=source.split('\n').filter(l=>l.includes('r.undo.disabled=')||l.includes('r.redo.disabled='));assert.equal(lines.length,2);
   const r={undo:{},redo:{}};const ui={r,t,active:true};vm.createContext(ui);vm.runInContext(lines.join('\n'),ui);
   assert.equal(r.undo.disabled,!enabled);assert.equal(r.redo.disabled,!enabled);
+  const line=source.split('\n').find(l=>l.includes('const historyAvailable='));assert(line);const toolbar={snapshot:{tracks:[t]},available:false};vm.createContext(toolbar);vm.runInContext(line+'globalThis.available=historyAvailable(0);',toolbar);assert.equal(toolbar.available,['playing','stopped','stopping'].includes(state)||(state==='queued'&&!stopPending),'Global toolbar matches shared history state eligibility');
  }
  console.log('PASS: local/global history dispatch and original controls enabled before/after queued graph birth, excluding pending stops');
 }

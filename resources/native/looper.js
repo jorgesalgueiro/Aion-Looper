@@ -385,7 +385,7 @@
             if(document.activeElement!==metroVolume)metroVolume.value=snapshot.metronomeVolume??0.5;
             document.getElementById('metroVolDisplay').textContent=Number(snapshot.metronomeVolume??0.5).toFixed(2);
             stopAll.disabled=!active;clearAll.disabled=!active||busy;
-            const historyAvailable=id=>Number.isInteger(id)&&id>=0&&['playing','stopped'].includes(snapshot.tracks[id]?.state);
+            const historyAvailable=id=>Number.isInteger(id)&&id>=0&&(['playing','stopped','stopping'].includes(snapshot.tracks[id]?.state)||(snapshot.tracks[id]?.state==='queued'&&!snapshot.tracks[id].stopPending));
             globalUndo.disabled=!active||!historyAvailable(snapshot.nextUndo);
             globalRedo.disabled=!active||!historyAvailable(snapshot.nextRedo);
             globalUndo.textContent=snapshot.nextUndo>=0?`UNDO L${snapshot.nextUndo+1}`:'UNDO';
