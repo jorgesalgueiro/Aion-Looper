@@ -15,28 +15,108 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-### Active acceptance: Undo/Redo during scheduled STOP — 7 November 2026
+### Implemented preview: Undo/Redo during scheduled STOP — 7 November 2026
 
-Original `Loop.undo/redo` replaces stored PCM and history without restarting a
-stopping graph. Native formerly disabled/rejected that state. Admit local/global
-history through the same processor/CLI commands, pin immutable forward/reversed
-source PCM and older pending phase sources, retain the original STOP deadline,
-and use the restored duration for the independent visual clock. No new public
-IDs/schema, DSP kernel, reference/preserved UI, logo or dependencies.
+Original `Loop.undo/redo` changes stored PCM/history without restarting a stopping
+graph. Native local/global history now admits that state, retaining immutable
+forward/reversed sounding PCM, source length/rate and any older phase sources
+until the original STOP. Stored history/exports change immediately; next PLAY
+uses restored PCM. A private audio-owned visual-clock flag keeps the playhead on
+the restored duration through older phase events and clears on STOP/DEL/prepare
+or a replacement using current storage. Existing telemetry is reused; no new
+public IDs, schema, DSP kernel, reference/preserved UI, logo or dependencies.
 
-Initial rejection: `build/stopping-history-repro-windows.log`. The first 72
-unchanged-JS cases pass source/PCM/history/WAV/progress; extended pending-Apply
-comparison and 64/128 Engine/pointer acceptance are running. Capacity fixture
-corrections use manual capture and real 4096-frame block growth; a 512-to-1024
-edit still fits one storage block and is correctly admitted even when no other
-blocks are free. Do not weaken atomic rejection to conceal that distinction.
+Implementation **01d9642**; toolbar fix **873853d**. GUI local/global buttons and
+existing CLI `loop undo/redo TRACK`, `loop undoGlobal/redoGlobal` share one
+processor path. Actual mouse acceptance found an independent global-toolbar
+guard still disabling stopping (and previously supported queued) history. It now
+matches shared dispatch eligibility; no disabled-button bypass was used.
 
-Before accepting: Windows/Linux source/audio/reference regressions, actual local/
-global Windows pointers at 64/128, source/phase/STOP/history/cancellation/prepare/
-full-pool and no callback new/delete, production processor/CLI and relevant
-sanitizers. Record source-model/browser limitations and warmed timing separately.
-No package/push or next feature until this slice passes. Retain earlier unresolved
-missing-button and CLI-timeout observations below.
+| Acceptance | Executed evidence |
+| --- | --- |
+| Original JS stored/source/visual oracle | **96 PASS** each OS, **360 exact stereo WAV exports**, **4,543,776 frames** each, max PCM error **6.41240175e-8**, unchanged **1e-6** limit. Mono/stereo 8/48/96kHz, 17/512-frame original clips, doubled-length Undo/Redo/rapid/NORM/older Apply. Unchanged `getProgress` assertions <=**1e-12** |
+| Actual Engine, each OS | **88 PASS**, 64/128, tracks 0/19: local/global, same/changing length, forward/reverse, rapid history, original STOP/phase ownership, exact stereo against an unedited sounding source, clear/stop/prepare, full-pool atomic growth rejection, no callback new/delete |
+| Retained Engine, each OS | **64** queued history, **124** post-birth history, **120** stopping NORM and **88** stopping MERGE PASS |
+| Focused old post-birth source oracle, each OS | **48 PASS** near-grid `rapid-norm`, **192 sources**, **1,181,252 frames**, maximum **8.14015827e-8** (limit **1e-6**); remaining sequences reuse prior evidence |
+| Connected capture/OD/SUB audit, each OS | **126 PASS**, **965,826 frames**, maximum **7.39475750e-8**, unchanged **1e-6** limit |
+| Connected NORM/reverse/history/MULT/kernels; queued history, STUT; retained source fixture, assets/frontend/bridge/CLI admission | Windows **14/14 CTests PASS**, **176.96s**, new 96 history cases separately; Linux **15/15 PASS**, **368.16s**, including the new history gate |
+| Actual Windows pointer/PCM | PASS 64/128: local/global original buttons, length/waveform/history/visual-clock metadata, STOP deadline and natural silence; queued global toolbar before/after source construction, original grid silence and exact restored identity |
+| Standalone / full production processor+CLI | Build/full production processor+external CLI suite PASS each OS; Linux ran alone after reference/sanitizer acceptance ended |
+| Native Linux Debug ASan/UBSan/leaks | **88** stopping, **64** queued and **124** post-birth history PASS, no diagnostics |
+
+Reference rejection: `build/stopping-history-repro-windows.log`. Initial UI failure
+`build/stopping-history-ui-windows.log` exposed the global-toolbar defect; passing
+stopping and expanded queued-global reruns are `-ui-final-` and `-ui-accepted-`.
+The capacity fixture uses manual capture and real 4096-frame block growth: an
+initial 512-to-1024 edit correctly fits one allocated block despite no other free
+blocks. The corrected 4096-to-8192 fixture proves rejection without PCM/history/
+lease mutation. No assertion was relaxed or reference source modified.
+
+The source oracle uses actual original methods with node IO stubs/raw PCM; mono
+exports duplicate channels as in the native contract. Browser gain/STOP envelopes,
+resampling and advancing-worker sound are excluded. Pending-Apply progress checks
+begin after the original future source starts; its pre-start visual suppression
+and broader future-source transitions are outside this comparison. Actual mouse
+checks use the synthetic-PCM processor/editor host, not physical drivers/devices,
+Linux WebKit, OS dialogs, wrappers/DAWs or Apple. Full-bank/worst-case and
+long-session validation remain separate. This is preview acceptance, not release.
+Earlier unresolved missing-button/CLI-timeout observations remain visible below.
+No package or push.
+
+Windows logs: `build/stopping-history-{probe-build,native,core-build,core-final,final-native,front,queued-history,postbirth-history,stopping-norm,stopping-merge,postbirth-native,audio,ctest,production,ui-accepted}-windows.log`.
+Linux: `build/stopping-history-{build,stopping-history,queued-history,postbirth-history,stopping-norm,stopping-merge,postbirth-native,audio,ctest,production,sanitizer-build,sanitizer-stopping-history,sanitizer-queued-history,sanitizer-postbirth-history}-linux.log`.
+
+After all acceptance jobs finished, identical ignored warmed Engine harnesses
+ran Windows then Linux: 48kHz stereo, 512-frame capture plus OD and a doubled
+1024-frame sounding source, 512 warm callbacks, local/global, forward/reverse,
+with/without an older pending Apply; **16 scenarios per OS**, 64/128 samples.
+Measured callbacks cover Undo/Redo/rapid Undo, playback through STOP, stopped Redo
+and clear. Setup/offline waits and telemetry consumption are outside timing.
+Maximum observed per 64/128 callback: Windows **148.5us /243us**, Linux
+**108.9us /118.1us**; deadlines **1333.33us /2666.67us**. These small warmed
+observations do not establish full-bank/worst-case/long-session performance,
+physical round-trip latency, a platform ranking or a speedup.
+Harness `build/stopping-history-bench-src/{CMakeLists.txt,bench.cpp}`; bench.cpp
+SHA256 `091e04e8be4376a84b29e95e08980439ce4d289c4794b965992ff17ca56e0172`.
+Separate `build/stopping-history-bench-{windows,linux}` caches import their own
+current Release core; target `queued_bench`, logs
+`build/stopping-history-bench-{build-,}OS.log`.
+
+Focused commands (existing caches; CMake/CTest resolution and safe committed WSL
+sync as in DEVELOPMENT_WORKFLOW.md):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe aion_dsp_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --stopping-history
+node tests/QueuedMergeSources.cjs --history --native build/windows-core/Release/aion_start_probe.exe
+node tests/QueuedHistorySources.cjs --near-grid --only-sequence rapid-norm --native build/windows-core/Release/aion_start_probe.exe
+node tests/AudioParityAudit.cjs build/windows-core/Release/aion_reference_probe.exe
+cmake --build --preset windows-dev --target AionLooper_Standalone aion_mouse_host aion_midi_processor_tests --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -StoppingHistoryOnly
+```
+
+```sh
+# Local commit and clean SetupWslWorkspace.sh sync first.
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_dsp_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --stopping-history
+ctest --test-dir build/linux --no-tests=error --output-on-failure --parallel 2 -R '^(cli_finalization_admission|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_(stopping_history|normalization|reverse|history|multiply|dsp_kernels|queued_history|stutter|stopping_norm|merge_queued_destination|merge_stopping_destination))$'
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --stopping-history
+# Full processor/CLI suite alone after other heavy acceptance jobs finish.
+./build/linux/aion_midi_processor_tests
+```
+
+Retained core selectors: `--queued-history`, `--postbirth-history`,
+`--stopping-norm`, `--stopping-merge`; sanitizers also execute the first two.
+Linux also runs both Node commands above with its native probe paths. Windows
+CTest uses the same regex minus `stopping_history`, `-C Release` and its own cache;
+the new history corpus was already executed directly. No wrapper/version/dependency
+change or repeated full-core audit; previous baseline plus affected gates.
+
+**Next:** remaining MULT/RTRG pending-state eligibility and integrated core-button
+combinations before FX/SAVE/presets. Stopping history meets the documented preview
+slice gates above; do not infer full browser/driver or release acceptance.
 
 ### Implemented preview: NORM during scheduled STOP — 7 November 2026
 

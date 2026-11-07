@@ -162,6 +162,16 @@ history remain intact; a worker result arriving after STOP never restarts it.
 Forward sources observe normalized stored PCM; already constructed reversed
 sources retain their own snapshot until source replacement.
 
+## History during scheduled STOP
+
+`loop undo TRACK`, `loop redo TRACK`, `loop undoGlobal` and `loop redoGlobal`
+also accept loops awaiting scheduled STOP. Stored PCM/history change immediately;
+the already sounding source (including its old length/direction) and original
+stop deadline continue. A new play uses the restored buffer. The original local
+and global buttons share this processor behavior; global buttons also reflect
+already-supported queued history. Growth that cannot fit storage is rejected
+without changing PCM, history or source ownership.
+
 ## Queued history
 
 `loop undo TRACK` and `loop redo TRACK` now also work while PLAY is queued and

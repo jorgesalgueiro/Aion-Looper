@@ -77,6 +77,18 @@ let socket;
         await wait(s=>s.gridPosition>.05&&s.gridPosition<.15,'Early natural history STOP grid',12000);await click('#loop-action-0');const deadline=await state('stopping');
         await rendered('#stopping-history-UNDO');await exactlyOne(()=>click('#stopping-history-UNDO'),'History before natural STOP');const stopped=await state('stopped');assert.equal(stopped.tracks[0].scheduledFrame,0);assert(!stopped.tracks[0].stutterClock);assert.equal(stopped.tracks[0].length,deadline.tracks[0].length/2);
         await wait(s=>s.frame>=deadline.tracks[0].scheduledFrame&&s.outputPeak===0,'Original STOP silences actual history source');
+        await rendered('#btnGlobalRedo');await exactlyOne(()=>click('#btnGlobalRedo'),'Restore global history after natural STOP');await state('stopped');
+        await parameter('#numBars',64);await parameter('#bpmInput',120);
+        for(const constructed of [false,true]){
+            await mode('static');await click('#loop-action-0');await state('queued');
+            if(constructed)require('node:fs').writeFileSync(require('node:path').join(pcmDirectory,'early-source-start'),'1');
+            const queued=await wait(s=>s.tracks[0].state==='queued'&&s.tracks[0].queuedSourceReady===constructed,'Global queued history source readiness');
+            await rendered('#btnGlobalUndo');await exactlyOne(()=>click('#btnGlobalUndo'),'Trusted queued global Undo');
+            const undone=await wait(s=>s.tracks[0].length===queued.tracks[0].length/2,'Global queued Undo length');assert.equal(undone.outputPeak,0);if(!constructed)assert.equal(undone.tracks[0].scheduledFrame,queued.tracks[0].scheduledFrame);
+            await rendered('#btnGlobalRedo');await exactlyOne(()=>click('#btnGlobalRedo'),'Trusted queued global Redo');await wait(s=>s.tracks[0].waveformId===queued.tracks[0].waveformId,'Global queued Redo exact stored identity');
+            await click('#native-stop-all');await state('stopped');
+        }
+
         assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);console.log('PASS: original local/global Undo/Redo pointers while stopping, length/waveform/history/clock/deadline and natural STOP PCM at '+process.argv[2]);ws.close();return;
     }
 
