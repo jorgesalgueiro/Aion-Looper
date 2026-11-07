@@ -195,7 +195,14 @@ The playhead uses the new stored duration, as in the original interface. The
 MULT button and keyboard use the same processor command. Undo/Redo and NORM may
 then edit storage without restarting that source. A delayed worker can commit
 after STOP but cannot revive playback; allocation/capacity failure preserves
-the previous PCM/history. This does not enable pending-stop queued MULT.
+the previous PCM/history. The constructed queued-source case is described below.
+
+`loop multiply TRACK` also accepts a constructed PLAY source with STOP pending
+before its initial start. It retains both original start and STOP deadlines,
+stays silent until the start, doubles stored PCM/local history and does not
+capture input. The original MULT button uses the same command. If STOP resolves
+before a delayed worker, its result can commit storage but cannot start playback.
+Queued STOP history/RTRG retain their existing eligibility.
 
 ## Queued Multiply
 
@@ -205,8 +212,9 @@ PLAY receipt and grid; `loop undo TRACK` / `loop redo TRACK` use that same histo
 The native worker builds PCM outside audio processing. A graph callback arriving
 during doubling waits in one bounded audio-owner slot until completion, retaining
 its original identity. STOP/STOP ALL, DEL, cleanup or prepare still cancel playback.
-Allocation/capacity failure retains old PCM/history. After source construction, input/no-input behavior is described below. Pending-stop
-queued Multiply remains unavailable.
+Allocation/capacity failure retains old PCM/history. After source construction,
+input/no-input behavior is described below; an already pending STOP uses stored
+doubling as described above.
 
 ## Constructed-source Multiply without input
 
@@ -217,7 +225,7 @@ commits doubled storage/history only after reserving a replacement source for
 5ms after audio-owner completion. Playing no-input doubling uses the same timing.
 The GUI/keyboard and CLI share this implementation. OOM or event/overlap-capacity
 failure preserves old storage/history; inspect `finalizationFailed` in snapshot.
-Pending-stop queued Multiply remains guarded.
+An already pending STOP uses stored doubling as described above.
 
 ## Constructed-source Multiply with input
 

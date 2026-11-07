@@ -1029,6 +1029,65 @@ void queuedTripleCapacityTests(){
     check(allocations.load()==0,"Atomic three-slot reservation performs no callback new/delete");
     std::cout<<"PASS: three-slot atomic rejection with 126 occupied slots, two-slot cross-track admission, panic/clear release and recovery at tracks 0/19, 64/128; no callback new/delete\n";
 }
+void queuedStopMultiplyTests(){
+    using namespace aion;unsigned cases=0;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool later,bool pending=false,unsigned capacity=81920){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(48000,capacity,{true,48000,0});e->setMonitoring(false);e->setTarget(1);}
+        f.command(LoopAction::record,id);for(unsigned n=0;n<(capacity==8192?4096u:512u)/f.block;++n)f.cycle();f.command(LoopAction::finish,id);f.cycle(true);
+        f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();MeterGraphEvent discarded;while(f.engine->popMeterGraphEvent(discarded)){}
+        for(auto* e:{f.engine.get(),f.control.get()}){e->configureSync({SyncMode::fixed,137.3,1,1,4,false});check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Queued STOP source direction");}
+        f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);const auto grid=f.view->tracks[id].scheduledFrame;
+        for(auto* e:{f.engine.get(),f.control.get()}){LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,e->generation(),0,0};birth.meterGraphTicket=1;birth.meterQueueId=q.queueId;birth.meterBufferId=q.bufferId;check(e->enqueueLoop(birth),"Queued STOP explicit graph callback");}
+        f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+        if(later)while(f.engine->clock()+f.block<grid-960)f.cycle();
+        if(pending)f.command(LoopAction::applyStart,id);f.command(LoopAction::stop,id);f.cycle();(void)f.next(MeterGraphEventKind::scheduledStop,id);
+        check(f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].stopPending&&f.view->tracks[id].scheduledFrame==grid,"MULT fixture retains constructed queued graph and pending STOP");return grid;
+    };
+    const auto held=[](){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);while(!heldWorkerAllocations.load()&&std::chrono::steady_clock::now()<end)std::this_thread::yield();check(heldWorkerAllocations.load()>0,"Queued STOP MULT worker held off audio");};
+    // Only observed storage doubles; every rendered stereo sample must equal
+    // the unchanged source through both original grid and independent STOP.
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool later:{false,true})for(bool pending:{false,true})for(unsigned stage=0;stage<3;++stage){
+        Fixture f(block);const auto grid=setup(f,id,reverse,later,pending);const auto before=f.view->tracks[id];
+        if(stage){heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);}
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,stage%2?0.:1.}),"Observed queued STOP MULT");f.cycle(!stage);
+        if(stage){held();check(!f.view->rejected&&f.view->tracks[id].state==LoopState::finalizing,"Queued STOP MULT never captures input");
+            auto target=grid+512;if(stage==2&&later)target=grid+static_cast<std::uint64_t>(std::ceil(60./137.3*48000))+512;
+            while(f.engine->clock()<target){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Pending worker cannot open original graph gate");}
+            holdWorkerAllocation.store(false);f.cycle(true);
+        }else{check(!f.view->rejected&&f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].stopPending
+            &&f.view->tracks[id].scheduledFrame==grid&&!f.view->tracks[id].stutterClock,"Commit retains queued source/start/STOP and suppresses pre-start visual progress");}
+        const auto end=grid+static_cast<std::uint64_t>(std::ceil(60./137.3*48000))+1024;
+        while(f.engine->clock()<end){f.cycle();if(f.engine->clock()<=grid)check(f.view->outputPeak==0,"Doubled stored clip stays silent before original start");}
+        const auto after=f.view->tracks[id];check(after.state==LoopState::stopped&&!after.scheduledFrame&&!after.phaseApplyFrame&&!after.stutterClock&&!after.finalizationFailed
+            &&after.length==2*before.length&&after.waveformId!=before.waveformId&&after.undoCount==1&&!after.redoCount&&f.view->nextUndo==-1,"Queued STOP MULT doubles stored PCM/local history without source revival");
+        f.command(LoopAction::clear,id);for(unsigned n=0;n<16;++n)f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);const auto grid=setup(f,id,reverse,true,true);const auto before=f.view->tracks[id];failWorkerAllocation.store(true);
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,1}),"Queued STOP OOM on observed engine");f.cycle(true);
+        check(!failWorkerAllocation.load()&&f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId&&!f.view->tracks[id].undoCount
+            &&f.view->tracks[id].state==LoopState::queued&&f.view->tracks[id].stopPending&&f.view->tracks[id].scheduledFrame==grid,"OOM preserves queued source/PCM/history/deadlines");
+        while(f.engine->clock()<grid+48000)f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<6;++cancel){
+        Fixture f(block);setup(f,id,true,true,true);heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);
+        check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,1}),"Queued STOP MULT before cancel");f.cycle();held();
+        if(cancel<4){f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:cancel==2?LoopAction::clear:LoopAction::clearAll,id);f.cycle();}holdWorkerAllocation.store(false);
+        if(cancel==4)f.prepare();else if(cancel==5)for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}else f.cycle(true);
+        for(unsigned n=0;n<800;++n)f.cycle();check(f.view->tracks[id].state==((cancel==2||cancel==3||cancel==5)?LoopState::empty:LoopState::stopped)
+            &&!f.view->tracks[id].scheduledFrame&&!f.view->tracks[id].phaseApplyFrame&&!f.view->tracks[id].stutterClock,"Queued STOP cancellation/prepare retires all source ownership");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block);setup(f,id,false,false,false,8192);for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({});
+        for(unsigned other=0;other<LoopBank::trackCount;++other)if(other!=id&&f.view->freeFrames){f.record(other);f.command(LoopAction::stopImmediate,other);f.cycle();}
+        const auto before=f.view->tracks[id];check(!f.view->freeFrames,"Queued STOP MULT growth pool full");check(f.engine->enqueueLoop({LoopAction::multiply,id,++f.request,f.engine->generation(),0,0}),"Full-pool queued STOP MULT");f.cycle();
+        check(f.view->rejected&&f.view->tracks[id].waveformId==before.waveformId&&!f.view->tracks[id].undoCount&&f.view->tracks[id].scheduledFrame==before.scheduledFrame,"Capacity rejection preserves queued PCM/history/STOP");++cases;
+    }
+    check(allocations.load()==0,"Queued STOP MULT zero callback new/delete");std::cout<<"PASS: queued STOP MULT "<<cases<<" Engine 64/128, exact old-source stereo, same/next-grid STOP, Apply, delayed worker, OOM/cancel/prepare/full pool and zero callback new/delete\n";
+}
+
 void stoppingMultiplyTests(){
     using namespace aion;unsigned cases=0;
     const auto setup=[](Fixture& f,unsigned id,bool reverse,bool pending=false,unsigned capacity=81920){
@@ -2484,7 +2543,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();stoppingHistoryTests();stoppingMultiplyTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();stoppingHistoryTests();stoppingMultiplyTests();queuedStopMultiplyTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

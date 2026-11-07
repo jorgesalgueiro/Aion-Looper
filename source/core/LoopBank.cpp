@@ -178,9 +178,10 @@ void LoopBank::acceptResult() noexcept {
             // Like stopping Undo/Redo, original multiplyInstant replaces storage
             // without restarting the graph that still owns the STOP deadline.
             if(storedMultiply){
-                if(track.playWhileFinalizing)freezeHistorySources(track,job.track);
+                const bool retainedSource=track.playWhileFinalizing||hasPreparedQueuedSource(track,true);
+                if(retainedSource)freezeHistorySources(track,job.track);
                 ++track.storageVersion;
-                track.historyClock=track.playWhileFinalizing;
+                track.historyClock=retainedSource;
             }
             if(track.clip)residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
             if(job.normalize||(job.merge&&job.edit))for(auto& voice:retainedSources){
@@ -289,7 +290,7 @@ void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     // Activating an already constructed source at its grid must not cancel a
     // Start replacement scheduled while that source was still inaudible.
     if(!preparedQueue)invalidatePhase(track);
-    track.info.stuttering=track.info.stutterClock=false;track.historyClock=false;
+    track.info.stuttering=track.info.stutterClock=false;track.historyClock=preparedQueue&&track.historyClock;
     // An early graph already constructed its reversed AudioBuffer. NORM must
     // not replace that snapshot when the inaudible source reaches its grid.
     if(!preparedQueue){retire(track.reverseHold);track.reverseHold=nullptr;retire(track.forwardHold);track.forwardHold=nullptr;}
@@ -343,7 +344,7 @@ void LoopBank::saveUndo(Track& track,std::uint32_t id,bool global) noexcept {
 }
 void LoopBank::freezeHistorySources(Track& track,std::uint32_t id) noexcept {
     // Construction captures an AudioBuffer identity, independently of storage.
-    const bool reverse=hasPreparedQueuedSource(track)?track.queuedSourceReverse:track.activeReverse;
+    const bool reverse=hasPreparedQueuedSource(track,true)?track.queuedSourceReverse:track.activeReverse;
     auto*& held=reverse?track.reverseHold:track.forwardHold;
     if(!held){held=track.clip;held->leases.fetch_add(1,std::memory_order_relaxed);if(!reverse)track.forwardVersion=track.storageVersion;}
     for(unsigned at=phaseRead;at!=phaseWrite;at=(at+1)%phaseCapacity){auto& event=phaseEvents[at];
@@ -478,7 +479,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             const bool prebirth=s==LoopState::queued&&t.queuedSourcePending&&!t.queuedSourceTicket&&!t.info.stopPending;
             const bool queuedCapture=value==1&&(hasPreparedQueuedSource(t)||(s==LoopState::playing&&t.queuedGainAt>frame));
             const bool sourceDouble=value==0&&(hasPreparedQueuedSource(t)||s==LoopState::playing);
-            const bool stopping=s==LoopState::stopping;
+            const bool stopping=s==LoopState::stopping||(s==LoopState::queued&&t.info.stopPending&&hasPreparedQueuedSource(t,true));
             if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!stopping&&!prebirth&&!sourceDouble&&!queuedCapture)||hasCapture())return false;
             if(stopping&&t.storageVersion==std::numeric_limits<std::uint64_t>::max())return false;
             if((s==LoopState::playing||sourceDouble||queuedCapture)&&(std::abs(t.info.playbackRate-1)>0.01f||(!sourceDouble&&t.rateRemaining)))return false;
@@ -498,7 +499,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             if(!sourceDouble&&!stopping)invalidatePhase(t);
             t.queuedStoredEdit=stopping;
             t.multiplyQueued=prebirth;t.multiplySource=sourceDouble;
-            t.finalPlay=s==LoopState::playing||prebirth||sourceDouble||stopping;t.playWhileFinalizing=s==LoopState::playing||stopping;t.info.finalizationFailed=false;
+            t.finalPlay=s==LoopState::playing||prebirth||sourceDouble||stopping;t.playWhileFinalizing=s==LoopState::playing||s==LoopState::stopping;t.info.finalizationFailed=false;
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         }
         case LoopAction::undo:return restore(t,id,false);

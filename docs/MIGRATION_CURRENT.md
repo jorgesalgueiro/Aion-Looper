@@ -15,6 +15,42 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### Active acceptance: MULT on queued PLAY with STOP pending — 7 November 2026
+
+Small slice: a constructed graph can await its future start with a same-grid or
+following-grid STOP already scheduled. Unchanged `Loop.multiply/multiplyInstant`
+doubles stored PCM/local history even with input available; its existing source,
+start/STOP, old buffer/rate and older Start event remain independent. No capture,
+early audio or worker-result revival. New PLAY uses doubled storage. Preserve
+NORM/history ownership, pre-start visual zero and post-start original progress;
+failure/capacity rejection, DEL/panic and prepare must be safe at 64/128.
+
+Native now admits only a constructed pending-stop queued source, freezes its
+immutable source before storage replacement and retains the visual clock through
+original grid activation. Shared MULT GUI/CLI dispatch enables this state; public
+IDs/schema, preserved UI/reference/logo and dependencies are unchanged. Other
+queued STOP actions (including RTRG/history) retain their existing guards.
+
+Initial rejection `build/queued-stop-multiply-repro-windows.log`. The first
+implementation failed unchanged queued-state/paired-PCM assertions by making
+the source audible early during finalization. The corrected path distinguishes
+retained source ownership from an already sounding source; no tolerance relaxed.
+Windows new original-JS **96 PASS**, **312 exact stereo WAVs**, **4,012,392 frames**,
+max **6.26096477e-8** (limit **1e-6**), progress <=**1e-12**. New actual Engine
+**132 PASS**, tracks 0/19, forward/reverse, same/next-grid STOP, pending Apply,
+worker completion before start/between grids/after STOP, OOM/cancellation/prepare/
+full pool, exact stereo versus an unedited source and zero callback new/delete.
+Frontend admission PASS. Windows pointers/retained gates and Linux acceptance
+are in progress: do not advance or package until relevant acceptance completes.
+
+Source model uses unchanged original methods and node IO stubs/raw PCM. Browser
+gain/STOP envelopes, resampling and advancing-worker sound remain excluded;
+actual Engine delayed-worker ownership is checked separately. Broader future-
+source visual suppression remains outside this comparison; this fixture covers
+zero before the original start and progress after the latest source starts.
+Next after acceptance: RTRG eligibility, then integrated core-button combinations
+before FX/SAVE/presets.
+
 ### Implemented preview: MULT during scheduled STOP — 7 November 2026
 
 Small slice: unchanged `Loop.multiply/multiplyInstant` doubles stored PCM during

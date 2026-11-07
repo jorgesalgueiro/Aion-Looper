@@ -79,10 +79,10 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  if(nativeIndex>=0)assert(probe,'--native requires aion_start_probe');
  const ceilSample=v=>{const near=Math.round(v);return Math.abs(v-near)<=4*Number.EPSILON*Math.max(1,Math.abs(v))?near:Math.ceil(v);};
  const data=b=>Array.from({length:b.numberOfChannels},(_,c)=>Float32Array.from(b.getChannelData(c)));
- const multiplying=process.argv.includes('--multiply'),history=process.argv.includes('--history'),normalizing=process.argv.includes('--normalize'),stoppingDestination=multiplying||history||normalizing||process.argv.includes('--scheduled-stop');
+ const queuedStop=process.argv.includes('--queued-stop-multiply'),multiplying=queuedStop||process.argv.includes('--multiply'),history=process.argv.includes('--history'),normalizing=process.argv.includes('--normalize'),stoppingDestination=multiplying||history||normalizing||process.argv.includes('--scheduled-stop');
  vm.runInContext('globalThis.progress=now=>state.loops[0].getProgress(now);',context);
  let cases=0,wavCases=0,samples=0,maximum=0;
- for(const rate of [8000,48000,96000])for(const mono of [true,false])for(const size of [17,512])for(const reverse of [false,true])for(const sequence of (multiplying?['double','undo-redo','norm-after','apply']:history?['undo','rapid','norm-after','apply']:stoppingDestination?['stopping']:['prebirth','constructed','apply','undo-redo']))for(const unity of (normalizing?[false,true]:[false])){
+ for(const rate of [8000,48000,96000])for(const mono of [true,false])for(const size of [17,512])for(const reverse of [false,true])for(const sequence of (queuedStop?['same-grid','later-grid','norm-after','apply']:multiplying?['double','undo-redo','norm-after','apply']:history?['undo','rapid','norm-after','apply']:stoppingDestination?['stopping']:['prebirth','constructed','apply','undo-redo']))for(const unity of (normalizing?[false,true]:[false])){
   audio.currentTime=0;audio.sampleRate=rate;
   const raw=n=>[Array.from({length:n},(_,i)=>Math.fround(.12+.4*Math.sin(i*.11))),Array.from({length:n},(_,i)=>Math.fround(-.08+.2*Math.cos(i*.073)))];
   const baseRaw=raw(size),sourceRaw=raw(773);if(mono){baseRaw[1]=baseRaw[0].slice();sourceRaw[1]=sourceRaw[0].slice();}
@@ -112,19 +112,21 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   render(64);context.configure(1,137.3,(frame-frame*120/137.3)/rate,1);context.setReverse(reverse);context.setDelay(.217);
   commands.push('sync 1 137.3 1 1',`reverse 0 ${reverse?1:0}`,'delay 0 .217');const grid=context.grid();gate=ceilSample(grid*rate);commands.push('play 0 0');
   if(sequence!=='prebirth'){await context.scheduledPlay(grid);remember();commands.push('birth 0 0');}
+  if(queuedStop&&sequence!=='same-grid')render(gate-Math.ceil(rate*.02));
   if(sequence==='apply'){context.applyPhase();remember();commands.push('apply 0 0');}
   let stopAt=0;
-  if(stoppingDestination){render(gate+Math.ceil(rate*.012));stopAt=ceilSample(context.grid()*rate);context.scheduleStop();
+  if(stoppingDestination){if(!queuedStop)render(gate+Math.ceil(rate*.012));stopAt=ceilSample(context.grid()*rate);context.scheduleStop();
    assert.equal(context.info()[1],'stopping');assert.equal(ceilSample(context.stopTime()*rate),stopAt,'Original source owns scheduled stop');commands.push('stopgrid 0 0');}
   if(multiplying){
    const node=context.sourceNode(),old=node.buffer,started={...node.started},stop=node.stoppedAt;
-   const edit=(fn,command)=>{fn();commands.push(command,'wait 0 0');assert.equal(context.info()[1],'stopping');assert.equal(context.sourceNode(),node);assert.equal(node.buffer,old);assert.deepEqual(node.started,started);assert.equal(node.stoppedAt,stop);wavs.push({row:commands.length,want:Buffer.from(context.stereoWav())});commands.push('export 0 0');if(sequence!=='apply'){regions.push({row:commands.length,want:context.progress(frame/rate)});commands.push('region 0 0');}};
+   const edit=(fn,command)=>{fn();commands.push(command,'wait 0 0');assert.equal(context.info()[1],'stopping');assert.equal(context.sourceNode(),node);assert.equal(node.buffer,old);assert.deepEqual(node.started,started);assert.equal(node.stoppedAt,stop);wavs.push({row:commands.length,want:Buffer.from(context.stereoWav())});commands.push('export 0 0');if(sequence!=='apply'){regions.push({row:commands.length,want:context.progress(frame/rate),clock:!queuedStop||frame>=gate});commands.push('region 0 0');}};
    edit(()=>context.multiply(),'multiply 0 1'); // Input availability cannot turn stopping MULT into capture.
    assert.equal(context.stored().length,size*2);
    render(frame+Math.ceil(rate*.002));
    if(sequence==='undo-redo'){edit(()=>context.restore(false),'undo 0 0');render(frame+Math.ceil(rate*.002));edit(()=>context.restore(true),'redo 0 0');}
    if(sequence==='norm-after')edit(()=>context.normalize(),'normalize 0 0');
    if(sequence==='apply'){render(frame+Math.ceil(rate*.06));regions.push({row:commands.length,want:context.progress(frame/rate)});commands.push('region 0 0');}
+   if(queuedStop&&stopAt>gate&&sequence!=='apply'){render(gate+Math.ceil(rate*.005));regions.push({row:commands.length,want:context.progress(frame/rate)});commands.push('region 0 0');}
   }
   else if(history){
    const node=context.sourceNode(),old=node.buffer,started={...node.started},stop=node.stoppedAt;
@@ -142,18 +144,20 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
    context.restore(false);remember();commands.push('undo 0 0');wavs.push({row:commands.length,want:Buffer.from(context.stereoWav())});commands.push('export 0 0');
    render(frame+Math.ceil(rate*.002));context.restore(true);remember();commands.push('redo 0 0');wavs.push({row:commands.length,want:Buffer.from(context.stereoWav())});commands.push('export 0 0');
   }
-  const expectedInfo=context.info(),inspectRow=commands.length;commands.push('inspect 0 0');
+  const expectedInfo=context.info(),inspectRow=commands.length,inspectFrame=frame;commands.push('inspect 0 0');
   render((stoppingDestination?stopAt:gate)+Math.ceil(rate*.06));const stoppedRow=commands.length;if(stoppingDestination)commands.push('inspect 0 0');wavs.push({row:commands.length,want:expectedSource});commands.push('export 1 0');
   if(probe){
    const run=spawnSync(probe,['--callback-start'],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:64*1024*1024});assert.equal(run.status,0,run.stderr);
    const rows=run.stdout.trim().split(/\r?\n/);assert.equal(rows.length,commands.length);
    for(let i=0;i<commands.length;++i)if(!commands[i].startsWith('export '))assert.equal(Number(rows[i].split(' ')[0]),1,`${rate}/${mono}/${size}/${reverse}/${sequence}: ${commands[i]}`);
    for(const {row,want} of wavs){assert.deepEqual(Buffer.from(rows[row],'hex'),want,`${rate}/${mono}/${size}/${reverse}/${sequence}: exact stereo export (duplicated mono), history/source preservation`);wavCases++;}
-   const meta=rows[inspectRow].split(' ').map(Number);assert.equal(meta[1],history||multiplying?expectedInfo[0]:size);assert.equal(meta[5],(normalizing||history)?0:1);assert.equal(meta[6],history?1:0);assert(stoppingDestination?meta[2]===10:(meta[2]===9||sequence==='undo-redo'&&meta[2]===2));if(stoppingDestination)assert.equal(Number(rows[stoppedRow].split(' ')[2]),3,'Native destination stops at its original grid');
-   for(const {row,want} of regions){const r=rows[row].split(' ').map(Number);assert.equal(r[4],1,'History owns the unchanged original visual clock');assert(Math.abs(r[5]-want)<=1e-12,'Original history progress must use restored duration/metadata');}
+   const meta=rows[inspectRow].split(' ').map(Number);assert.equal(meta[1],history||multiplying?expectedInfo[0]:size);assert.equal(meta[5],(normalizing||history)?0:1);assert.equal(meta[6],history?1:0);
+   assert(stoppingDestination?meta[2]===(queuedStop&&inspectFrame<gate?9:10):(meta[2]===9||sequence==='undo-redo'&&meta[2]===2),JSON.stringify({rate,mono,size,reverse,sequence,meta,inspectFrame,gate,stopAt}));
+   if(stoppingDestination)assert.equal(Number(rows[stoppedRow].split(' ')[2]),3,'Native destination stops at its original grid');
+   for(const {row,want,clock=true} of regions){const r=rows[row].split(' ').map(Number);assert.equal(r[4],clock?1:0,'Stored replacement retains original visual clock and pre-start suppression');assert(Math.abs(r[5]-want)<=1e-12,'Original history progress must use restored duration/metadata');}
    for(const {row,want} of checks){const actual=rows[row].split(' ').map(Number).slice(-2);for(const value of actual){const error=Math.abs(value-want);maximum=Math.max(maximum,error);assert(error<=1e-6,`${rate}/${mono}/${size}/${reverse}/${sequence} frame ${rows[row]} want ${want}; gate=${gate} grid=${grid} voices=${JSON.stringify(voices.map(v=>v.node.started))}`);}}
   }
   cases++;
  }
- console.log(JSON.stringify({result:'PASS',mode:probe?'native':'reference-only',multiplying,history,normalizing,stoppingDestination,cases,wavCases,samples,maximumAbsoluteError:probe?maximum:null,tolerance:1e-6,scope:(multiplying?'Unchanged Loop.multiply/multiplyInstant/undo/redo/normalize/getProgress during scheduled STOP':history?'Unchanged Loop.undo/redo/normalize/getProgress during scheduled STOP':normalizing?'Unchanged Loop.normalize/normalizeBuffer and Loop.scheduleStop':'Unchanged mergeLoops/mixBuffersCircular')+', actual original Loop.play/restart/Undo/Redo source snapshots and gate; node IO stubs/raw source PCM, no browser gain/stop envelopes/resampler or advancing worker-latency claim'}));
+ console.log(JSON.stringify({result:'PASS',mode:probe?'native':'reference-only',queuedStop,multiplying,history,normalizing,stoppingDestination,cases,wavCases,samples,maximumAbsoluteError:probe?maximum:null,tolerance:1e-6,scope:(queuedStop?'Unchanged Loop.multiply/multiplyInstant/normalize/getProgress on a constructed future source with same/next-grid scheduled STOP':multiplying?'Unchanged Loop.multiply/multiplyInstant/undo/redo/normalize/getProgress during scheduled STOP':history?'Unchanged Loop.undo/redo/normalize/getProgress during scheduled STOP':normalizing?'Unchanged Loop.normalize/normalizeBuffer and Loop.scheduleStop':'Unchanged mergeLoops/mixBuffersCircular')+', actual original Loop.play/restart/Undo/Redo source snapshots and gate; node IO stubs/raw source PCM, no browser gain/stop envelopes/resampler or advancing worker-latency claim'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

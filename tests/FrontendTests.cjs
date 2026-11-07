@@ -1025,13 +1025,13 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  for(const state of ['empty','armed','recording','queued','playing','stopped','stopping','finalizing','multiplying','overdubbing','substituting'])for(const ready of [false,true])for(const stopPending of [false,true])for(const length of [0,512])for(const inputAvailable of [false,true]){
   let action;const t={state,queuedSourceReady:ready,stopPending,length};const snapshot={tracks:[t],inputAvailable};
   const wait=Symbol('wait'),c={window:{AionCommandQueue:{wait}},snapshot,scheduler:{enqueue:resolver=>{action=resolver();}}};vm.createContext(c);vm.runInContext(source.slice(start,end)+'multiply(0);',c);
-  const enabled=length>0&&(['playing','stopped','stopping','multiplying'].includes(state)||(state==='queued'&&!stopPending));
+  const enabled=length>0&&['playing','stopped','stopping','multiplying','queued'].includes(state);
   if(state==='finalizing')assert.equal(action,wait,'Accepted MULT waits for committed PCM');
   else assert.equal(!!action,enabled,'MULT shared dispatch guard');
   const line=source.split('\n').find(l=>l.includes('r.mult.disabled='));assert(line);const r={mult:{}};
   const ui={r,t,i:0,active:true,snapshot};vm.createContext(ui);vm.runInContext(line,ui);assert.equal(r.mult.disabled,!enabled,'Original MULT control eligibility');cases++;
  }
- console.log('PASS: '+cases+' shared MULT dispatch/control states including stopping, queued pre-birth, constructed-source input/no-input, empty and pending-stop queued exclusion');
+ console.log('PASS: '+cases+' shared MULT dispatch/control states including stopping, queued pre-birth, constructed-source input/no-input, pending STOP and empty exclusion');
 }
 
 // An accepted edit gesture must survive a preceding edit's worker commit.

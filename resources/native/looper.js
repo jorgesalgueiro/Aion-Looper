@@ -151,7 +151,7 @@
         const multiply=id=>scheduler.enqueue(()=>{
             const t=snapshot.tracks[id];
             if(t.state==='finalizing')return window.AionCommandQueue.wait;
-            return t.length&&(['playing','stopped','stopping','multiplying'].includes(t.state)||(t.state==='queued'&&!t.stopPending))?{action:'multiply',track:id,value:0}:null;
+            return t.length&&['playing','stopped','stopping','multiplying','queued'].includes(t.state)?{action:'multiply',track:id,value:0}:null;
         },{track:id});
         const merge=(id,source)=>{
             if(source==='')return;
@@ -427,7 +427,7 @@
                 r.undo.disabled=!active||!t.undoCount||!(['playing','stopped','stopping'].includes(t.state)||(t.state==='queued'&&!t.stopPending));
                 r.redo.disabled=!active||!t.redoCount||!(['playing','stopped','stopping'].includes(t.state)||(t.state==='queued'&&!t.stopPending));
                 r.reverse.checked=!!t.reverse;
-                r.mult.disabled=!active||!t.length||!(['playing','stopped','stopping','multiplying'].includes(t.state)||(t.state==='queued'&&!t.stopPending))||snapshot.tracks.some((other,id)=>id!==i&&['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(other.state));
+                r.mult.disabled=!active||!t.length||!['playing','stopped','stopping','multiplying','queued'].includes(t.state)||snapshot.tracks.some((other,id)=>id!==i&&['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(other.state));
                 r.normalize.disabled=!active||!t.length||!['playing','stopped','queued','stopping'].includes(t.state)||snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 const mergeBusy=snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 r.mergeSource.disabled=!active||mergeBusy;
