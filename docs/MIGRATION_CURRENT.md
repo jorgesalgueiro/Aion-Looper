@@ -15,7 +15,7 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-### Active acceptance: MULT during scheduled STOP — 7 November 2026
+### Implemented preview: MULT during scheduled STOP — 7 November 2026
 
 Small slice: unchanged `Loop.multiply/multiplyInstant` doubles stored PCM during
 scheduled STOP, even with input available, without restarting that graph or
@@ -24,7 +24,7 @@ visual progress on the doubled duration, older Start sources, Undo/Redo and NORM
 must remain correct. Worker failure/capacity rejection preserves old PCM/history;
 completion after STOP and DEL/panic/prepare must never revive playback.
 
-Native admission, original MULT control/shared GUI/CLI dispatch and worker
+Implementation **7da8f5b**. Native admission, original MULT control/shared GUI/CLI dispatch and worker
 ownership now implement this case. Reuse bounded source/history leases, the
 existing stored-edit deadline flag and history visual clock. No public IDs/state
 schema, DSP kernel, dependencies, reference/preserved UI or logo changes.
@@ -32,20 +32,93 @@ schema, DSP kernel, dependencies, reference/preserved UI or logo changes.
 and RTRG eligibility remain separate gaps.
 
 Initial unchanged-JS rejection: `build/stopping-multiply-repro-windows.log`.
-Windows new source comparison **96 PASS**, **360 exact stereo WAVs**,
-**4,543,776 frames**, peak error **6.26096477e-8** (unchanged **1e-6**);
-progress <=**1e-12**. New actual Engine **100 PASS**, tracks 0/19, 64/128,
+New source comparison **96 PASS each OS**, **360 exact stereo WAVs** and
+**4,543,776 frames per OS**, peak error **6.26096477e-8** (unchanged **1e-6**);
+progress <=**1e-12**. Mono/stereo, 8/48/96kHz, 17/512-frame clips, forward/reverse,
+double/Undo/Redo/NORM/older Apply. New actual Engine **100 PASS**, tracks 0/19, 64/128,
 forward/reverse, input/no-input, pending Apply, delayed worker through STOP,
 local Undo/Redo, OOM/cancellation/prepare/full pool, exact stereo against an
 unedited sounding source, zero callback new/delete. Frontend admission PASS.
-Remaining acceptance in progress: retained regressions, real Windows pointers,
-Linux regression/sanitizers and Standalone production/CLI checks. Do not advance
-to another feature or package while these are pending.
+Windows retained **14/14 CTests PASS (349.79s)**, connected capture/OD/SUB audit
+**126 PASS / 965,826 frames / 7.39475750e-8**, Standalone build and full
+production processor/external CLI suite PASS. Actual original MULT/Undo/Redo/NORM
+pointer/PCM checks PASS at 64/128, forward/reverse, same source revision, stored
+identities/history, retained deadline and natural STOP silence. Linux new Engine
+100 plus retained Engine **288** post-birth MULT, **108** pre-birth MULT, **212**
+queued-input MULT, **8** gated-input MULT, **88** stopping history, **120** stopping
+NORM and **88** stopping MERGE PASS; same retained Engine checks pass on Windows.
+Linux connected audit also passes with the same count/error; **15/15 Linux CTests
+PASS (584.87s)**, including the new 96-case source corpus. Linux Debug
+ASan/UBSan/leaks: new **100** stopping MULT, **88** stopping history and **288**
+post-birth MULT PASS, no diagnostics. Linux Standalone build and full production
+processor/external CLI suite PASS, run alone after heavy acceptance/sanitizers.
+
+One misspelled Windows selector (`--queued-multiply-input`) entered the test
+runner's default full suite; it was stopped, not counted as a completed suite.
+Correct `--queued-input-multiply` and the remaining focused checks passed. Keep
+the aborted log separate; no product failure or assertion/tolerance change.
 
 Source comparison extends `QueuedMergeSources.cjs --multiply` using unchanged
 reference methods and node IO stubs/raw PCM; browser gain/STOP envelopes,
 resampling, advancing worker sound and pre-start future-source visual suppression
 are excluded. Engine delayed-worker checks separately cover real STOP/ownership.
+Actual Windows pointers use the production processor/editor and synthetic PCM,
+not physical drivers/devices or OS-dialog interaction. Linux WebKit interaction,
+full-bank/long-session/worst-case performance, deferred wrappers/DAWs and Apple
+remain separate checks. Earlier unresolved missing-button/CLI-timeout observations
+remain recorded below; this slice does not claim to resolve their unknown causes.
+No package/push or next feature started.
+
+After all acceptance finished, identical ignored Engine timing fixtures ran
+Windows then Linux: 48kHz stereo, 512-frame capture plus OD, 512 warmed **playing**
+callbacks, then stopping MULT (512 -> 1024), Undo/Redo, playback through STOP and
+clear; input/no-input, forward/reverse, with/without older Apply, **16 scenarios
+per OS**, 64/128. Online admission/worker-completion callbacks are timed; setup,
+offline worker waits, input generation, telemetry consumption and the deliberate
+1ms sleep between worker polls are excluded. Maximum observed per 64/128 callback:
+Windows **111.3us /218.9us**, Linux **111.9us /152.3us**, versus **1333.33us /
+2666.67us** deadlines. These small warmed Engine observations are not full
+processBlock/round-trip latency, worst-case/full-bank/long-session guarantees, an
+OS ranking or a speedup. Harness `build/stopping-multiply-bench-src/{CMakeLists.txt,bench.cpp}`,
+bench.cpp SHA256 `ede5779b9258dda1f2aaff02b6d390098e563bf52660de6c1b555fd0112ad872`;
+independent `build/stopping-multiply-bench-{windows,linux}` caches import each OS's
+current Release core, target `queued_bench`. Logs `build/stopping-multiply-bench-{build-,}OS.log`.
+
+Focused commands, using existing caches and the CMake/CTest resolution and safe
+committed WSL sync in DEVELOPMENT_WORKFLOW.md:
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe aion_dsp_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --stopping-multiply
+node tests/QueuedMergeSources.cjs --multiply --native build/windows-core/Release/aion_start_probe.exe
+node tests/AudioParityAudit.cjs build/windows-core/Release/aion_reference_probe.exe
+cmake --build --preset windows-dev --target AionLooper_Standalone aion_mouse_host aion_midi_processor_tests --parallel 2
+./tools/TestMouseWorkflow.ps1 -StoppingMultiplyOnly
+./build/windows/Release/aion_midi_processor_tests.exe
+```
+
+```sh
+# Local Windows commit, then clean SetupWslWorkspace.sh sync first.
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_dsp_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --stopping-multiply
+ctest --test-dir build/linux --no-tests=error --output-on-failure --parallel 2 -R '^(cli_finalization_admission|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_(normalization|reverse|history|multiply|dsp_kernels|queued_multiply|queued_multiply_sources|stutter|stopping_norm|stopping_history|stopping_multiply))$'
+node tests/AudioParityAudit.cjs build/linux/aion_reference_probe
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --stopping-multiply
+# Full production/CLI suite alone after all heavy checks finish.
+./build/linux/aion_midi_processor_tests
+```
+
+Each OS retained core selectors: `--postbirth-multiply`, `--prebirth-multiply`,
+`--queued-input-multiply`, `--gated-input-multiply`, `--stopping-history`,
+`--stopping-norm`, `--stopping-merge`. Sanitizers also run `--stopping-history`
+and `--postbirth-multiply`. Windows CTest uses the Linux regex minus
+`stopping_multiply`, `-C Release` and its own cache; new 96 cases already ran directly.
+Logs in each checkout: `build/stopping-multiply-{repro,probe-build,core-build,engine,native,front,audio,ctest,production-build,production,ui}-windows.log`
+(as applicable), `build/stopping-multiply-{build,audio,ctest,production,sanitizer-build}-linux.log`,
+and `build/stopping-multiply-{SELECTOR,sanitizer-SELECTOR}-OS.log`.
+Next smallest gap: pending-stop **queued** MULT eligibility/source ownership;
+then RTRG eligibility and integrated core-button combinations before FX/SAVE/presets.
 
 ### Implemented preview: Undo/Redo during scheduled STOP — 7 November 2026
 
