@@ -15,6 +15,29 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### Active acceptance: Undo/Redo during scheduled STOP — 7 November 2026
+
+Original `Loop.undo/redo` replaces stored PCM and history without restarting a
+stopping graph. Native formerly disabled/rejected that state. Admit local/global
+history through the same processor/CLI commands, pin immutable forward/reversed
+source PCM and older pending phase sources, retain the original STOP deadline,
+and use the restored duration for the independent visual clock. No new public
+IDs/schema, DSP kernel, reference/preserved UI, logo or dependencies.
+
+Initial rejection: `build/stopping-history-repro-windows.log`. The first 72
+unchanged-JS cases pass source/PCM/history/WAV/progress; extended pending-Apply
+comparison and 64/128 Engine/pointer acceptance are running. Capacity fixture
+corrections use manual capture and real 4096-frame block growth; a 512-to-1024
+edit still fits one storage block and is correctly admitted even when no other
+blocks are free. Do not weaken atomic rejection to conceal that distinction.
+
+Before accepting: Windows/Linux source/audio/reference regressions, actual local/
+global Windows pointers at 64/128, source/phase/STOP/history/cancellation/prepare/
+full-pool and no callback new/delete, production processor/CLI and relevant
+sanitizers. Record source-model/browser limitations and warmed timing separately.
+No package/push or next feature until this slice passes. Retain earlier unresolved
+missing-button and CLI-timeout observations below.
+
 ### Implemented preview: NORM during scheduled STOP — 7 November 2026
 
 Original `Loop.normalize` remains enabled after `Loop.scheduleStop`; native code

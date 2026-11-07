@@ -1002,11 +1002,11 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
 {
  const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
  const start=source.indexOf('        const restoreHistory=');const end=source.indexOf('        const multiply=',start);assert(start>=0&&end>start);
- for(const state of ['empty','queued','playing','stopped','finalizing'])for(const ready of [false,true])for(const stopPending of [false,true])for(const count of [0,1])for(const redo of [false,true])for(const global of [false,true]){
+ for(const state of ['empty','queued','playing','stopped','stopping','finalizing'])for(const ready of [false,true])for(const stopPending of [false,true])for(const count of [0,1])for(const redo of [false,true])for(const global of [false,true]){
   let action;const t={state,stopPending,queuedSourceReady:ready,undoCount:count,redoCount:count};
   const wait=Symbol('wait'),c={window:{AionCommandQueue:{wait}},snapshot:{tracks:[t],nextUndo:0,nextRedo:0},scheduler:{enqueue:resolver=>{action=resolver();}}};vm.createContext(c);
   vm.runInContext(source.slice(start,end)+'restoreHistory('+redo+','+(global?'null':'0')+');',c);
-  const enabled=count>0&&(['playing','stopped'].includes(state)||(state==='queued'&&!stopPending));
+  const enabled=count>0&&(['playing','stopped','stopping'].includes(state)||(state==='queued'&&!stopPending));
   if(state==='finalizing')assert.equal(action,wait,'Accepted history gesture waits without a premature depth decision');
   else assert.equal(!!action,enabled,'Shared local/global history dispatch guard');
   const lines=source.split('\n').filter(l=>l.includes('r.undo.disabled=')||l.includes('r.redo.disabled='));assert.equal(lines.length,2);

@@ -53,6 +53,33 @@ let socket;
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
     await wait(s=>s.audioReady&&s.inputAvailable&&s.inputPeak>0.1,'Synthetic native input active');
     await evaluate(`window.mouseErrors=[];window.addEventListener('error',e=>window.mouseErrors.push(e.message));document.documentElement.style.scrollBehavior='auto'`);
+    if(process.argv.includes('--stopping-history-only')){
+        await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+        await wait(s=>s.masterGain===1,'Stopping history audible master');await mode('off');
+        await click('#loop-action-0');await state('recording');await delay(350);await click('#loop-action-0');await state('playing');
+        assert((await evaluate(`(async()=>{const s=await AionNative.request({operation:'snapshot'});return AionNative.request({operation:'loop',action:'overdub',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0});})()`)).ok);
+        await state('overdubbing');await delay(150);await click('#loop-action-0');await state('playing');await click('#native-stop-all');await state('stopped');
+        await evaluate(`(()=>{for(const text of ['UNDO','REDO','MULT'])[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()===text).id='stopping-history-'+text;})()`);
+        await exactlyOne(()=>click('#stopping-history-MULT'),'History length-changing seed');await wait(s=>s.tracks[0].state==='stopped'&&s.tracks[0].undoCount===2,'Original/global history seed');
+        const rendered=async selector=>{for(let n=0;n<180;++n){if(await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});return e&&!e.disabled;})()`))return;await delay(40);}assert.fail('History control not rendered/enabled: '+selector);};
+        for(const reverse of [false,true])for(const global of [false,true]){
+            await mode('off');if(await evaluate(`document.getElementById('loop-0-reverse').checked`)!==reverse)await click('#loop-0-reverse');
+            await click('#loop-action-0');await state('playing');await parameter('#numBars',64);await parameter('#timeSigNum',1);await parameter('#bpmInput',120);await mode('static');
+            await click('#loop-action-0');const before=await state('stopping');
+            const undo=global?'#btnGlobalUndo':'#stopping-history-UNDO',redo=global?'#btnGlobalRedo':'#stopping-history-REDO';
+            await rendered(undo);await exactlyOne(()=>click(undo),'Trusted stopping Undo');const after=await wait(s=>s.tracks[0].state==='stopping'&&s.tracks[0].waveformId!==before.tracks[0].waveformId,'Stopping Undo commits storage');
+            assert.equal(after.tracks[0].length,before.tracks[0].length/2);assert.equal(after.tracks[0].scheduledFrame,before.tracks[0].scheduledFrame);assert.equal(after.tracks[0].undoCount,before.tracks[0].undoCount-1);assert.equal(after.tracks[0].redoCount,1);assert(after.tracks[0].stutterClock);
+            await wait(s=>s.outputPeak>.02,'Undo retains audible old source');await rendered(redo);await exactlyOne(()=>click(redo),'Trusted stopping Redo');
+            const restored=await wait(s=>s.tracks[0].waveformId===before.tracks[0].waveformId,'Stopping Redo restores exact identity');assert.equal(restored.tracks[0].state,'stopping');assert.equal(restored.tracks[0].length,before.tracks[0].length);assert.equal(restored.tracks[0].scheduledFrame,before.tracks[0].scheduledFrame);assert.equal(restored.tracks[0].redoCount,0);
+            await click('#native-stop-all');await state('stopped');
+        }
+        await mode('off');await parameter('#numBars',1);await parameter('#bpmInput',30);await click('#loop-action-0');await state('playing');await mode('static');
+        await wait(s=>s.gridPosition>.05&&s.gridPosition<.15,'Early natural history STOP grid',12000);await click('#loop-action-0');const deadline=await state('stopping');
+        await rendered('#stopping-history-UNDO');await exactlyOne(()=>click('#stopping-history-UNDO'),'History before natural STOP');const stopped=await state('stopped');assert.equal(stopped.tracks[0].scheduledFrame,0);assert(!stopped.tracks[0].stutterClock);assert.equal(stopped.tracks[0].length,deadline.tracks[0].length/2);
+        await wait(s=>s.frame>=deadline.tracks[0].scheduledFrame&&s.outputPeak===0,'Original STOP silences actual history source');
+        assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);console.log('PASS: original local/global Undo/Redo pointers while stopping, length/waveform/history/clock/deadline and natural STOP PCM at '+process.argv[2]);ws.close();return;
+    }
+
     if(process.argv.includes('--stopping-norm-only')){
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
         await wait(s=>s.masterGain===1,'Stopping NORM audible master');

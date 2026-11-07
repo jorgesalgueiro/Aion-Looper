@@ -220,6 +220,7 @@ private:
         Clip* forwardHold = nullptr; // Forward source buffer retained across a stored-buffer history swap.
         std::uint64_t storageVersion=1,forwardVersion=0; // Logical buffer identity; history clones can reuse immutable PCM.
         bool activeReverse = false;
+        bool historyClock = false; // Stopping history changes visual duration without replacing its source.
         bool queuedSourcePending = false; // Audio-owned source admission, independent of raw meter resets.
         double queuedSourcePhase=0,queuedStartFraction=0; // Fractional source time retained across inaudible rate edits.
         bool queuedSourceReverse=false; // Source controls captured at early graph birth, not at its grid.

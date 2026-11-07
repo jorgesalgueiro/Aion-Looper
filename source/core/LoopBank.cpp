@@ -281,7 +281,7 @@ void LoopBank::restartSource(Track& track,bool preparedQueue) noexcept {
     // Activating an already constructed source at its grid must not cancel a
     // Start replacement scheduled while that source was still inaudible.
     if(!preparedQueue)invalidatePhase(track);
-    track.info.stuttering=track.info.stutterClock=false;
+    track.info.stuttering=track.info.stutterClock=false;track.historyClock=false;
     // An early graph already constructed its reversed AudioBuffer. NORM must
     // not replace that snapshot when the inaudible source reaches its grid.
     if(!preparedQueue){retire(track.reverseHold);track.reverseHold=nullptr;retire(track.forwardHold);track.forwardHold=nullptr;}
@@ -349,23 +349,27 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     auto& fromCount=redo?track.info.redoCount:track.info.undoCount;
     auto& toCount=redo?track.info.undoCount:track.info.redoCount;
     const bool prebirth=track.info.state==LoopState::queued&&track.queuedSourcePending&&!track.queuedSourceTicket;
+    const bool stopping=track.info.state==LoopState::stopping;
     const bool running=track.info.state==LoopState::playing||hasPreparedQueuedSource(track);
-    if(!track.clip||!fromCount||toCount>=to.size()||track.storageVersion==std::numeric_limits<std::uint64_t>::max()||(!running&&track.info.state!=LoopState::stopped&&!prebirth))return false;
+    if(!track.clip||!fromCount||toCount>=to.size()||track.storageVersion==std::numeric_limits<std::uint64_t>::max()||(!running&&track.info.state!=LoopState::stopped&&!prebirth&&!stopping))return false;
     const auto restored=from[fromCount-1];
     if(restored->length>track.clip->length&&restored->length-track.clip->length>growthRoom(track))return false;
     if(running){
         const bool master=sync.settings.mode!=SyncMode::off&&(soloTrack<0||soloTrack==static_cast<int>(id));
         // Reserve every event/overlap lease before mutating storage or history.
         if(!schedulePhase(track,id,static_cast<double>(frame)/rate+.005,master,true,restored))return false;
-        freezeHistorySources(track,id);
     }
+    // Original history does not restart a stopping graph. Keep its immutable
+    // source independently of the restored stored buffer, including forward PCM.
+    if(running||stopping)freezeHistorySources(track,id);
     residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;
     ++track.storageVersion; // JS history restores a distinct buffer object, even when native immutable PCM is shared.
     to[toCount++]=track.clip;track.clip=from[--fromCount];from[fromCount]=nullptr;
     track.info.mergeSerial=0;
     residentBlocks+=(track.clip->length+blockFrames-1)/blockFrames;
     track.info.length=track.clip->length;track.info.finalizationFailed=false;
-    if(running)track.phaseRate=effectiveRateFor(track,track.clip->length);else updateRate(track);
+    if(stopping)track.historyClock=true; // Visual clock uses the restored duration, not the retained audio cursor.
+    if(running||stopping)track.phaseRate=effectiveRateFor(track,track.clip->length);else updateRate(track);
     if(redo){if(remove(redoOrder,redoSize,id,true))append(undoOrder,undoSize,id);}
     else if(remove(undoOrder,undoSize,id,true))append(redoOrder,redoSize,id);
     publishMeterBuffer(id,prebirth);
@@ -376,7 +380,7 @@ void LoopBank::stop(Track& track) noexcept {
     if(hasPlaybackSource(track))++track.sourceRevision;
     track.info.mergeSerial=0;
     if(track.info.state==LoopState::finalizing&&job.merge&&job.track==static_cast<std::uint32_t>(&track-tracks.data()))job.mergeNotify=false;
-    track.info.stuttering=track.info.stutterClock=false;
+    track.info.stuttering=track.info.stutterClock=false;track.historyClock=false;
     if(track.info.state==LoopState::armed){clear(track);return;}
     track.queuedSourceTicket=0;
     track.rate=track.targetRate=static_cast<float>(track.phaseRate);track.rateRemaining=0;track.rateIncrement=0;
@@ -394,6 +398,7 @@ void LoopBank::cutQueuedSource(Track& track) noexcept {
     track.last=track.tail=track.blendFrom={};track.tailRemaining=track.blendRemaining=0;
 }
 void LoopBank::clear(Track& track) noexcept {
+    track.historyClock=false;
     clearRetained(track);
     const auto removedBuffer=track.clip?track.clip->waveformId:0;
     ++track.sourceRevision;
@@ -852,6 +857,7 @@ void LoopBank::applyPhaseEvents() noexcept {
         retire(track.forwardHold);track.forwardHold=event.forwardClip;track.forwardVersion=event.forwardClip?event.bufferVersion:0;
         track.rate=track.targetRate=event.rate;track.rateRemaining=0;track.rateIncrement=0;
         track.phase=event.phase;track.activeReverse=event.reverse;track.info.stuttering=track.info.stutterClock=false;
+        track.historyClock=track.historyClock&&event.bufferVersion!=track.storageVersion;
         track.sourceStartFrame=event.sourceStartSeconds*rate;track.sourceOffset=event.sourceOffset;
         track.info.position=static_cast<std::uint32_t>(track.phase);
         if(track.info.phaseApplyFrame==event.frame)track.info.phaseApplyFrame=0;
@@ -1049,10 +1055,11 @@ std::array<LoopView,LoopBank::trackCount> LoopBank::view() const noexcept {
     for(std::uint32_t i=0;i<trackCount;++i){views[i]=tracks[i].info;views[i].waveformId=tracks[i].clip?tracks[i].clip->waveformId:0;views[i].solo=soloTrack==static_cast<int>(i);views[i].effectiveRate=static_cast<float>(tracks[i].phaseRate);
         views[i].clearEpoch=tracks[i].clearEpoch;views[i].sourceRevision=tracks[i].sourceRevision;views[i].scheduledFrame=tracks[i].startAt?tracks[i].startAt:tracks[i].endAt;
         const auto& t=tracks[i];auto& v=views[i];v.queuedSourceReady=hasPreparedQueuedSource(t);
-        v.stutterClock=v.stutterClock&&t.clip&&(v.state==LoopState::playing||v.state==LoopState::stopping);
+        v.stutterClock=(v.stutterClock||t.historyClock)&&t.clip&&(v.state==LoopState::playing||v.state==LoopState::stopping);
         if(v.stutterClock){
             const double duration=v.length/rate,now=static_cast<double>(frame)/rate;
-            const double position=sync.settings.mode!=SyncMode::off?(now-sync.origin/rate)*t.phaseRate-v.startDelay*duration:(now-t.sourceStartFrame/rate)*t.phaseRate+t.sourceOffset/rate;
+            const double visualRate=t.historyClock?effectiveRateFor(t,v.length):t.phaseRate;
+            const double position=sync.settings.mode!=SyncMode::off?(now-sync.origin/rate)*visualRate-v.startDelay*duration:(now-t.sourceStartFrame/rate)*visualRate+t.sourceOffset/rate;
             double progress=std::fmod(position,duration);if(progress<0)progress+=duration;v.clockProgress=progress/duration;
         }
     }

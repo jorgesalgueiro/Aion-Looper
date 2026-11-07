@@ -1029,6 +1029,52 @@ void queuedTripleCapacityTests(){
     check(allocations.load()==0,"Atomic three-slot reservation performs no callback new/delete");
     std::cout<<"PASS: three-slot atomic rejection with 126 occupied slots, two-slot cross-track admission, panic/clear release and recovery at tracks 0/19, 64/128; no callback new/delete\n";
 }
+void stoppingHistoryTests(){
+    using namespace aion;unsigned cases=0;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool lengthChange,bool pending=false,unsigned capacity=81920){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(48000,capacity,{true,48000,0});e->setMonitoring(false);e->setTarget(1);}
+        if(capacity==8192){f.command(LoopAction::record,id);for(unsigned n=0;n<4096/f.block;++n)f.cycle();f.command(LoopAction::finish,id);f.cycle(true);}else f.record(id);
+        f.command(LoopAction::overdub,id);f.cycle();f.command(LoopAction::finish,id);f.cycle(true);f.command(LoopAction::stopImmediate,id);f.cycle();
+        if(lengthChange){f.command(LoopAction::multiply,id);f.cycle(true);}
+        for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Stopping history direction");
+        f.command(LoopAction::play,id);f.cycle();for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+        if(pending)f.command(LoopAction::applyStart,id);f.command(LoopAction::stop,id);f.cycle();check(f.view->tracks[id].state==LoopState::stopping,"History fixture has actual scheduled STOP");
+    };
+    // Only the observed engine changes history: every subsequent stereo sample
+    // must still equal the original, unedited source through its STOP deadline.
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool global:{false,true})for(bool lengthChange:{false,true})for(bool pending:{false,true}){
+        Fixture f(block);setup(f,id,reverse,lengthChange,pending);const auto before=f.view->tracks[id];
+        for(bool redo:{false,true,false}){
+            const auto action=global?(redo?LoopAction::redoGlobal:LoopAction::undoGlobal):(redo?LoopAction::redo:LoopAction::undo);
+            check(f.engine->enqueueLoop({action,id,++f.request,f.engine->generation(),0,0}),"Observed stopping history command");f.cycle();const auto now=f.view->tracks[id];
+            check(!f.view->rejected&&now.state==LoopState::stopping&&now.scheduledFrame==before.scheduledFrame
+                &&now.phaseApplyFrame==(before.phaseApplyFrame>f.engine->clock()?before.phaseApplyFrame:0),"Undo/Redo preserves stopping source and existing deadlines");
+            check(now.undoCount==before.undoCount-(redo?0:1)&&now.redoCount==(redo?0:1)&&now.length==(lengthChange&&!redo?before.length/2:before.length),"Local/global stopping history restores exact depth/length");
+            if(!pending)check(now.stutterClock&&now.sourceRevision==before.sourceRevision,"History keeps source identity and original visual clock");
+        }
+        while(f.engine->clock()<before.scheduledFrame){f.cycle();if(f.engine->clock()<before.scheduledFrame)check(f.view->tracks[id].stutterClock,"Stopping history visual clock survives an older pending phase source");}
+        for(unsigned n=0;n<1024/block;++n)f.cycle();check(f.view->tracks[id].state==LoopState::stopped&&!f.view->tracks[id].stutterClock,"Original stop retires history-held audio and visual clock");
+        f.command(LoopAction::clear,id);for(unsigned n=0;n<16;++n)f.cycle();++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<5;++cancel){
+        Fixture f(block);setup(f,id,true,true,true);check(f.engine->enqueueLoop({LoopAction::undo,id,++f.request,f.engine->generation(),0,0}),"History before cancellation");f.cycle();
+        if(cancel<3){f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:LoopAction::clear,id);f.cycle();}
+        else if(cancel==3)f.prepare();else for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}
+        for(unsigned n=0;n<128;++n)f.cycle();check(f.view->tracks[id].state==((cancel==2||cancel==4)?LoopState::empty:LoopState::stopped)&&!f.view->tracks[id].phaseApplyFrame&&!f.view->tracks[id].stutterClock,"History source leases cannot survive cancellation/prepare");++cases;
+    }
+    // Growth admission is atomic even though the old sounding source is pinned.
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u}){
+        Fixture f(block);setup(f,id,false,true,false,8192);f.command(LoopAction::undo,id);f.cycle();
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({}); // Fill with manual takes without changing the owned STOP deadline.
+        for(unsigned other=0;other<LoopBank::trackCount;++other)if(other!=id&&f.view->freeFrames){f.record(other);f.command(LoopAction::stopImmediate,other);f.cycle();}
+        const auto before=f.view->tracks[id];check(!f.view->freeFrames,"History growth fixture fills capture pool");
+        f.command(LoopAction::redo,id);f.cycle();check(f.view->rejected&&f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].redoCount==before.redoCount,"Full-pool stopping Redo preserves PCM/history atomically");++cases;
+    }
+    check(allocations.load()==0,"Stopping history no callback new/delete");std::cout<<"PASS: stopping history "<<cases<<" Engine 64/128 local/global, exact retained-source stereo, STOP/phase deadlines, cancel/prepare/full pool and zero callback new/delete\n";
+}
+
 void stoppingNormTests(){
     using namespace aion;unsigned cases=0;
     const auto setup=[](Fixture& f,unsigned id,bool reverse,bool unity,bool phase=false){
@@ -2378,7 +2424,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();stoppingHistoryTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

@@ -1,4 +1,4 @@
-param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi, [switch] $QueuedNormOnly, [switch] $StoppingNormOnly, [switch] $QueuedHistoryOnly, [switch] $QueuedMultiplyOnly, [switch] $PostbirthMultiplyOnly, [switch] $FinalizingControlsOnly)
+param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi, [switch] $QueuedNormOnly, [switch] $StoppingNormOnly, [switch] $StoppingHistoryOnly, [switch] $QueuedHistoryOnly, [switch] $QueuedMultiplyOnly, [switch] $PostbirthMultiplyOnly, [switch] $FinalizingControlsOnly)
 $ErrorActionPreference = 'Stop'
 if ($SkipMidi -and $MidiOnly) { throw 'SkipMidi cannot be combined with MidiOnly.' }
 $repo = Split-Path -Parent $PSScriptRoot
@@ -31,6 +31,9 @@ foreach ($block in $Blocks) {
         } elseif ($QueuedHistoryOnly) {
             & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block --queued-history-only
             if ($LASTEXITCODE -ne 0) { throw "Queued history UI failed at $block samples." }
+        } elseif ($StoppingHistoryOnly) {
+            & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block --stopping-history-only
+            if ($LASTEXITCODE -ne 0) { throw "Stopping history UI failed at $block samples." }
         } elseif ($StoppingNormOnly) {
             & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block --stopping-norm-only
             if ($LASTEXITCODE -ne 0) { throw "Stopping NORM UI failed at $block samples." }
@@ -41,15 +44,15 @@ foreach ($block in $Blocks) {
             & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Mouse workflow failed at $block samples." }
         }
-        if (!$FinalizingControlsOnly -and !$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$StoppingNormOnly -and !$MergeOnly -and !$MidiOnly) {
+        if (!$FinalizingControlsOnly -and !$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$StoppingNormOnly -and !$StoppingHistoryOnly -and !$MergeOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/ExportWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "WAV export workflow failed at $block samples." }
         }
-        if (!$FinalizingControlsOnly -and !$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$StoppingNormOnly -and !$ExportOnly -and !$MidiOnly) {
+        if (!$FinalizingControlsOnly -and !$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$StoppingNormOnly -and !$StoppingHistoryOnly -and !$ExportOnly -and !$MidiOnly) {
             & node (Join-Path $repo 'tests/MergeWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "Merge workflow failed at $block samples." }
         }
-        if (!$FinalizingControlsOnly -and !$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$StoppingNormOnly -and !$SkipMidi -and !$ExportOnly -and !$MergeOnly) {
+        if (!$FinalizingControlsOnly -and !$PostbirthMultiplyOnly -and !$QueuedMultiplyOnly -and !$QueuedHistoryOnly -and !$QueuedNormOnly -and !$StoppingNormOnly -and !$StoppingHistoryOnly -and !$SkipMidi -and !$ExportOnly -and !$MergeOnly) {
             & node (Join-Path $repo 'tests/MidiWorkflow.cjs') $block
             if ($LASTEXITCODE -ne 0) { throw "MIDI workflow failed at $block samples." }
         }
@@ -57,6 +60,7 @@ foreach ($block in $Blocks) {
         elseif ($PostbirthMultiplyOnly) { Write-Output "PASS: focused post-birth input/no-input MULT workflow at $block samples." }
         elseif ($QueuedMultiplyOnly) { Write-Output "PASS: focused queued-MULT processor/editor mouse workflow at $block samples." }
         elseif ($QueuedHistoryOnly) { Write-Output "PASS: focused queued-history processor/editor mouse workflow at $block samples." }
+        elseif ($StoppingHistoryOnly) { Write-Output "PASS: focused stopping-history processor/editor mouse workflow at $block samples." }
         elseif ($StoppingNormOnly) { Write-Output "PASS: focused stopping-NORM processor/editor mouse workflow at $block samples." }
         elseif ($QueuedNormOnly) { Write-Output "PASS: focused queued-NORM processor/editor mouse workflow at $block samples." }
         else { Write-Output "PASS: production processor/editor mouse workflow at $block samples." }
