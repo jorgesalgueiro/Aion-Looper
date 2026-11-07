@@ -431,7 +431,7 @@
                 r.normalize.disabled=!active||!t.length||!['playing','stopped','queued'].includes(t.state)||snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 const mergeBusy=snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));
                 r.mergeSource.disabled=!active||mergeBusy;
-                r.mergeGo.disabled=!active||mergeBusy||!['empty','playing','stopped','queued'].includes(t.state)||!sources.includes(Number(r.mergeSource.value))||r.mergeSource.value==='';
+                r.mergeGo.disabled=!active||mergeBusy||!['empty','playing','stopped','queued','stopping'].includes(t.state)||!sources.includes(Number(r.mergeSource.value))||r.mergeSource.value==='';
                 r.solo.setAttribute('aria-pressed',String(t.solo));r.solo.style.cssText=t.solo?'background:#ff0;color:#000;border-color:#ff0':'';
                 r.mute.style.background=t.muted?'#f00':'';
                 r.mute.style.color=t.muted?'#000':'';

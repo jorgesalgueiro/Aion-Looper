@@ -62,6 +62,7 @@ void exportTests();
 void mergeTests();
 void queuedMergeSourceTests();
 void queuedMergeDestinationTests();
+void stoppingMergeTests();
 void midiTests();
 void waveformTests();
 void liveInputTests();
@@ -106,6 +107,7 @@ int main(int argc,char** argv) {
     if(argc==2&&std::string_view(argv[1])=="--queued-norm"){queuedNormTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--norm-pending"){normPendingTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--start-phase"){startPhaseTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--stopping-merge"){stoppingMergeTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--queued-merge-destination"){queuedMergeDestinationTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--merge"){mergeTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--queued-merge-source"){queuedMergeSourceTests();return 0;}

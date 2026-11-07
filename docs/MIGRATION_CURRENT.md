@@ -15,6 +15,40 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### Active acceptance: scheduled-stop MERGE — 7 November 2026
+
+Small slice: unchanged original `mergeLoops` admits a stored source and/or
+nonempty destination after `Loop.scheduleStop`. Native GO/shared CLI must do the
+same without restarting either source, dropping its audio-owned STOP deadline,
+or modifying source PCM. Preserve clone/mix/history and success-only,
+identity/serial-validated source confirmation, including clear/STOP/OOM barriers.
+
+Implementation extends existing worker ownership and GUI eligibility; the shared
+internal stored-edit lifetime flag retains an audible scheduled STOP through
+finalization. No public IDs, schema, parameters, reference/preserved UI assets,
+dependencies or formats change. CLI remains `loop merge DEST VALUE`.
+
+Windows evidence so far: 24 unchanged-JS stopping-source cases and 24 original
+source/deadline destination cases pass exact stereo WAV and <=1e-6 playback;
+88 actual Engine 64/128 cases pass (forward/reverse, source/destination/both,
+held worker across STOP, source PCM, history, OOM/cancellation and zero callback
+new/delete). Retained MERGE, 120 queued-destination and 108 queued-NORM cases,
+Standalone/complete production processor suite and nine focused CTests pass.
+The original-node oracle excludes browser gain/STOP envelopes, resampling and
+advancing-worker audio; these are not full browser/driver sound acceptance.
+
+Actual pointer acceptance is under repair. The first attempt clicked while the
+fixture's direct native snapshot was ahead of the rendered control. Diagnostic
+rerun records a pointer on **PLAY**, while native audio is already playing; this
+cannot be a STOP gesture. The fixture now waits for the actual rendered **STOP**
+and master sync controls. No product change, timeout extension, threshold change
+or assertion removal was made for this fixture correction. Retain both failure
+logs: `build/stopping-merge-ui-windows.log` and
+`build/stopping-merge-ui-diagnostic-windows.log`. Windows 64/128 rerun and Linux
+build/audio/reference/sanitizer/processor acceptance are pending. Do not mark
+this slice accepted until those finish. Prior unresolved missing-button and
+Linux external-CLI timeout observations below remain open. No package or push.
+
 ### Implemented preview: queued-destination MERGE
 
 Acceptance: unchanged `mergeLoops` mutates stored destination PCM without a source

@@ -1251,6 +1251,80 @@ void postbirthHistoryTests(){
 
 // MERGE reads immutable stored PCM; it must not take ownership of the source's
 // pending PLAY receipt, constructed graph, reversed snapshot or original grid.
+void stoppingMergeTests(){
+    using namespace aion;unsigned cases=0;
+    const auto setup=[](Fixture& f,unsigned id,bool reverse,unsigned kind,bool clone=false){
+        f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();
+        f.record(19-id);f.command(LoopAction::stopImmediate,19-id);f.cycle();
+        if(!clone){f.record(id);f.command(LoopAction::stopImmediate,id);f.cycle();}
+        for(auto* e:{f.engine.get(),f.control.get()})for(unsigned track:{id,19-id})check(e->enqueueLoop({LoopAction::reverse,track,0,e->generation(),0,reverse?1.:0.}),"Stopping MERGE reverse source metadata");
+        if(kind!=1){f.command(LoopAction::play,19-id);f.cycle();}
+        if(kind!=0){f.command(LoopAction::play,id);f.cycle();}
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+        if(kind!=1){f.command(LoopAction::stop,19-id);f.cycle();check(f.view->tracks[19-id].state==LoopState::stopping,"Source has actual scheduled stop");}
+        if(kind!=0){f.command(LoopAction::applyStart,id);f.command(LoopAction::stop,id);f.cycle();check(f.view->tracks[id].state==LoopState::stopping,"Destination has actual scheduled stop with pending phase");}
+    };
+    const auto merge=[](Fixture& f,unsigned id,bool paired=true){
+        check(f.engine->enqueueLoop({LoopAction::merge,id,++f.request,f.engine->generation(),0,static_cast<double>(19-id)}),"Stopping MERGE observed command");
+        if(paired)check(f.control->enqueueLoop({LoopAction::merge,id,f.request,f.control->generation(),0,static_cast<double>(19-id)}),"Stopping MERGE paired command");
+    };
+    const auto held=[](){const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(heldWorkerAllocations.load()<2&&std::chrono::steady_clock::now()<until)std::this_thread::yield();
+        check(heldWorkerAllocations.load()>=2,"Stopping MERGE workers held outside audio");};
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned kind=0;kind<3;++kind)for(bool delayed:{false,true}){
+        Fixture f(block);setup(f,id,reverse,kind);const auto before=f.view->tracks[id],source=f.view->tracks[19-id];
+        const auto end=std::max(before.scheduledFrame,source.scheduledFrame);
+        if(delayed){heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);}
+        merge(f,id);f.cycle(!delayed);
+        if(delayed){held();check(f.view->tracks[id].state==LoopState::finalizing,"Scheduled MERGE remains worker-owned");
+            while(f.engine->clock()<end+512)f.cycle();
+            check(!f.view->tracks[id].scheduledFrame&&!f.view->tracks[id].phaseApplyFrame,"Owned source/phase STOP deadlines resolve during worker");
+            holdWorkerAllocation.store(false);f.cycle(true);
+        }else{
+            check(!f.view->rejected&&f.view->tracks[id].state==before.state&&f.view->tracks[id].scheduledFrame==before.scheduledFrame
+                &&f.view->tracks[id].stopPending==before.stopPending,"MERGE retains exact destination stop state/deadline metadata");
+            check(f.view->tracks[19-id].state==source.state&&f.view->tracks[19-id].scheduledFrame==source.scheduledFrame
+                &&f.view->tracks[19-id].waveformId==source.waveformId,"MERGE retains source stop state/deadline and identity");
+            check(f.view->tracks[id].mergeSerial,"Successful scheduled MERGE has current confirmation before STOP");
+            while(f.engine->clock()<end+512)f.cycle();
+        }
+        const auto after=f.view->tracks[id];check(after.state==LoopState::stopped&&!after.scheduledFrame&&!after.finalizationFailed
+            &&after.length==before.length&&after.waveformId!=before.waveformId&&after.undoCount==1,"Scheduled MERGE finishes stopped once, preserving committed PCM/history");
+        if(kind!=0)check(after.mergeSerial==0,"Destination timed STOP cancels pending destructive confirmation");
+        check(f.view->tracks[19-id].state==LoopState::stopped&&f.view->tracks[19-id].waveformId==source.waveformId,"Source timed STOP never mutates its stored PCM");
+        f.command(LoopAction::undoGlobal,id);f.cycle();check(f.view->tracks[id].waveformId==before.waveformId,"Post-stop global Undo exact destination identity");
+        f.command(LoopAction::redoGlobal,id);f.cycle();check(f.view->tracks[id].waveformId==after.waveformId&&!f.view->tracks[id].mergeSerial,"Post-stop global Redo exact identity, no revived confirmation");++cases;
+    }
+    // Read-only stopping sources are compared against an unedited paired engine.
+    // A muted destination keeps source PCM comparison independent of the merge.
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool clone:{false,true}){
+        Fixture f(block);setup(f,id,reverse,0,clone);for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::mute,id,0,e->generation(),0,1}),"Mute destination for independent source PCM oracle");
+        const auto source=f.view->tracks[19-id];merge(f,id,false);f.cycle(true);const auto serial=f.view->tracks[id].mergeSerial;
+        check(serial&&f.view->tracks[19-id].scheduledFrame==source.scheduledFrame,"Stopping source clone/mix retains exact deadline");
+        for(unsigned n=0;n<8;++n)f.cycle();
+        check(f.engine->enqueueLoop({LoopAction::clearMergedSource,id,++f.request,f.engine->generation(),0,static_cast<double>(serial)}),"Confirm exact stopping source owner");
+        check(f.control->enqueueLoop({LoopAction::clear,19-id,f.request,f.control->generation(),0,0}),"Mirror explicit confirmed source clear");f.cycle();
+        check(f.view->tracks[19-id].state==LoopState::empty,"Confirmed stopping source clear accepted");
+        while(f.engine->clock()<source.scheduledFrame+1024)f.cycle();check(f.view->tracks[19-id].state==LoopState::empty,"Old scheduled stop cannot resurrect confirmed source");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true}){
+        Fixture f(block);setup(f,id,reverse,2);const auto before=f.view->tracks[id],source=f.view->tracks[19-id];
+        failWorkerAllocation.store(true);merge(f,id,false);f.cycle(true);
+        check(!failWorkerAllocation.load()&&f.view->tracks[id].finalizationFailed&&f.view->tracks[id].waveformId==before.waveformId
+            &&f.view->tracks[id].state==LoopState::stopping&&f.view->tracks[id].scheduledFrame==before.scheduledFrame&&!f.view->tracks[id].undoCount&&!f.view->tracks[id].mergeSerial,"Scheduled MERGE OOM retains original PCM/stop/history");
+        while(f.engine->clock()<std::max(before.scheduledFrame,source.scheduledFrame)+1024)f.cycle();check(f.view->tracks[id].state==LoopState::stopped,"OOM never loses timed STOP");++cases;
+    }
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<4;++cancel){
+        Fixture f(block);setup(f,id,true,2);heldWorkerAllocations.store(0);holdWorkerAllocation.store(true);merge(f,id);f.cycle();held();
+        f.command(cancel==0?LoopAction::stopImmediate:cancel==1?LoopAction::stopAll:cancel==2?LoopAction::clear:LoopAction::clearAll,id);f.cycle();
+        holdWorkerAllocation.store(false);f.cycle(true);for(unsigned n=0;n<400;++n)f.cycle();
+        check(f.view->tracks[id].state==(cancel<2?LoopState::stopped:LoopState::empty)&&!f.view->tracks[id].mergeSerial&&!f.view->tracks[id].scheduledFrame,"Scheduled MERGE cancellation keeps STOP/DEL barriers");++cases;
+    }
+    check(allocations.load()==0,"Stopping MERGE zero callback new/delete");
+    std::cout<<"PASS: scheduled-stop MERGE "<<cases<<" Engine 64/128, source/destination/both stop deadlines, history, exact independent source PCM, OOM/cancellation and zero callback new/delete\n";
+}
+
 void queuedMergeDestinationTests(){
     using namespace aion;unsigned cases=0;
     const auto setup=[](Fixture& f,unsigned id,bool reverse,bool sourceQueued=false){
@@ -2254,7 +2328,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

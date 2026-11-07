@@ -78,8 +78,9 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
  if(nativeIndex>=0)assert(probe,'--native requires aion_start_probe');
  const ceilSample=v=>{const near=Math.round(v);return Math.abs(v-near)<=4*Number.EPSILON*Math.max(1,Math.abs(v))?near:Math.ceil(v);};
  const data=b=>Array.from({length:b.numberOfChannels},(_,c)=>Float32Array.from(b.getChannelData(c)));
+ const stoppingDestination=process.argv.includes('--scheduled-stop');
  let cases=0,wavCases=0,samples=0,maximum=0;
- for(const rate of [8000,48000,96000])for(const mono of [true,false])for(const size of [17,512])for(const reverse of [false,true])for(const sequence of ['prebirth','constructed','apply','undo-redo']){
+ for(const rate of [8000,48000,96000])for(const mono of [true,false])for(const size of [17,512])for(const reverse of [false,true])for(const sequence of (stoppingDestination?['stopping']:['prebirth','constructed','apply','undo-redo'])){
   audio.currentTime=0;audio.sampleRate=rate;
   const raw=n=>[Array.from({length:n},(_,i)=>Math.fround(.12+.4*Math.sin(i*.11))),Array.from({length:n},(_,i)=>Math.fround(-.08+.2*Math.cos(i*.073)))];
   const baseRaw=raw(size),sourceRaw=raw(773);if(mono){baseRaw[1]=baseRaw[0].slice();sourceRaw[1]=sourceRaw[0].slice();}
@@ -110,6 +111,9 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
   commands.push('sync 1 137.3 1 1',`reverse 0 ${reverse?1:0}`,'delay 0 .217');const grid=context.grid();gate=ceilSample(grid*rate);commands.push('play 0 0');
   if(sequence!=='prebirth'){await context.scheduledPlay(grid);remember();commands.push('birth 0 0');}
   if(sequence==='apply'){context.applyPhase();remember();commands.push('apply 0 0');}
+  let stopAt=0;
+  if(stoppingDestination){render(gate+Math.ceil(rate*.012));stopAt=ceilSample(context.grid()*rate);context.scheduleStop();
+   assert.equal(context.info()[1],'stopping');assert.equal(ceilSample(context.stopTime()*rate),stopAt,'Original source owns scheduled stop');commands.push('stopgrid 0 0');}
   await context.merge();commands.push('merge 0 1','wait 0 0');wavs.push({row:commands.length,want:Buffer.from(context.stereoWav())});commands.push('export 0 0');
   assert.equal(context.info()[2],1,'MERGE adds one local undo');
   if(sequence==='prebirth'){await context.scheduledPlay(grid);remember();commands.push('birth 0 0');}
@@ -118,16 +122,16 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),asse
    render(frame+Math.ceil(rate*.002));context.restore(true);remember();commands.push('redo 0 0');wavs.push({row:commands.length,want:Buffer.from(context.stereoWav())});commands.push('export 0 0');
   }
   const inspectRow=commands.length;commands.push('inspect 0 0');
-  render(gate+Math.ceil(rate*.06));wavs.push({row:commands.length,want:expectedSource});commands.push('export 1 0');
+  render((stoppingDestination?stopAt:gate)+Math.ceil(rate*.06));const stoppedRow=commands.length;if(stoppingDestination)commands.push('inspect 0 0');wavs.push({row:commands.length,want:expectedSource});commands.push('export 1 0');
   if(probe){
    const run=spawnSync(probe,['--callback-start'],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:64*1024*1024});assert.equal(run.status,0,run.stderr);
    const rows=run.stdout.trim().split(/\r?\n/);assert.equal(rows.length,commands.length);
    for(let i=0;i<commands.length;++i)if(!commands[i].startsWith('export '))assert.equal(Number(rows[i].split(' ')[0]),1,`${rate}/${mono}/${size}/${reverse}/${sequence}: ${commands[i]}`);
    for(const {row,want} of wavs){assert.deepEqual(Buffer.from(rows[row],'hex'),want,`${rate}/${mono}/${size}/${reverse}/${sequence}: exact stereo export (duplicated mono), history/source preservation`);wavCases++;}
-   const meta=rows[inspectRow].split(' ').map(Number);assert.equal(meta[1],size);assert.equal(meta[5],1);assert.equal(meta[6],0);assert(meta[2]===9||sequence==='undo-redo'&&meta[2]===2);
+   const meta=rows[inspectRow].split(' ').map(Number);assert.equal(meta[1],size);assert.equal(meta[5],1);assert.equal(meta[6],0);assert(stoppingDestination?meta[2]===10:(meta[2]===9||sequence==='undo-redo'&&meta[2]===2));if(stoppingDestination)assert.equal(Number(rows[stoppedRow].split(' ')[2]),3,'Native destination stops at its original grid');
    for(const {row,want} of checks){const actual=rows[row].split(' ').map(Number).slice(-2);for(const value of actual){const error=Math.abs(value-want);maximum=Math.max(maximum,error);assert(error<=1e-6,`${rate}/${mono}/${size}/${reverse}/${sequence} frame ${rows[row]} want ${want}; gate=${gate} grid=${grid} voices=${JSON.stringify(voices.map(v=>v.node.started))}`);}}
   }
   cases++;
  }
- console.log(JSON.stringify({result:'PASS',mode:probe?'native':'reference-only',cases,wavCases,samples,maximumAbsoluteError:probe?maximum:null,tolerance:1e-6,scope:'Unchanged mergeLoops/mixBuffersCircular, actual original Loop.play/restart/Undo/Redo source snapshots and gate; node IO stubs, no browser envelopes/resampler or advancing worker-latency claim'}));
+ console.log(JSON.stringify({result:'PASS',mode:probe?'native':'reference-only',stoppingDestination,cases,wavCases,samples,maximumAbsoluteError:probe?maximum:null,tolerance:1e-6,scope:'Unchanged mergeLoops/mixBuffersCircular, actual original Loop.play/restart/Undo/Redo source snapshots and gate; node IO stubs/raw source PCM, no browser gain/stop envelopes/resampler or advancing worker-latency claim'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

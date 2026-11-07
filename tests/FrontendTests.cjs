@@ -58,8 +58,8 @@ const root=path.resolve(__dirname,'..');
  snapshot=committed(8);notice.observe(snapshot);notice.confirm=()=>{snapshot={...snapshot,generation:99};return true;};timers.shift()();assert.equal(clears.length,1,'Recheck after blocking confirmation');
  // A native queued source represents the original playing loop before its grid.
  // Source PCM/clear ownership remains required before AND after the dialog.
- for(const after of ['queued','playing','recording']){
-  snapshot={generation:1,tracks:[{mergeSerial:0,clearEpoch:0},{waveformId:8,clearEpoch:2,state:'queued'}]};
+ for(const initial of ['queued','stopping'])for(const after of ['queued','playing','stopping','stopped','recording']){
+  snapshot={generation:1,tracks:[{mergeSerial:0,clearEpoch:0},{waveformId:8,clearEpoch:2,state:initial}]};
   const localTimers=[],localClears=[];
   const local=new native.window.AionMerge({current:()=>snapshot,schedule:fn=>localTimers.push(fn),confirm:()=>{snapshot.tracks[1].state=after;return true;},clear:(...v)=>localClears.push(v)});
   local.observe(snapshot);snapshot=committed(10);local.observe(snapshot);localTimers.shift()();
@@ -1091,7 +1091,7 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  const line=code.split('\n').find(l=>l.includes('r.mergeGo.disabled='));assert(line);
  for(const state of ['empty','queued','playing','stopped','stopping','finalizing','recording'])for(const active of [false,true])for(const busy of [false,true])for(const selected of ['', '1','0']){
   const r={mergeGo:{},mergeSource:{value:selected}},scope={r,t:{state},active,mergeBusy:busy,sources:[1]};vm.runInNewContext(line,scope);
-  assert.equal(r.mergeGo.disabled,!active||busy||!['empty','queued','playing','stopped'].includes(state)||selected!=='1');
+  assert.equal(r.mergeGo.disabled,!active||busy||!['empty','queued','playing','stopped','stopping'].includes(state)||selected!=='1');
  }
  console.log('PASS: original MERGE GO eligibility includes queued destination and retains source/busy guards');
 }
