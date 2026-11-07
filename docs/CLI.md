@@ -156,7 +156,11 @@ callback. It retains the original play receipt and start grid; normalization doe
 not itself create a source. The existing asynchronous worker commits new PCM;
 use `status` to distinguish acceptance, finalization and playback. Sources take
 the PCM committed at construction; reversed snapshots remain independent. The
-command controls the running session and does not create a second audio engine.
+command controls the running session and does not create a second audio engine. A loop
+awaiting scheduled STOP also accepts NORM. Its current stop/phase deadlines and
+history remain intact; a worker result arriving after STOP never restarts it.
+Forward sources observe normalized stored PCM; already constructed reversed
+sources retain their own snapshot until source replacement.
 
 ## Queued history
 

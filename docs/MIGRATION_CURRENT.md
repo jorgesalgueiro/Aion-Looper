@@ -15,31 +15,97 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-### Active acceptance: NORM during scheduled STOP — 7 November 2026
+### Implemented preview: NORM during scheduled STOP — 7 November 2026
 
-Small slice: original `Loop.normalize` is enabled whenever stored PCM exists,
-including a loop after `Loop.scheduleStop`. Native previously rejected/disabled
-that state. Extend existing NORM admission and the shared stored-edit lifetime;
-retain the exact STOP/phase deadlines and audible source, forward shared PCM vs
-reversed snapshot behavior, no new local/global history, and worker OOM/clear/
-prepare safety. GUI uses original NORM; CLI uses existing `loop normalize TRACK`.
-No IDs/schema/DSP kernel/reference/preserved assets or dependencies change.
+Original `Loop.normalize` remains enabled after `Loop.scheduleStop`; native code
+previously rejected/disabled that state. NORM now shares the existing stored-edit
+lifetime used by MERGE: it preserves the audio-owned STOP/phase deadlines and
+source, adds no local/global history, and cannot restart playback if its worker
+finishes after STOP. GUI retains original NORM; CLI uses `loop normalize TRACK`.
+Snapshot **8d708f2**. No public IDs, schema, DSP kernel, reference/preserved UI,
+logo, dependency or target changes.
 
-Acceptance so far: Windows **120** Engine 64/128 cases PASS for changed/repeated
-NORM, tracks 0/19, reverse, phase events, worker held past STOP, existing global
-history, exact paired stereo OOM and cancellation/prepare; no callback new/delete.
-The reused unchanged-JS source/deadline oracle adds `--normalize` without changing
-old MERGE cases: **48 PASS**, **96 exact stereo WAV exports**, **2,271,888 frames**,
-max error **1.14235381e-7**, unchanged **1e-6** limit. It covers mono/stereo,
-8/48/96kHz, 17/512-frame clips, forward/reverse and repeated/no-op normalization.
-Node IO stubs exclude browser gain/STOP envelopes, resampling and advancing-worker
-sound. Initial rejection is retained in `build/stopping-norm-repro-windows.log`.
+| Acceptance | Executed evidence |
+| --- | --- |
+| New actual Engine, Windows/Linux | **120 PASS** each, 64/128 and tracks 0/19: forward/reverse, changed/repeated NORM, accepted phase events, workers held across STOP, existing global history, independent exact stereo OOM rollback, STOP/DEL/prepare and no callback new/delete |
+| Unchanged-JS source/deadline oracle | **48 PASS** each OS, **96 exact stereo WAVs**, **2,271,888 frames** each. Mono/stereo 8/48/96kHz, 17/512 frames, original `normalize`/`normalizeBuffer` and `scheduleStop`; max error **1.14235381e-7**, limit **1e-6** |
+| Retained Engine, each OS | **108** queued NORM, **96** pre-birth NORM, **80** pending/active Apply/RTRG/OOM/full-pool NORM and **88** scheduled-stop MERGE cases PASS |
+| Connected capture/OD/SUB audit, each OS | **126 PASS**, **965,826 frames**, maximum **7.39475750e-8**, unchanged **1e-6** limit |
+| Original connected NORM/reverse/history/MULT/kernels; queued NORM and retained MERGE; frontend/bridge/assets/CLI admission | Windows **13/13 CTests PASS**, **143.76s**; new 48-case oracle separately. Linux **14/14 PASS**, **240.34s**, including the new NORM oracle |
+| Actual Windows original NORM pointer/PCM | PASS 64/128, forward/reverse, repeated edits, waveform/length/reverse/history/deadline, continuing audible PCM and natural scheduled STOP |
+| Standalone / production processor+CLI | Build/full production processor+external CLI suite PASS each OS; Linux suite ran alone after reference/sanitizer jobs ended |
+| Native Linux Debug ASan/UBSan/leaks | **120** stopping NORM, **108** queued NORM, **88** stopping MERGE PASS; no diagnostics |
 
-Before accepting: finish production suites, actual Windows NORM pointers at
-64/128, retained NORM/MERGE/reference/frontend checks and Linux build/audio/
-ASan/UBSan acceptance; measure scoped warmed callback cost. Do not start the next
-slice until these pass. Reuse prior platform/device limits and keep the earlier
-missing-button/CLI-timeout observations visible. No package or push.
+The reused source oracle gains `--normalize`; every prior MERGE case and its
+numeric limits remain. Initial native rejection is preserved at
+`build/stopping-norm-repro-windows.log`. Node IO stubs compare raw source PCM,
+forward stored-buffer updates/reversed snapshots, exact stored exports and STOP
+source deadlines, excluding browser gain/STOP envelopes, resampling and advancing
+worker sound. Existing kernel/42-case connected NORM gates retain silence/unity
+thresholds, short/long clips and stereo linkage; no tolerance was relaxed.
+
+Actual Windows interaction uses the existing synthetic-PCM processor/editor host
+and real CDP pointers, waiting for rendered/enabled controls before pressing.
+No snapshot/audio/timing mocks or new product UI. Driver/physical input/controller,
+Linux WebKit interaction, OS-dialog, wrapper/DAW, Apple, full-bank/worst-case and
+long-session validation remain separate. This is preview acceptance, not release.
+The two earlier unexplained missing-button/CLI-timeout observations below remain
+open; this slice has not reproduced or explained them. No package or push.
+
+Primary Windows logs: `build/stopping-norm-{core-build,core,native,queued-norm,prebirth-norm,norm-pending,stopping-merge,production-build,production,audio,ctest,ui}-windows.log`.
+Linux: `build/stopping-norm-{build,stopping-norm,queued-norm,prebirth-norm,norm-pending,stopping-merge,production,audio,ctest,sanitizer-build,sanitizer-stopping-norm,sanitizer-queued-norm,sanitizer-stopping-merge}-linux.log`.
+
+After all acceptance jobs ended, identical ignored warmed Engine harnesses ran
+Windows then Linux: 48kHz stereo, one 512-frame clip, 512 warm callbacks,
+forward/reverse changed/no-op NORM, **8 scenarios each OS** at 64/128 samples.
+Measured callbacks cover admission/live result acceptance, playback through STOP
+and clear. Setup, worker sleeps/offline waiting and telemetry consumption are
+outside timing. Maximum observed per 64/128 callback: Windows **139.6us /224.5us**,
+Linux **94.416us /114.216us**, against **1333.33us /2666.67us** deadlines. These
+small warmed observations do not establish worst-case/full-bank/long-session
+performance or physical round-trip latency, and imply no platform ranking/gain.
+Harness `build/stopping-norm-bench-src/{CMakeLists.txt,bench.cpp}`; bench.cpp SHA256
+`b4d524435486eac88a29e71524a136a9810c0fd5fb71f487d338a7260c844a73`.
+Independent `build/stopping-norm-bench-{windows,linux}` caches import their own
+current Release core; target `queued_bench`, logs
+`build/stopping-norm-bench-{build-,}OS.log`.
+
+Focused commands (existing caches; CMake/CTest paths and clean snapshot sync as
+in DEVELOPMENT_WORKFLOW.md):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe aion_dsp_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --stopping-norm
+node tests/QueuedMergeSources.cjs --normalize --native build/windows-core/Release/aion_start_probe.exe
+node tests/AudioParityAudit.cjs build/windows-core/Release/aion_reference_probe.exe
+cmake --build --preset windows-dev --target AionLooper_Standalone aion_mouse_host aion_midi_processor_tests --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -StoppingNormOnly
+```
+
+```sh
+# Commit locally and sync the clean independent WSL mirror first.
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_dsp_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --stopping-norm
+node tests/AudioParityAudit.cjs build/linux/aion_reference_probe
+ctest --test-dir build/linux --no-tests=error --output-on-failure --parallel 2 -R '^(cli_finalization_admission|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_(stopping_norm|normalization|reverse|history|multiply|dsp_kernels|queued_source_norm|queued_prebirth_norm|merge_queued_destination|merge_stopping_destination))$'
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --stopping-norm
+# After other heavy acceptance processes finish, run the full processor suite alone.
+./build/linux/aion_midi_processor_tests
+```
+
+Windows uses the same CTest regex minus `stopping_norm` (executed directly),
+`-C Release` and its own cache. Retained core selectors: `--queued-norm`,
+`--prebirth-norm`, `--norm-pending`, `--stopping-merge`; sanitizers also run
+`--queued-norm` and `--stopping-merge`. No reconfiguration beyond CMake's changed
+test-list regeneration, wrappers, packages, versions or dependency updates.
+
+**Next:** scheduled-stop Undo/Redo eligibility, then remaining core-button
+combinations. Original Undo/Redo replaces stored PCM without restarting a stopping
+graph; preserve that distinction when establishing the next slice. NORM meets the
+documented preview gates above. Keep FX/SAVE/presets explicitly unported until
+core-button acceptance finishes.
 
 ### Implemented preview: scheduled-stop MERGE — 7 November 2026
 

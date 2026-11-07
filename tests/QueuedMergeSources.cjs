@@ -1,4 +1,5 @@
-// MERGE into a queued destination: unchanged stored-buffer and graph methods.
+// Stored MERGE/NORM: unchanged stored-buffer and source/deadline methods.
+// --normalize exercises changed/no-op NORM while scheduled STOP is pending.
 // Default is reference-only; --native PROBE checks source PCM and stereo export.
 // Audio nodes are IO stubs; this compares source PCM, not browser resampling/envelopes.
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),assert=require('node:assert/strict'),{spawnSync}=require('node:child_process');

@@ -14,7 +14,7 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | RTRG / STUT | Native shared commands, unchanged-JS source/fragment/progress and real pointer/lifetime gates | Retain documented transition-envelope limits |
 | MULT | Ordinary capture/doubling, queued pre-birth doubling, constructed and active/gated source input capture verified in the native preview | Retain recorder-quantum/worker-latency and platform/interaction limits in MIGRATION_CURRENT |
 | UNDO / REDO | Local/global worker history, queued sources and exact stereo gates | Rapid finalization FIFO verified for local/global history and MULT; retain lifecycle/concurrency limits in MIGRATION_CURRENT |
-| NORM | Native immutable edit, no-history semantics and queued-source gates | Retain OOM/cancellation and current finalization dispatch checks |
+| NORM | Native immutable edit, no-history semantics and queued-source gates; scheduled-stop source/deadline gates now pass on Windows/Linux with Windows pointer acceptance | Retain OOM/cancellation, STOP/phase deadlines and current finalization dispatch checks |
 | DEL; MERGE source / GO | Native cleanup and immutable worker merge, original confirmation/history/PCM gates | Queued-source clone/mix verified in Windows/Linux audio and Windows pointer tests; queued-destination and scheduled-stop source/destination audio/ownership and Windows pointer checks also pass; other stopping-state controls require their own eligibility audit |
 | Waveform click WAV | Native stored-PCM export, filenames, bounded leases and picker lifecycle | OS cancel/overwrite and non-Windows dialogs remain separate checks |
 | SAVE (Dry/Wet) | **Unported; disabled** | Native wet rendering, chain state, rate/pan/volume, three-second tail, paired filenames and lifecycle checks; dry-only export is not equivalent |
@@ -26,7 +26,7 @@ Queued-source input capture and main FINISH now have shared GUI/CLI, original-JS
 PCM/WAV and 64/128 ownership/pointer coverage. Queued-source MERGE now passes
 its Windows/Linux audio and Windows interaction gates. Queued destinations and
 scheduled-stop source/destination states now pass those gates too. Next address
-integrated core-button combinations and remaining stopping-state eligibility before the
+scheduled-stop Undo/Redo eligibility and integrated core-button combinations before the
 effects/SAVE/preset engine. The owner confirmed core
 looping/editing first. Each functional
 slice must pass its relevant Windows/Linux tests before the next. The final
