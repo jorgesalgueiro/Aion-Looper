@@ -103,7 +103,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
   if(kind!=='source'){await stopPointer(0);await wait(s=>s.tracks[0].state==='stopping','destination scheduled STOP pointer');}
   const prior=await snapshot(),priorBytes=await save(0,'ScheduledBefore'+kind+reverse),sourceBytes=await save(2,'ScheduledSource'+kind+reverse),count=dialogs.length;
   acceptSourceClear=false;await go(0,2);s=await wait(s=>s.tracks[0].mergeSerial&&dialogs.length===count+1,'scheduled MERGE actual GO');
-  for(const track of [0,2]){assert.equal(s.tracks[track].state,prior.tracks[track].state);assert.equal(s.tracks[track].scheduledFrame,prior.tracks[track].scheduledFrame);assert.equal(s.tracks[track].sourceRevision,prior.tracks[track].sourceRevision,'MERGE does not restart scheduled source');}
+  for(const track of [0,2]){assert.equal(s.tracks[track].state,prior.tracks[track].state);assert.equal(s.tracks[track].scheduledFrame,prior.tracks[track].scheduledFrame);assert.equal(s.tracks[track].phaseApplyFrame,prior.tracks[track].phaseApplyFrame,'MERGE preserves accepted phase deadline');assert.equal(s.tracks[track].reverse,prior.tracks[track].reverse);if(track===2)assert.equal(s.tracks[track].waveformId,prior.tracks[track].waveformId,'MERGE preserves stopping source identity');}
   assert.equal(s.tracks[0].length,prior.tracks[0].length);assert.equal(s.tracks[0].undoCount,Math.min(5,prior.tracks[0].undoCount+1));
   const mergedBytes=await save(0,'ScheduledMerged'+kind+reverse);assert.deepEqual(await save(2,'ScheduledUnchanged'+kind+reverse),sourceBytes);
   if(kind==='source'&&!reverse){
@@ -113,7 +113,9 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
   }
   assert((await rpc({operation:'loop',action:'stopAll',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);
   await wait(s=>s.tracks[0].state==='stopped','stop before scheduled merge history');
+  for(let n=0;n<180&&await evaluate(`document.querySelector('#loop-0 button[title="UNDO"]').disabled`);++n)await delay(40);
   await click('#loop-0 button[title="UNDO"]');await wait(s=>s.tracks[0].waveformId===prior.tracks[0].waveformId,'post-stop Undo identity');assert.deepEqual(await save(0,'ScheduledUndo'+kind+reverse),priorBytes);
+  for(let n=0;n<180&&await evaluate(`document.querySelector('#loop-0 button[title="REDO"]').disabled`);++n)await delay(40);
   await click('#loop-0 button[title="REDO"]');await wait(s=>s.tracks[0].waveformId!==prior.tracks[0].waveformId&&s.tracks[0].redoCount===0,'post-stop Redo identity');assert.deepEqual(await save(0,'ScheduledRedo'+kind+reverse),mergedBytes);
   assert((await rpc({operation:'setParameter',id:'syncMode',value:0})).ok);
  }

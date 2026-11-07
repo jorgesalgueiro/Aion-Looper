@@ -9,45 +9,115 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Active work — core loop-track buttons, 6 November 2026
+## Active work — core loop-track buttons, 7 November 2026
 
 Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-### Active acceptance: scheduled-stop MERGE — 7 November 2026
+### Implemented preview: scheduled-stop MERGE — 7 November 2026
 
 Small slice: unchanged original `mergeLoops` admits a stored source and/or
-nonempty destination after `Loop.scheduleStop`. Native GO/shared CLI must do the
-same without restarting either source, dropping its audio-owned STOP deadline,
-or modifying source PCM. Preserve clone/mix/history and success-only,
-identity/serial-validated source confirmation, including clear/STOP/OOM barriers.
+nonempty destination after `Loop.scheduleStop`. Native GO and the existing shared
+CLI now admit those states without restarting either source, dropping its
+audio-owned STOP deadline, or modifying source PCM. Clone/mix/history and
+success-only, identity/serial-validated source confirmation retain their
+clear/STOP/OOM barriers. Destination STOP cancels its stale destructive
+confirmation even if the worker finishes later; committed audio remains undoable.
 
-Implementation extends existing worker ownership and GUI eligibility; the shared
-internal stored-edit lifetime flag retains an audible scheduled STOP through
-finalization. No public IDs, schema, parameters, reference/preserved UI assets,
-dependencies or formats change. CLI remains `loop merge DEST VALUE`.
+The existing stored-edit worker lifetime retains audible playback until the
+original STOP. Result acceptance restores stopping only while that deadline
+still exists; an elapsed/cancelled STOP never restarts playback. No public IDs,
+schema, parameters, reference/preserved UI assets, logo, dependencies or formats
+change. CLI remains `loop merge DEST VALUE` (destination 1-based, source value
+0-based; see CLI.md). Implementation snapshot **5fea6f7**; final pointer fixture
+also waits for enabled post-stop history controls and checks actual phase/reverse/
+waveform fields (an unavailable diagnostic field was caught during review).
 
-Windows evidence so far: 24 unchanged-JS stopping-source cases and 24 original
-source/deadline destination cases pass exact stereo WAV and <=1e-6 playback;
-88 actual Engine 64/128 cases pass (forward/reverse, source/destination/both,
-held worker across STOP, source PCM, history, OOM/cancellation and zero callback
-new/delete). Retained MERGE, 120 queued-destination and 108 queued-NORM cases,
-Standalone/complete production processor suite and nine focused CTests pass.
-The original-node oracle excludes browser gain/STOP envelopes, resampling and
-advancing-worker audio; these are not full browser/driver sound acceptance.
+Executed acceptance:
 
-Actual pointer acceptance is under repair. The first attempt clicked while the
-fixture's direct native snapshot was ahead of the rendered control. Diagnostic
-rerun records a pointer on **PLAY**, while native audio is already playing; this
-cannot be a STOP gesture. The fixture now waits for the actual rendered **STOP**
-and master sync controls. No product change, timeout extension, threshold change
-or assertion removal was made for this fixture correction. Retain both failure
-logs: `build/stopping-merge-ui-windows.log` and
-`build/stopping-merge-ui-diagnostic-windows.log`. Windows 64/128 rerun and Linux
-build/audio/reference/sanitizer/processor acceptance are pending. Do not mark
-this slice accepted until those finish. Prior unresolved missing-button and
-Linux external-CLI timeout observations below remain open. No package or push.
+| Verification | Result / scope |
+| --- | --- |
+| Original JS stored source, Windows/Linux | **24 PASS** each: source stopping, clone/mix, mono/stereo 8/48/96kHz, exact stereo WAV/source preservation/Undo/Redo; max playback error **7.74698646e-8**, limit **1e-6** |
+| Original JS source/deadline destination, Windows/Linux | **24 PASS** each, **48 exact stereo WAVs**, **1,135,944 sample frames**; forward/reverse, 17/512 frames, original `Loop.scheduleStop` source deadline, native stopping-to-stopped; max error **8.25520550e-8**, limit **1e-6** |
+| Actual Engine, Windows/Linux | **88 PASS** each at 64/128, tracks 0/19, forward/reverse, source/destination/both, held workers across STOP/phase deadlines, independent exact source PCM, history, OOM/cancellation, no callback new/delete |
+| Retained Engine gates, Windows/Linux | Ordinary MERGE, **120** queued destination, **32** queued source, **108** queued NORM, **96** pre-birth NORM and **80** pending/active Apply/RTRG/OOM/full-pool NORM cases PASS |
+| Standalone / complete production processor suite | Build and complete suite PASS each OS, including actual external CLI/processor commands at 64/128; Linux suite ran alone after other acceptance jobs ended |
+| Focused reference/frontend/bridge/sync CTest | Windows **9/9**, **110.91s**, new 48 stopping cases separately; Linux **11/11**, **165.72s**, including both new stopping gates |
+| Actual Windows WebView pointer/dialog/WAV | PASS 64/128: source/destination/both scheduled STOP, forward/reverse, original GO, decline/confirm and source clear, exact saved stereo, post-stop Undo/Redo, all retained ordinary/queued MERGE/panic guards |
+| Linux Debug ASan/UBSan/leaks | New **88** stopping cases, ordinary MERGE and **108** queued-NORM cases PASS; no diagnostics |
+
+The node oracle uses unchanged original methods with node IO stubs/raw source
+PCM. It excludes browser gain/STOP envelopes, resampling and advancing-worker
+sound. Mono exports duplicate channels as in the native contract. Actual UI uses
+the existing synthetic-PCM processor/editor host with deterministic file-picker
+injection; not OS-dialog/driver/physical-device/latency, Linux WebKit, wrapper/DAW,
+Apple, full-bank or long-session acceptance. Existing full-core baseline is
+reused with affected suites above. This remains preview acceptance, not release.
+
+Fixture repair: first attempts used a fresh direct native snapshot while the
+rendered frontend was still showing PLAY (captured pointer evidence), or Undo
+was still disabled just after STOP. New setup explicitly waits for rendered STOP,
+master sync controls and enabled history buttons before input. Original behavior
+checks remain; no product workaround, timeout extension or tolerance change. Keep failure
+logs `build/stopping-merge-ui-windows.log`,
+`build/stopping-merge-ui-diagnostic-windows.log` and
+`build/stopping-merge-ui-rendered-windows.log`. Passing reruns are
+`build/stopping-merge-ui-ready-windows.log` and
+`build/stopping-merge-ui-final-windows.log`. Reference rejection reproduction:
+`build/stopping-merge-{source,dest}-repro-windows.log`.
+
+Primary Windows logs: `build/stopping-merge-{source-native,dest-native,core,merge,queued-merge-destination,queued-merge-source,queued-norm,prebirth-norm,norm-pending,production,ctest,ui-final}-windows.log`.
+Linux: `build/stopping-merge-{build,stopping-merge,merge,queued-merge-destination,queued-merge-source,queued-norm,prebirth-norm,norm-pending,ctest,production,sanitizer-stopping-merge,sanitizer-merge,sanitizer-queued-norm}-linux.log`.
+
+After acceptance jobs finished, the identical ignored warmed Engine harness ran
+Windows then Linux: 48kHz stereo, two 512-frame clips, 512 warm callbacks,
+source/destination/both scheduled STOP, forward/reverse, **12 scenarios each OS**.
+It measures MERGE admission/live worker acceptance, playback through STOP,
+post-stop Undo/Redo and clear. Setup, worker sleeps/offline waits and telemetry
+consumption are outside measured callbacks. Maximum observed per 64/128 block:
+Windows **152.7us /191.9us**, Linux **92.411us /104.434us**; deadlines
+**1333.33us /2666.67us**. This is a small warmed core observation, not worst-case,
+full-bank/long-session performance, total round-trip latency or a platform ranking.
+No speedup claim. Harness `build/stopping-merge-bench-src/{CMakeLists.txt,bench.cpp}`;
+bench.cpp SHA256 `8969866b7588aede2e3447fe6b619df7596f2e01cf2b1e6c44735069427e3b1b`.
+Independent `build/stopping-merge-bench-{windows,linux}` caches import their own
+current Release core; target `queued_bench`, logs
+`build/stopping-merge-bench-{build-,}OS.log`.
+
+Commands (existing caches; CMake/CTest resolution and snapshot sync as in
+DEVELOPMENT_WORKFLOW.md):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --stopping-merge
+node tests/MergeParity.cjs build/windows-core/Release/aion_start_probe.exe --stopping-source
+node tests/QueuedMergeSources.cjs --scheduled-stop --native build/windows-core/Release/aion_start_probe.exe
+cmake --build --preset windows-dev --target AionLooper_Standalone aion_mouse_host aion_midi_processor_tests --parallel 2
+./build/windows/Release/aion_midi_processor_tests.exe
+./tools/TestMouseWorkflow.ps1 -MergeOnly
+```
+
+```sh
+# Local Windows commit -> clean SetupWslWorkspace.sh sync first.
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --stopping-merge
+ctest --test-dir build/linux --no-tests=error --output-on-failure --parallel 2 -R '^(cli_finalization_admission|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_merge|js_native_merge_queued_source|original_merge_queued_destination|js_native_merge_queued_destination|js_native_merge_stopping_source|js_native_merge_stopping_destination|js_native_sync)$'
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --stopping-merge
+```
+
+Retained core selectors: `--merge`, `--queued-merge-destination`,
+`--queued-merge-source`, `--queued-norm`, `--prebirth-norm`, `--norm-pending`.
+Sanitizer run also uses `--merge` and `--queued-norm`. Windows nine-gate CTest
+uses the same regex minus the two new stopping gates, already run directly.
+Run the Linux full production suite alone after heavy acceptance processes:
+`./build/linux/aion_midi_processor_tests`. No wrappers, package or push.
+
+**Next:** integrated core-button combinations/remaining stopping-state
+eligibility before FX/SAVE/presets. Scheduled-stop MERGE meets the documented
+preview slice gates above. Keep the earlier missing-button and Linux CLI-timeout
+observations below visible; this slice does not resolve or explain them.
 
 ### Implemented preview: queued-destination MERGE
 

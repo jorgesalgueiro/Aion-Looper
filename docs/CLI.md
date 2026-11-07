@@ -46,7 +46,9 @@ construction; its stored audio is copied/mixed without changing its playback gri
 An empty destination stays stopped; an existing destination gains one local/global
 Undo entry. The original editor asks whether to clear the source after success.
 Declining preserves it. Queued destinations also retain their original playback
-grid and source snapshots during the mix. As with other generic
+grid and source snapshots during the mix. A source and/or destination already
+waiting for scheduled STOP also keeps its existing stop deadline; finishing the
+worker after that deadline never restarts playback. As with other generic
 loop actions, native capture/worker/state guards apply; a rejected command is not
 replayed. Raw `clearMergedSource` requires the current destination merge serial,
 source identity and clear epoch; clients must not blindly clear a source.

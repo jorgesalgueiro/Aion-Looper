@@ -15,7 +15,7 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | MULT | Ordinary capture/doubling, queued pre-birth doubling, constructed and active/gated source input capture verified in the native preview | Retain recorder-quantum/worker-latency and platform/interaction limits in MIGRATION_CURRENT |
 | UNDO / REDO | Local/global worker history, queued sources and exact stereo gates | Rapid finalization FIFO verified for local/global history and MULT; retain lifecycle/concurrency limits in MIGRATION_CURRENT |
 | NORM | Native immutable edit, no-history semantics and queued-source gates | Retain OOM/cancellation and current finalization dispatch checks |
-| DEL; MERGE source / GO | Native cleanup and immutable worker merge, original confirmation/history/PCM gates | Queued-source clone/mix verified in Windows/Linux audio and Windows pointer tests; queued-destination audio/ownership and Windows pointer checks also pass; scheduled-stop eligibility remains pending |
+| DEL; MERGE source / GO | Native cleanup and immutable worker merge, original confirmation/history/PCM gates | Queued-source clone/mix verified in Windows/Linux audio and Windows pointer tests; queued-destination and scheduled-stop source/destination audio/ownership and Windows pointer checks also pass; other stopping-state controls require their own eligibility audit |
 | Waveform click WAV | Native stored-PCM export, filenames, bounded leases and picker lifecycle | OS cancel/overwrite and non-Windows dialogs remain separate checks |
 | SAVE (Dry/Wet) | **Unported; disabled** | Native wet rendering, chain state, rate/pan/volume, three-second tail, paired filenames and lifecycle checks; dry-only export is not equivalent |
 | FX, FULL PRESET, CHAIN PRESET, manual chain, per-effect controls | **Unported; disabled**, except the independently ported Reverse control | Native effects/state/presets plus original GUI and shared CLI, deterministic sound and interaction acceptance |
@@ -24,8 +24,9 @@ Finalization dispatch, rapid queued history/MULT and the integral-sample source
 fade repair are verified. Worker/source pre-start tempo ordering is verified.
 Queued-source input capture and main FINISH now have shared GUI/CLI, original-JS
 PCM/WAV and 64/128 ownership/pointer coverage. Queued-source MERGE now passes
-its Windows/Linux audio and Windows interaction gates. Queued destinations now pass those gates too. Next address
-scheduled-stop merge states and integrated core-button bugs before the
+its Windows/Linux audio and Windows interaction gates. Queued destinations and
+scheduled-stop source/destination states now pass those gates too. Next address
+integrated core-button combinations and remaining stopping-state eligibility before the
 effects/SAVE/preset engine. The owner confirmed core
 looping/editing first. Each functional
 slice must pass its relevant Windows/Linux tests before the next. The final
@@ -47,4 +48,5 @@ comparisons pass on Windows/Linux; original pointer checks pass on Windows.
 Linux WebKit interaction remains pending. Pending-stop capture stays guarded.
 Preserve the unexplained initial
 integrated mouse missing-target observation and its diagnostic reruns; do not
-claim it fixed. Queued MERGE eligibility is next.
+claim it fixed. Queued and scheduled-stop MERGE preview acceptance is recorded
+in MIGRATION_CURRENT.md; other stopping-state controls remain separate work.
