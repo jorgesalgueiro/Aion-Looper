@@ -932,10 +932,10 @@ bool LoopBank::setEqualizer(std::uint32_t id,const EqSettings& settings,std::uin
     const bool active=hasPlaybackSource(t)||hasPreparedQueuedSource(t,true)||t.tailRemaining||retainedCounts[id];
     if(!eq.prepared){(void)eq.filter.prepare(rate,settings.values,frame);eq.prepared=true;}
     if(toggle){
-        // Original rebuild immediately inserts/removes EQ and schedules a 20ms
-        // down/up volume fade. Persistent track state otherwise survives edits.
+        // Original rebuild inserts/removes EQ immediately. Its second
+        // scheduledFade cancels the first ramp's endpoint: actual browser gain
+        // is flat at settled levels. Do not invent an additional EQ duck.
         if(settings.enabled)(void)eq.filter.prepare(rate,settings.values,frame);
-        eq.fadeFrom=eq.lastFade;eq.fadeAt=frame;eq.fading=active;
     }else if(settings.enabled){
         if(!active)(void)eq.filter.prepare(rate,settings.values,frame);
         else for(unsigned i=0;i<24;++i)if(mask&(1u<<i))(void)eq.filter.setTarget(i,settings.values[i]);
@@ -951,13 +951,7 @@ Stereo LoopBank::tickEqualizer(unsigned id,Stereo input,bool sourceActive) noexc
         // continuity for source edits, but never let a stopped filter revive PCM.
         if(!sourceActive)input={};
     }
-    double fade=1;
-    if(eq.fading){const double duration=rate*.02,age=static_cast<double>(frame-eq.fadeAt);
-        if(age<duration)fade=eq.fadeFrom*(1-age/duration);
-        else if(age<2*duration)fade=(age-duration)/duration;
-        else eq.fading=false;
-    }
-    eq.lastFade=fade;return {static_cast<float>(input.left*fade),static_cast<float>(input.right*fade)};
+    return input;
 }
 Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
     applyPhaseEvents();

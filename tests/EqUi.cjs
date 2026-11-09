@@ -32,7 +32,13 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
     for(const [id,value]of [['masterGain',1],['inputMonitor',0],['syncMode',0],['autoPlayAfterRecord',0],['metronomeVolume',0]])assert((await rpc({operation:'setParameter',id,value})).ok);
     await click('#loop-action-0');await until(s=>s.tracks[0].state==='recording','record');await wait(250);await click('#loop-action-0');
     await until(s=>s.tracks[0].state==='stopped','committed capture');await click('#loop-action-0');const before=await until(s=>s.tracks[0].state==='playing'&&s.outputPeak>.01,'playback PCM');
+    await evaluate(`(()=>{const b=window.__JUCE__.backend,original=b.emitEvent;b.emitEvent=function(name,message){const request=message?.params?.[0];if(name==='__juce__invoke'&&request?.operation==='equalizer'&&request.action==='toggle'){b.emitEvent=original;throw Error('Injected EQ send failure');}return original.call(b,name,message);};})()`);
+    await click('#loop-0-eq');
+    for(let n=0;n<100;++n){if(await evaluate(`document.querySelector('#native-status').textContent.includes('Injected EQ send failure')`))break;await wait(50);}
+    assert(await evaluate(`document.querySelector('#native-status').textContent.includes('Injected EQ send failure')`),'Failed send is visible');
+    assert(!(await snapshot()).tracks[0].equalizer.enabled,'Failed send cannot mutate audio');
     await click('#loop-0-eq');await until(s=>s.tracks[0].equalizer.enabled,'original checkbox');
+    await wait(100);assert(!await evaluate(`document.querySelector('#native-status').textContent.includes('Injected EQ send failure')`),'Fresh successful gesture clears old send failure');
     await click('#loop-0-eq + span');
     // Original preset select's production change handler; pointer/keyboard graph
     // and original checkbox tests below use actual compositor input events.
@@ -53,11 +59,19 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
     for(let n=0;n<100;++n){if(await evaluate(`!window.eqOldDocument&&document.querySelector('#native-eq-enabled')?.checked===true&&document.querySelectorAll('#loopContainer > div').length===20`))break;await wait(100);}
     await evaluate(`document.documentElement.style.scrollBehavior='auto'`);await wait(200);
     s=await snapshot();assert.deepEqual(s.tracks[0].equalizer,saved,'reload retains native settings');assert.equal(s.tracks[0].state,'playing');assert(s.outputPeak>0);
+    await click('#eqP1Gain');
+    s=await snapshot();assert((await rpc({operation:'equalizer',track:0,action:'set',values:{p1Gain:6},generation:s.generation,expiresAt:Date.now()+3000})).ok);
+    await until(s=>s.tracks[0].equalizer.values.p1Gain===6,'external writer updates focused EQ');await wait(150);
+    assert(await evaluate(`document.activeElement===document.querySelector('#eqP1Gain')&&Number(document.querySelector('#eqP1Gain').value)===6`),'Focus alone must not freeze shared GUI/CLI slider state');
+    r=await rect('#eqP1Gain');x=r.left+r.width*.625;y=r.y;
+    for(const count of [1,2]){const down=call('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:count});await wait(20);const up=call('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:count});await Promise.all([down,up]);}
+    await until(s=>s.tracks[0].equalizer.values.p1Gain===0,'original focused range double-click reset');await wait(100);
+    assert(await evaluate(`document.activeElement===document.querySelector('#eqP1Gain')&&Number(document.querySelector('#eqP1Gain').value)===0`),'Focused reset updates actual slider thumb');
     await click('#native-eq-reset');s=await until(s=>s.tracks[0].equalizer.values.p1Gain===0&&s.tracks[0].equalizer.values.p1Freq===1000,'original flat reset');
     await click('#native-eq-enabled');await until(s=>!s.tracks[0].equalizer.enabled,'bypass');
     await click('#loop-0-eq');await until(s=>s.tracks[0].equalizer.enabled,'reenable');
     await click('#loop-0 .loop-track-delete');s=await until(s=>s.tracks[0].state==='empty'&&!s.tracks[0].equalizer.enabled,'DEL resets effect');
     assert.equal(s.tracks[0].equalizer.values.p1Freq,1000);assert.equal(errors.length,0,JSON.stringify(errors));
-    console.log(`PASS actual EQ UI ${process.argv[2]}: original toggle/preset, XY point/range handles, keyboard, nonzero PCM/immutable dry identity, reload, reset/bypass/DEL, no runtime exceptions`);
+    console.log(`PASS actual EQ UI ${process.argv[2]}: send failure/recovery, original toggle/preset, XY point/range handles, keyboard, nonzero PCM/immutable dry identity, reload, focused external update/double-click, reset/bypass/DEL, no runtime exceptions`);
     socket.close();
 })().catch(error=>{console.error(error);socket?.close();process.exitCode=1;});

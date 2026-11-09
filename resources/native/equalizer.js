@@ -44,11 +44,10 @@
                 row.style.cssText='display:flex;align-items:center;font-size:9px;margin-bottom:20px';text.textContent=label;text.style.cssText='width:24px;color:#888';
                 input.id='eq'+name[0].toUpperCase()+name.slice(1);text.htmlFor=input.id;input.type='range';input.min=min;input.max=max;input.step=name.endsWith('Freq')?1:name.endsWith('Gain')?.1:.01;input.value=initial;input.style.cssText='width:100%;min-width:20px;margin:8px 4px';
                 value.id=input.id+'Val';value.style.cssText='width:38px;text-align:right';
-                let editing=false;const release=()=>{editing=false;dirty=true;};
-                input.addEventListener('pointerdown',()=>{editing=true;});input.addEventListener('pointerup',release);input.addEventListener('pointercancel',release);input.addEventListener('lostpointercapture',release);input.addEventListener('blur',release);
+                const edit=new window.AionMidiSliderEdit(input);
                 input.addEventListener('input',()=>{value.textContent=input.value;send('set',{values:{[name]:Number(input.value)}},`eq:${name}`);});
-                input.addEventListener('dblclick',()=>send('set',{values:{[name]:initial}},`eq:${name}`));
-                controls.set(name,{input,value,editing:()=>editing});row.append(text,input,value);col.append(row);
+                input.addEventListener('dblclick',()=>{input.value=initial;send('set',{values:{[name]:initial}},`eq:${name}`);});
+                controls.set(name,{input,value,edit});row.append(text,input,value);col.append(row);
             }module.querySelector('#native-eq-controls').append(col);
         }
         const positions=()=>{
@@ -102,7 +101,7 @@
             module.querySelector('#native-eq-title').textContent=`Loop ${track+1} — EQ (10-Band) (Q)`;
             [...tabs.children].forEach((b,i)=>b.classList.toggle('active',i===track));
             enabled.checked=settings.enabled;preset.value=settings.preset;
-            for(const [name,c]of controls){const v=settings.values[name];if(!c.editing()&&document.activeElement!==c.input){c.input.min=Math.min(Number(c.input.min),v);c.input.max=Math.max(Number(c.input.max),v);c.input.value=v;}c.value.textContent=Number(v).toFixed(name.endsWith('Freq')?0:name.endsWith('Q')?2:1);}
+            for(const [name,c]of controls){const v=settings.values[name];c.input.min=Math.min(Number(c.input.min),v);c.input.max=Math.max(Number(c.input.max),v);c.edit.update(v,true);c.value.textContent=Number(v).toFixed(name.endsWith('Freq')?0:name.endsWith('Q')?2:1);}
             for(const t of toggles){t.input.checked=!!s.tracks[t.track].equalizer?.enabled;t.input.disabled=!s.audioReady;}
             const key=JSON.stringify([s.generation,s.sampleRate,track,settings]);
             if(!curveBusy&&key!==curveKey&&Date.now()-drawAt>=100){

@@ -36,12 +36,15 @@ workspace, playable with a mouse, keyboard, MIDI controller or command line.
   trace, editable loop names, and WAV export of each loop's stored audio.
 - **Perform with MIDI.** Note, CC and Program Change looper actions, MIDI Learn
   on supported loop controls, CC volume/pan control, and saved MIDI mappings.
+- **Shape each loop with eQ.** Ten native EQ bands, the original presets and
+  sliders, plus draggable curve points and bandwidth handles. Settings are shared
+  with the CLI and saved in native state; EQ MIDI Learn is still pending.
 - **Control the running app from a terminal.** The development CLI shares the
   Standalone's session, devices and native command layer.
 
 The original ASCII layout, loop cards and familiar controls remain the design
 contract. Controls whose engines have not been ported stay disabled. Drone voices,
-sampler/tracker/sequencing engines, effects, full project persistence, remaining
+sampler/tracker/sequencing engines, the remaining effects, full project persistence, remaining
 import/export workflows and full DAW/MIDI-clock following are still ahead.
 See the [feature-by-feature parity checklist](docs/PARITY.md) for exact coverage.
 

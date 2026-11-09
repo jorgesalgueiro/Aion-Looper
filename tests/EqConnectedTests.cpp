@@ -74,15 +74,16 @@ int main(int argc,char** argv){
         const auto origin=frame;SmoothedEqualizer oracle;check(oracle.prepare(48000,settings.values,origin),"oracle prepared");
         std::vector<float> originalPcm,processedPcm;originalPcm.reserve(16384);processedPcm.reserve(16384);
         double error=0;float peak=0;
-        // Enabling on a playing source uses the original 20ms down/up gate.
+        // Unchanged rebuild/scheduledFade measured in the actual browser has
+        // flat settled gain: the second schedule cancels the first endpoint.
         for(unsigned n=0;n<8192/block;++n){
             if(n*block==2048){settings.preset=0;settings.values[3]=900;settings.values[4]=-6;c.equalizer=settings;c.eqMask=(1u<<3)|(1u<<4);c.requestId=8;check(wet.enqueueLoop(c),"sample-timed XY edit");check(oracle.setTarget(3,900)&&oracle.setTarget(4,-6),"oracle XY targets");}
             if(n*block==4096){settings.values=eqPresetValues(10);settings.preset=10;c.equalizer=settings;c.eqMask=eqAllParameters;c.requestId=9;check(wet.enqueueLoop(c),"sample-timed preset");check(oracle.setTargets(settings.values),"oracle preset targets");}
             render(false);std::array<float,128> ol{},orr{};oracle.process(dl.data(),dr.data(),ol.data(),orr.data(),block);
-            for(unsigned i=0;i<block;++i){const auto age=n*block+i;const double f=age<960?1-age/960.0:age<1920?(age-960)/960.0:1;
-                error=std::max(error,std::abs(static_cast<double>(wl[i])-ol[i]*f));error=std::max(error,std::abs(static_cast<double>(wr[i])-orr[i]*f));peak=std::max(peak,std::abs(wl[i]));
+            for(unsigned i=0;i<block;++i){
+                error=std::max(error,std::abs(static_cast<double>(wl[i])-ol[i]));error=std::max(error,std::abs(static_cast<double>(wr[i])-orr[i]));peak=std::max(peak,std::abs(wl[i]));
                 if(reference){originalPcm.push_back(dl[i]);originalPcm.push_back(dr[i]);processedPcm.push_back(wl[i]);processedPcm.push_back(wr[i]);}}}
-        check(error<=1e-6&&peak>.001f,"connected pre-pan EQ + original toggle fade PCM");
+        check(error<=1e-6&&peak>.001f,"connected pre-pan EQ + actual original flat toggle gain PCM");
         if(reference){
             std::cout<<"{\"block\":"<<block<<",\"origin\":"<<origin<<",\"dry\":[";
             for(unsigned i=0;i<originalPcm.size();++i){if(i)std::cout<<',';std::cout<<originalPcm[i];}
@@ -102,6 +103,12 @@ int main(int argc,char** argv){
             for(auto* e:{&dry,&wet})check(e->enqueueLoop({LoopAction::finish,0,31,e->generation()}),"OD/SUB finish with EQ");render(false);
             check(exported(dry,dryView)==exported(wet,view),"EQ playback is excluded from OD/SUB capture/feedback and dry export");
         }
+        settings.enabled=false;c.equalizer=settings;c.eqMask=0;c.requestId=32;check(wet.enqueueLoop(c),"bypass on playing source");
+        for(unsigned n=0;n<2048/block;++n){render(false);for(unsigned i=0;i<block;++i)check(dl[i]==wl[i]&&dr[i]==wr[i],"Bypass has no invented down/up output dip");}
+        settings.enabled=true;c.equalizer=settings;c.requestId=33;check(wet.enqueueLoop(c),"re-enable on playing source");
+        Equalizer fresh;check(fresh.prepare(48000,settings.values),"fresh original EQ node");
+        for(unsigned n=0;n<2048/block;++n){render(false);std::array<float,128> l{},r{};fresh.process(dl.data(),dr.data(),l.data(),r.data(),block);
+            for(unsigned i=0;i<block;++i)check(std::abs(wl[i]-l[i])<=1e-6&&std::abs(wr[i]-r[i])<=1e-6,"Re-enable reconstructs filters without an invented gain envelope");}
         // Superseded ownership, mismatched masks and queue overflow are rejected.
         c.requestId=5;c.eqClearEpoch=view.tracks[0].clearEpoch+1;c.equalizer.values[4]=2;c.equalizer.preset=0;check(wet.enqueueLoop(c),"stale command enters bounded queue");render(false);
         while(wet.popView(view)){}check(view.rejected&&view.tracks[0].equalizer==settings,"stale clear epoch preserves settings");
@@ -117,5 +124,5 @@ int main(int argc,char** argv){
         std::cout<<"connected EQ "<<block<<" frames: peak error "<<error<<'\n';
     }
     check(operations==0,"callback new/delete prohibited");
-    std::cout<<"PASS batch atomicity, connected EQ/fade, epoch/mask rollback, panic/clear, full-queue bank, zero callback new/delete\n";
+    std::cout<<"PASS batch atomicity, connected EQ/actual toggle gain, epoch/mask rollback, panic/clear, full-queue bank, zero callback new/delete\n";
 }

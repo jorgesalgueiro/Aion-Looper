@@ -6,13 +6,14 @@ const root=path.resolve(__dirname,'..'),reference=loadReference(),descriptors=re
 const names=descriptors.map(p=>p.name),defaults=descriptors.map(p=>Math.fround(p.defaultValue));
 const effectsSource=fs.readFileSync(path.join(root,'resources/ui/Modules/effects.js'),'utf8').replace(/\r\n/g,'\n');
 const methodStart=effectsSource.indexOf('    static smoothSetParam('),methodEnd=effectsSource.indexOf('\n    }',methodStart)+6;assert(methodStart>0&&methodEnd>methodStart);
-const smoothingMethod=effectsSource.slice(methodStart,methodEnd),probe=process.argv[2]||path.join(root,'build/windows-core/Release/aion_eq_probe.exe');
+const smoothingMethod=effectsSource.slice(methodStart,methodEnd),probe=process.argv.slice(2).find(v=>!v.startsWith('--'))||path.join(root,'build/windows-core/Release/aion_eq_probe.exe');
 let socket;const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function connect(){
  let page;for(let i=0;i<80;++i){try{page=(await(await fetch('http://127.0.0.1:9236/json')).json()).find(t=>t.url.includes('juce.backend'));}catch{}if(page)break;await wait(250);}assert(page,'Owned EQ test WebView2 page not found');
  socket=new WebSocket(page.webSocketDebuggerUrl);await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
  let sequence=0;const pending=new Map();
  const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++sequence,timer=setTimeout(()=>{pending.delete(id);reject(Error(`EQ CDP timeout: ${method}`));},30000);pending.set(id,r=>{clearTimeout(timer);r.error?reject(Error(JSON.stringify(r.error))):resolve(r.result);});socket.send(JSON.stringify({id,method,params}));});
+ const evaluate=async expression=>{const response=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!response.exceptionDetails,JSON.stringify(response.exceptionDetails));return response.result.value;};
  const testUrl='https://juce.backend/eq-sound-oracle.html';
  socket.addEventListener('message',e=>{const r=JSON.parse(e.data);const reply=pending.get(r.id);if(reply){pending.delete(r.id);reply(r);}
   if(r.method==='Fetch.requestPaused'){
@@ -24,10 +25,16 @@ async function connect(){
    response.catch(error=>{console.error(error);socket.close();});
   }
  });
+ if(process.argv.includes('--toggle-only')){
+  // This oracle only uses built-in Gain/ConstantSource nodes. An allowed blank
+  // document needs no Blob worklet/CSP override or synthetic resource response.
+  await call('Page.navigate',{url:'about:blank'});
+  for(let i=0;i<80;++i){if(await evaluate(`location.href==='about:blank'&&document.readyState==='complete'`))return evaluate;await wait(100);}
+  assert.fail('Owned blank toggle document did not load');
+ }
  await call('Fetch.enable',{patterns:[{urlPattern:testUrl,requestStage:'Request'}]});
- await call('Page.navigate',{url:testUrl});
- const evaluate=async expression=>{const response=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!response.exceptionDetails,JSON.stringify(response.exceptionDetails));return response.result.value;};
- let loaded=false;for(let i=0;i<80;++i){try{loaded=await evaluate(`location.href===${JSON.stringify(testUrl)}&&document.readyState==='complete'`);}catch{}if(loaded)break;await wait(100);}assert(loaded,'Offline EQ fixture must load in owned WebView2');
+ const navigation=await call('Page.navigate',{url:testUrl});
+ let loaded=false;for(let i=0;i<80;++i){try{loaded=await evaluate(`location.href===${JSON.stringify(testUrl)}&&document.readyState==='complete'`);}catch{}if(loaded)break;await wait(100);}assert(loaded,'Offline EQ fixture must load in owned WebView2: '+JSON.stringify({navigation,document:await evaluate(`({url:location.href,state:document.readyState})`)}));
  return evaluate;
 }
 async function browserRender(evaluate,rate,initial,events,channels=2){
@@ -64,6 +71,34 @@ function compare(rate,block,label,initial,browser){
  assert(peak<=1e-6&&relative<=1e-5,`${label} actual WebAudio parity: peak ${peak}, relative RMS ${relative}`);
 }
 (async()=>{const evaluate=await connect();
+ if(process.argv.includes('--toggle-only')){
+  try{
+   const audio=fs.readFileSync(path.join(root,'resources/ui/Modules/audioEngine.js'),'utf8').replace(/\r\n/g,'\n');
+   const loops=fs.readFileSync(path.join(root,'resources/ui/Modules/loopTracks.js'),'utf8').replace(/\r\n/g,'\n');
+   const extract=(source,needle)=>{const start=source.indexOf(needle),end=source.indexOf('\n    }',start)+6;assert(start>0&&end>start);return source.slice(start,end);};
+   const fade=extract(audio,'    static scheduledFade('),rebuild=extract(loops,'    rebuild(');const cases=[];
+   for(const rate of [8000,22050,32000,44100,48000,96000])for(const level of [.25,.7,1,1.6]){
+    const result=await evaluate(`(async()=>{
+     const rate=${rate},level=${level},at=1024,count=at+Math.ceil(rate*.08),ctx=new OfflineAudioContext(1,count,rate);
+     const gain=ctx.createGain();gain.gain.value=level;gain.connect(ctx.destination);
+     const source=ctx.createConstantSource(),base=ctx.createGain();source.connect(base);base.connect(gain);source.start();
+     const AudioEngine=new class {get currentTime(){return ctx.currentTime;} ${fade.replace('static scheduledFade','scheduledFade')}};
+     const graph=new class {${rebuild}};graph.nodes={baseGain:base,volume:gain,effects:{}};graph.loop={effectiveVolume:level};
+     graph.detachEffects=()=>{};graph.buildEffectsChain=node=>node;graph.destroyEffects=()=>{};
+     const Log={debug(){}};let before,after;
+     const suspended=ctx.suspend(at/rate).then(()=>{before=gain.gain.value;graph.rebuild();after=gain.gain.value;return ctx.resume();});
+     const rendered=ctx.startRendering();await suspended;const buffer=await rendered;
+     return {rate,level,before,after,pcm:Array.from(buffer.getChannelData(0).slice(at))};
+    })()`);
+    for(const sample of result.pcm)assert(Math.abs(sample-Math.fround(level))<=1e-6,'Unchanged original rebuild gain must retain its actual browser envelope');
+    cases.push(result);console.log(JSON.stringify({rate,level,before:result.before,after:result.after,min:Math.min(...result.pcm),max:Math.max(...result.pcm),samples:[0,.01,.02,.03,.04].map(t=>result.pcm[Math.floor(t*rate)])}));
+   }
+   fs.writeFileSync(path.join(root,'build/eq-toggle-oracle-windows.json'),JSON.stringify(cases));
+   const connected=spawnSync(process.execPath,[path.join(root,'tests/EqConnectedParity.cjs'),path.join(root,'build/windows-core/Release/aion_eq_connected_tests.exe')],{encoding:'utf8',maxBuffer:4*1024*1024});
+   assert.equal(connected.status,0,connected.stdout+'\n'+connected.stderr);console.log(connected.stdout.trim());
+   console.log('PASS: 24 actual-browser unchanged rebuild/scheduledFade gain cases; settled toggle gain flat, no invented native duck; strict connected native 64/128 PCM');
+  }finally{socket?.close();}return;
+ }
  try{
   for(const rate of [8000,22050,32000,44100,48000,96000])for(const name of ['Default','Radio','Master Air']){
    const initial=[...defaults];for(const [key,value]of Object.entries(reference.presets[name]||{}))initial[names.indexOf(key)]=Math.fround(value);

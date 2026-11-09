@@ -1,8 +1,8 @@
 # Original Q/eQ migration
 
 Active slice: ten-band per-loop eQ, before the other unported FX/SAVE controls.
-The filter kernel was a prerequisite. Connected Windows preview acceptance is
-recorded below; Linux verification is pending in this snapshot. Do not infer
+The filter kernel was a prerequisite. Connected preview acceptance is recorded
+below; the final toggle-gain repair needs a focused Linux rerun in this snapshot. Do not infer
 full-chain, wet SAVE, hardware, deferred-wrapper or release acceptance.
 
 ## Connected implementation and current verification — 9 November 2026
@@ -16,7 +16,7 @@ This intentional persistence choice is separate from unchanged-worklet parity.
 
 EQ runs before queued volume gating, loop volume/pan and MASTER, after source
 mixing. Raw record/OD/SUB capture and stored-PCM WAV export exclude it. Toggle
-insertion/removal retains the original 20ms down/up gate; controls use the proven
+insertion/removal retains actual original settled gain (see the repair below); controls use the proven
 50ms target smoother and global 128-frame coefficient clock. Same-rate timeline
 reset now explicitly resets that clock; a connected non-quantum target regression
 guards the defect found during review. Overlapping browser graphs/transition
@@ -51,7 +51,7 @@ Windows evidence in `build/eq-*` (ignored local logs):
   new preset table (240 Float32 settings), asset bytes, frontend and bridge gates.
 - `EqConnectedParity.cjs`: **2 stereo 64/128 cases / 16,384 frames**, actual Engine
   capture/playback/control output versus unchanged original worklet; XY/preset
-  target smoothing and toggle fade; peak **7.46020546e-9 <= 1e-6**. The connected
+  target smoothing and actual toggle gain; final peak **7.40154114e-9 <= 1e-6**. The connected
   fixture also proves exact dry WAV through record/OD/SUB, masks/epochs, panic/
   DEL, full-queue bank admission, same-rate clock reset and zero tracked callback
   new/delete. Existing 481 kernel + 15 automation + 48 actual-browser sound cases
@@ -65,6 +65,10 @@ Windows evidence in `build/eq-*` (ignored local logs):
   immutable dry identity, reload, flat reset, bypass and DEL; no runtime exceptions.
   Preset change handler is exercised directly; OS select popup interaction and
   listening/physical drivers are not claimed.
+- Final `eq-final-ui-windows.log` adds injected-send rejection/recovery and actual
+  focused-slider external updates/double-click resets at both block sizes. The
+  production adapter reuses the existing pointer/key edit owner, so focus alone
+  never hides native changes and an active drag/key repeat stays protected.
 - `eq-core-regression-windows.log`: complete retained core realtime executable
   PASS. It preceded the final timeline-reset-only repair; the added connected
   clock regression covers that repair without repeating unrelated suites.
@@ -84,6 +88,41 @@ No audio limit/tolerance or preserved reference was weakened. An approval-servic
 usage-limit failure initially prevented the UI test from executing; review later
 recovered and the actual test then ran. No package/push was made.
 
+### Browser-discovered toggle-gain repair (supersedes the prototype envelope)
+
+The first connected prototype modeled the comments' apparent 20ms down/up gate.
+An actual browser run of **unchanged `AudioGraph.rebuild` and
+`AudioEngine.scheduledFade`** showed that the second `cancelScheduledValues` at
+the shared endpoint removes the first ramp. At settled gains, original output
+stays flat. A native duck was therefore an audible parity defect, not an owner-
+approved improvement. `eq-toggle-failing-native.log` retains the failing strict
+native comparison: **2.22958903e-6 at frame 1/channel 0**, over **1e-6**.
+
+The extra native envelope is removed. The replacement regression compares the
+same native captured PCM against the unchanged worklet with actual original flat
+gain, preserving the **1e-6** limit. It adds exact bypass PCM and fresh-filter
+re-enable checks; it does not retain the incorrect prototype dip as a product
+contract. This is a justified replacement of an assumption-based test with a
+stronger observed-sound oracle, not a tolerance change or deletion of a failing
+behavioral case.
+
+`tools/TestEqWebAudio.ps1 -ToggleOnly` now runs **24 actual-browser gain cases /
+80,048 mono frames** at 8/22.05/32/44.1/48/96kHz and gains .25/.7/1/1.6, then
+requires the actual connected native 64/128 comparison to pass. It executes only
+the unchanged gain schedule; topology helpers are inert and no effect DSP is
+substituted. The allowed empty test document uses built-in Gain/ConstantSource,
+with no product CSP changes or product AudioContext. The initial synthetic
+resource navigation was aborted by the test host; those attempts establish no
+sound result. The final blank-document test passed. Non-settled interleaved fader/
+mute/solo envelopes, other browser engines and full overlapping graph transitions
+remain separate from this settled-gain proof.
+
+Linux before that final sound-only repair: **9/9 CTests PASS, 54.20s**; actual
+production EQ/external CLI at 64/128 and existing production MIDI/state regressions
+PASS; `aion_core_tests --loop-edits` and `--meter-panic` PASS with OOM/history/
+ownership protection. ASan/UBSan/leaks **2/2 PASS, 3.47s**, no diagnostics. The
+exact final gain repair is awaiting its focused Linux rerun in this checkpoint.
+
 Exact development commands (installed CMake executable may be under Visual Studio):
 
 ```powershell
@@ -94,6 +133,7 @@ cmake --build build/windows --config Release --target aion_eq_processor_tests ai
 build/windows/Release/aion_eq_processor_tests.exe 64
 build/windows/Release/aion_eq_processor_tests.exe 128
 tools/TestEqUi.ps1
+tools/TestEqWebAudio.ps1 -ToggleOnly
 build/windows-core/Release/aion_core_tests.exe
 build/windows-core/Release/aion_eq_engine_benchmark.exe
 ```
@@ -110,10 +150,12 @@ python tools/aion.py eq 1 reset
 python tools/aion.py eq 1 off
 ```
 
-Next gate in this snapshot: commit locally, safe WSL sync, affected Linux builds/
-reference/processor/CLI/ownership tests and sanitizers, then update these notes
-with actual results. Linux WebKit pointer interaction, listening/physical devices,
-long-session release validation and deferred plugin wrappers remain separate.
+Next gate in this snapshot: commit locally, safe WSL sync and rerun final Linux
+connected/bypass/processor/sanitizer checks after the toggle-gain repair. Native EQ
+MIDI Learn is still pending: the original `main.js` learns effect ranges and routes
+them through the selected `EffectManager` tab; do not claim that workflow is ported
+or enable disconnected mappings. Linux WebKit pointers, listening/physical devices,
+long-session release checks and deferred plugin wrappers also remain separate.
 
 ## Observable acceptance, defined before integration
 
@@ -131,7 +173,7 @@ long-session release validation and deferred plugin wrappers remain separate.
   and zero kernel allocation/free, with 64/128 and irregular blocks on both OSes.
 - Then integrate before loop volume/pan with bounded shared GUI/CLI commands,
   original controls/curve/presets, lifecycle/reset and compatible versioned state.
-  Verify source ownership, record/OD/SUB capture exclusion, rapid bypass/fades,
+  Verify source ownership, record/OD/SUB capture exclusion, rapid bypass/gain,
   editor reload, multiple instances, queue rejection and real UI at 64/128.
   Passing the isolated filter does not establish these connected behaviors.
 

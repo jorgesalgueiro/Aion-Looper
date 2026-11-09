@@ -184,6 +184,7 @@
             enqueue:(track,eq,key)=>scheduler.enqueue(()=>({action:'equalizer',track,eq}),{track,key:key?`${track}:${key}`:undefined})});
         async function sendEqualizer(track,eq){
             if(!enabled())return;
+            error=''; // A fresh gesture recovers from the previous rejected edit.
             const generation=snapshot.generation;
             const reply=await rpc({operation:'equalizer',track,...eq,generation,expiresAt:Date.now()+3000});
             if(!reply.ok)throw Error(reply.error||'EQ command rejected');

@@ -16,8 +16,10 @@ for(const test of cases){
         const input=[0,1].map(ch=>Float32Array.from({length:n},(_,i)=>test.dry[(offset+i)*2+ch])),output=[new Float32Array(n),new Float32Array(n)];
         const parameters=Object.fromEntries(descriptors.map((d,i)=>[d.name,Float32Array.of(at(values[i],offset))]));
         processor.process([input],[output],parameters);
-        for(let i=0;i<n;++i){const age=offset+i,fade=age<960?1-age/960:age<1920?(age-960)/960:1;for(let ch=0;ch<2;++ch){const error=Math.abs(test.wet[age*2+ch]-Math.fround(output[ch][i]*fade));maximum=Math.max(error,maximum);assert(error<=1e-6,`${test.block}/${age}/${ch}: ${error}`);}}
+        // Actual unchanged rebuild/scheduledFade browser measurement cancels
+        // the nominal down/up ramp at its shared endpoint. Settled gain is flat.
+        for(let i=0;i<n;++i){const age=offset+i;for(let ch=0;ch<2;++ch){const error=Math.abs(test.wet[age*2+ch]-output[ch][i]);maximum=Math.max(error,maximum);assert(error<=1e-6,`${test.block}/${age}/${ch}: ${error}`);}}
         offset+=n;
     }frames+=count;
 }
-console.log(`PASS connected Engine -> unchanged EQ worklet: ${cases.length} stereo 64/128 cases, ${frames} frames, XY/preset smoothing/global quantum/fade peak ${maximum}, limit 1e-6`);
+console.log(`PASS connected Engine -> unchanged EQ worklet: ${cases.length} stereo 64/128 cases, ${frames} frames, XY/preset smoothing/global quantum/toggle gain peak ${maximum}, limit 1e-6`);

@@ -17,7 +17,7 @@ eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was mad
 
 ### In progress: original Q/eQ DSP and graphic editing — 9 November 2026
 
-**Connected preview, Windows acceptance complete; Linux verification next.**
+**Connected GUI/CLI preview verified; final Linux gain-repair rerun next.**
 Per-loop eQ now uses the existing native processor from original track/live eQ
 checkboxes, FX/eQ navigation, original numeric controls/presets and running-app
 `aion.py eq` commands. The approved graph adds ten selectable draggable points,
@@ -27,8 +27,10 @@ logo, APVTS IDs and existing action IDs are unchanged (EQ action appended).
 
 The owner selected persistent per-track EQ on 9 November: source edits/history/
 restarts retain filter state. Clear, panic and reconfiguration reset runtime
-filters; DEL resets settings. Original 20ms down/up toggle fade and 50ms target
-smoothing are retained. Normal reference retriggers already reuse their graph;
+filters; DEL resets settings. Original 50ms target smoothing is retained; actual
+browser measurement found the nominal toggle fade cancels itself. The extra
+prototype native dip was removed; settled toggle gain matches the original.
+Normal reference retriggers already reuse their graph;
 fallback reconstruction/overlap transition identity is not claimed. Version-1
 `LoopEqualizers` state preserves older presets (defaults/off) and rejects malformed
 EQ before APVTS/MIDI mutation. Host-thread restores publish only through the
@@ -36,8 +38,8 @@ message producer, with atomic bounded batch admission and clear-epoch guards.
 
 Windows: 8/8 focused CTests PASS (48.06s); original kernel/automation/asset/frontend/
 bridge gates retained. New connected unchanged-worklet comparison: **16,384 stereo
-frames at 64/128**, XY and preset smoothing/global render quantum/toggle fade,
-peak **7.46020546e-9**, limit **1e-6**. Record/OD/SUB dry WAV bytes are exact with
+frames at 64/128**, XY/preset smoothing/global render quantum/actual toggle gain,
+final peak **7.40154114e-9**, limit **1e-6**. Record/OD/SUB dry WAV bytes are exact with
 EQ enabled/bypassed; queue rejection, panic/DEL, full-bank restore and callback
 new/delete checks pass. Production processor + **external CLI** pass independently
 at 64/128, covering strict/atomic validation, pending intent serialization, legacy
@@ -53,6 +55,17 @@ deadlines **1333.33/2666.67us**, no observed overruns. This includes native mixi
 EQ/telemetry, not JUCE wrapper/device or round-trip latency; no worst-case promise.
 See [EQ_MIGRATION.md](EQ_MIGRATION.md) for commands, repaired test-harness failures,
 scope and remaining Linux/physical/listening/release checks. No package or push.
+
+Linux 9/9 focused tests (54.20s), production EQ/CLI and retained production MIDI
+regressions at 64/128, loop-edits/panic ownership and ASan/UBSan/leaks 2/2 (3.47s)
+pass before the final toggle repair. Final focused Linux rerun is pending in this
+snapshot. Actual Windows 24-case/80,048-frame unchanged rebuild/scheduledFade
+oracle proves the flat settled gain; the original prototype failed at 2.23e-6
+against the unchanged 1e-6 limit. Windows final connected/bypass, processor and
+actual UI 64/128 pass, including send-failure recovery, focused CLI changes and
+double-click reset. Next parity work remains EQ MIDI Learn (original selected-tab
+effect CC workflow), plus Linux WebKit/listening and release checks; do not move
+to another effect under a claim of complete EQ controller parity.
 
 The earlier isolated-kernel checkpoint follows for reusable evidence:
 

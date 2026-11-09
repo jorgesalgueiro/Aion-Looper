@@ -367,9 +367,6 @@ private:
     struct TrackEq {
         SmoothedEqualizer filter{};
         bool prepared=false;
-        double fadeFrom=1,lastFade=1;
-        std::uint64_t fadeAt=0;
-        bool fading=false;
     };
     // Construction-time heap, not extra large audio stack frames/telemetry scans.
     std::unique_ptr<std::array<TrackEq,trackCount>> equalizers=std::make_unique<std::array<TrackEq,trackCount>>();
