@@ -16,7 +16,8 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 The **C compressor remains disabled** pending shared GUI/CLI/MIDI/state and
 connected audio/lifecycle acceptance. Its new fixed-storage native kernel now
 passes actual unchanged-original WebView2 sound comparisons: **60 cases,
-1,966,080 stereo frames at 64/128**, peak **9.586730955746248e-7** against the
+1,966,080 stereo frames at 64/128**, final Windows/Linux replay peak
+**4.806921385380747e-7** against the
 unchanged **1e-6 peak / 1e-5 relative RMS** gates. Eleven original calculated
 presets, lookahead/immediate dry routing, mono/stereo, static/extreme controls
 and live retargets at four rates are included. Failing k-rate anchor, independent
@@ -27,8 +28,21 @@ Faust/Chromium runtime dependency. Existing original UI/reference assets,
 sessions/IDs and connected EQ are unchanged. Details, exact commands and remaining
 acceptance: [COMPRESSOR_MIGRATION.md](COMPRESSOR_MIGRATION.md).
 
-Windows core checks, Linux replay/sanitizers and measurements are recorded below
-after execution. Next is the connected C feature, before any later effect. No
+On code **3c0769e**, final compressor CTests pass Windows **2/2 (.37s)** and
+Linux **2/2 (.62s)**; Linux ASan/UBSan/leaks **1/1 (1.76s)**, no diagnostics.
+The retained EQ kernel/automation and original-asset gates pass in the earlier
+six-test groups: Windows **6/6 (43.08s)**, Linux **6/6 (44.45s)**. Those EQ/assets
+were unchanged by the subsequent compressor-only math repairs. Both platforms
+pass all 60 original browser PCM cases with identical final peak error. The
+Linux replay is Windows WebView2 PCM versus Linux C++, not Linux WebKit UI/audio.
+Twenty-stereo-kernel warmed measurements show **0/2048** observed overruns in
+each steady/automated 64/128 run; worst Windows **359.9/769.7us**, Linux
+**370.029/719.089us**, deadlines **1333.33/2666.67us**. This excludes production
+routing, EQ, callback/device/round-trip latency and is not a worst-case guarantee.
+The Windows build and WSL mirror are committed independently of publishing;
+source snapshot **3c0769e** is preserved in the clean native Linux mirror.
+See the compressor notes for failures/repairs, exact logs/commands and full timing.
+Next is the connected C feature, before any later effect. No
 new distributable or push is part of this checkpoint; the EQ preview below
 remains the current product package.
 

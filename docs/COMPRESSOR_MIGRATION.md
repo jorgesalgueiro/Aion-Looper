@@ -43,7 +43,8 @@ from pinned revision `39095d03d67beb956ec7983cb4a51833536dc894` into portable C+
 The logarithm uses a small portable scalar adaptation of [AMD's BSD non-FMA
 algorithm](https://github.com/amd/aocl-libm-ose/blob/5760c0a6a5c650aaeaee81d5d83592fc2da66207/src/isa/avx/masm/log10f.asm),
 pinned at `5760c0a6a5c650aaeaee81d5d83592fc2da66207`, retaining arithmetic order
-and tables without assembly or CPU dispatch. Full BSD notices and modification provenance are in `third_party/notices` and
+and tables without assembly or CPU dispatch. Full BSD notices and modification
+provenance are in `third_party/notices` and
 included by installation/package rules. No runtime Chromium, fdlibm, Faust library
 or Faust compiler is introduced. Evaluate Faust for later effects when it reduces
 work **and** unchanged-reference audio acceptance demonstrates equivalent behavior.
@@ -79,13 +80,16 @@ rounding of the linear threshold; double evaluation with the original Float32
 exponent restores the measured browser result. All original cases remain and
 the same peak/RMS gates apply. Final platform replay results follow below.
 
-Windows actual WebView2 **Edg/151.0.4129.107** passes **60 comparisons, 1,966,080
-stereo frames**, maximum absolute difference **9.586730955746248e-7**, unchanged
+Actual WebView2 **Edg/151.0.4129.107** supplied **60 comparisons, 1,966,080
+stereo frames**. Final Windows and Linux native replay both pass at maximum
+absolute difference **4.806921385380747e-7**, unchanged
 limits **1e-6 peak / 1e-5 relative RMS**. Cases: 8/22.05/32/44.1/48/96/192 kHz
 defaults, all eleven presets at 48 kHz, silence/impulse/step, linked stereo/mono,
 immediate dry, partial mix, zero attack/unity ratio, extreme settings and original
 live retarget/repeated-target sequences at 22.05/44.1/48/96 kHz, all at 64/128.
-`build/compressor-browser-windows.log` records results. Runtime contexts are test-only,
+`build/compressor-browser-windows.log` records the original acquisition;
+`build/compressor-replay-windows-final.log` and `build/compressor-linux-final.log`
+record final native replay. Runtime contexts are test-only,
 in an owned blank document; the production mixer is never bootstrapped there.
 
 The ignored `build/compressor-browser-fixtures.json` records exact browser version,
@@ -122,7 +126,44 @@ cmake --build build/overlap-asan --parallel 2 --target aion_compressor_tests
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --output-on-failure --no-tests=error -R '^compressor_realtime_contract$'
 ```
 
-Linux and final benchmark results are recorded in the current handoff after execution.
+The first sanitizer command could not find the new target in the older Makefiles
+cache. Reconfigure it once with `cmake -S . -B build/overlap-asan` before building
+the new target; this preserves its existing Debug, `AION_BUILD_PLUGIN=OFF` and
+`-fsanitize=address,undefined -fno-omit-frame-pointer` flags. The rerun passes.
+
+## Final verification — code 3c0769e
+
+Final new component/reference CTests: Windows **2/2 (.37s)** and Linux **2/2 (.62s)**.
+Linux ASan/UBSan/leak checks **1/1 (1.76s)**, no diagnostics. Logs:
+`build/compressor-final-core-windows.log`, `build/compressor-linux-final.log`,
+`build/compressor-asan-linux.log`. Original asset bytes and retained EQ kernel/
+automation passed in the earlier six-test groups, Windows **6/6 (43.08s)** and
+Linux **6/6 (44.45s)**; later repairs change only compressor math, not EQ/assets.
+Zero watched new/delete includes controls, reset, rate changes and processing.
+No GUI/CLI/processor, physical device, plugin, listening or Linux WebKit acceptance
+is claimed for the disconnected C feature. The owned browser host was used only
+as an isolated audio oracle; existing product EQ/CLI/UI code was not changed.
+
+Manual Release measurements: twenty stereo compressor kernels, 48 kHz, 512 warm
+and 2048 measured callbacks per scenario. Each retarget run changes threshold,
+ratio, makeup and mix every sixteen callbacks on all twenty kernels. Windows
+then Linux were measured sequentially after other build/test jobs finished.
+
+| Platform | Block | Automation | p99 us | Max us | Overruns / 2048 |
+| --- | --- | --- | ---: | ---: | ---: |
+| Windows | 64 | No | 306.7 | 346.2 | 0 |
+| Windows | 64 | Yes | 316.3 | 359.9 | 0 |
+| Windows | 128 | No | 543.8 | 769.7 | 0 |
+| Windows | 128 | Yes | 572.9 | 704.0 | 0 |
+| Linux | 64 | No | 259.005 | 293.750 | 0 |
+| Linux | 64 | Yes | 263.897 | 370.029 | 0 |
+| Linux | 128 | No | 438.377 | 719.089 | 0 |
+| Linux | 128 | Yes | 483.965 | 630.224 | 0 |
+
+Logs: `build/compressor-benchmark-{windows,linux}-final.log`. Callback periods
+are 1333.33/2666.67us. These are **isolated kernel** measurements: no EQ, LoopBank,
+production callback, driver or round-trip latency, and no guaranteed worst case.
+No package, wrapper build, dependency upgrade or GitHub push was performed.
 
 ## Next connected slice
 
