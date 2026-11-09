@@ -41,7 +41,8 @@ bool AionProcessor::readEqualizers(const juce::ValueTree& state,EqBank& bank){
         if(!child.hasType("EQ"))return false;
         const auto track=child.getProperty("track").toString();unsigned id=0;const auto str=track.toStdString();
         const auto [end,error]=std::from_chars(str.data(),str.data()+str.size(),id);
-        if(error!=std::errc{}||end!=str.data()+str.size()||id>=bank.size()||seen[id])return false;seen[id]=true;
+        if(error!=std::errc{}||end!=str.data()+str.size()||id>=bank.size()||seen[id])return false;
+        seen[id]=true;
         const auto enabled=child.getProperty("enabled").toString(),preset=child.getProperty("preset").toString();
         if(enabled!="0"&&enabled!="1")return false;
         unsigned which=0;const auto ps=preset.toStdString();const auto parsed=std::from_chars(ps.data(),ps.data()+ps.size(),which);
@@ -88,7 +89,8 @@ bool AionProcessor::equalizerRequest(const juce::var& request,juce::DynamicObjec
         constexpr unsigned count=256;const double maximum=std::min(22000.0,latest.sampleRate*.5*(1-1e-6));
         juce::Array<juce::var> points,ranges;points.ensureStorageAllocated(count);
         for(unsigned n=0;n<count;++n){const double frequency=10*std::pow(maximum/10,static_cast<double>(n)/(count-1));double magnitude=0;
-            if(!curve.magnitude(frequency,magnitude))return fail("EQ curve unavailable");points.add(20*std::log10(std::max(magnitude,1e-12)));}
+            if(!curve.magnitude(frequency,magnitude))return fail("EQ curve unavailable");
+            points.add(20*std::log10(std::max(magnitude,1e-12)));}
         for(unsigned p=0;p<6;++p){double low=0,high=0;(void)aion::eqPeakRange(next.values[3+p*3],next.values[5+p*3],latest.sampleRate,low,high);juce::Array<juce::var> range;range.add(low);range.add(high);ranges.add(range);}
         result.setProperty("points",points);result.setProperty("ranges",ranges);result.setProperty("maximum",maximum);result.setProperty("sampleRate",latest.sampleRate);result.setProperty("equalizer",settingsValue(next));return true;
     }
@@ -104,19 +106,27 @@ bool AionProcessor::equalizerRequest(const juce::var& request,juce::DynamicObjec
     else if(action=="preset"){
         const auto preset=request.getProperty("preset",{});if(!preset.isString())return fail("Expected EQ preset name");unsigned p=0;
         for(;p<aion::eqPresetNames.size()&&preset.toString()!=name(aion::eqPresetNames[p]);++p){}
-        if(p==aion::eqPresetNames.size())return fail("Unknown EQ preset");next.preset=static_cast<std::uint8_t>(p+1);next.values=aion::eqPresetValues(p+1);mask=aion::eqAllParameters;
+        if(p==aion::eqPresetNames.size())return fail("Unknown EQ preset");
+        next.preset=static_cast<std::uint8_t>(p+1);next.values=aion::eqPresetValues(p+1);mask=aion::eqAllParameters;
     }else if(action=="set"){
         const auto params=request.getProperty("values",{});auto* values=params.getDynamicObject();if(!values||values->getProperties().size()<1||values->getProperties().size()>24)return fail("Expected bounded EQ values");
         for(const auto& item:values->getProperties()){
             unsigned p=0;for(;p<24&&item.name.toString()!=name(aion::eqParameters[p].name);++p){}
-            double number=0;if(p==24||!numeric(item.value,number)||number<(aion::eqParameters[p].minimum==.1f?.1:static_cast<double>(aion::eqParameters[p].minimum))||number>aion::eqParameters[p].maximum)return fail("Unknown or out-of-range EQ parameter");
+            double number=0;
+            if(p==24||!numeric(item.value,number))return fail("Unknown or out-of-range EQ parameter");
+            const auto& descriptor=aion::eqParameters[p];
+            // JSON's decimal 0.1 is slightly below Float32(0.1). Validate the
+            // original decimal Q endpoint before storing its Float32 value.
+            const double minimum=descriptor.name.ends_with('Q')?.1:static_cast<double>(descriptor.minimum);
+            if(number<minimum||number>descriptor.maximum)return fail("Unknown or out-of-range EQ parameter");
             next.values[p]=static_cast<float>(number);mask|=1u<<p;
         }next.preset=0;
     }else if(action=="width"){
         const auto band=request.getProperty("band",{});double edge=0;
         if(!band.isInt()||static_cast<int>(band)<1||static_cast<int>(band)>6||!numeric(request.getProperty("edge",{}),edge))return fail("Invalid EQ bandwidth handle");
         const auto p=3+3*static_cast<unsigned>(static_cast<int>(band)-1);float q=0;
-        if(!aion::eqPeakQ(next.values[p],edge,latest.sampleRate,q))return fail("Invalid EQ bandwidth edge");next.values[p+2]=q;next.preset=0;mask=1u<<(p+2);
+        if(!aion::eqPeakQ(next.values[p],edge,latest.sampleRate,q))return fail("Invalid EQ bandwidth edge");
+        next.values[p+2]=q;next.preset=0;mask=1u<<(p+2);
     }else return fail("Unknown EQ action");
     if(!aion::validEqSettings(next)||nextRequest==UINT32_MAX)return fail("Invalid EQ settings/request exhausted");
     aion::LoopCommand command{aion::LoopAction::equalizer,track,nextRequest+1,engine.generation()};

@@ -50,7 +50,8 @@ int main(int argc,char** argv){
         p->getStateInformation(after);check(after==saved,"rejected toggle preserves persisted intent");
         auto flat=juce::AudioProcessor::getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));flat->removeChildElement(flat->getChildByName("LoopEqualizers"),true);
         juce::MemoryBlock legacy;juce::AudioProcessor::copyXmlToBinary(*flat,legacy);p->setStateInformation(legacy.getData(),static_cast<int>(legacy.getSize()));
-        for(unsigned n=0;n<5;++n)state=process();check(!static_cast<bool>(state["tracks"][19]["equalizer"]["enabled"]),"legacy preset loads default EQ after full queue drains");
+        for(unsigned n=0;n<5;++n)state=process();
+        check(!static_cast<bool>(state["tracks"][19]["equalizer"]["enabled"]),"legacy preset loads default EQ after full queue drains");
         // MIDI panic discards an EQ edit beyond this callback's 128-command
         // budget. Intent must reconcile to the real audio outcome, not revive.
         check(request(R"({"operation":"midiConfig","action":"enable","enabled":true})")["ok"],"MIDI enabled for panic routing");process();
