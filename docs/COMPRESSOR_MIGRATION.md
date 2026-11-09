@@ -71,7 +71,13 @@ failure was waived. The portable AMD arithmetic matches the Windows CRT on
 retained as exact component regressions alongside full browser PCM acceptance.
 Compressor compilation disables FMA contraction on non-MSVC compilers to retain
 the separate Float32 operations. This is source arithmetic, not an AMD hardware
-requirement. Final platform replay results follow in the handoff.
+requirement. A subsequent **1.43084e-6** sustain failure exposed another detail:
+Blink's `fdlibm::powf/asinf` wrappers evaluate their double functions before
+rounding to float. The native float overloads were corrected accordingly. A final
+**1.19463e-6** automation failure at the next knee search exposed glibc float-power
+rounding of the linear threshold; double evaluation with the original Float32
+exponent restores the measured browser result. All original cases remain and
+the same peak/RMS gates apply. Final platform replay results follow below.
 
 Windows actual WebView2 **Edg/151.0.4129.107** passes **60 comparisons, 1,966,080
 stereo frames**, maximum absolute difference **9.586730955746248e-7**, unchanged

@@ -42,7 +42,9 @@ namespace {
 // A platform log10f ULP can select a different knee-search branch. Keep the
 // pinned scalar arithmetic order, verified against actual browser PCM.
 float db(float value) noexcept { return 20*detail::compressorLog10(value); }
-float linear(float decibels) noexcept { return std::pow(10.0f,.05f*decibels); }
+// Keep the original Float32 exponent, then round a double power. Platform
+// float pow can misround a knee threshold and alter its binary-search branch.
+float linear(float decibels) noexcept { return static_cast<float>(std::pow(10.0,double(.05f*decibels))); }
 float finite(float x,float fallback) noexcept { return std::isfinite(x)?x:fallback; }
 float flush(float x) noexcept { return std::abs(x)<std::numeric_limits<float>::min()?0:x; }
 constexpr float piOverTwo=std::numbers::pi_v<float>/2;

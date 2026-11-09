@@ -37,7 +37,7 @@ target_sources(aion_core PRIVATE source/core/Equalizer.cpp)
 target_sources(aion_core PRIVATE source/core/EqSettings.cpp)
 target_sources(aion_core PRIVATE source/core/Compressor.cpp)
 # Preserve the portable logarithm's separate Float32 operations on all CPUs.
-set_source_files_properties(source/core/Compressor.cpp PROPERTIES COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
+set_source_files_properties(source/core/Compressor.cpp tests/CompressorTests.cpp PROPERTIES COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 find_package(Threads REQUIRED)
 target_link_libraries(aion_core PUBLIC Threads::Threads)
 target_include_directories(aion_core PUBLIC source)
@@ -388,7 +388,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     juce_link_with_embedded_linux_subprocess(AionLooper)
 endif()
 install(FILES README.md docs/ARCHITECTURE.md docs/MIGRATION_BLUEPRINT.md docs/BUILDING.md docs/PARITY.md
-    docs/LICENSING.md docs/VALIDATION.md docs/SDKS.md docs/REFERENCE_AUDIT.md DESTINATION share/doc/Aion-Looper)
+    docs/LICENSING.md docs/VALIDATION.md docs/SDKS.md docs/REFERENCE_AUDIT.md docs/COMPRESSOR_MIGRATION.md DESTINATION share/doc/Aion-Looper)
 # Primary source notices accompany local preview packages; the full release inventory
 # remains a separate gate documented in LICENSING.md.
 set(notice_dir share/licenses/Aion-Looper)

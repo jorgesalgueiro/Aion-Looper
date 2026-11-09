@@ -17,7 +17,7 @@ $source = New-Item -ItemType Directory -Path (Join-Path $stage 'source') -Force
 Copy-Item -LiteralPath $exe -Destination $app.FullName
 Copy-Item -LiteralPath (Join-Path $repo 'tools/aion.py') -Destination $cli.FullName
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $stage
-foreach ($name in @('BUILDING.md','PARITY.md','VALIDATION.md','LICENSING.md','CLI.md','EQ_MIGRATION.md','MIGRATION_CURRENT.md','DEVELOPMENT_WORKFLOW.md','LOOP_TRACK_BUTTONS.md','REFERENCE_AUDIT.md')) {
+foreach ($name in @('BUILDING.md','PARITY.md','VALIDATION.md','LICENSING.md','CLI.md','EQ_MIGRATION.md','COMPRESSOR_MIGRATION.md','MIGRATION_CURRENT.md','DEVELOPMENT_WORKFLOW.md','LOOP_TRACK_BUTTONS.md','REFERENCE_AUDIT.md')) {
     Copy-Item -LiteralPath (Join-Path $repo "docs/$name") -Destination $docs.FullName
 }
 # Use the same pinned dependency notices as CMake, including bundled ASIO headers.
