@@ -6,7 +6,7 @@ release or a claim that drone/sampler compressors or remaining FX are ported.
 No preserved UI/reference assets or existing parameter/action IDs changed. No
 product AudioContext, dependency upgrade, package or wrapper build.
 
-## Connected acceptance and owner decisions — 9 November 2026
+## Connected acceptance and owner decisions â€” 9 November 2026
 
 The owner explicitly approved **one persistent compressor per loop across source
 restarts** and **live controls during OD/SUB/MULT/scheduled STOP**. Original
@@ -93,8 +93,8 @@ It retains the browser's `min(floor(.006f * rate), 1023)` wet lookahead, includi
 the original high-rate cap; do not call this total application latency. Parameters
 are k-rate at 128 frames, detector-envelope updates at 32; both clocks survive
 64/128 and arbitrary caller subdivisions. Makeup/wet/dry gains are a-rate, with
-independent Float32 smoothing. There is no audio-thread storage ownership transfer
-yet because the effect is not connected. Dry export and existing capture are unchanged.
+independent Float32 smoothing. There is no per-control dynamic storage ownership
+transfer. Dry export and existing capture are unchanged.
 
 ## Faust and source choice
 

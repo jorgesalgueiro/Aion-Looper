@@ -88,9 +88,11 @@ int main(int argc,char** argv){
             juce::MemoryBlock malformed;p->copyXmlToBinary(*xml,malformed);p->setStateInformation(malformed.getData(),static_cast<int>(malformed.getSize()));p->getStateInformation(after);check(after==midiSaved,"malformed compressor MIDI tab rolls back complete state");
         }
         auto oldMidi=juce::AudioProcessor::getXmlFromBinary(midiSaved.getData(),static_cast<int>(midiSaved.getSize()));auto* oldMapping=oldMidi->getChildByName("MidiSettings");oldMapping->setAttribute("version",4);
+        oldMapping->setAttribute("binding97",static_cast<int>(aion::midiBinding(2,14,7)));
         for(unsigned i=117;i<aion::MidiSettings::bindingCount;++i)oldMapping->removeAttribute("binding"+juce::String(i));
         juce::MemoryBlock oldBytes;p->copyXmlToBinary(*oldMidi,oldBytes);p->setStateInformation(oldBytes.getData(),static_cast<int>(oldBytes.getSize()));state=process();
         check(static_cast<int>(state["midi"]["bindings"][122])==0&&static_cast<int>(state["midi"]["eqTrack"])==19,"version 4 preserves old bindings and defaults appended compressor mappings/tab");
+        check(static_cast<int>(state["midi"]["bindings"][97])==aion::midiBinding(2,14,7),"version 4 retains the exact assigned EQ target/channel while compressor slots default unassigned");
         p->setStateInformation(midiSaved.getData(),static_cast<int>(midiSaved.getSize()));state=process();
         check(static_cast<int>(state["midi"]["bindings"][122])==aion::midiBinding(2,11)&&static_cast<int>(state["midi"]["eqTrack"])==19,"compressor MIDI bindings and selected tab survive state restore without editor");
         // A real external CLI process controls this production processor. The

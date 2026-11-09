@@ -13,6 +13,7 @@ int main(){
  constexpr unsigned warm=512,measured=2048;constexpr double rate=48000;
  for(unsigned block:{64u,128u})for(bool automated:{false,true}){
   auto engine=std::make_unique<Engine>();engine->prepare(rate,262144);engine->setMonitoring(false);
+  if(!engine->enqueue({0,1}))return 8;
   std::array<float,128> left{},right{};float* audio[]{left.data(),right.data()};
   const auto render=[&](bool input,bool offline){for(unsigned i=0;i<block;++i){left[i]=input?static_cast<float>(.13*std::sin(i*.13)):0;right[i]=input?static_cast<float>(.07*std::cos(i*.17)):0;}engine->process(audio,2,block,{},offline);};
   for(unsigned track=0;track<20;++track){
@@ -34,9 +35,11 @@ int main(){
    left.fill(0);right.fill(0);const auto start=std::chrono::steady_clock::now();
    engine->process(audio,2,block,{},false);
    const double us=std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-start).count();
-   if(n>=warm)times[n-warm]=us;checksum+=left[block-1]+right[block-1];
+   if(n>=warm)times[n-warm]=us;
+   for(unsigned i=0;i<block;++i)checksum+=std::abs(left[i])+std::abs(right[i]);
   }
   for(unsigned i=0;i<20;++i)if(engine->inspectAudioThread(i).track.state!=LoopState::playing){std::cerr<<"Fixture track "<<i<<" state "<<static_cast<unsigned>(engine->inspectAudioThread(i).track.state)<<'\n';return 7;}
+  if(checksum<1)return 9; // Never report a timing fixture with silent MASTER.
   std::sort(times.begin(),times.end());double sum=0;unsigned over=0;const double deadline=block/rate*1e6;
   for(double t:times){sum+=t;over+=t>deadline;}
   std::cout<<"{\"scope\":\"Engine process: 20 playing stereo loops, EQ + compressor, bounded telemetry; excludes device/UI/roundtrip\",\"rate\":"<<rate<<",\"block\":"<<block

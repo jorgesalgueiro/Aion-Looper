@@ -172,15 +172,17 @@ static void persistentChain(unsigned block){
   if(offset==3072)action(LoopAction::undo);
   if(offset==3584)action(LoopAction::redo);
   if(offset==4096)action(LoopAction::applyStart,.25f);
+  if(offset==5120)action(LoopAction::stopImmediate);
+  if(offset==6144)action(LoopAction::play);
   render(offset>=1536&&offset<2560);
   constexpr float centre=.7071067811865475f;std::array<float,128> il{},ir{},ol{},orr{};
   for(unsigned i=0;i<block;++i)il[i]=ir[i]=dl[i]/centre;
   oracle.process(il.data(),ir.data(),2,ol.data(),orr.data(),block);
-  for(unsigned i=0;i<block;++i){const float expected=std::clamp(ol[i]*centre,-1.f,1.f);error=std::max(error,std::abs(double(wl[i])-expected));check(wl[i]==wr[i],"mono fixture retains equal stereo output");peak=std::max(peak,std::abs(wl[i]));}
+  for(unsigned i=0;i<block;++i){const bool stoppedGate=offset+i>=5120+240&&offset+i<6144;const float expected=stoppedGate?0:std::clamp(ol[i]*centre,-1.f,1.f);error=std::max(error,std::abs(double(wl[i])-expected));check(wl[i]==wr[i],"mono fixture retains equal stereo output");peak=std::max(peak,std::abs(wl[i]));}
   const auto a=dry->inspectAudioThread().track,b=wet->inspectAudioThread().track;
   check(a.state==b.state&&a.waveformId==b.waveformId&&a.length==b.length&&a.position==b.position&&a.undoCount==b.undoCount&&a.redoCount==b.redoCount,"compressor leaves source/history/clock unchanged");
  }
- std::cout<<"persistent EQ -> compressor "<<block<<": peak error "<<error<<'\n';check(error<=1e-6&&peak>.001f,"restart/reverse/OD/Undo/Redo/phase retain continuous compressor envelope after EQ");
+ std::cout<<"persistent EQ -> compressor "<<block<<": peak error "<<error<<'\n';check(error<=1e-6&&peak>.001f,"restart/reverse/OD/Undo/Redo/phase/STOP/PLAY retain continuous compressor envelope after EQ");
  action(LoopAction::stopAll);for(unsigned n=0;n<1024/block;++n)render(false);
  for(unsigned i=0;i<block;++i)check(wl[i]==0&&wr[i]==0,"panic drains without delayed wet revival");
  action(LoopAction::clear);render(false);for(unsigned n=0;n<1024/block;++n)render(false);

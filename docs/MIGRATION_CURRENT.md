@@ -11,7 +11,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work â€” core loop-track buttons, 9 November 2026
 
-### Connected compressor — in verification, 9 November 2026
+### Connected compressor â€” in verification, 9 November 2026
 
 Owner approved a persistent compressor per loop across playback restarts and live
 controls during OD/SUB/MULT/scheduled STOP. Those are intentional extensions of
@@ -37,7 +37,7 @@ Linux connected/processor/sanitizer verification and connected timing are next;
 do not advance to another effect until those finish. No package or push.
 See [COMPRESSOR_MIGRATION.md](COMPRESSOR_MIGRATION.md) for exact scope/commands.
 
-### Earlier compressor checkpoint — isolated DSP, 9 November 2026
+### Earlier compressor checkpoint â€” isolated DSP, 9 November 2026
 
 
 
