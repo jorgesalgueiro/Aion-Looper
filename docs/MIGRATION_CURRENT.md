@@ -15,7 +15,7 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-### Active acceptance: MULT on queued PLAY with STOP pending — 7 November 2026
+### Implemented preview: MULT on queued PLAY with STOP pending — 7 November 2026
 
 Small slice: a constructed graph can await its future start with a same-grid or
 following-grid STOP already scheduled. Unchanged `Loop.multiply/multiplyInstant`
@@ -25,7 +25,7 @@ early audio or worker-result revival. New PLAY uses doubled storage. Preserve
 NORM/history ownership, pre-start visual zero and post-start original progress;
 failure/capacity rejection, DEL/panic and prepare must be safe at 64/128.
 
-Native now admits only a constructed pending-stop queued source, freezes its
+Implementation **d744339**. Native now admits only a constructed pending-stop queued source, freezes its
 immutable source before storage replacement and retains the visual clock through
 original grid activation. Shared MULT GUI/CLI dispatch enables this state; public
 IDs/schema, preserved UI/reference/logo and dependencies are unchanged. Other
@@ -35,19 +35,71 @@ Initial rejection `build/queued-stop-multiply-repro-windows.log`. The first
 implementation failed unchanged queued-state/paired-PCM assertions by making
 the source audible early during finalization. The corrected path distinguishes
 retained source ownership from an already sounding source; no tolerance relaxed.
-Windows new original-JS **96 PASS**, **312 exact stereo WAVs**, **4,012,392 frames**,
+New original-JS **96 PASS per OS**, **312 exact stereo WAVs** and **4,012,392 frames per OS**,
 max **6.26096477e-8** (limit **1e-6**), progress <=**1e-12**. New actual Engine
 **132 PASS**, tracks 0/19, forward/reverse, same/next-grid STOP, pending Apply,
 worker completion before start/between grids/after STOP, OOM/cancellation/prepare/
 full pool, exact stereo versus an unedited source and zero callback new/delete.
-Frontend admission PASS. Windows pointers/retained gates and Linux acceptance
-are in progress: do not advance or package until relevant acceptance completes.
+Frontend admission PASS. Actual Windows queued-STOP-MULT pointers PASS 64/128:
+explicit production STOP RPC (same path as CLI), original MULT click, retained
+start/STOP and source revision, silence, exact Undo/Redo identities and next
+audible PLAY. Retained stopping-MULT pointer flow also PASS 64/128. Its first
+attempt correctly refused the prior WebView's still-closing CDP port; unchanged
+rerun passed after release (`-retained-ui-final-` log), without bypassing the guard.
+Windows **14/14 retained CTests PASS, 297.72s**, Standalone and full production
+processor/external CLI suite PASS. Connected capture/OD/SUB audit **126 PASS**,
+**965,826 frames**, max **7.39475750e-8**, unchanged **1e-6**.
+
+New Engine **132** and retained **100** stopping MULT, **288** post-birth MULT,
+**108** pre-birth MULT, **212** queued-input MULT, **8** gated-input MULT, **108**
+queued NORM and **88** stopping history PASS on each OS. Linux **15/15 CTests PASS,
+476.81s**, including the new source corpus; connected capture/OD/SUB audit matches
+Windows count/error. Linux Debug ASan/UBSan/leaks: **132** new queued STOP MULT,
+**100** stopping MULT and **108** queued NORM PASS, no diagnostics. Linux
+Standalone and isolated full production processor/external CLI suite PASS.
+Acceptance finished on 7 November; the usage-limit interruption prevented only
+the final notes/commit. Results were recovered from retained logs on 9 November;
+unchanged passing audio suites were not repeated for this documentation recovery.
 
 Source model uses unchanged original methods and node IO stubs/raw PCM. Browser
 gain/STOP envelopes, resampling and advancing-worker sound remain excluded;
 actual Engine delayed-worker ownership is checked separately. Broader future-
 source visual suppression remains outside this comparison; this fixture covers
 zero before the original start and progress after the latest source starts.
+Windows pointer checks use the synthetic-PCM production processor/editor host.
+Linux WebKit interaction, physical drivers/devices/latency, full-bank/long-session
+validation, deferred wrappers/DAWs and Apple remain separate. Earlier unexplained
+missing-button/CLI-timeout observations remain recorded below. No package/push.
+
+After acceptance, identical ignored Engine timing fixtures ran Windows then Linux:
+48kHz stereo, 512-frame capture, 512 warmed playing callbacks, explicit queued
+source, same/next-grid STOP, input/no-input, forward/reverse, with/without Apply;
+**32 scenarios per OS**, 64/128. Timed online MULT admission/worker completion,
+playback through start/STOP, stopped Undo/Redo and clear. Setup/offline waits,
+input generation, telemetry consumption and 1ms sleeps between worker polls are
+excluded. Maxima per 64/128 callback: Windows **124.2us /286.0us**, Linux
+**128.14us /185.05us**, deadlines **1333.33us /2666.67us**. These small Engine
+observations do not establish full processBlock/round-trip latency, full-bank/
+worst-case/long-session guarantees, a platform ranking or speedup.
+Harness `build/queued-stop-multiply-bench-src/{CMakeLists.txt,bench.cpp}`, SHA256
+`bb64a572a72ad99c800db551483a1384aa867cc3e89cd69d7390f70a6541228e`;
+separate `build/queued-stop-multiply-bench-{windows,linux}` caches import their
+current OS Release core, target `queued_bench`.
+
+Focused reproduction: `aion_core_tests --queued-stop-multiply`;
+`node tests/QueuedMergeSources.cjs --queued-stop-multiply --native PROBE`;
+`tools/TestMouseWorkflow.ps1 -QueuedStopMultiplyOnly` and `-StoppingMultiplyOnly`.
+Core/probe/Standalone/processor builds and safe committed WSL sync use the existing
+commands in DEVELOPMENT_WORKFLOW.md and the preceding slice below. Retained core
+selectors: `--stopping-multiply`, `--postbirth-multiply`, `--prebirth-multiply`,
+`--queued-input-multiply`, `--gated-input-multiply`, `--queued-norm`, `--stopping-history`.
+CTest selection: `^(cli_finalization_admission|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_(normalization|reverse|history|multiply|dsp_kernels|queued_multiply|stutter|stopping_multiply|stopping_norm|stopping_history|queued_stop_multiply))$`.
+Windows omits `queued_stop_multiply` (executed directly) and uses `-C Release`.
+ASan/UBSan/leaks additionally execute the stopping-MULT and queued-NORM selectors.
+Logs: `build/queued-stop-multiply-*-windows.log`, corresponding Linux logs in its
+native checkout, including `-production-`, `-ctest-`, `-sanitizer-SELECTOR-` and
+`-bench-`; successful Windows runs are `-engine-final-`, `-native-final-`,
+`-ui-` and `-retained-ui-final-`. Earlier rejection/build/port-guard logs remain.
 Next after acceptance: RTRG eligibility, then integrated core-button combinations
 before FX/SAVE/presets.
 
