@@ -19,6 +19,85 @@ void operator delete[](void* p)noexcept{::operator delete(p);}
 void operator delete(void* p,std::size_t)noexcept{::operator delete(p);}
 void operator delete[](void* p,std::size_t)noexcept{::operator delete(p);}
 static void check(bool b,const char* m){if(!b){std::cerr<<m<<'\n';std::exit(1);}}
+// Owner-approved extension: original effect controls store values but skip their
+// running graph in these states. Keep this separate from the unchanged-JS oracle.
+static void liveStateControls(unsigned block,aion::LoopAction action){
+    using namespace aion;
+    auto dry=std::make_unique<Engine>(),wet=std::make_unique<Engine>();
+    for(auto* e:{dry.get(),wet.get()}){
+        e->prepare(48000,65536);e->setMonitoring(false);
+        check(e->enqueue({0,1})&&e->enqueueLoop({LoopAction::record,0,1,e->generation()}),"live EQ seed record");
+    }
+    std::array<float,128> dl{},dr{},wl{},wr{};float* d[]{dl.data(),dr.data()},* w[]{wl.data(),wr.data()};
+    std::uint64_t frame=0;
+    auto render=[&](bool input){
+        for(unsigned i=0;i<block;++i){dl[i]=wl[i]=input?static_cast<float>(.13*std::sin((frame+i)*.073)):0;dr[i]=wr[i]=input?static_cast<float>(.11*std::cos((frame+i)*.039)):0;}
+        watch=true;dry->process(d,2,block,{},true);wet->process(w,2,block,{},true);watch=false;frame+=block;
+        const auto a=dry->inspectAudioThread().track,b=wet->inspectAudioThread().track;
+        check(a.state==b.state&&a.position==b.position&&a.length==b.length&&a.undoCount==b.undoCount&&a.redoCount==b.redoCount&&a.scheduledFrame==b.scheduledFrame&&a.sourceRevision==b.sourceRevision,
+              "live EQ must not alter transport, history, capture length, source or STOP timing");
+    };
+    auto paired=[&](LoopAction op,unsigned request){for(auto* e:{dry.get(),wet.get()}){LoopCommand command{op,0,request,e->generation()};command.value=1;check(e->enqueueLoop(command),"live EQ paired action");}};
+    for(unsigned n=0;n<4096/block;++n)render(true);
+    paired(LoopAction::finish,2);render(false);paired(LoopAction::play,3);
+    for(unsigned n=0;n<1024/block;++n)render(false);
+    if(action==LoopAction::stop){
+        SyncSettings sync;sync.mode=SyncMode::fixed;sync.bpm=120;sync.bars=1;
+        for(auto* e:{dry.get(),wet.get()})e->configureSync(sync);
+    }
+    paired(action,4);
+    EqSettings settings{eqPresetValues(8),true,8};
+    LoopCommand eq{LoopAction::equalizer,0,5,wet->generation()};eq.equalizer=settings;
+    check(wet->enqueueLoop(eq),"live EQ enabled in special state");
+    const auto origin=frame;SmoothedEqualizer oracle,frozen;
+    check(oracle.prepare(48000,settings.values,origin)&&frozen.prepare(48000,settings.values,origin),"live EQ independent render oracles");
+    const auto expected=action==LoopAction::overdub?LoopState::overdubbing:action==LoopAction::substitute?LoopState::substituting:action==LoopAction::multiply?LoopState::multiplying:LoopState::stopping;
+    double error=0,changed=0;std::uint64_t deadline=0;
+    for(unsigned offset=0;offset<2304;offset+=block){
+        if(offset==256){settings.preset=0;settings.values[3]=1800;settings.values[4]=-12;eq.equalizer=settings;eq.eqMask=(1u<<3)|(1u<<4);eq.requestId=6;check(wet->enqueueLoop(eq)&&oracle.setTarget(3,1800)&&oracle.setTarget(4,-12),"live XY controls");}
+        if(offset==1024||offset==1280){settings.enabled=offset==1280;eq.equalizer=settings;eq.eqMask=0;eq.requestId=offset;check(wet->enqueueLoop(eq),"live bypass/re-enable");if(settings.enabled)check(oracle.prepare(48000,settings.values,frame),"live re-enable uses current global clock");}
+        if(offset==1536){settings.values=eqPresetValues(10);settings.preset=10;eq.equalizer=settings;eq.eqMask=eqAllParameters;eq.requestId=1536;check(wet->enqueueLoop(eq)&&oracle.setTargets(settings.values),"live original preset");}
+        render(action!=LoopAction::stop);
+        const auto actual=wet->inspectAudioThread().track;
+        check(actual.state==expected&&actual.equalizer==settings,"actual audio-owned state and live EQ targets acknowledged");
+        if(action==LoopAction::stop){if(!deadline)deadline=actual.scheduledFrame;check(deadline>frame&&actual.scheduledFrame==deadline,"EQ retains pending STOP deadline");}
+        std::array<float,128> ol{},orr{},fl{},fr{};
+        frozen.process(dl.data(),dr.data(),fl.data(),fr.data(),block);
+        if(settings.enabled)oracle.process(dl.data(),dr.data(),ol.data(),orr.data(),block);
+        else {ol=dl;orr=dr;}
+        for(unsigned i=0;i<block;++i){
+            error=std::max({error,std::abs(static_cast<double>(wl[i])-ol[i]),std::abs(static_cast<double>(wr[i])-orr[i])});
+            if(!settings.enabled)check(wl[i]==dl[i]&&wr[i]==dr[i],"live bypass is exact, without extra gain dip");
+            if(offset>=256&&offset<1024)changed=std::max({changed,std::abs(static_cast<double>(wl[i])-fl[i]),std::abs(static_cast<double>(wr[i])-fr[i])});
+        }
+    }
+    check(error<=1e-6&&changed>.001,"live controls affect nonzero PCM with correct smoothing, not merely metadata");
+    if(action==LoopAction::stop){
+        while(frame<deadline+512){
+            render(false);std::array<float,128> ol{},orr{};oracle.process(dl.data(),dr.data(),ol.data(),orr.data(),block);
+            for(unsigned i=0;i<block;++i){
+                const auto at=frame-block+i;
+                if(at<deadline)check(std::abs(wl[i]-ol[i])<=1e-6&&std::abs(wr[i]-orr[i])<=1e-6,"live EQ playback continues until the original scheduled STOP sample");
+                if(at>=deadline+240)check(dl[i]==0&&dr[i]==0&&wl[i]==0&&wr[i]==0,"scheduled STOP and bounded tail cannot be revived by EQ");
+            }
+        }
+        check(wet->inspectAudioThread().track.state==LoopState::stopped,"scheduled STOP still completes");
+    }else{
+        paired(LoopAction::finish,7);render(false);
+        check(wet->inspectAudioThread().track.state==LoopState::playing,"live EQ capture finalizes normally");
+        const auto track=wet->inspectAudioThread().track;
+        check(track.length==(action==LoopAction::multiply?6400u:4096u)&&track.undoCount==1,"live EQ adds no extra history or capture frames");
+    }
+    auto exported=[&](Engine& engine){
+        check(engine.enqueueExport({0,engine.generation(),engine.inspectAudioThread().track.waveformId}),"live EQ dry export request");render(false);
+        WavExport out;bool ready=false;
+        for(unsigned n=0;n<5000&&!ready;++n){ready=engine.popExport(out);if(!ready)std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+        check(ready&&!out.bytes.empty(),"live EQ worker export complete");return out.bytes;
+    };
+    const auto dryBytes=exported(*dry),wetBytes=exported(*wet);
+    check(dryBytes==wetBytes,"live EQ edits/toggles/presets never enter stored PCM or capture feedback");
+    std::cout<<"live EQ state "<<static_cast<unsigned>(expected)<<" / "<<block<<": peak error "<<error<<", audible edit "<<changed<<'\n';
+}
 int main(int argc,char** argv){
     using namespace aion;
     const bool reference=argc==2&&std::string_view(argv[1])=="--reference";
@@ -136,6 +215,7 @@ int main(int argc,char** argv){
         check(wet.enqueueEqBank(bank,100),"bank fits after drain");render(false);while(wet.popView(view)){}check(view.tracks[19].equalizer==settings,"bank restores expanded final track");
         std::cout<<"connected EQ "<<block<<" frames: peak error "<<error<<'\n';
     }
+    for(unsigned block:{64u,128u})for(auto action:{LoopAction::overdub,LoopAction::substitute,LoopAction::multiply,LoopAction::stop})liveStateControls(block,action);
     check(operations==0,"callback new/delete prohibited");
-    std::cout<<"PASS batch atomicity, connected EQ/actual toggle gain, epoch/mask rollback, panic/clear, full-queue bank, zero callback new/delete\n";
+    std::cout<<"PASS batch atomicity, connected EQ/actual toggle gain, live OD/SUB/MULT/STOP controls and dry capture, epoch/mask rollback, panic/clear, full-queue bank, zero callback new/delete\n";
 }

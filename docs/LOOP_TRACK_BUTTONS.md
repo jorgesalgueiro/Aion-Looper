@@ -18,7 +18,7 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | DEL; MERGE source / GO | Native cleanup and immutable worker merge, original confirmation/history/PCM gates | Queued-source clone/mix verified in Windows/Linux audio and Windows pointer tests; queued-destination and scheduled-stop source/destination audio/ownership and Windows pointer checks also pass; other stopping-state controls require their own eligibility audit |
 | Waveform click WAV | Native stored-PCM export, filenames, bounded leases and picker lifecycle | OS cancel/overwrite and non-Windows dialogs remain separate checks |
 | SAVE (Dry/Wet) | **Unported; disabled** | Native wet rendering, chain state, rate/pan/volume, three-second tail, paired filenames and lifecycle checks; dry-only export is not equivalent |
-| Q/eQ, FX/eQ navigation | **Connected GUI/CLI software preview, Windows/Linux verified.** Original 24 controls/10 presets, versioned state and approved point/range graph; strict connected worklet PCM/actual browser toggle gain, exact record/OD/SUB dry WAV, native CANCEL/DEL and actual Windows 64/128 pointer/keyboard/reload; Linux core/processor/CLI/sanitizer checks pass; [EQ_MIGRATION.md](EQ_MIGRATION.md) | Owner live-control workflow choice and EQ MIDI Learn pending; listening/physical and Linux WebKit remain separate |
+| Q/eQ, FX/eQ navigation | **Connected GUI/CLI software preview, Windows/Linux verified.** Original 24 controls/10 presets, versioned state and approved point/range graph; strict connected worklet PCM/actual browser toggle gain, exact record/OD/SUB dry WAV, native CANCEL/DEL and actual Windows 64/128 pointer/keyboard/reload; owner approved live OD/SUB/MULT/pending-STOP controls; [EQ_MIGRATION.md](EQ_MIGRATION.md) | EQ MIDI Learn pending; listening/physical and Linux WebKit remain separate |
 | Other FX, FULL PRESET, CHAIN PRESET, manual chain | **Unported; disabled**, except accepted Reverse and Q/eQ above | Port the remaining effects individually before wet SAVE/full-chain acceptance |
 
 Finalization dispatch, rapid queued history/MULT and the integral-sample source
@@ -35,8 +35,8 @@ The owner confirmed core
 looping/editing first. Each functional
 slice must pass its relevant Windows/Linux tests before the next. The final
 integrated pass must exercise combinations rather than merely enable controls.
-Q/eQ GUI/CLI software is verified on Windows/Linux. Resolve its pending owner
-workflow choice and controller parity before advancing to another effect.
+Q/eQ GUI/CLI software is verified on Windows/Linux; live special-state controls
+are owner-approved. Finish EQ controller parity before another effect.
 No dependency change or package is implied by this inventory. Existing sessions,
 IDs, expanded capacity and logo are preserved.
 

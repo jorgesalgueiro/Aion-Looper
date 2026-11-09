@@ -17,7 +17,7 @@ eligibility gaps. Remaining unported FX/SAVE controls stay disabled. No package/
 
 ### In progress: original Q/eQ DSP and graphic editing — 9 November 2026
 
-**Windows/Linux GUI/CLI software verified; live-control choice and EQ MIDI pending.**
+**Windows/Linux GUI/CLI software verified; live controls approved; EQ MIDI pending.**
 Per-loop eQ now uses the existing native processor from original track/live eQ
 checkboxes, FX/eQ navigation, original numeric controls/presets and running-app
 `aion.py eq` commands. The approved graph adds ten selectable draggable points,
@@ -86,11 +86,16 @@ unchanged original stopRecording cases, Windows production/external CLI and real
 same native inverse as graph handles. Final Linux core/processor/CLI/sanitizer
 checks for this repair pass on committed snapshot **b0ce92d**.
 
-**Owner choice pending:** original EffectManager.update/triggerRebuild skips live
-graph changes during OD/SUB/MULT and scheduled STOP. The current unpublished
-persistent prototype responds live; the owner has been asked to select live
-controls or the original limitation. Do not assume approval or claim full EQ
-workflow parity. Finish that choice and EQ MIDI Learn before another effect.
+**Owner-approved live controls (9 November):** EQ edits, presets and toggles respond
+during OD/SUB/MULT and scheduled STOP. This intentionally improves the original
+EffectManager.update/triggerRebuild limitation; it is not unchanged-JS parity in
+those states. The implementation already supported this behavior; the new focused
+acceptance adds eight real Engine scenarios (four states at 64/128), independent
+filtered-PCM comparison at 1e-6, exact bypass/dry WAV, raw capture/history/source
+invariants and unchanged STOP deadline/playback through its scheduled sample.
+See EQ_MIGRATION.md for commands/results. EQ MIDI Learn remains the next feature
+slice before another effect; Linux WebKit/listening/device/release checks remain
+separate. No product code, UI assets, IDs, dependencies or packages changed here.
 
 ### Implemented preview: queued PLAY with STOP pending Undo/Redo — 9 November 2026
 

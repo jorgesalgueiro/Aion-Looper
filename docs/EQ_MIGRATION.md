@@ -2,7 +2,7 @@
 
 Active slice: ten-band per-loop eQ, before the other unported FX/SAVE controls.
 The filter kernel was a prerequisite. Connected Windows/Linux software acceptance
-is recorded below; the live-control workflow choice and EQ MIDI Learn remain open. Do not infer
+is recorded below; live controls are owner-approved and EQ MIDI Learn remains open. Do not infer
 full-chain, wet SAVE, hardware, deferred-wrapper or release acceptance.
 
 ## Connected implementation and current verification — 9 November 2026
@@ -200,7 +200,7 @@ The existing sanitizer cache is Debug, plugin off, with
 configuration or adding targets. Safe committed-snapshot sync remains exactly the
 helper in DEVELOPMENT_WORKFLOW.md. No distribution was created or pushed.
 
-### Armed CANCEL repair and remaining owner decision
+### Armed CANCEL repair and approved live-control behavior
 
 The original `LoopManager.stopRecording` armed branch empties the take and drops
 its graph while retaining effect parameters, enable flags and preset. Native
@@ -223,13 +223,47 @@ both paths are now protected. A local test-variable declaration was also repaire
 no assertion or tolerance was relaxed. CLI width/edge coverage uses native
 `eqPeakQ` and checks its returned edge within .01Hz for Float32 Q storage.
 
-**Pending owner choice:** the unchanged original skips graph updates when its
-loop state is OD/SUB/MULT/stopping. Stored controls can then disagree with its
-running EQ. The proposed persistent native version responds live in those states.
-An explicit question is pending; do not treat the previous persistent-tail choice
-as approval of this separate workflow/sound change. This is unpublished preview
-work, not full EQ parity or a gate to start another effect. EQ MIDI Learn, Linux
-WebKit pointers, listening/hardware and release checks also remain pending.
+**Owner approval, 9 November:** EQ controls respond live during OD/SUB/MULT and
+scheduled STOP. The owner explicitly selected this separately from persistent
+filter tails. Original `EffectManager.update` and `triggerRebuild` only update a
+loop graph in `playing`, leaving stored values ahead of audible settings in these
+other states. Native live response is an approved musical/workflow difference;
+do not label it unchanged-JS parity. No further DSP/UI change was needed.
+
+Observable acceptance for this choice: edits, preset changes and toggles must
+affect actual nonzero playback in each state; retain global-128-frame/50ms target
+smoothing, exact bypass, untouched stored capture/feedback/history, and the
+existing scheduled STOP. `EqConnectedTests.cpp` now adds eight paired production
+Engine scenarios (four states at 64/128), separately from the unchanged-JS JSON
+cases. An independent `SmoothedEqualizer` checks enabled PCM at **1e-6**;
+a frozen-target comparison proves that edits actually change the sound (peak
+difference >.001), not merely metadata. Each case edits frequency/gain, bypasses,
+re-enables and selects Telephone while the special state remains active.
+State/position/length/history/source revision/deadline agree with the dry twin
+each block. Recordings finish with the expected length and single history entry;
+all resulting dry WAV bytes match exactly. Scheduled STOP playback also matches
+the oracle through its original deadline, then becomes silent after its existing
+5ms tail. Callback new/delete guards cover every rendered block.
+
+Focused Windows commands (existing Release cache):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_eq_connected_tests
+ctest --test-dir build/windows-core -C Release --output-on-failure --no-tests=error -R '^(eq_connected_contract|js_native_eq_connected)$'
+```
+
+Linux uses the committed-snapshot helper before building the same target in
+`build/linux`; use the same CTest expression without `-C Release`. Rebuild that
+target in `build/overlap-asan` and run `eq_connected_contract` with
+`ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1` as above.
+Windows: **2/2 focused CTests PASS, 6.15s** (`build/eq-live-states-windows.log`).
+The eight new scenarios pass with peak enabled-PCM errors **3.73e-9..7.46e-9**
+and audible edit differences between **0.00432 and 0.00488**. Linux/sanitizer results follow
+after the committed-snapshot run.
+Prior actual GUI/CLI evidence remains applicable: the shared command paths have
+no special-state restriction and were not changed here. This run adds no Linux
+WebKit, physical device or listening evidence. EQ MIDI Learn remains next before
+another effect; full-chain and release acceptance remain open.
 
 ## Observable acceptance, defined before integration
 
