@@ -35,7 +35,9 @@ Primary sources:
 - The isolated compressor DSP adapts Chromium/Blink's BSD-licensed compressor
   and AudioParam timeline algorithms. The pinned revision, modifications and full
   notices are retained under `third_party/notices`; CMake installation and the
-  preview package helper include both notices. This adds portable C++ source,
+  preview package helper include those notices. A portable scalar logarithm
+  adapts AMD's BSD-licensed non-FMA algorithm; its separate full notice is also
+  retained and packaged. This adds portable C++ source,
   not a Chromium runtime dependency. Faust was evaluated, but no Faust code or
   compiler dependency is included in this slice. See [COMPRESSOR_MIGRATION.md](COMPRESSOR_MIGRATION.md).
 - Applicable JUCE, CLAP SDK/helpers, Windows VST3, ASIO, WebView2 and platform SDK

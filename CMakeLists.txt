@@ -36,6 +36,8 @@ add_library(aion_core STATIC source/core/Engine.cpp source/core/LoopBank.cpp sou
 target_sources(aion_core PRIVATE source/core/Equalizer.cpp)
 target_sources(aion_core PRIVATE source/core/EqSettings.cpp)
 target_sources(aion_core PRIVATE source/core/Compressor.cpp)
+# Preserve the portable logarithm's separate Float32 operations on all CPUs.
+set_source_files_properties(source/core/Compressor.cpp PROPERTIES COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 find_package(Threads REQUIRED)
 target_link_libraries(aion_core PUBLIC Threads::Threads)
 target_include_directories(aion_core PUBLIC source)
@@ -392,7 +394,7 @@ install(FILES README.md docs/ARCHITECTURE.md docs/MIGRATION_BLUEPRINT.md docs/BU
 set(notice_dir share/licenses/Aion-Looper)
 install(FILES LICENSE DESTINATION ${notice_dir} RENAME Aion-Looper-AGPL-3.0.txt)
 install(FILES resources/ui/LICENSE DESTINATION ${notice_dir} RENAME Ascii-Looper-GPL-2.0.txt)
-install(FILES third_party/notices/WebAudio-Compressor-BSD.txt third_party/notices/Chromium-BSD.txt DESTINATION ${notice_dir})
+install(FILES third_party/notices/WebAudio-Compressor-BSD.txt third_party/notices/Chromium-BSD.txt third_party/notices/AMD-Compressor-Log10-BSD.txt DESTINATION ${notice_dir})
 install(FILES "${juce_SOURCE_DIR}/LICENSE.md" DESTINATION ${notice_dir} RENAME JUCE-LICENSE.md)
 if(AION_BUILD_CLAP)
     install(FILES "${clap_juce_extensions_SOURCE_DIR}/LICENSE.md" DESTINATION ${notice_dir} RENAME CLAP-extension-LICENSE.txt)

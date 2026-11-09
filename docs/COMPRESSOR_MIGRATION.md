@@ -40,7 +40,10 @@ particular Web Audio knee, automatic makeup or adaptive envelope matching. For t
 slice the smaller parity path adapts the [original browser DSP](https://github.com/chromium/chromium/blob/39095d03d67beb956ec7983cb4a51833536dc894/third_party/blink/renderer/platform/audio/dynamics_compressor.cc)
 and [AudioParam timeline](https://github.com/chromium/chromium/blob/39095d03d67beb956ec7983cb4a51833536dc894/third_party/blink/renderer/modules/webaudio/audio_param_handler.cc)
 from pinned revision `39095d03d67beb956ec7983cb4a51833536dc894` into portable C++.
-Full BSD notices and modification provenance are in `third_party/notices` and
+The logarithm uses a small portable scalar adaptation of [AMD's BSD non-FMA
+algorithm](https://github.com/amd/aocl-libm-ose/blob/5760c0a6a5c650aaeaee81d5d83592fc2da66207/src/isa/avx/masm/log10f.asm),
+pinned at `5760c0a6a5c650aaeaee81d5d83592fc2da66207`, retaining arithmetic order
+and tables without assembly or CPU dispatch. Full BSD notices and modification provenance are in `third_party/notices` and
 included by installation/package rules. No runtime Chromium, fdlibm, Faust library
 or Faust compiler is introduced. Evaluate Faust for later effects when it reduces
 work **and** unchanged-reference audio acceptance demonstrates equivalent behavior.
@@ -58,6 +61,17 @@ at its ceil boundary. The fix retains the prior boundary sample without moving
 the new automation's anchor or phase. All failed cases remain; no limit was loosened.
 The first JS topology check also needed `Array.from` to compare a VM-realm array;
 its graph-link and original-value assertions were retained.
+
+The first Linux replay passed its six core/reference checks, then exposed a
+**0.00007605** vocal-preset mismatch: platform `log10f` differs by one ULP and
+changes a knee-search branch. Simply rounding a double logarithm repaired that
+preset but failed the retained 44.1 kHz automation case by **0.00005912**. Neither
+failure was waived. The portable AMD arithmetic matches the Windows CRT on
+10,000 sampled inputs; sixteen cases that differ from double-log rounding are
+retained as exact component regressions alongside full browser PCM acceptance.
+Compressor compilation disables FMA contraction on non-MSVC compilers to retain
+the separate Float32 operations. This is source arithmetic, not an AMD hardware
+requirement. Final platform replay results follow in the handoff.
 
 Windows actual WebView2 **Edg/151.0.4129.107** passes **60 comparisons, 1,966,080
 stereo frames**, maximum absolute difference **9.586730955746248e-7**, unchanged

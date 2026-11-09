@@ -31,6 +31,7 @@
 // Adaptation: fixed stereo storage, continuous subdivision clock, validated
 // controls, original AudioParam automation and dry/wet/makeup routing.
 #include "Compressor.h"
+#include "../../third_party/amd/CompressorLog10.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -38,7 +39,9 @@
 
 namespace aion {
 namespace {
-float db(float linear) noexcept { return 20*std::log10(linear); }
+// A platform log10f ULP can select a different knee-search branch. Keep the
+// pinned scalar arithmetic order, verified against actual browser PCM.
+float db(float value) noexcept { return 20*detail::compressorLog10(value); }
 float linear(float decibels) noexcept { return std::pow(10.0f,.05f*decibels); }
 float finite(float x,float fallback) noexcept { return std::isfinite(x)?x:fallback; }
 float flush(float x) noexcept { return std::abs(x)<std::numeric_limits<float>::min()?0:x; }

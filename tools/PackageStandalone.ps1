@@ -24,6 +24,7 @@ foreach ($name in @('BUILDING.md','PARITY.md','VALIDATION.md','LICENSING.md','CL
 $licenses = @{
     'third_party/notices/WebAudio-Compressor-BSD.txt' = 'WebAudio-Compressor-BSD.txt'
     'third_party/notices/Chromium-BSD.txt' = 'Chromium-BSD.txt'
+    'third_party/notices/AMD-Compressor-Log10-BSD.txt' = 'AMD-Compressor-Log10-BSD.txt'
     'resources/ui/LICENSE' = 'Ascii-Looper-GPL-2.0.txt'
     '.deps/JUCE/LICENSE.md' = 'JUCE-LICENSE.md'
     '.deps/clap-juce-extensions/LICENSE.md' = 'CLAP-extension-LICENSE.txt'

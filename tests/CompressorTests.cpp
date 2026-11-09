@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/Compressor.h"
+#include "../third_party/amd/CompressorLog10.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -21,6 +22,23 @@ int main(){
     for(unsigned i=0;i<l.size();++i){l[i]=static_cast<float>(.6*std::sin(i*.11));r[i]=static_cast<float>(.3*std::cos(i*.073));}
     auto values=compressorDefaults();check(validCompressorValues(values),"Original compressor defaults valid");
     watching=true;
+    // Measured Windows UCRT Float32 results that differ from double-log rounding.
+    // Keep this component regression AND the unchanged browser PCM gate: one
+    // logarithm ULP can change a knee-search branch and audible output.
+    constexpr std::array<std::array<std::uint32_t,2>,16> logs{{
+        {{0x3e0dd48au,0xbf5bc8b2u}},{{0x419fa923u,0x3fa669f0u}},
+        {{0x3f67fe25u,0xbd2f2aeeu}},{{0x3c8ff4fbu,0xbfe0a8feu}},
+        {{0x3e0bc861u,0xbf5d6693u}},{{0x3f61869du,0xbd617578u}},
+        {{0x3c6d82a1u,0xbfeb5bc0u}},{{0x3e11b911u,0xbf58c60eu}},
+        {{0x3f538569u,0xbda9c03eu}},{{0x38a14fdcu,0xc083a596u}},
+        {{0x3ac1a222u,0xc0352766u}},{{0x3bed3446u,0xc008fb20u}},
+        {{0x36f3d334u,0xc0a46fffu}},{{0x36d5a3cfu,0xc0a6462fu}},
+        {{0x3f8892aeu,0x3ce6a4d8u}},{{0x3d01175fu,0xbfc02ff0u}}
+    }};
+    for(const auto& pair:logs)check(std::bit_cast<std::uint32_t>(detail::compressorLog10(std::bit_cast<float>(pair[0])))==pair[1],"Portable log preserves Windows Float32 knee inputs");
+    check(std::isinf(detail::compressorLog10(0))&&detail::compressorLog10(1)==0,"Portable log zero/unity");
+    check(std::isnan(detail::compressorLog10(-1))&&std::isnan(detail::compressorLog10(std::numeric_limits<float>::quiet_NaN())),"Portable log invalid domain");
+    check(std::isfinite(detail::compressorLog10(std::numeric_limits<float>::denorm_min()))&&std::isfinite(detail::compressorLog10(std::numeric_limits<float>::max())),"Portable log full positive range");
     check(!a.setTargets(values),"Unprepared controls rejected");
     for(double rate:{8000.,16000.,22050.,32000.,44100.,48000.,96000.,192000.,384000.}){
         check(a.prepare(rate)&&b.prepare(rate),"Supported rates prepare");
