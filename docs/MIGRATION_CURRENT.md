@@ -22,8 +22,16 @@ The ZIP now includes optional CLI, project/dependency notices, current EQ scope
 and exact source archive. An initial Git archive argument-splitting failure was
 fixed and packaging rerun. This preview predates the EQ MIDI increment below;
 it is not a claim of release readiness or completed original-asset permissions.
-The accepted EQ MIDI increment below is being packaged as a refreshed Windows
-preview using the same helper; the resulting manifest identifies its exact commit.
+**Current refreshed preview includes EQ MIDI Learn:**
+`dist/Aion-Looper-0.4.3-055e76910e5a-win64-Standalone.zip`, **6,659,268 bytes**,
+SHA256 `4D92F459A47130268936822BDDFC3AAF01F89FF02C20D39E9CC8E893AA807A00`.
+Built source snapshot **055e769**; packaged EXE SHA256
+`AC4C87B8271E6ED94AA3E109434AA9C016D0125964744107DD3B44E4F5A51BFB`
+matches the build byte-for-byte. Required contents, source ZIP commit comment and
+extracted CLI help all pass (`build/eq-midi-package-verified.json`). No installer,
+Linux package, wrappers or version bump. Python is optional for CLI only. This is
+a development preview; physical/Linux WebKit/listening and rights/release checks
+remain as documented. Subsequent handoff-only commits do not change this binary.
 
 ### In progress: original Q/eQ DSP and graphic editing — 9 November 2026
 
