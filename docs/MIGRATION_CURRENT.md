@@ -93,7 +93,10 @@ those states. The implementation already supported this behavior; the new focuse
 acceptance adds eight real Engine scenarios (four states at 64/128), independent
 filtered-PCM comparison at 1e-6, exact bypass/dry WAV, raw capture/history/source
 invariants and unchanged STOP deadline/playback through its scheduled sample.
-See EQ_MIGRATION.md for commands/results. EQ MIDI Learn remains the next feature
+Windows focused CTests **2/2 PASS (6.15s)**; committed snapshot **1f80046** passes
+Linux **2/2 (1.82s)** and ASan/UBSan/leaks **1/1 (10.66s)**. Eight new PCM cases peak
+at **7.4505806e-9**, below the unchanged **1e-6** limit; tracked callback new/delete
+remains zero. See EQ_MIGRATION.md for commands/results. EQ MIDI Learn is the next feature
 slice before another effect; Linux WebKit/listening/device/release checks remain
 separate. No product code, UI assets, IDs, dependencies or packages changed here.
 

@@ -258,8 +258,12 @@ target in `build/overlap-asan` and run `eq_connected_contract` with
 `ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1` as above.
 Windows: **2/2 focused CTests PASS, 6.15s** (`build/eq-live-states-windows.log`).
 The eight new scenarios pass with peak enabled-PCM errors **3.73e-9..7.46e-9**
-and audible edit differences between **0.00432 and 0.00488**. Linux/sanitizer results follow
-after the committed-snapshot run.
+and audible edit differences between **0.00432 and 0.00488**.
+Committed snapshot **1f80046** was synced after the helper completed, with the
+Linux mirror clean. Linux **2/2 PASS, 1.82s**, with the same eight PCM measurements
+(`build/eq-live-states-linux.log`); ASan/UBSan/leak connected coverage **1/1 PASS,
+10.66s**, no diagnostics (`build/eq-live-states-sanitizer.log`). Only the affected
+test executable was rebuilt; no wrappers, packages or dependency changes.
 Prior actual GUI/CLI evidence remains applicable: the shared command paths have
 no special-state restriction and were not changed here. This run adds no Linux
 WebKit, physical device or listening evidence. EQ MIDI Learn remains next before
