@@ -55,6 +55,7 @@ Mappings use original slider bounds, clear the preset name to Custom, and do
 not enable bypassed EQ or trigger transport. The selected tab and mappings
 persist in native state and keep working without an editor. Existing channel
 filters/conflict rules apply; physical controller verification remains separate.
+CC120/123 retain the existing native panic behavior and cannot be learned as EQ.
 
 MERGE also uses the shared loop command:
 

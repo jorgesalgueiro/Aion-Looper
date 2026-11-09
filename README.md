@@ -38,7 +38,8 @@ workspace, playable with a mouse, keyboard, MIDI controller or command line.
   on supported loop controls, CC volume/pan control, and saved MIDI mappings.
 - **Shape each loop with eQ.** Ten native EQ bands, the original presets and
   sliders, plus draggable curve points and bandwidth handles. Settings are shared
-  with the CLI and saved in native state; EQ MIDI Learn is still pending.
+  with the CLI and saved in native state. Right-click an EQ slider to learn a MIDI
+  CC; the controller follows the selected loop's EQ tab.
 - **Control the running app from a terminal.** The development CLI shares the
   Standalone's session, devices and native command layer.
 

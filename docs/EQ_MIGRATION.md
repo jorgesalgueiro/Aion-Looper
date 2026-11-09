@@ -2,8 +2,8 @@
 
 Active slice: ten-band per-loop eQ, before the other unported FX/SAVE controls.
 The filter kernel was a prerequisite. Connected Windows/Linux software acceptance
-is recorded below; live controls are owner-approved and EQ MIDI Learn is under
-cross-platform acceptance (see the latest section). Do not infer
+is recorded below; live controls are owner-approved and EQ MIDI Learn passes
+the documented Windows/Linux software checks. Do not infer
 full-chain, wet SAVE, hardware, deferred-wrapper or release acceptance.
 
 ## Connected implementation and current verification — 9 November 2026
@@ -27,8 +27,8 @@ bound, conflict/provisional learn, cancellation and timeout machinery is reused.
 New reference gate `js_native_eq_midi`: **51,072** unchanged handler/setter cases,
 all 24 original widget ranges, all 16 channels, tabs 1/20, all 128 values plus
 repeated/nonmonotonic/zero extremes. Probe output is compared to Float32 reference
-values with nine-digit-printing allowance (max(1e-8, abs(value)*1e-8)). This is
-parameter precision, not a relaxed PCM limit. Production Engine tests compare
+values exactly after Float32 conversion (the probe prints nine significant
+digits for round-trip precision). Production Engine tests compare
 actual stereo PCM with sample-timed GUI controls at **1e-6**, including learn at
 sample 17/following CC at 18 before message acknowledgment, all values/channels,
 selected-tab isolation and channel filtering. Callback new/delete remains tracked.
@@ -44,12 +44,44 @@ acknowledgment, retaining both requirements. The legacy-schema test still checks
 all old mappings; only the expected writer version and unknown-future version
 moved from 3/4 to 4/5. No assertion was deleted or tolerance weakened.
 
-Linux software/sanitizer verification and retained MIDI regression results are
-pending this increment's committed-snapshot run. No physical pedal, Linux WebKit,
-plugin, latency or listening acceptance is implied. Reproduce with the existing
+On committed production snapshot **6766d40**, Windows **6/6 CTests PASS (16.47s)**
+and Linux **6/6 PASS (13.72s)**; both also pass all retained `aion_core_tests --midi`
+and production `aion_midi_processor_tests` regressions. Actual EQ processor/external
+CLI pass at 64/128 on both OSes. Connected CC-vs-GUI stereo peak error is **0** at
+both block sizes (limit 1e-6). Linux ASan/UBSan/leaks **1/1 PASS (11.35s)** with
+no diagnostics. Logs: `build/eq-midi-core-final-windows.log`, `eq-midi-linux.log`,
+`eq-midi-processor-windows-{64,128}.log`, `eq-midi-asan-linux.log` and retained
+core/processor logs. The reference parameter gate was subsequently strengthened
+to exact Float32 equality; both OSes must run that final script after sync.
+
+Final actual Windows UI checks also replace the document with an active EQ learn:
+learning cancels, the accepted mapping and selected tab 20 survive, and its actual
+slider shows the restored value. The first test clicked before the reconstructed
+20-row page layout settled (y=819 outside the 800px viewport); it now uses the
+same grid-ready/scroll setup as the earlier reload test. The original hit and
+state assertions remain. Final 64/128 run passes (`eq-midi-ui-reload-windows.log`).
+
+Warmed actual Engine measurement, run sequentially after other builds/tests:
+20 playing stereo loops / ten EQ bands / 48kHz / 256 routed EQ CCs per block,
+512 warm + 2048 measured callbacks per scenario:
+
+| OS | Block | Dense-CC p99 / max (us) | Callback deadline (us) | Observed overruns |
+| --- | --- | --- | --- | --- |
+| Windows | 64 | 455.7 / 508.2 | 1333.33 | 0/2048 |
+| Windows | 128 | 782.6 / 1068.2 | 2666.67 | 0/2048 |
+| Linux | 64 | 441.429 / 978.429 | 1333.33 | 0/2048 |
+| Linux | 128 | 742.686 / 1493.24 | 2666.67 | 0/2048 |
+
+Steady/GUI-target scenarios also had zero observed overruns in this run. Full
+results are in `build/eq-midi-benchmark-{windows,linux}.log`. This measures native
+Engine work, not JUCE wrapper/device/round-trip latency or a worst-case guarantee.
+No physical pedal, Linux WebKit, plugin or listening acceptance is implied.
+CC120/123 retain native panic reservation; this is not arbitrary original effect
+mapping compatibility. Reproduce with the existing
 core/processor targets, `js_native_eq_midi`, `eq_connected_contract`,
 `js_native_eq_connected`, `native_frontend_commands`, `js_native_midi`, then
 `tools/TestEqUi.ps1`; use the sanitizer cache for connected audio as above.
+Run `aion_eq_engine_benchmark` separately after builds/tests for timing.
 
 ### Earlier connected GUI/CLI checkpoint (before EQ MIDI)
 
@@ -209,7 +241,7 @@ followed by the separate CANCEL regression rather than an unchanged suite repeat
 Source/header compilation was verified against the committed native WSL mirror.
 
 Native EQ
-MIDI Learn is still pending: the original `main.js` learns effect ranges and routes
+At this earlier checkpoint MIDI Learn was pending: the original `main.js` learns effect ranges and routes
 them through the selected `EffectManager` tab; do not claim that workflow is ported
 or enable disconnected mappings. Linux WebKit pointers, listening/physical devices,
 long-session release checks and deferred plugin wrappers also remain separate.
@@ -312,8 +344,8 @@ Linux mirror clean. Linux **2/2 PASS, 1.82s**, with the same eight PCM measureme
 test executable was rebuilt; no wrappers, packages or dependency changes.
 Prior actual GUI/CLI evidence remains applicable: the shared command paths have
 no special-state restriction and were not changed here. This run adds no Linux
-WebKit, physical device or listening evidence. EQ MIDI Learn remains next before
-another effect; full-chain and release acceptance remain open.
+WebKit, physical device or listening evidence. EQ MIDI Learn was the next slice
+at that checkpoint and is covered above; full-chain/release acceptance remain open.
 
 ## Observable acceptance, defined before integration
 

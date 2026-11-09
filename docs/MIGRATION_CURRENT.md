@@ -25,15 +25,25 @@ it is not a claim of release readiness or completed original-asset permissions.
 
 ### In progress: original Q/eQ DSP and graphic editing — 9 November 2026
 
-**EQ MIDI Learn is the current increment; Windows software checks pass, Linux pending.**
+**Selected-tab EQ MIDI Learn passes its Windows/Linux software scope.**
 All 24 original effect-slider CC ranges now route to the selected EQ loop tab,
 using shared GUI/CLI state, append-only targets 93..116 and version-4 MIDI state
 (legacy versions 1/2/3 preserved). The new unchanged-JS gate covers **51,072** values;
 64/128 Engine PCM, production MidiBuffer/external CLI and actual Windows pointers/
 keys prove immediate learn bursts, tab isolation, conflicts, Escape/clear and
 actual focused slider updates. See [EQ_MIGRATION.md](EQ_MIGRATION.md) for exact
-scope, test-harness repairs and commands. Linux and retained regression results
-will be recorded after the committed-snapshot acceptance run. The earlier
+scope, test-harness repairs and commands. Windows **6/6 (16.47s)** and Linux
+**6/6 (13.72s)** CTests pass on production snapshot **6766d40**, as do production
+EQ/external CLI at both block sizes, retained core/processor MIDI regressions
+and Linux ASan/UBSan/leaks **1/1 (11.35s)**. CC-vs-GUI stereo peak error is **0**,
+limit **1e-6**. New actual Windows document-replacement tests retain the selected
+tab/mapping and cancel only temporary learning. The final parameter oracle uses
+exact Float32 equality. Dense 256-CC/20-stereo-loop Engine measurements show
+zero observed overruns: worst Windows 64/128 **508.2/1068.2us**, Linux
+**978.429/1493.24us**, deadlines **1333.33/2666.67us**. Device/wrapper/round-trip
+latency and physical expression/Linux WebKit/listening remain separate checks.
+Next: original compressor (C) reference/audio/state/GUI/CLI acceptance, before
+the remaining FX and wet SAVE. No further effect is enabled in this increment. The earlier
 connected baseline and persistent/live-control acceptance are retained below.
 Per-loop eQ now uses the existing native processor from original track/live eQ
 checkboxes, FX/eQ navigation, original numeric controls/presets and running-app
@@ -113,9 +123,9 @@ invariants and unchanged STOP deadline/playback through its scheduled sample.
 Windows focused CTests **2/2 PASS (6.15s)**; committed snapshot **1f80046** passes
 Linux **2/2 (1.82s)** and ASan/UBSan/leaks **1/1 (10.66s)**. Eight new PCM cases peak
 at **7.4505806e-9**, below the unchanged **1e-6** limit; tracked callback new/delete
-remains zero. See EQ_MIGRATION.md for commands/results. EQ MIDI Learn is the next feature
-slice before another effect; Linux WebKit/listening/device/release checks remain
-separate. No product code, UI assets, IDs, dependencies or packages changed here.
+remains zero. See EQ_MIGRATION.md for commands/results. This earlier tests/docs
+increment preceded EQ MIDI Learn above. Linux WebKit/listening/device/release
+checks remain separate; it changed no product code, UI assets, IDs or dependencies.
 
 ### Implemented preview: queued PLAY with STOP pending Undo/Redo — 9 November 2026
 

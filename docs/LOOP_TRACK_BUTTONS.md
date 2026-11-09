@@ -18,7 +18,7 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | DEL; MERGE source / GO | Native cleanup and immutable worker merge, original confirmation/history/PCM gates | Queued-source clone/mix verified in Windows/Linux audio and Windows pointer tests; queued-destination and scheduled-stop source/destination audio/ownership and Windows pointer checks also pass; other stopping-state controls require their own eligibility audit |
 | Waveform click WAV | Native stored-PCM export, filenames, bounded leases and picker lifecycle | OS cancel/overwrite and non-Windows dialogs remain separate checks |
 | SAVE (Dry/Wet) | **Unported; disabled** | Native wet rendering, chain state, rate/pan/volume, three-second tail, paired filenames and lifecycle checks; dry-only export is not equivalent |
-| Q/eQ, FX/eQ navigation | **Connected GUI/CLI software preview, Windows/Linux verified.** Original 24 controls/10 presets, versioned state and approved point/range graph; strict connected worklet PCM/actual browser toggle gain, exact record/OD/SUB dry WAV, native CANCEL/DEL and actual Windows 64/128 pointer/keyboard/reload; owner approved live OD/SUB/MULT/pending-STOP controls; [EQ_MIGRATION.md](EQ_MIGRATION.md) | EQ MIDI Learn pending; listening/physical and Linux WebKit remain separate |
+| Q/eQ, FX/eQ navigation | **Connected GUI/CLI software preview, Windows/Linux verified.** Original 24 controls/10 presets, versioned state, approved point/range graph and live OD/SUB/MULT/pending-STOP controls; selected-tab EQ CC Learn with unchanged-JS ranges and Engine/processor/CLI/Windows pointer/reload coverage at 64/128; [EQ_MIGRATION.md](EQ_MIGRATION.md) | Physical expression/listening and Linux WebKit remain separate; other effects/wet SAVE are unported |
 | Other FX, FULL PRESET, CHAIN PRESET, manual chain | **Unported; disabled**, except accepted Reverse and Q/eQ above | Port the remaining effects individually before wet SAVE/full-chain acceptance |
 
 Finalization dispatch, rapid queued history/MULT and the integral-sample source
@@ -29,14 +29,15 @@ its Windows/Linux audio and Windows interaction gates. Queued destinations and
 scheduled-stop source/destination states now pass those gates too. Pending/stopping
 RTRG and its MULT/NORM/history/MERGE/STUT/rate/reverse/rapid/finalizing combinations,
 and queued PLAY with STOP pending local/global history, now pass the scoped
-acceptance in MIGRATION_CURRENT. Next is the original Q/eQ effect, with shared
-GUI/CLI/state and sound comparison, before the remaining FX/SAVE/preset engine.
+acceptance in MIGRATION_CURRENT. Q/eQ now has shared GUI/CLI/state, controller
+and sound comparisons before the remaining FX/SAVE/preset engine.
 The owner confirmed core
 looping/editing first. Each functional
 slice must pass its relevant Windows/Linux tests before the next. The final
 integrated pass must exercise combinations rather than merely enable controls.
 Q/eQ GUI/CLI software is verified on Windows/Linux; live special-state controls
-are owner-approved. Finish EQ controller parity before another effect.
+are owner-approved; EQ MIDI Learn passes its documented software scope. Next is
+the original compressor (C) reference/acceptance slice; other FX remain disabled.
 No dependency change or package is implied by this inventory. Existing sessions,
 IDs, expanded capacity and logo are preserved.
 

@@ -12,7 +12,7 @@ for(let channel=1;channel<=16;++channel)for(const [p,[name,min,max]]of bands.ent
     const track=channel%2?19:0;sandbox.parameter=p;input.push(`${track} ${channel} ${p} ${value}`);expected.push(Math.fround(sandbox.oracle(track,name,min,max,channel,value)));
 }
 const run=spawnSync(process.argv[2],[],{input:'midicc\n'+input.join('\n')+'\n',encoding:'utf8',maxBuffer:4*1024*1024});assert.equal(run.status,0,run.stderr);const actual=run.stdout.trim().split(/\s+/).map(Number);assert.equal(actual.length,expected.length);
-for(let i=0;i<actual.length;++i)assert(Math.abs(actual[i]-expected[i])<=Math.max(1e-8,Math.abs(expected[i])*1e-8),`${input[i]}: ${actual[i]} != ${expected[i]}`); // Probe prints nine significant digits.
+for(let i=0;i<actual.length;++i)assert.equal(Math.fround(actual[i]),expected[i],`${input[i]}: ${actual[i]} != ${expected[i]}`); // Nine digits preserve the exact stored Float32 value.
 // First learn CC is consumed, even zero. The following same-number CC applies.
 vm.runInContext(`state.midiCCMap={};state.midiLearn={active:true,type:'effect',e:'eq',p:'p1Gain',min:-24,max:24};state.loops[19].params.eq.p1Gain=3;EffectManager.activeTab=19;App.handleMIDIMessage({data:[176,24,0]});globalThis.consumed=state.loops[19].params.eq.p1Gain;App.handleMIDIMessage({data:[191,24,127]});globalThis.applied=state.loops[19].params.eq.p1Gain;`,sandbox);assert.equal(sandbox.consumed,3);assert.equal(sandbox.applied,24);
 console.log(`PASS ${actual.length} EQ CC values: unchanged handler/setter, 24 original widget ranges, all channels, selected tabs 1/20, zero/repeats/nonmonotonic values; original learn consumes only its first packet`);

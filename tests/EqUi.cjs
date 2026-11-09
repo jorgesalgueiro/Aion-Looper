@@ -84,6 +84,12 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
     assert(await evaluate(`Number(document.querySelector('#eqP1Gain').value)===24`),'Learned hardware updates actual focused EQ slider');
     await click('#fx-tabs-container button:nth-child(20)');await until(s=>s.midi.eqTrack===19,'EQ tab routes controller to expanded track 20');
     await inject([[176,11,0,3,3]]);s=await until(s=>s.tracks[19].equalizer.values.p1Gain===-24,'EQ CC follows selected tab');assert.equal(s.tracks[0].equalizer.values.p1Gain,24);
+    await click('#eqP1Q','right');await until(s=>s.midi.learnTarget===98,'EQ learn before native document replacement');
+    await evaluate('window.eqMidiOldDocument=true');await call('Page.reload');
+    for(let n=0;n<100;++n){if(await evaluate(`!window.eqMidiOldDocument&&document.querySelector('#native-eq-title')?.textContent.startsWith('Loop 20')&&document.querySelectorAll('#loopContainer > div').length===20`))break;await wait(100);}
+    await evaluate(`document.documentElement.style.scrollBehavior='auto'`);await wait(200);
+    s=await until(s=>s.midi.eqTrack===19&&s.midi.learnTarget===-1&&s.midi.bindings[97]!==0,'EQ tab/mapping survive reload while temporary learn cancels');
+    assert(await evaluate(`Number(document.querySelector('#eqP1Gain').value)===-24`),'Reopened EQ shows the last selected native tab, not tab 1');
     await click('#fx-tabs-container button:nth-child(1)');await until(s=>s.midi.eqTrack===0,'EQ tab routes back');
     await click('#eqP1Q','right');await until(s=>s.midi.learnTarget===98,'EQ conflicting learn');await inject([[176,11,0,3,3]]);
     await until(s=>s.midi.learnTarget===-1&&s.midi.bindings[98]===0&&s.midi.bindings[97]!==0,'EQ conflict preserves existing binding');
