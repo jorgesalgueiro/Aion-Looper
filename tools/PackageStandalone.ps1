@@ -37,7 +37,8 @@ foreach ($entry in $licenses.GetEnumerator()) {
 }
 $changes = (& git -C $repo diff --name-only HEAD) -join ', '
 if ($changes) { throw 'Commit tracked changes before packaging a reproducible source snapshot.' }
-& git -C $repo archive --format=zip --output=(Join-Path $source.FullName "Aion-Looper-$revision-source.zip") HEAD
+$sourceArchive = Join-Path $source.FullName "Aion-Looper-$revision-source.zip"
+& git -C $repo archive --format=zip "--output=$sourceArchive" HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Cannot archive the committed source snapshot.' }
 $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
 @"
