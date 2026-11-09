@@ -422,7 +422,7 @@
                 const editing=['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state);
                 r.speed.disabled=!active||editing;r.half.disabled=!active||editing||!t.length;
                 r.reset.disabled=!active||editing||t.playbackRate===1;
-                r.retrigger.disabled=!active||!t.length||editing||t.state==='stopping'||(t.state==='queued'&&!t.queuedSourceReady);
+                r.retrigger.disabled=!active||!t.length||editing;
                 r.stut.disabled=!active||t.state!=='playing';r.stut.classList.toggle('btn-active',!!t.stuttering);
                 r.undo.disabled=!active||!t.undoCount||!(['playing','stopped','stopping'].includes(t.state)||(t.state==='queued'&&!t.stopPending));
                 r.redo.disabled=!active||!t.redoCount||!(['playing','stopped','stopping'].includes(t.state)||(t.state==='queued'&&!t.stopPending));

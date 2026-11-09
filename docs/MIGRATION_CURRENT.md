@@ -9,11 +9,49 @@ those wrappers. Use explicit `-DAION_BUILD_VST3=ON`, `-DAION_BUILD_LV2=ON` or
 `-DAION_BUILD_CLAP=ON` for a relevant wrapper task. Earlier format/build evidence
 below is historical, not a requirement to rebuild wrappers on each engine fix.
 
-## Active work — core loop-track buttons, 7 November 2026
+## Active work — core loop-track buttons, 9 November 2026
 
 Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
+
+### Under acceptance: pending RTRG and integrated core-button combinations — 9 November 2026
+
+Acceptance: original `Loop.retrigger/play/_teardown` starts an unborn queued
+PLAY or stopping graph immediately, cancels its old queue/STOP/Apply/STUT and
+retains stored PCM/history. Healthy playing/constructed queued RTRG keeps its
+existing 5ms source replacement. Exercise MULT, NORM, Undo/Redo, MERGE, reverse,
+rate and rapid/deferred RTRG, obsolete callbacks, cancellation and prepare at
+64/128. Capture/finalizing/empty states remain guarded in the processor; the
+existing GUI command FIFO waits through finalization. GUI/CLI share this action.
+
+The implementation retires old source ownership before publishing a fresh
+immediate graph receipt. The original RTRG button now admits those states. IDs,
+schema, reference/preserved assets/logo and dependencies are unchanged. Initial
+unborn rejection: `build/pending-rtrg-repro-windows.log`.
+
+Windows evidence so far: original JS **240 cases**, **480 exact stereo WAVs**,
+**10,829,592 frames**, peak error **8.29155743e-8**, unchanged **1e-6** limit;
+Start metadata <=**1e-12**. Actual Engine **250 cases**: independent stopped-source
+baseline compares every stereo sample from the first fresh callback (including
+fades), tracks 0/19, reverse/rate/edit combinations, late callbacks, cancellation,
+same/new-rate prepare and zero callback new/delete. Retained early-restart checks
+PASS (64 source cases, 64 cancellation/FIFO cases, 32 silent-tail cases).
+Frontend admission PASS. Production Standalone, mouse host and processor build PASS.
+Actual Windows UI combinations, retained regressions, connected audio audit,
+Linux and sanitizer acceptance are still running/pending; this slice is not yet
+declared accepted. Logs use `build/pending-rtrg-*` in each checkout.
+
+The early-restart regression's former unborn/stopping RTRG rejection expectations
+were implementation-coupled to this defect. They now assert immediate PLAY and
+survival beyond the obsolete grid/STOP; Apply guards, cancellation, capacity and
+PCM checks remain. Stronger replacement evidence is the unchanged original-method
+corpus plus the independent first-sample Engine comparison. The source oracle
+now honors actual source/volume disconnection at original teardown; its prior
+modes are rerun to protect the shared renderer. It excludes browser gain/fade
+envelopes/resampling and advancing worker latency. UI uses synthetic PCM through
+the production processor/editor, not physical drivers. Queued STOP Undo/Redo,
+FX/SAVE/presets, Linux WebKit/device checks and release gates remain pending.
 
 ### Implemented preview: MULT on queued PLAY with STOP pending — 7 November 2026
 

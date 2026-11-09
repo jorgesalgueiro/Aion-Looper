@@ -1034,6 +1034,16 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  console.log('PASS: '+cases+' shared MULT dispatch/control states including stopping, queued pre-birth, constructed-source input/no-input, pending STOP and empty exclusion');
 }
 
+// Original RTRG starts an unborn/stopping graph immediately and retains the
+// shared finalization wait, without enabling capture or empty-track commands.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8'),line=source.split('\n').find(l=>l.includes('r.retrigger.disabled='));assert(line);let cases=0;
+ for(const state of ['empty','armed','recording','queued','playing','stopped','stopping','finalizing','multiplying','overdubbing','substituting'])for(const active of [false,true])for(const length of [0,512])for(const queuedSourceReady of [false,true]){
+  const r={retrigger:{}},editing=['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(state);vm.runInNewContext(line,{r,t:{state,length,queuedSourceReady},active,editing});assert.equal(r.retrigger.disabled,!active||!length||editing);++cases;
+ }
+ console.log('PASS: '+cases+' actual RTRG control states, including unborn queues and scheduled STOP, with capture/worker/empty guards');
+}
+
 // An accepted edit gesture must survive a preceding edit's worker commit.
 {
  const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');

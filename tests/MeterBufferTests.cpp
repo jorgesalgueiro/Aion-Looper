@@ -1029,6 +1029,54 @@ void queuedTripleCapacityTests(){
     check(allocations.load()==0,"Atomic three-slot reservation performs no callback new/delete");
     std::cout<<"PASS: three-slot atomic rejection with 126 occupied slots, two-slot cross-track admission, panic/clear release and recovery at tracks 0/19, 64/128; no callback new/delete\n";
 }
+void pendingRetriggerTests(){
+    using namespace aion;unsigned cases=0;
+    // Independent baseline: a stopped loop with the same stored edits/controls.
+    // It has no old queue, graph, STOP, STUT or Apply to cancel. After RTRG every
+    // actual stereo sample must match from the first callback, including fades.
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned state=0;state<3;++state)for(unsigned edit=0;edit<11;++edit){
+        if((edit==3&&state==1)||(edit==5&&state!=2))continue; // Unported queued-STOP history; STUT requires playing.
+        Fixture f(block);f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
+        f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();f.record(id);f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
+        const auto source=id?0u:1u;if(edit==4){f.record(source);f.command(LoopAction::stopImmediate,source);for(unsigned n=0;n<8;++n)f.cycle();}
+        if(edit==3){f.command(LoopAction::multiply,id);f.cycle(true);}
+        MeterGraphEvent discarded;while(f.engine->popMeterGraphEvent(discarded)){}
+        const auto enqueue=[&](Engine& e,LoopAction action,double value=0){check(e.enqueueLoop({action,id,++f.request,e.generation(),0,value}),"Pending RTRG fixture command");};
+        const auto both=[&](LoopAction action,double value=0){enqueue(*f.engine,action,value);enqueue(*f.control,action,value);};
+        const auto render=[&](bool compare,bool offline=false){std::array<float,128> l{},r{},cl{},cr{};for(unsigned i=0;i<block;++i){l[i]=.3f*static_cast<float>(std::sin((f.engine->clock()+i)*.037));r[i]=-.5f*l[i];}cl=l;cr=r;float* c[]={l.data(),r.data()},*other[]={cl.data(),cr.data()};
+            watch=true;f.engine->process(c,2,block,{},offline);f.control->process(other,2,block,{},offline);watch=false;
+            if(compare)check(l==cl&&r==cr,"Fresh RTRG exact stereo versus independent stopped-source baseline at 64/128");while(f.engine->popView(*f.view)){}
+        };
+        both(LoopAction::reverse,reverse?1.:0.);both(LoopAction::startDelay,.217);if(edit==8||edit==9)both(LoopAction::speed,edit==8?.5:2.);render(false);
+        if(state==2){enqueue(*f.engine,LoopAction::play);render(false);(void)f.next(MeterGraphEventKind::immediatePlay,id);}
+        for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+        MeterGraphEvent queue{};std::uint64_t deadline=0;
+        if(state<2){enqueue(*f.engine,LoopAction::play);render(false);queue=f.next(MeterGraphEventKind::queuedPlay,id);deadline=f.view->tracks[id].scheduledFrame;
+            if(state==1){LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,f.engine->generation(),0,0};birth.meterGraphTicket=1;birth.meterQueueId=queue.queueId;birth.meterBufferId=queue.bufferId;check(f.engine->enqueueLoop(birth),"Pending RTRG constructed old graph");render(false);(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);}}
+        if(edit==5){enqueue(*f.engine,LoopAction::stutterStart);render(false);check(f.view->tracks[id].stuttering,"RTRG fixture actually held STUT before STOP");}
+        if(edit==6){enqueue(*f.engine,LoopAction::applyStart);render(false);}
+        if(state){enqueue(*f.engine,LoopAction::stop);render(false);const auto stop=f.next(MeterGraphEventKind::scheduledStop,id);deadline=std::max(deadline,stop.frame+static_cast<std::uint64_t>(std::ceil(stop.stopLeadSeconds*48000)));}
+        if(edit==1){both(LoopAction::multiply,0);render(false,true);}if(edit==2){both(LoopAction::normalize);render(false,true);}
+        if(edit==3){both(LoopAction::undo);render(false);both(LoopAction::redo);render(false);}
+        if(edit==4){both(LoopAction::merge,source);render(false,true);}if(edit==10){both(LoopAction::reverse,reverse?0.:1.);render(false);}
+        const auto before=f.view->tracks[id];while(f.engine->popMeterGraphEvent(discarded)){}
+        both(LoopAction::retrigger);render(true);const auto birth=f.next(MeterGraphEventKind::immediatePlay,id);const auto current=f.view->tracks[id];
+        check(!f.view->rejected&&current.state==LoopState::playing&&!current.scheduledFrame&&!current.phaseApplyFrame&&!current.stopPending&&!current.stuttering
+            &&current.length==before.length&&current.waveformId==before.waveformId&&current.undoCount==before.undoCount&&current.redoCount==before.redoCount,"Fresh RTRG preserves stored edits/history and cancels every old source deadline");
+        check(f.engine->loopMeterGraphCurrent(birth.generation,id,birth.ticket),"Fresh RTRG owns a new immediate graph receipt");
+        if(state==0){LoopCommand stale{LoopAction::meterQueuedGraphRequest,id,0,f.engine->generation(),0,0};stale.meterGraphTicket=birth.ticket+1;stale.meterQueueId=queue.queueId;stale.meterBufferId=queue.bufferId;check(f.engine->enqueueLoop(stale),"Late old queue callback after fresh RTRG");render(true);const auto rejected=f.next(MeterGraphEventKind::queuedGraphRejected,id);check(rejected.queueId==queue.queueId&&f.engine->loopMeterGraphCurrent(birth.generation,id,birth.ticket),"Late queue callback cannot replace fresh source");}
+        if(edit==7)for(unsigned n=0;n<2;++n){both(LoopAction::retrigger);render(true);check(f.view->tracks[id].phaseApplyFrame>f.engine->clock(),"Following rapid RTRG retains healthy 5ms source deadline");}
+        const auto end=std::max(deadline,f.engine->clock())+24000;while(f.engine->clock()<end)render(true);
+        check(f.view->tracks[id].state==LoopState::playing&&f.view->outputPeak>0&&!f.view->tracks[id].scheduledFrame,"Old queued/STOP/Apply callbacks never silence or resurrect old sources");
+        both(LoopAction::clear);render(true);for(unsigned n=0;n<16;++n)render(true);++cases;
+    }
+    // Accepted new starts remain bounded/cancellable after their fresh birth.
+    for(unsigned block:{64u,128u})for(unsigned cancel=0;cancel<5;++cancel){Fixture f(block);f.record();f.command(LoopAction::stopImmediate);f.cycle();for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});f.command(LoopAction::play);f.cycle();f.command(LoopAction::retrigger);f.cycle();
+        if(cancel<3){f.command(cancel==0?LoopAction::stopAll:cancel==1?LoopAction::clear:LoopAction::clearAll);f.cycle();}else if(cancel==3)f.prepare();else for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(96000,81920);e->setMonitoring(false);e->setTarget(1);}for(unsigned n=0;n<400;++n)f.cycle();
+        check(f.view->tracks[19].state==((cancel==1||cancel==2||cancel==4)?LoopState::empty:LoopState::stopped)&&!f.view->tracks[19].scheduledFrame,"Fresh queued RTRG cancellation/prepare cannot resurrect playback");++cases;}
+    check(allocations.load()==0,"Pending RTRG zero callback new/delete");std::cout<<"PASS: pending RTRG "<<cases<<" Engine 64/128 fresh-source exact stereo, late callbacks, old STOP/Apply/STUT, edits/history/MERGE/rate/reverse/rapid, cancel/prepare and zero callback new/delete\n";
+}
+
 void queuedStopMultiplyTests(){
     using namespace aion;unsigned cases=0;
     const auto setup=[](Fixture& f,unsigned id,bool reverse,bool later,bool pending=false,unsigned capacity=81920){
@@ -2353,7 +2401,8 @@ void queuedEarlyRestartTests(){
         if(cancel==7){f.command(LoopAction::stop,id);f.cycle();}
         for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::startDelay,id,0,e->generation(),0,.731}),"Cancellation fixture Start");
         const auto target=f.engine->clock()+((rtrg&&cancel!=6)?240:2400);f.command(rtrg&&cancel!=6?LoopAction::retrigger:LoopAction::applyStart,id);f.cycle();
-        check(f.view->tracks[id].phaseApplyFrame==((cancel==5||cancel==7)?0:target),"Unadmitted/stopping queued source cannot schedule a restart");
+        check(f.view->tracks[id].phaseApplyFrame==((cancel==5||cancel==7)?0:target),"Apply remains guarded; non-playing RTRG has no future replacement deadline");
+        if(rtrg&&(cancel==5||cancel==7))check(!f.view->rejected&&f.view->tracks[id].state==LoopState::playing&&!f.view->tracks[id].scheduledFrame,"Original non-playing RTRG starts now and cancels the old queued/STOP deadline");
         if(cancel==6){
             const auto fullDeadline=f.engine->clock()+2400;
             for(unsigned n=0;n<126;++n)f.command(LoopAction::applyStart,id);
@@ -2370,7 +2419,8 @@ void queuedEarlyRestartTests(){
             check(f.control->enqueueLoop({LoopAction::stopImmediate,id,0,f.control->generation(),0,0}),"Comparison cancels pending restart");
         }
         for(unsigned n=0;n<400;++n)f.cycle();
-        check(f.view->tracks[id].state==(cancel==2?LoopState::empty:cancel==5?LoopState::queued:LoopState::stopped)&&!f.view->tracks[id].phaseApplyFrame,"Cancel/clear/prepare/cleanup and unadmitted source cannot resurrect a phase event");
+        const auto expected=rtrg&&(cancel==5||cancel==7)?LoopState::playing:cancel==2?LoopState::empty:cancel==5?LoopState::queued:LoopState::stopped;
+        check(f.view->tracks[id].state==expected&&!f.view->tracks[id].phaseApplyFrame,"Cancel/clear/prepare/cleanup retire old phases; an accepted fresh RTRG survives the obsolete grid/STOP");
     }
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(auto cancel:{LoopAction::stopImmediate,LoopAction::stopAll,LoopAction::clear,LoopAction::meterGraphStart})for(bool rtrg:{false,true}){
         Fixture f(block,MeterEventScope::acceptedPlayback);
@@ -2543,7 +2593,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();stoppingHistoryTests();stoppingMultiplyTests();queuedStopMultiplyTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();stoppingHistoryTests();stoppingMultiplyTests();queuedStopMultiplyTests();pendingRetriggerTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

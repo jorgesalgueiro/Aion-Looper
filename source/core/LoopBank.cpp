@@ -594,7 +594,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
             s=LoopState::finalizing;jobState.store(1,std::memory_order_release);return true;
         case LoopAction::retrigger: {
             const bool prepared=hasPreparedQueuedSource(t);
-            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&!prepared))return false;
+            if(!t.clip||(s!=LoopState::playing&&s!=LoopState::stopped&&s!=LoopState::queued&&s!=LoopState::stopping))return false;
             const double previous=t.info.startDelay;
             t.info.startDelay=0;
             if(sync.settings.mode!=SyncMode::off){
@@ -613,7 +613,10 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
                 if(schedulePhase(t,id,static_cast<double>(frame)/rate+0.005,master,true))return true;
                 t.info.startDelay=previous;return false;
             }
-            // Original stopped Loop.play(now) bypasses the next-grid queue.
+            // Original Loop.play(now) tears down a stopping graph immediately;
+            // an unborn queue also starts now and its later callback is a no-op.
+            // Retire every old source/deadline before publishing the fresh birth.
+            if(s==LoopState::queued||s==LoopState::stopping)cutQueuedSource(t);
             s=LoopState::playing;t.tailRemaining=0;restartSource(t);blend(t);publishImmediateMeterPlay(id);return true;
         }
         case LoopAction::stutterStop:t.info.stuttering=false;return true;

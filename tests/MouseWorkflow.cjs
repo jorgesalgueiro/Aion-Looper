@@ -53,6 +53,46 @@ let socket;
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
     await wait(s=>s.audioReady&&s.inputAvailable&&s.inputPeak>0.1,'Synthetic native input active');
     await evaluate(`window.mouseErrors=[];window.addEventListener('error',e=>window.mouseErrors.push(e.message));document.documentElement.style.scrollBehavior='auto'`);
+    if(process.argv.includes('--pending-rtrg-only')){
+        const fs=require('node:fs'),path=require('node:path');
+        await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(s=>s.masterGain===1,'RTRG audible master');await mode('off');
+        for(const id of [0,1]){await click('#loop-action-'+id);await state('recording',id);await delay(300);await click('#loop-action-'+id);await state('playing',id);await click('#native-stop-all');await state('stopped',id);}
+        await evaluate(`(()=>{for(const text of ['RTRG','MULT','NORM','UNDO','REDO','GO','1/2'])[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()===text).id='pending-rtrg-'+text.replace('/','-');})()`);
+        const rendered=async selector=>{for(let n=0;n<180;++n){if(await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});return e&&!e.disabled;})()`))return;await delay(40);}assert.fail('RTRG control not rendered/enabled: '+selector);};
+        const rpc=async action=>{const result=await evaluate(`(async()=>{const s=await AionNative.request({operation:'snapshot'});return AionNative.request({operation:'loop',action:${JSON.stringify(action)},track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0});})()`);assert(result.ok,JSON.stringify(result));};
+        for(const scenario of ['unborn','queued-stop','stopping','multiply-stop','norm-stop','history-stop','stut-stop','reverse-speed','merge-stop','finalizing']){
+            await mode('off');if(scenario==='history-stop'){await rendered('#pending-rtrg-MULT');await exactlyOne(()=>click('#pending-rtrg-MULT'),'History seed');await state('stopped');}
+            await parameter('#numBars',8);await parameter('#timeSigNum',1);await parameter('#bpmInput',60);await mode('static');await wait(s=>s.gridPosition>.02&&s.gridPosition<.1,'Early eight-second RTRG grid',14000);
+            if(!['unborn','queued-stop'].includes(scenario))await mode('off');await click('#loop-action-0');await state(['unborn','queued-stop'].includes(scenario)?'queued':'playing');
+            let oldDeadline;
+            if(scenario==='unborn'){const queued=await snapshot();assert(!queued.tracks[0].queuedSourceReady);oldDeadline=queued.tracks[0].scheduledFrame;}
+            else if(scenario==='queued-stop'){fs.writeFileSync(path.join(pcmDirectory,'early-source-start'),'1');await wait(s=>s.tracks[0].queuedSourceReady,'Construct old queued graph');await rpc('stop');const queued=await wait(s=>s.tracks[0].stopPending,'Old queued STOP');oldDeadline=queued.tracks[0].scheduledFrame;}
+            else{
+                if(scenario==='stut-stop'){await rpc('stutterStart');await wait(s=>s.tracks[0].stuttering,'Held old fragment');}
+                if(scenario==='reverse-speed'){await click('#loop-0-reverse');await click('#pending-rtrg-1-2');await wait(s=>s.tracks[0].playbackRate===.5,'Original half-speed pointer');}
+                await mode('static');await click('#loop-action-0');const stopping=await state('stopping');oldDeadline=stopping.tracks[0].scheduledFrame;
+                if(scenario==='multiply-stop'){await rendered('#pending-rtrg-MULT');await exactlyOne(()=>click('#pending-rtrg-MULT'),'MULT before RTRG');await wait(s=>s.tracks[0].length===stopping.tracks[0].length*2&&s.tracks[0].state==='stopping','Doubled stopping storage');}
+                if(scenario==='norm-stop'){await rendered('#pending-rtrg-NORM');await exactlyOne(()=>click('#pending-rtrg-NORM'),'NORM before RTRG');await wait(s=>s.tracks[0].waveformId!==stopping.tracks[0].waveformId&&s.tracks[0].state==='stopping','Normalized stopping storage');}
+                if(scenario==='history-stop')for(const action of ['UNDO','REDO']){await rendered('#pending-rtrg-'+action);await exactlyOne(()=>click('#pending-rtrg-'+action),'History before RTRG '+action);await state('stopping');}
+                if(scenario==='merge-stop'){await parameter('#merge-src-0','1');await rendered('#pending-rtrg-GO');await exactlyOne(()=>click('#pending-rtrg-GO'),'MERGE before RTRG');await wait(s=>s.tracks[0].waveformId!==stopping.tracks[0].waveformId&&s.tracks[0].state==='stopping','Merged stopping storage');}
+            }
+            let before=await snapshot();
+            if(scenario==='finalizing'){
+                fs.writeFileSync(path.join(pcmDirectory,'pause-after-finalizing'),'1');for(let n=0;n<100&&fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing'));++n)await delay(10);assert(!fs.existsSync(path.join(pcmDirectory,'pause-after-finalizing')));
+                await click('#pending-rtrg-MULT');await wait(s=>s.tracks[0].state==='finalizing','Real MULT worker pending');for(let n=0;n<100&&!fs.existsSync(path.join(pcmDirectory,'audio-paused'));++n)await delay(10);assert(fs.existsSync(path.join(pcmDirectory,'audio-paused')));
+                before=await snapshot();await evaluate('document.activeElement?.blur()');await call('Input.dispatchKeyEvent',{type:'keyDown',key:']',code:'BracketRight'});await call('Input.dispatchKeyEvent',{type:'keyUp',key:']',code:'BracketRight'});await delay(80);assert.equal((await snapshot()).lastRequestId,before.lastRequestId,'RTRG waits in actual GUI FIFO while worker result is unaccepted');
+                fs.writeFileSync(path.join(pcmDirectory,'resume-audio'),'1');await wait(s=>s.tracks[0].state==='playing'&&s.tracks[0].length===before.tracks[0].length*2&&!s.tracks[0].scheduledFrame,'Deferred key RTRG uses committed MULT');before=await snapshot();
+            }else{
+                await rendered('#pending-rtrg-RTRG');await exactlyOne(()=>click('#pending-rtrg-RTRG'),'Actual '+scenario+' RTRG');
+                const fresh=await state('playing');for(const field of ['length','waveformId','undoCount','redoCount'])assert.equal(fresh.tracks[0][field],before.tracks[0][field],'RTRG preserves '+field);assert(!fresh.tracks[0].scheduledFrame&&!fresh.tracks[0].phaseApplyFrame&&!fresh.tracks[0].stuttering);
+                if(scenario==='stopping')for(let n=0;n<2;++n)await exactlyOne(()=>click('#pending-rtrg-RTRG'),'Following healthy repeated RTRG');
+            }
+            await wait(s=>s.outputPeak>.01,'Fresh RTRG audible PCM');const fresh=await snapshot();await wait(s=>s.frame>oldDeadline+4800,'Old queue/STOP/teardown deadline passed',14000);
+            const survived=await snapshot();assert.equal(survived.tracks[0].state,'playing',scenario+' survives obsolete timer');assert.equal(survived.tracks[0].sourceRevision,fresh.tracks[0].sourceRevision,scenario+' has no late source restart');assert(!survived.tracks[0].scheduledFrame&&!survived.tracks[0].stuttering);assert.equal(survived.tracks[0].waveformId,fresh.tracks[0].waveformId);await wait(s=>s.outputPeak>.01,'Old cleanup cannot silence fresh graph');
+            await click('#native-stop-all');await state('stopped');console.log('PASS: RTRG actual UI scenario '+scenario+' at '+process.argv[2]);
+        }
+        assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);ws.close();return;
+    }
     if(process.argv.includes('--queued-stop-multiply-only')){
         const fs=require('node:fs'),path=require('node:path');
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(s=>s.masterGain===1,'Queued STOP MULT audible master');await mode('off');
