@@ -34,6 +34,7 @@ bool Engine::enqueueLoop(LoopCommand command) noexcept {
     if (command.generation == 0 || command.generation != generation() || command.track >= LoopBank::trackCount
         || !std::isfinite(command.value)) return false;
     if(command.action==LoopAction::equalizer&&(!validEqSettings(command.equalizer)||(command.eqMask&~eqAllParameters)))return false;
+    if(command.action==LoopAction::compressor&&(!validCompressorSettings(command.compressor)||(command.compressorMask&~compressorAllParameters)))return false;
     if(isMeterCommand(command.action)&&!command.meterGraphTicket)return false;
     if((command.action==LoopAction::meterQueuedWindowStart||command.action==LoopAction::meterQueuedWindowRequest||command.action==LoopAction::meterQueuedGraphRequest)
         &&(command.frame||!command.meterQueueId||!command.meterBufferId))return false;
@@ -47,6 +48,19 @@ bool Engine::enqueueEqBank(const std::array<EqSettings,LoopBank::trackCount>& se
         if(!validEqSettings(settings[i]))return false;
         auto& c=batch[i];c.action=LoopAction::equalizer;c.track=i;c.requestId=firstRequest+i;
         c.generation=generation();c.equalizer=settings[i];c.eqCheckEpoch=false;
+    }
+    return loopCommands->pushBatch(batch);
+}
+bool Engine::enqueueEffectsBank(const std::array<EqSettings,LoopBank::trackCount>& eq,
+                               const std::array<CompressorSettings,LoopBank::trackCount>& comp,std::uint32_t firstRequest) noexcept {
+    constexpr unsigned count=LoopBank::trackCount;
+    if(!firstRequest||firstRequest>UINT32_MAX-count*2||!generation())return false;
+    std::array<LoopCommand,count*2> batch{};
+    const auto current=generation();
+    for(unsigned i=0;i<count;++i){
+        if(!validEqSettings(eq[i])||!validCompressorSettings(comp[i]))return false;
+        auto& q=batch[i];q.action=LoopAction::equalizer;q.track=i;q.requestId=firstRequest+i;q.generation=current;q.equalizer=eq[i];q.eqCheckEpoch=false;
+        auto& c=batch[i+count];c.action=LoopAction::compressor;c.track=i;c.requestId=firstRequest+count+i;c.generation=current;c.compressor=comp[i];c.compressorCheckEpoch=false;
     }
     return loopCommands->pushBatch(batch);
 }
@@ -159,6 +173,8 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
                 rejected = pendingLoop.generation != generation() || (!cancelledStutter&&
                     !(pendingLoop.action==LoopAction::equalizer
                       ?loops.setEqualizer(pendingLoop.track,pendingLoop.equalizer,pendingLoop.eqMask,pendingLoop.requestId,pendingLoop.eqClearEpoch,pendingLoop.eqCheckEpoch)
+                      :pendingLoop.action==LoopAction::compressor
+                      ?loops.setCompressor(pendingLoop.track,pendingLoop.compressor,pendingLoop.compressorMask,pendingLoop.requestId,pendingLoop.compressorClearEpoch,pendingLoop.compressorCheckEpoch)
                       :applyLoop(pendingLoop.action,pendingLoop.track,pendingLoop.value)));
             }
             if(nonRealtime)loops.completeOfflineEdits();

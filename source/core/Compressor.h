@@ -27,23 +27,23 @@ inline constexpr std::array<std::string_view,11> compressorPresetNames{{
 // IDs 1..11; zero is custom. Invalid IDs leave output untouched.
 bool compressorPreset(unsigned id,CompressorValues&) noexcept;
 
-// Isolated DSP/automation kernel, not yet an enabled product effect. Adapted
+// Fixed-storage DSP/automation kernel, used by each loop's native C effect. Adapted
 // Web Audio detector/curve/envelope: see Compressor.cpp and the BSD notice.
 // One owner only. Fixed storage; prepare/reset/targets/process never allocate.
 // Call with 0 (silence), 1 (mono duplicated to stereo), or 2 input channels.
 // Input and matching output may alias. Arbitrary subdivisions retain the
-// original 128-frame parameter and 32-frame envelope clocks, starting at zero.
+// original 128-frame parameter and 32-frame envelope clocks on the supplied
+// global render timeline. Source restarts do not reset this persistent owner.
 // Controls emulate original currentTime=frame/rate timestamps, including the
 // one-sample ceil boundary of a-rate events after a binary time round-trip.
-// This is not yet a connected MIDI/host automation contract.
 class Compressor {
 public:
-    bool prepare(double sampleRate,const CompressorValues& = compressorDefaults()) noexcept;
+    bool prepare(double sampleRate,const CompressorValues& = compressorDefaults(),std::uint64_t firstFrame=0) noexcept;
     // Snapshot update: retarget changed fields. Explicit setTarget is a gesture
     // and restarts automation even when the requested destination repeats.
     bool setTargets(const CompressorValues&) noexcept;
     bool setTarget(std::size_t parameter,float value) noexcept;
-    void reset() noexcept; // Fresh graph at stored targets; clears delay/envelope.
+    void reset(std::uint64_t firstFrame=0) noexcept; // Fresh graph at stored targets; clears delay/envelope.
     void process(const float* left,const float* right,unsigned channels,
                  float* outLeft,float* outRight,std::size_t frames) noexcept;
     unsigned latencyFrames() const noexcept { return delayFrames; }
@@ -76,6 +76,6 @@ private:
     float postGain=1,attackFrames=1,satReleaseFrames=1;
     std::array<float,5> releaseCurve{};
     unsigned readIndex=0,writeIndex=256,delayFrames=256;
-    bool prepared=false;
+    bool prepared=false,firstProcess=true;
 };
 }

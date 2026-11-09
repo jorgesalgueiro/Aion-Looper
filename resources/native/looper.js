@@ -131,6 +131,7 @@
         const scheduler = new window.AionCommandQueue({ready:()=>enabled()||scheduler.items[0]?.metadata===true,
             run:async c=>{
                 if(c.action==='equalizer')return sendEqualizer(c.track,c.eq);
+                if(c.action==='compressor')return sendCompressor(c.track,c.compressor);
                 if(c.action==='exportLoop'){
                     const reply=await rpc({operation:'exportLoop',track:c.track,generation:c.generation,waveformId:c.waveformId,filename:c.filename});
                     if(!reply.ok&&!reply.exportBusy)throw Error(reply.error||'WAV export unavailable');
@@ -182,6 +183,15 @@
         const notify = message => {error=String(message); status.textContent=error;};
         const equalizer=window.AionEqualizerUI({rpc,current:()=>snapshot,notify,
             enqueue:(track,eq,key)=>scheduler.enqueue(()=>({action:'equalizer',track,eq}),{track,key:key?`${track}:${key}`:undefined})});
+        const compressor=window.AionCompressorUI({rpc,current:()=>snapshot,notify,equalizer,
+            enqueue:(track,compressor,key)=>scheduler.enqueue(()=>({action:'compressor',track,compressor}),{track,key:key?`${track}:${key}`:undefined})});
+        async function sendCompressor(track,settings){
+            if(!enabled())return;
+            error='';const generation=snapshot.generation;
+            const reply=await rpc({operation:'compressor',track,...settings,generation,expiresAt:Date.now()+3000});
+            if(!reply.ok)throw Error(reply.error||'Compressor command rejected');
+            await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,resolve,reject,deadline:Date.now()+4000};});
+        }
         async function sendEqualizer(track,eq){
             if(!enabled())return;
             error=''; // A fresh gesture recovers from the previous rejected edit.
@@ -284,6 +294,7 @@
                 stripHandlers(row);
                 row.querySelectorAll('button,input,select,textarea').forEach(e => {e.disabled=true;e.title='Unavailable in this preview';});
                 equalizer.bindRow(row,i);
+                compressor.bindRow(row,i);
                 const bind=(element,callback,event='click') => {element.dataset.nativeControl='true';element.title=element.getAttribute('aria-label')||element.textContent.trim();element.addEventListener(event,callback);return element;};
                 // Original header background/state text is also a short-action target.
                 // Nested controls and the waveform keep their own actions; main clicks
@@ -379,6 +390,7 @@
                 const row=document.getElementById(`live-loop-${i}`),header=row.querySelector('.loop-header');
                 row.querySelectorAll('input').forEach(e=>{e.disabled=true;e.title='Unavailable in this preview';});
                 equalizer.bindRow(row,i);
+                compressor.bindRow(row,i);
                 header.addEventListener('click',()=>{if(enabled())mainAction(i);});
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const reverse=row.querySelector(`#live-loop-${i}-reverse`);
@@ -389,6 +401,7 @@
         function refresh() {
             if(!snapshot)return;
             equalizer.update();
+            compressor.update();
             const active=enabled();
             if(document.activeElement!==master)master.value=snapshot.masterGain;
             if(document.activeElement!==monitor)monitor.checked=snapshot.inputMonitor;

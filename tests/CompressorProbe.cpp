@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/Compressor.h"
+#include "core/CompressorSettings.h"
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
@@ -8,7 +9,14 @@
 int main(){
     aion::Compressor comp;std::string operation;std::cout<<std::setprecision(9);
     while(std::cin>>operation){
-        if(operation=="presets"){
+        if(operation=="model"){
+            std::cout<<std::setprecision(17)<<"{\"midi\":[";
+            for(unsigned p=0;p<7;++p){if(p)std::cout<<',';std::cout<<'[';for(unsigned cc=0;cc<128;++cc){if(cc)std::cout<<',';std::cout<<aion::compressorMidiValue(p,cc);}std::cout<<']';}
+            std::cout<<"],\"curves\":[";
+            for(unsigned id=0;id<=11;++id){if(id)std::cout<<',';auto values=aion::compressorDefaults();if(id&&!aion::compressorPreset(id,values))return 2;
+                std::cout<<'[';for(unsigned x=0;x<=320;++x){if(x)std::cout<<',';std::cout<<aion::compressorDisplayCurveDb(-60+(x/320.0)*60,values);}std::cout<<']';}
+            std::cout<<"]}\n"<<std::setprecision(9);
+        }else if(operation=="presets"){
             std::cout<<'[';
             for(unsigned id=1;id<=11;++id){
                 aion::CompressorValues p{};if(!aion::compressorPreset(id,p))return 2;

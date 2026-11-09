@@ -57,6 +57,26 @@ persist in native state and keep working without an editor. Existing channel
 filters/conflict rules apply; physical controller verification remains separate.
 CC120/123 retain the existing native panic behavior and cannot be learned as EQ.
 
+The native loop compressor uses the same processor and selected-loop CC tab:
+
+```sh
+python tools/aion.py comp 1 preset --preset drums
+python tools/aion.py comp 1 on
+python tools/aion.py comp 1 set --values '{"threshold":-24,"ratio":4,"mix":0.5}'
+python tools/aion.py comp 1 get
+python tools/aion.py comp 1 curve
+python tools/aion.py comp 1 reset
+python tools/aion.py comp 1 off
+```
+
+`comp` tracks are 1-based (1..20). `toggle` is also available. The seven names are
+`threshold`, `ratio`, `knee`, `attack`, `release`, `gain` (linear), `mix`.
+Presets retain the original computed makeup gain. `reset` restores untouched
+original values without changing bypass. Invalid batches apply no controls.
+CC targets 117..123 follow that parameter order and the shared `midi eqTrack`
+selection (native 0-based index), with the same learn/clear/cancellation commands
+above. No second DSP process or product AudioContext is created.
+
 MERGE also uses the shared loop command:
 
 ```sh

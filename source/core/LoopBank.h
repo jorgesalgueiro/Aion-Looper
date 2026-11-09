@@ -1,4 +1,5 @@
 #pragma once
+#include "core/CompressorSettings.h"
 #include <array>
 #include <algorithm>
 #include <cstdint>
@@ -17,7 +18,7 @@ namespace aion {
 // Application queues wait for explicit source creation; direct DSP clients may schedule at the grid.
 enum class QueuedStartMode { sampleGrid, messageCallback };
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer }; // Append-only. Source/reset primitives remain core-only.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor }; // Append-only. Source/reset primitives remain core-only.
 constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart||action==LoopAction::meterQueuedWindowRequest||action==LoopAction::meterQueuedGraphRequest;}
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
@@ -40,6 +41,8 @@ struct LoopView {
     bool muted = false, solo = false, finalizationFailed = false, reverse = false;
     EqSettings equalizer{};
     std::uint32_t eqRequest=0;
+    CompressorSettings compressor{};
+    std::uint32_t compressorRequest=0;
 };
 // Audio owns capture blocks/state; the worker borrows pinned takes and owns immutable clips.
 // Capture storage is allocated in prepare; clip allocation/deletion stays off the callback.
@@ -58,6 +61,8 @@ public:
     bool apply(LoopAction, std::uint32_t track, float value = 0) noexcept;
     bool setEqualizer(std::uint32_t,const EqSettings&,std::uint32_t mask,std::uint32_t request,
                       std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
+    bool setCompressor(std::uint32_t,const CompressorSettings&,std::uint32_t mask,std::uint32_t request,
+                       std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
     bool setStartDelay(std::uint32_t track,double value) noexcept;
     bool clearMergedSource(std::uint32_t track,double serial) noexcept;
     Stereo tick(Stereo input, bool nonRealtime = false) noexcept;
@@ -372,6 +377,9 @@ private:
     // Construction-time heap, not extra large audio stack frames/telemetry scans.
     std::unique_ptr<std::array<TrackEq,trackCount>> equalizers=std::make_unique<std::array<TrackEq,trackCount>>();
     Stereo tickEqualizer(unsigned,Stereo,bool sourceActive) noexcept;
+    struct TrackCompressor { Compressor filter{}; bool prepared=false; };
+    std::unique_ptr<std::array<TrackCompressor,trackCount>> compressors=std::make_unique<std::array<TrackCompressor,trackCount>>();
+    Stereo tickCompressor(unsigned,Stereo,bool sourceActive) noexcept;
     std::array<std::uint16_t, maxBlocks> freeBlocks{};
     std::vector<float> audio;
     std::uint32_t totalBlocks = 0, freeCount = 0, fadeLength = 240;

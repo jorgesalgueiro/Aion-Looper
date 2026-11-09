@@ -1,9 +1,73 @@
 # Compressor migration â€” isolated DSP slice
 
-The original **C** effect remains disabled in the product. This slice establishes
-its DSP/preset/automation contract before connected GUI/CLI/MIDI/state work.
-No preserved UI/reference file, existing parameter/action ID or session format
-changes. No product AudioContext, dependency upgrade, package or wrapper build.
+The native loop **C** effect is connected in the development build; Windows
+software checks pass and Linux completion checks are in progress. This is not a
+release or a claim that drone/sampler compressors or remaining FX are ported.
+No preserved UI/reference assets or existing parameter/action IDs changed. No
+product AudioContext, dependency upgrade, package or wrapper build.
+
+## Connected acceptance and owner decisions — 9 November 2026
+
+The owner explicitly approved **one persistent compressor per loop across source
+restarts** and **live controls during OD/SUB/MULT/scheduled STOP**. Original
+per-graph reset/frozen controls remain recorded by unchanged-JS tests; these two
+extensions are not described as identical transition sounds. Enable/re-enable
+creates a fresh detector; DEL/panic/timeline prepare clear its delay. Existing
+source/STOP output gates remain authoritative; full browser overlapping-source
+transition envelopes, listening and hardware latency remain separate validation.
+
+The default original chain is `QCATFODBVKZG`: native EQ precedes compressor,
+then existing loop volume/pan and MASTER. The compressor never changes immutable
+clips, capture/feedback, history or dry export. Fixed per-track DSP storage is
+allocated at construction; audio controls use the existing bounded FIFO and
+sample clock. GUI, external Standalone CLI and MIDI share that audio owner.
+Curve generation/serialization stay on the message thread (321 points, <=10 Hz
+UI requests); the original display knee remains distinct from actual compression.
+
+Native `LoopCompressors` v1 stores twenty complete entries, validates all before
+APVTS/MIDI/effect restore, and defaults missing legacy data to bypassed originals.
+EQ+compressor banks are admitted to the command FIFO all-or-neither (40 commands),
+not claimed as a single sample-atomic forty-track render transaction. Queue-full
+restore retries; invalid state/commands preserve accepted intent. MIDI v5 appends
+CC IDs 117..123; readers retain v1/v2/v3/v4 assignments and selected tab unchanged.
+Controls follow the shared EQ/FX loop tab, work without an editor, do not enable
+a bypassed compressor and retain conflict/cancel/channel rules. Physical devices
+remain unverified by the synthetic tests.
+
+Windows executed evidence: connected Engine 64/128 peak <=1.78814e-7 against an
+independent compressor render after existing centre pan/output limiting; all
+seven CC controls exact PCM versus sample-timed GUI commands. The original
+isolated browser oracle independently protects the DSP. Live OD/SUB/MULT/STOP,
+EQ composition, restart/reverse/history/phase, raw WAV invariance, cancellation,
+mask/epoch/full-queue admission and zero callback new/delete pass. Production
+processor/CLI/state and real WebView2 pointer/key/curve/MIDI/reload checks pass at
+64/128, as do existing EQ UI tests. The UI test initially captured state before
+its keyboard edit was acknowledged; it now waits for the exact +1 control value
+before comparing reload, without changing product code or assertion tolerance.
+The connected oracle accounts for existing pre-pan gain and final output clipping;
+its first incomplete harness failed, was corrected, and all PCM thresholds stayed
+at 1e-6. Legacy MIDI test writer assertions now expect v5/unknown v6, retaining
+v1..v3 and adding v4 coverage. One broad production MIDI CLI timeout passed on an
+unchanged isolated retry; retain that observation separately from audio failures.
+
+Commands (Windows VS CMake/CTest executables as documented in DEVELOPMENT_WORKFLOW):
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_compressor_connected_tests aion_compressor_tests aion_compressor_probe aion_effects_engine_benchmark
+ctest --test-dir build/windows-core -C Release --output-on-failure -R '^(compressor_realtime_contract|compressor_connected_contract|original_compressor_contract|eq_connected_contract|js_native_eq_connected|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_eq_midi)$'
+cmake --build --preset windows-dev --target AionLooper_Standalone aion_mouse_host aion_compressor_processor_tests aion_eq_processor_tests aion_midi_processor_tests
+build/windows/Release/aion_compressor_processor_tests.exe 64
+build/windows/Release/aion_compressor_processor_tests.exe 128
+tools/TestCompressorUi.ps1
+tools/TestEqUi.ps1
+node tests/CompressorWebAudio.cjs --fixtures build/compressor-browser-fixtures.json
+build/windows-core/Release/aion_effects_engine_benchmark.exe
+```
+
+Fixture JSON is ignored local evidence; rerun TestCompressorWebAudio.ps1 to
+regenerate from the actual unchanged browser methods. Linux connected acceptance,
+ASan/UBSan and callback timing are still pending at this snapshot. No later effect
+is started; no new distributable.
 
 ## Reference and acceptance defined before implementation
 

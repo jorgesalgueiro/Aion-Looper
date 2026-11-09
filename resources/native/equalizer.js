@@ -132,6 +132,6 @@
             toggles.push({input,track:id});
         }
         window.addEventListener('pagehide',()=>{alive=false;++serial;drag=null;});
-        return {bindRow,update(){dirty=true;render();}};
+        return {bindRow,select,selectedTrack:()=>track,update(){dirty=true;render();}};
     };
 })();

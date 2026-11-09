@@ -412,10 +412,13 @@ void LoopBank::cancelArmed(Track& track) noexcept {
     // Main CANCEL uses finish; CLI/MIDI/panic may use stop. DEL still calls
     // clear() directly. Reconstruct runtime filters on their next tick.
     const auto settings=track.info.equalizer;const auto request=track.info.eqRequest;
+    const auto compressor=track.info.compressor;const auto compressorRequest=track.info.compressorRequest;
     clear(track);track.info.equalizer=settings;track.info.eqRequest=request;
+    track.info.compressor=compressor;track.info.compressorRequest=compressorRequest;
 }
 void LoopBank::clear(Track& track) noexcept {
     (*equalizers)[static_cast<unsigned>(&track-tracks.data())]={};
+    (*compressors)[static_cast<unsigned>(&track-tracks.data())]={};
     track.historyClock=false;
     clearRetained(track);
     const auto removedBuffer=track.clip?track.clip->waveformId:0;
@@ -453,6 +456,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         else publishMeterPanic(next);
         stop(tracks[next]);
         auto& eq=(*equalizers)[next];eq={};(void)eq.filter.prepare(rate,tracks[next].info.equalizer.values,frame);eq.prepared=true;
+        auto& comp=(*compressors)[next];comp={};(void)comp.filter.prepare(rate,tracks[next].info.compressor.values,frame);comp.prepared=true;
         }return true;}
     if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks){++track.clearEpoch;clear(track);}return true;}
     if(action==LoopAction::undoGlobal){const int next=nextUndo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),false);}
@@ -715,6 +719,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::redoGlobal:
         case LoopAction::clearAll:
         case LoopAction::equalizer: // Dedicated validated settings command, never float payload.
+        case LoopAction::compressor:
         case LoopAction::stopAll:break;
     }
     return false;
@@ -930,6 +935,27 @@ Stereo LoopBank::tickRetained(const Track& track) noexcept {
 }
 void LoopBank::resetEqualizers() noexcept {
     for(unsigned i=0;i<trackCount;++i){auto& eq=(*equalizers)[i];eq={};(void)eq.filter.prepare(rate,tracks[i].info.equalizer.values,0);eq.prepared=true;}
+    for(unsigned i=0;i<trackCount;++i){auto& comp=(*compressors)[i];comp={};(void)comp.filter.prepare(rate,tracks[i].info.compressor.values,0);comp.prepared=true;}
+}
+bool LoopBank::setCompressor(std::uint32_t id,const CompressorSettings& settings,std::uint32_t mask,std::uint32_t request,std::uint64_t epoch,bool checkEpoch) noexcept {
+    if(id>=trackCount||!validCompressorSettings(settings)||(mask&~compressorAllParameters)||(checkEpoch&&epoch!=tracks[id].clearEpoch))return false;
+    auto& t=tracks[id];auto& comp=(*compressors)[id];
+    for(unsigned p=0;p<7;++p)if(!(mask&(1u<<p))&&settings.values[p]!=t.info.compressor.values[p])return false;
+    if(!comp.prepared||(!t.info.compressor.enabled&&settings.enabled)){
+        (void)comp.filter.prepare(rate,settings.values,frame);comp.prepared=true;
+    }else if(settings.enabled){
+        for(unsigned p=0;p<7;++p)if(mask&(1u<<p))(void)comp.filter.setTarget(p,settings.values[p]);
+    }
+    t.info.compressor=settings;t.info.compressorRequest=request;return true;
+}
+Stereo LoopBank::tickCompressor(unsigned id,Stereo input,bool sourceActive) noexcept {
+    auto& comp=(*compressors)[id];const auto& settings=tracks[id].info.compressor;
+    if(settings.enabled){
+        if(!comp.prepared){(void)comp.filter.prepare(rate,settings.values,frame);comp.prepared=true;}
+        comp.filter.process(&input.left,&input.right,2,&input.left,&input.right,1);
+        if(!sourceActive)input={}; // Preserve the existing STOP/output ownership gate.
+    }
+    return input;
 }
 bool LoopBank::setEqualizer(std::uint32_t id,const EqSettings& settings,std::uint32_t mask,std::uint32_t request,std::uint64_t epoch,bool checkEpoch) noexcept {
     if(id>=trackCount||!validEqSettings(settings)||(mask&~eqAllParameters)||(checkEpoch&&epoch!=tracks[id].clearEpoch))return false;
@@ -1015,6 +1041,7 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         // as in the original graph, but gate both audible output and STOP's raw
         // source tail. Never feed already-filtered PCM back through this chain.
         auto equalized=tickEqualizer(static_cast<unsigned>(&t-tracks.data()),out,eqSource);
+        equalized=tickCompressor(static_cast<unsigned>(&t-tracks.data()),equalized,eqSource);
         if(t.queuedGainAt){
             if(frame<t.queuedGainAt){out={};equalized={};}
             else if(fadeLength&&frame-t.queuedGainAt<fadeLength){

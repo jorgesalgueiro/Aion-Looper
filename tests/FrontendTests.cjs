@@ -1112,4 +1112,9 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  names.forEach((name,i)=>{const id='eq'+name[0].toUpperCase()+name.slice(1);assert.equal(scope.window.AionMidiSliderTarget(id),93+i);assert.equal(scope.window.AionMidiElementTarget({id}),93+i);});
  assert.equal(scope.window.AionMidiSliderTarget('native-eq-enabled'),-1);assert.equal(scope.window.AionMidiSliderTarget('eqUnknown'),-1);
  console.log('PASS: all 24 EQ ranges use append-only continuous targets; unported/checkbox controls stay unmapped');
+ const comp=['threshold','ratio','knee','attack','release','gain','mix'];
+ comp.forEach((name,i)=>{const id='compressor'+name[0].toUpperCase()+name.slice(1);assert.equal(scope.window.AionMidiSliderTarget(id),117+i);assert.equal(scope.window.AionMidiElementTarget({id}),117+i);});
+ assert.equal(scope.window.AionMidiSliderTarget('native-compressor-enabled'),-1);
+ assert.equal(scope.window.AionMidiSliderTarget('compressorUnknown'),-1);
+ console.log('PASS: all seven compressor sliders append MIDI IDs 117..123 without changing existing targets');
 }

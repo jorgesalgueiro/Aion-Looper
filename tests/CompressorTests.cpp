@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/Compressor.h"
+#include "core/CompressorSettings.h"
 #include "../third_party/amd/CompressorLog10.h"
 #include <algorithm>
 #include <atomic>
@@ -21,6 +22,16 @@ int main(){
     Compressor a,b;std::array<float,4099> l{},r{},al{},ar{},bl{},br{};
     for(unsigned i=0;i<l.size();++i){l[i]=static_cast<float>(.6*std::sin(i*.11));r[i]=static_cast<float>(.3*std::cos(i*.073));}
     auto values=compressorDefaults();check(validCompressorValues(values),"Original compressor defaults valid");
+    check(validCompressorSettings({}),"Disabled legacy compressor settings valid");
+    for(unsigned id=1;id<=11;++id){
+        CompressorValues preset{};check(compressorPreset(id,preset),"Original compressor preset");
+        CompressorSettings settings{preset,true,static_cast<std::uint8_t>(id)};
+        check(validCompressorSettings(settings),"Preset settings retain exact identity");
+        settings.values[6]=preset[6]==1?.5f:1;
+        check(!validCompressorSettings(settings),"Changed values cannot retain stale preset label");
+        settings.preset=0;check(validCompressorSettings(settings),"Custom edited values valid");
+        settings.preset=12;check(!validCompressorSettings(settings),"Unknown saved preset rejected");
+    }
     watching=true;
     // Measured Windows UCRT Float32 results that differ from double-log rounding.
     // Keep this component regression AND the unchanged browser PCM gate: one

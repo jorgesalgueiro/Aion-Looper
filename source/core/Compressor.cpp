@@ -77,7 +77,7 @@ bool compressorPreset(unsigned id,CompressorValues& values) noexcept {
     result[5]=static_cast<float>(std::pow(10.0,makeup/20));
     values=result;return true;
 }
-bool Compressor::prepare(double sampleRate,const CompressorValues& values) noexcept {
+bool Compressor::prepare(double sampleRate,const CompressorValues& values,std::uint64_t firstFrame) noexcept {
     if(!std::isfinite(sampleRate)||sampleRate<8000||sampleRate>384000||!validCompressorValues(values))return false;
     rate=static_cast<float>(sampleRate);target=values;prepared=true;
     delayFrames=std::min(1023u,static_cast<unsigned>(.006f*rate));
@@ -85,11 +85,11 @@ bool Compressor::prepare(double sampleRate,const CompressorValues& values) noexc
     controlStep=static_cast<float>(1-std::exp(-128/(double(rate)*.05f)));
     const float c=static_cast<float>(1-std::exp(-1/(double(rate)*.05f)));
     smoothingSteps={c,c*(2-c),c*((c-3)*c+3),c*(c*((4-c)*c-6)+4)};
-    reset();return true;
+    reset(firstFrame);return true;
 }
-void Compressor::reset() noexcept {
+void Compressor::reset(std::uint64_t firstFrame) noexcept {
     for(auto& channel:delay)channel.fill(0);
-    frame=0;changedAt.fill(0);audioRates={};deferredBoundary.fill(false);
+    frame=firstFrame;changedAt.fill(frame);audioRates={};deferredBoundary.fill(false);firstProcess=true;
     for(std::size_t i=0;i<start.size();++i)last[i]=start[i]=automationTarget(i);
     detectorAverage=0;compressorGain=1;meteringGain=1;maxAttackDiff=-1;
     readIndex=0;writeIndex=delayFrames;threshold=kneeDb=ratio=-1;
@@ -212,7 +212,7 @@ void Compressor::process(const float* left,const float* right,unsigned channels,
             }
         }
         if(!(frame%128)){CompressorValues values{};std::copy_n(last.begin(),7,values.begin());configure(values);}
-        if(!(frame%32))envelope();
+        if(firstProcess||!(frame%32)){envelope();firstProcess=false;}
         delay[0][writeIndex]=l;delay[1][writeIndex]=r;
         const float input=std::max(std::abs(l),std::abs(r));
         const float shaped=saturate(input,knee);

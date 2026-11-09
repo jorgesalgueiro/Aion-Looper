@@ -141,5 +141,16 @@ private:
     bool equalizerRequest(const juce::var&,juce::DynamicObject&);
     void saveEqualizers(juce::ValueTree&);
     static bool readEqualizers(const juce::ValueTree&,EqBank&);
+    using CompressorBank=std::array<aion::CompressorSettings,aion::LoopBank::trackCount>;
+    CompressorBank compressorSettings{};
+    bool compressorRestorePending=false;
+    std::array<std::uint32_t,aion::LoopBank::trackCount> compressorPending{};
+    std::array<bool,aion::LoopBank::trackCount> compressorClearing{};
+    void serviceCompressor();
+    void compressorCleared(unsigned track,bool all,std::uint32_t requestId);
+    void compressorSnapshot(juce::DynamicObject&,unsigned track);
+    bool compressorRequest(const juce::var&,juce::DynamicObject&);
+    void saveCompressors(juce::ValueTree&);
+    static bool readCompressors(const juce::ValueTree&,CompressorBank&);
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AionProcessor)
 };

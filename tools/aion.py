@@ -143,6 +143,11 @@ def main(argv=None):
     eq.add_argument('--values', type=strict_json, help='Parameter object, e.g. {"p1Freq":1000,"p1Gain":3}')
     eq.add_argument('--band', type=int, choices=range(1, 7), help='Peak band 1..6 for width')
     eq.add_argument('--edge', type=float, help='Bandwidth edge frequency in Hz for width')
+    comp = commands.add_parser('comp', help='Per-loop compressor on the running audio engine')
+    comp.add_argument('track', type=track)
+    comp.add_argument('action', choices=('get', 'curve', 'on', 'off', 'toggle', 'reset', 'preset', 'set'))
+    comp.add_argument('--preset', help='Original preset name, e.g. vocals')
+    comp.add_argument('--values', type=strict_json, help='Parameter object, e.g. {"threshold":-24,"mix":0.5}')
     midi = commands.add_parser('midi')
     midi.add_argument('action'); midi.add_argument('--data', type=strict_json, default={})
     for name in ('metronome', 'release-stutter', 'cancel-export'):
@@ -198,11 +203,11 @@ def main(argv=None):
             request.update(action=args.action, value=args.value, expiresAt=int(time.time() * 1000) + 4000)
         else:
             request.update(waveformId=status['tracks'][args.track]['waveformId'], filename=args.filename)
-    elif args.command == 'eq':
+    elif args.command in ('eq', 'comp'):
         status = invoke(endpoint, {'operation': 'snapshot'})
         if not status.get('ok'):
             return status
-        request = {'operation': 'equalizer', 'track': args.track, 'generation': status['generation'],
+        request = {'operation': 'equalizer' if args.command == 'eq' else 'compressor', 'track': args.track, 'generation': status['generation'],
                    'action': args.action, 'expiresAt': int(time.time() * 1000) + 4000}
         if args.action in ('on', 'off'):
             request.update(action='enable', enabled=args.action == 'on')
@@ -226,7 +231,7 @@ def main(argv=None):
     if not isinstance(request, dict):
         raise ValueError('Native request must be a JSON object')
     reply = invoke(endpoint, request)
-    if args.command in ('loop', 'eq') and reply.get('ok') and reply.get('queued'):
+    if args.command in ('loop', 'eq', 'comp') and reply.get('ok') and reply.get('queued'):
         deadline = time.monotonic() + 4
         while time.monotonic() < deadline:
             observed = invoke(endpoint, {'operation': 'snapshot'})

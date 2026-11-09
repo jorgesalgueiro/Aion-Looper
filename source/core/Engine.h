@@ -25,6 +25,10 @@ struct LoopCommand {
     std::uint32_t eqMask=eqAllParameters;
     std::uint64_t eqClearEpoch=0;
     bool eqCheckEpoch=true;
+    CompressorSettings compressor{};
+    std::uint32_t compressorMask=compressorAllParameters;
+    std::uint64_t compressorClearEpoch=0;
+    bool compressorCheckEpoch=true;
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct ExportRequest {std::uint32_t track=0,generation=0;std::uint64_t waveformId=0;};
@@ -73,9 +77,14 @@ public:
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
     bool enqueueEqBank(const std::array<EqSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;
+    bool enqueueEffectsBank(const std::array<EqSettings,LoopBank::trackCount>&,
+                            const std::array<CompressorSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;
     void prepareEqBank(const std::array<EqSettings,LoopBank::trackCount>& settings) noexcept {
         for(unsigned i=0;i<settings.size();++i)(void)loops.setEqualizer(i,settings[i],eqAllParameters,0,0,false);
     } // Stopped prepare owner only; never a message-thread shortcut into audio.
+    void prepareCompressorBank(const std::array<CompressorSettings,LoopBank::trackCount>& settings) noexcept {
+        for(unsigned i=0;i<settings.size();++i)(void)loops.setCompressor(i,settings[i],compressorAllParameters,0,0,false);
+    }
     // Single message owner publishes a cumulative source-retirement fence.
     // Independent of the performance FIFO, so cleanup cannot be lost on overflow.
     bool retireQueuedSourceThrough(std::uint32_t requestedGeneration,unsigned track,std::uint32_t ticket) noexcept {

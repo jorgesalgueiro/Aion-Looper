@@ -11,7 +11,35 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work â€” core loop-track buttons, 9 November 2026
 
-### Current compressor checkpoint â€” isolated DSP, 9 November 2026
+### Connected compressor — in verification, 9 November 2026
+
+Owner approved a persistent compressor per loop across playback restarts and live
+controls during OD/SUB/MULT/scheduled STOP. Those are intentional extensions of
+the original per-graph recreation/frozen-running-controls behavior; retained
+unchanged-JS tests document the difference. The C loop checkbox now reaches the
+shared native processor through original-style controls, CLI `comp`, seven CC
+Learn targets and versioned state. Original assets and existing IDs are unchanged.
+
+Windows development Standalone, mouse host and production processor targets build.
+Connected 64/128 PCM passes (peak <=1.78814e-7); all seven CC targets match timed
+GUI controls exactly, including same-block learn, all 128 values/channels and
+selected tracks 1/20. Persistent EQ -> compressor through RTRG/reverse/OD/history/
+phase, dry WAV invariance, scheduled STOP, panic/DEL, mask/epoch rejection,
+combined-bank queue admission and callback new/delete checks pass. Production
+processor/CLI/state checks pass at 64/128. Actual WebView2 compressor AND existing
+EQ pointer/key/reload/MIDI/curve tests pass at 64/128. Focused CTests: 9/9 (18.92s).
+All 60 original browser kernel fixtures still pass, peak 4.806921385380747e-7.
+A broad MIDI processor run timed out waiting for one CLI reply; unchanged isolated
+retry passed. No assertion/time limit was weakened. The failed test's owned
+mailbox directory was removed; see ignored build logs for both runs.
+
+Linux connected/processor/sanitizer verification and connected timing are next;
+do not advance to another effect until those finish. No package or push.
+See [COMPRESSOR_MIGRATION.md](COMPRESSOR_MIGRATION.md) for exact scope/commands.
+
+### Earlier compressor checkpoint — isolated DSP, 9 November 2026
+
+
 
 The **C compressor remains disabled** pending shared GUI/CLI/MIDI/state and
 connected audio/lifecycle acceptance. Its new fixed-storage native kernel now
