@@ -11,6 +11,27 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Current compressor checkpoint — isolated DSP, 9 November 2026
+
+The **C compressor remains disabled** pending shared GUI/CLI/MIDI/state and
+connected audio/lifecycle acceptance. Its new fixed-storage native kernel now
+passes actual unchanged-original WebView2 sound comparisons: **60 cases,
+1,966,080 stereo frames at 64/128**, peak **9.586730955746248e-7** against the
+unchanged **1e-6 peak / 1e-5 relative RMS** gates. Eleven original calculated
+presets, lookahead/immediate dry routing, mono/stereo, static/extreme controls
+and live retargets at four rates are included. Failing k-rate anchor, independent
+dry/wet smoothing and one-sample timestamp-boundary cases were fixed, retained,
+and passed without threshold changes. Faust was evaluated as owner-authorized;
+this slice uses pinned BSD browser DSP/automation source for parity, adding no
+Faust/Chromium runtime dependency. Existing original UI/reference assets,
+sessions/IDs and connected EQ are unchanged. Details, exact commands and remaining
+acceptance: [COMPRESSOR_MIGRATION.md](COMPRESSOR_MIGRATION.md).
+
+Windows core checks, Linux replay/sanitizers and measurements are recorded below
+after execution. Next is the connected C feature, before any later effect. No
+new distributable or push is part of this checkpoint; the EQ preview below
+remains the current product package.
+
 Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. Remaining unported FX/SAVE controls stay disabled.

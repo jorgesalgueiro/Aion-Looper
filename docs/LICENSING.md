@@ -32,6 +32,12 @@ Primary sources:
   compatible separation before claiming the combined application is cleared.
   The user's selection above does not authorize relicensing anyone else's work.
 - CLAP extensions are upstream MIT-licensed; retain their notices.
+- The isolated compressor DSP adapts Chromium/Blink's BSD-licensed compressor
+  and AudioParam timeline algorithms. The pinned revision, modifications and full
+  notices are retained under `third_party/notices`; CMake installation and the
+  preview package helper include both notices. This adds portable C++ source,
+  not a Chromium runtime dependency. Faust was evaluated, but no Faust code or
+  compiler dependency is included in this slice. See [COMPRESSOR_MIGRATION.md](COMPRESSOR_MIGRATION.md).
 - Applicable JUCE, CLAP SDK/helpers, Windows VST3, ASIO, WebView2 and platform SDK
   notices and redistribution terms still apply. Any later effect/time-stretch
   dependencies require their own compatibility review.
@@ -39,6 +45,6 @@ Primary sources:
   dependency notices under `share/licenses`. Notice inclusion is not a completed
   rights/dependency audit or a certification of release readiness.
 
-Active Linux delivery is Standalone/LV2; Windows is Standalone/VST3. CLAP is
-opt-in/deferred and its notices apply when included. Signing,
+Active Windows/Linux delivery is Standalone only. VST3/LV2/CLAP are
+opt-in/deferred and their notices apply when included. Signing,
 installer work and dependency compatibility remain distribution acceptance gates.

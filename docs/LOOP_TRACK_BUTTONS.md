@@ -19,6 +19,7 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | Waveform click WAV | Native stored-PCM export, filenames, bounded leases and picker lifecycle | OS cancel/overwrite and non-Windows dialogs remain separate checks |
 | SAVE (Dry/Wet) | **Unported; disabled** | Native wet rendering, chain state, rate/pan/volume, three-second tail, paired filenames and lifecycle checks; dry-only export is not equivalent |
 | Q/eQ, FX/eQ navigation | **Connected GUI/CLI software preview, Windows/Linux verified.** Original 24 controls/10 presets, versioned state, approved point/range graph and live OD/SUB/MULT/pending-STOP controls; selected-tab EQ CC Learn with unchanged-JS ranges and Engine/processor/CLI/Windows pointer/reload coverage at 64/128; [EQ_MIGRATION.md](EQ_MIGRATION.md) | Physical expression/listening and Linux WebKit remain separate; other effects/wet SAVE are unported |
+| C compressor | **DSP-only checkpoint; product control stays disabled.** Actual unchanged original browser graph/preset/automation PCM gate passes; [COMPRESSOR_MIGRATION.md](COMPRESSOR_MIGRATION.md) | Shared GUI/CLI/MIDI/state, connected routing/toggles/lifetime and interaction acceptance |
 | Other FX, FULL PRESET, CHAIN PRESET, manual chain | **Unported; disabled**, except accepted Reverse and Q/eQ above | Port the remaining effects individually before wet SAVE/full-chain acceptance |
 
 Finalization dispatch, rapid queued history/MULT and the integral-sample source
