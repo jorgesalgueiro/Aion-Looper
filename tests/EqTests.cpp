@@ -62,6 +62,15 @@ int main(){
         check(ar==br,"Bad input cannot contaminate other channel");
         for(unsigned i=0;i<128;++i)check(std::isfinite(al[i])&&al[i]==0,"Malformed input suppressed and state recovered");
     }
+    {
+        auto hot=eqDefaults();hot[4]=24;
+        check(a.prepare(48000,hot)&&b.prepare(48000,hot),"Finite overflow containment setup");
+        left.fill(0);right.fill(0);left[0]=std::numeric_limits<float>::max();right[0]=.25f;
+        a.process(left.data(),right.data(),al.data(),ar.data(),128);left[0]=0;b.process(left.data(),right.data(),bl.data(),br.data(),128);
+        check(ar==br,"Finite overflow cannot affect the other stereo channel");
+        for(float sample:al)check(std::isfinite(sample),"Finite full-scale float overflow never escapes as Inf/NaN");
+        for(unsigned i=0;i<64;++i){a.process(nullptr,nullptr,al.data(),ar.data(),128);for(float sample:al)check(std::isfinite(sample),"Overflow tail remains finite");}
+    }
     // Block subdivision must not reset filter memories or alter coefficients.
     for(double rate:{8000.0,16000.0,22050.0,32000.0,44100.0,48000.0,96000.0,192000.0,384000.0}){
         auto safe=eqDefaults();safe[23]=static_cast<float>(std::min(20000.0,rate*.4));safe[4]=-24;safe[5]=.1f;
@@ -118,9 +127,16 @@ int main(){
         for(unsigned j=0;j<bins.size();++j){double magnitude=0;check(a.magnitude(rate*bins[j]/size,magnitude),"Finite graph response");const double measured=std::hypot(real[j],imaginary[j])*2/(size*.03),error=std::abs(magnitude-measured);responseError=std::max(responseError,error);if(error>1e-6)std::cerr<<"rate="<<rate<<" peaks="<<peaks<<" bin="<<bins[j]<<" analytic="<<magnitude<<" DFT="<<measured<<" error="<<error<<'\n';check(error<=1e-6,"Curve magnitude matches actual Float32 steady tones within 1e-6");}
         double unchanged=7;check(!a.magnitude(-1,unchanged)&&!a.magnitude(rate,unchanged)&&!a.magnitude(std::numeric_limits<double>::quiet_NaN(),unchanged)&&unchanged==7,"Invalid graph query preserves caller output");
     }
+    double halfGainError=0;
     for(double rate:{8000.0,22050.0,44100.0,48000.0,96000.0})for(float frequency:{20.f,1000.f,22000.f})for(float q:{.1f,.707f,1.f,10.f}){
         double low=0,high=0;check(eqPeakRange(frequency,q,rate,low,high)&&low>0&&high>low&&high<rate*.5,"Peak range uses valid warped frequency edges");
         float inverse=0;check(eqPeakQ(frequency,low,rate,inverse)&&std::abs(inverse-q)<=1e-5f,"Dragging low edge recovers original Q");check(eqPeakQ(frequency,high,rate,inverse)&&std::abs(inverse-q)<=1e-5f,"Dragging high edge recovers original Q");
+        // A self-consistent forward/inverse mapping alone is insufficient: the
+        // displayed width must coincide with the filter's actual half-gain.
+        for(float gain:{-12.f,12.f}){
+            auto p=eqDefaults();p[3]=frequency;p[4]=gain;p[5]=q;check(a.prepare(rate,p),"Half-gain peak setup");p[4]=0;check(b.prepare(rate,p),"Half-gain baseline cuts");
+            for(double edge:{low,high}){double active=0,base=0;check(a.magnitude(edge,active)&&b.magnitude(edge,base)&&base>0,"Finite half-gain response");const double error=std::abs(active/base-std::pow(10.0,gain/40.0));halfGainError=std::max(halfGainError,error);check(error<=1e-6,"Graph bandwidth edges must match actual half-gain response");}
+        }
     }
     {
         double low=7,high=8;float q=3;
@@ -128,5 +144,5 @@ int main(){
         check(!eqPeakQ(1000,24000,48000,q)&&q==3,"Invalid Nyquist edge rejected");
     }
     watching=false;check(operations.load()==0,"EQ prepare/configure/reset/process must never allocate or free");
-    std::cout<<"PASS: EQ atomic validation, finite recovery, stereo/tails/reset, exact 64/128 and in-place, curve/steady-tone DFT max "<<responseError<<", bandwidth handle inverse, zero new/delete\n";
+    std::cout<<"PASS: EQ atomic validation, finite recovery/overflow, stereo/tails/reset, exact 64/128 and in-place, curve/steady-tone DFT max "<<responseError<<", bandwidth half-gain max "<<halfGainError<<", handle inverse, zero new/delete\n";
 }
