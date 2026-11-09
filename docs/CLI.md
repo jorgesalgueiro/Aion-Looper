@@ -109,6 +109,13 @@ python tools/aion.py loop normalize 1
 Pan uses the original integer range **0..10**, with **5** at center; volume uses
 **0..2**. Speed and other state-dependent controls keep their native restrictions.
 
+RTRG uses the same action as the original button and `/` shortcut. A stopped
+loop, an unborn queued PLAY, or a loop with STOP pending starts immediately,
+retiring its old start/stop and temporary STUT/Start events. An already healthy
+playing or constructed queued source keeps its 5ms replacement timing. Stored
+audio and Undo/Redo history are preserved; capture/empty-state guards and the
+finalization admission wait above still apply.
+
 Unported drone/sampler/tracker/FX and remaining persistence/routing features are
 not implemented by the CLI. Unknown operations are rejected. Newly ported
 features must extend the shared native command layer and CLI coverage together.

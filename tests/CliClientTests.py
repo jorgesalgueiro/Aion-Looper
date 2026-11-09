@@ -51,6 +51,26 @@ assert cli('rename', '1', 'CLI Ω loop')['ok']
 assert cli('status')['tracks'][0]['name'] == 'CLI Ω loop'
 assert cli('loop', 'play', '1')['applied'];state('playing')
 assert cli('loop', 'stopImmediate', '1')['applied'];state('stopped')
+# Use the actual user command in both newly admitted non-playing states. The
+# distant grid keeps this about admission, independent of wall-clock jitter;
+# engine and pointer fixtures separately render beyond the obsolete deadline.
+stored = cli('status')['tracks'][0]
+for parameter, value in (('syncBpm', '30'), ('syncBars', '8'), ('syncMode', '1')):
+    assert cli('parameter', parameter, value)['ok']
+assert cli('loop', 'play', '1')['applied']
+queued = state('queued')['tracks'][0]
+assert not queued['queuedSourceReady'] and queued['scheduledFrame'] > 0
+for previous in ('queued', 'stopping'):
+    assert cli('loop', 'retrigger', '1')['applied'], previous
+    fresh = state('playing')['tracks'][0]
+    assert not fresh['scheduledFrame'] and not fresh['phaseApplyFrame'] and not fresh['stopPending']
+    for field in ('length', 'waveformId', 'undoCount', 'redoCount'):
+        assert fresh[field] == stored[field], (previous, field)
+    if previous == 'queued':
+        assert cli('loop', 'stop', '1')['applied'];state('stopping')
+assert cli('loop', 'stopImmediate', '1')['applied'];state('stopped')
+assert cli('parameter', 'syncMode', '0')['ok']
+print('PASS: external CLI RTRG starts unborn queued/stopping sources immediately and preserves stored audio/history')
 assert cli('midi', 'enable', '--data', '{"enabled":false}')['ok']
 assert cli('midi', 'clear', '--data', '{"target":0}')['ok']
 assert not cli('request', '{"operation":"not-a-feature"}', code=1)['ok']
