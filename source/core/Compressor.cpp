@@ -165,7 +165,9 @@ void Compressor::configure(const CompressorValues& values) noexcept {
         dbKneeThreshold=threshold+kneeDb;kneeThreshold=linear(dbKneeThreshold);
         dbYKneeThreshold=db(kneeCurve(kneeThreshold,knee));
     }
-    postGain=std::pow(1/saturate(1,knee),.6f);
+    // Blink's fdlibm float wrappers evaluate pow/asin in double and then
+    // round to float. Calling the platform float overload changes the PCM.
+    postGain=static_cast<float>(std::pow(double(1/saturate(1,knee)),double(.6f)));
     attackFrames=std::max(.001f,values[3])*rate;
     const float releaseFrames=rate*values[4];
     for(unsigned i=0;i<5;++i)releaseCurve[i]=releaseFrames*releaseBases[i];
@@ -173,7 +175,7 @@ void Compressor::configure(const CompressorValues& values) noexcept {
 }
 void Compressor::envelope() noexcept {
     detectorAverage=finite(detectorAverage,1);
-    scaledDesired=std::asin(detectorAverage)/piOverTwo;
+    scaledDesired=static_cast<float>(std::asin(double(detectorAverage)))/piOverTwo;
     const bool releasing=scaledDesired>compressorGain;
     float diff=scaledDesired==0?(releasing?-1.0f:1.0f):db(compressorGain/scaledDesired);
     if(releasing){
@@ -186,7 +188,7 @@ void Compressor::envelope() noexcept {
         diff=finite(diff,1);
         if(maxAttackDiff==-1||maxAttackDiff<diff)maxAttackDiff=diff;
         const float x=.25f/std::max(.5f,maxAttackDiff);
-        envelopeRate=1-std::pow(x,1/attackFrames);
+        envelopeRate=1-static_cast<float>(std::pow(double(x),double(1/attackFrames)));
     }
 }
 void Compressor::process(const float* left,const float* right,unsigned channels,
