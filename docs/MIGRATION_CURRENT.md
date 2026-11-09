@@ -15,27 +15,106 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-### Under acceptance: queued PLAY with STOP pending Undo/Redo — 9 November 2026
+### Implemented preview: queued PLAY with STOP pending Undo/Redo — 9 November 2026
 
-Next slice acceptance: unchanged `Loop.undo/redo` restores stored PCM/history
+Acceptance: unchanged `Loop.undo/redo` restores stored PCM/history
 without restarting the constructed future graph or changing its original start,
 STOP or older Apply. Preserve pre-grid silence/visual zero and post-grid source
 PCM/progress through STOP, forward/reverse and same/following-grid STOP. Local,
 global, GUI and CLI share native restore; cover cancellation/prepare, full-pool
 growth rejection, rapid history, NORM and 64/128 with no callback new/delete.
-Current guards reject this valid state. Keep the accepted RTRG work below intact.
+The old guards rejected this valid state; accepted RTRG behavior remains intact.
 
 Initial reproduction `build/queued-stop-history-repro-windows.log`: native Undo
 rejected the first unchanged-JS same-grid case. Native restore now treats a
 constructed pending-STOP queue as a stopping graph, freezing its source and
 retaining its visual clock for activation. Shared GUI/local/global controls admit
-the state; no IDs/schema/assets/dependencies change. Windows original-JS **120
-cases**, **432 exact stereo WAVs**, **5,148,336 frames**, peak **6.37177635e-8**,
-unchanged **1e-6** PCM and **1e-12** progress limits PASS. Actual Engine **152**
-cases and frontend admission PASS. Original local/global pointers PASS at 64 so
-far; 128, retained regressions, four new production GUI/CLI RPC cases, Linux and
-sanitizers are pending/running. This slice is not yet accepted. Logs use
-`build/queued-stop-history-*` per checkout.
+the state; no IDs/schema/assets/dependencies change. Implementation **2e74ff5**;
+expanded production comparison **48d53e5**. Original-JS **120 cases**, **432 exact
+stereo WAVs**, **5,148,336 frames per OS**, peak **6.37177635e-8** on both OSes,
+unchanged **1e-6** PCM and **1e-12** progress limits PASS.
+
+Actual Engine **152 cases per OS PASS**: tracks 0/19, forward/reverse, local/global,
+same/following-grid STOP, older Apply, unchanged source stereo through both grids,
+depth/length, cancellation/same/new-rate prepare and atomic full-pool growth
+rejection before queued start. Zero callback new/delete. The retained **88**
+stopping, **64** queued and **124** post-birth history cases PASS per OS. Their
+existing assertions remain; the shared setup only adds the queued-state variant.
+The prior RTRG exclusion for queued-STOP history is now removed: **258** integrated
+RTRG Engine cases PASS per OS (eight more than the accepted checkpoint below).
+
+Windows original pointers **4 combinations per block size, 64/128 PASS**: local/
+global, forward/reverse, Undo/Redo/Undo before the original queue/STOP, exact
+stored identities/depth/length, no premature source/progress/audio, natural STOP
+and next nonzero PLAY using restored storage. Frontend eligibility/FIFO PASS.
+Both Standalone builds and full production processor/external CLI suites PASS.
+Eight new shared GUI/CLI **production RPC** cases per OS cover local/global
+restore, same-grid silence and **nonzero original source PCM between start and
+following-grid STOP**, retained deadlines and no processBlock new/delete. These
+are shared production requests; the retained external Python/mailbox suite also
+passes, not a claim of a newly tested physical controller or separate CLI engine.
+Linux production ran alone after heavy checks.
+
+Windows **11/11 retained CTests PASS, 559.79s**; Linux **12/12 PASS, 1083.02s**.
+The full retained queued-history source corpus contributes **960 cases per OS**,
+**23,625,040 frames**, **2,784 source snapshots**, peak **8.31378578e-8** under the
+unchanged **1e-6** limit. It covers healthy queued history, rapid edits, Apply/
+RTRG/NORM and cleanup. Its long runtime is integration evidence to reuse for
+unchanged paths, not a reason to repeat all 960 cases on each UI/doc edit.
+Connected capture/OD/SUB audit: **126 cases**, **965,826 frames per OS**, peak
+**7.39475750e-8**, unchanged **1e-6**, PASS. Linux Debug ASan/UBSan/leaks **152**
+queued STOP plus **88** stopping-history cases PASS, no diagnostics. No case was
+deleted or tolerance relaxed. Source-oracle pre-grid visual suppression reuses
+the already accepted queued-MULT rule and still checks exact post-grid progress.
+
+After acceptance, identical ignored Release Engine timing fixtures ran Windows
+then Linux without concurrent tests/builds: 48kHz stereo, 512-frame initial take,
+overdub/local MULT history, 512 warm callbacks, **32 scenarios per OS**, local/
+global Undo/Redo/Undo, reverse, same/following-grid STOP, pending Apply and clear.
+Maximum observed 64/128 callbacks: Windows **116.3/162.1us**, Linux **192.4/158.5us**,
+deadlines **1333.33/2666.67us**. Scoped Engine measurements, not full processBlock,
+round-trip latency, worst-case/full-bank guarantees, OS rankings or speedups.
+Harness `build/queued-stop-history-bench-src/bench.cpp`, SHA256
+`760449339da4bd60b2b29849ac9df284f9c8653c4ead99d774366cefabbdf897`;
+independent `build/queued-stop-history-bench-{windows,linux}` caches import each
+OS's current Release core. Logs use `build/queued-stop-history-*` per checkout;
+final production logs include `production-final-OS`, source metrics `native-OS`
+(Windows `native-final-windows`), UI `ui-windows`, sanitizers `sanitizer-SELECTOR-linux`.
+
+Focused reproduction, using existing caches and committed safe WSL sync:
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --queued-stop-history
+./build/windows-core/Release/aion_core_tests.exe --pending-retrigger
+node tests/QueuedMergeSources.cjs --queued-stop-history --native build/windows-core/Release/aion_start_probe.exe
+node tests/AudioParityAudit.cjs build/windows-core/Release/aion_reference_probe.exe
+cmake --build --preset windows-dev --target AionLooper_Standalone aion_mouse_host aion_midi_processor_tests --parallel 2
+./tools/TestMouseWorkflow.ps1 -QueuedStopHistoryOnly
+./build/windows/Release/aion_midi_processor_tests.exe
+```
+
+```sh
+# Commit in Windows, sync the clean mirror; keep separate OS caches.
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --queued-stop-history
+./build/linux/aion_core_tests --pending-retrigger
+node tests/QueuedMergeSources.cjs --queued-stop-history --native build/linux/aion_start_probe
+node tests/AudioParityAudit.cjs build/linux/aion_reference_probe
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --queued-stop-history
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --stopping-history
+# Run alone after heavy validation.
+./build/linux/aion_midi_processor_tests
+```
+
+Next: the original **Q/eQ** effect, first in `QCATFODBVKZG`, as an end-to-end
+native FX slice with unchanged controls, chain/preset-compatible state and shared
+GUI/CLI commands. Inspect `_createEQ`/its worklet, parameters and original sound
+before implementation; no disconnected FX/SAVE/preset controls should be enabled.
+Current source models exclude browser envelopes/resampling and advancing-worker
+latency. Linux WebKit interaction, devices/physical latency, full-bank/long-session,
+deferred wrappers/DAWs and Apple/release checks remain separate. No package/push.
 
 ### Implemented preview: pending RTRG and integrated core-button combinations — 9 November 2026
 
@@ -137,8 +216,8 @@ ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./buil
 ./build/linux/aion_midi_processor_tests
 ```
 
-Next: queued PLAY with STOP pending still guards local/global Undo/Redo; compare
-and port that eligibility before the effects/SAVE/preset engine. Broader Linux
+At this checkpoint queued PLAY with STOP pending still guarded local/global
+Undo/Redo; the newer entry above now covers that eligibility. Broader Linux
 WebKit interaction, physical devices/drivers/latency, long-session/full-bank,
 deferred wrappers/DAWs and Apple/release gates remain separate. No package/push.
 

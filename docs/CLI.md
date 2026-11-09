@@ -116,6 +116,17 @@ playing or constructed queued source keeps its 5ms replacement timing. Stored
 audio and Undo/Redo history are preserved; capture/empty-state guards and the
 finalization admission wait above still apply.
 
+Undo/Redo restores stored audio while a constructed queued PLAY has STOP pending,
+preserving that source's original start and stop. It also keeps the audio already
+playing during a scheduled STOP. The next PLAY uses the restored buffer.
+
+```sh
+python tools/aion.py loop undo 1
+python tools/aion.py loop redo 1
+python tools/aion.py loop undoGlobal
+python tools/aion.py loop redoGlobal
+```
+
 Unported drone/sampler/tracker/FX and remaining persistence/routing features are
 not implemented by the CLI. Unknown operations are rejected. Newly ported
 features must extend the shared native command layer and CLI coverage together.
