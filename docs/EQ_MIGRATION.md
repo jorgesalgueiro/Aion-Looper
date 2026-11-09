@@ -1,8 +1,8 @@
 # Original Q/eQ migration
 
 Active slice: ten-band per-loop eQ, before the other unported FX/SAVE controls.
-The filter kernel was a prerequisite. Connected preview acceptance is recorded
-below; the final toggle-gain repair needs a focused Linux rerun in this snapshot. Do not infer
+The filter kernel was a prerequisite. Connected Windows/Linux software acceptance
+is recorded below; the live-control workflow choice and EQ MIDI Learn remain open. Do not infer
 full-chain, wet SAVE, hardware, deferred-wrapper or release acceptance.
 
 ## Connected implementation and current verification — 9 November 2026
@@ -77,6 +77,8 @@ Windows evidence in `build/eq-*` (ignored local logs):
   Worst 64/128 **590.8/947.9us** (p99 target **475.9/680.2us**), deadlines
   **1333.33/2666.67us**, 0 observed overruns. Full Engine, not JUCE/device/round-trip
   latency or a worst-case guarantee. Prior isolated-kernel timings remain below.
+  These are pre-toggle-repair prototype measurements, retained as historical
+  evidence; current final timings are below.
 
 Failures were retained and repaired: initial fixture read a saturated old snapshot;
 it now drains every block. Panic fixture initially left MIDI disabled; enable is
@@ -151,12 +153,52 @@ python tools/aion.py eq 1 reset
 python tools/aion.py eq 1 off
 ```
 
-Next gate in this snapshot: commit locally, safe WSL sync and rerun final Linux
-connected/bypass/processor/sanitizer checks after the toggle-gain repair. Native EQ
+Final Linux toggle/CANCEL/bandwidth-CLI snapshot **b0ce92d** builds Standalone and
+passes **3/3 focused CTests (1.12s)**, actual production/external CLI at **64/128**,
+and **1/1 connected ASan/UBSan/leak test (2.03s)**, no diagnostics. Logs:
+`eq-cancel-{build,tests}-linux.log`, `eq-cancel-processor-linux-{64,128}.log` and
+`eq-cancel-sanitizer-{build,tests}.log`. The earlier post-toggle-only rerun also
+passed 2/2 CTests (0.92s), both processor sizes and 1/1 sanitizer (2.04s); it was
+followed by the separate CANCEL regression rather than an unchanged suite repeat.
+Source/header compilation was verified against the committed native WSL mirror.
+
+Native EQ
 MIDI Learn is still pending: the original `main.js` learns effect ranges and routes
 them through the selected `EffectManager` tab; do not claim that workflow is ported
 or enable disconnected mappings. Linux WebKit pointers, listening/physical devices,
 long-session release checks and deferred plugin wrappers also remain separate.
+
+Final warmed Engine benchmark, run sequentially after builds/tests completed:
+
+| OS | Block | Steady p99 / max (us) | Target p99 / max (us) | Deadline (us) | Observed overruns |
+| --- | --- | --- | --- | --- | --- |
+| Windows | 64 | 360.3 / 437.8 | 359.2 / 447 | 1333.33 | 0/2048 per scenario |
+| Windows | 128 | 660.5 / 688.9 | 669.7 / 734.6 | 2666.67 | 0/2048 per scenario |
+| Linux | 64 | 388.628 / 513.378 | 393.079 / 507.929 | 1333.33 | 0/2048 per scenario |
+| Linux | 128 | 690.887 / 826.279 | 700.045 / 777.795 | 2666.67 | 0/2048 per scenario |
+
+Logs `build/eq-engine-final-{windows,linux}.log`. Same 20 playing stereo loops /
+ten bands / 48kHz / 512 warm + 2048 measured calls per scenario. No contention
+benchmark, worst-case guarantee, JUCE/device or round-trip latency claim. Prior
+prototype Linux maxima **605.891/1941.75us** and Windows **590.8/947.9us** remain
+recorded; the final run is after the sound repair, not a claim of OS speedup.
+
+Reproducible native-WSL follow-up commands (existing pinned Linux workspace/cache):
+
+```sh
+cmake --build build/linux --parallel 3 --target aion_eq_connected_tests aion_eq_processor_tests aion_eq_engine_benchmark AionLooper_Standalone
+ctest --test-dir build/linux --output-on-failure -R '^(eq_connected_contract|js_native_eq_connected|js_native_eq_presets)$'
+build/linux/aion_eq_processor_tests 64
+build/linux/aion_eq_processor_tests 128
+cmake --build build/overlap-asan --parallel 2 --target aion_eq_connected_tests
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --output-on-failure -R '^eq_connected_contract$'
+build/linux/aion_eq_engine_benchmark
+```
+
+The existing sanitizer cache is Debug, plugin off, with
+`-fsanitize=address,undefined -fno-omit-frame-pointer`; configure only when changing
+configuration or adding targets. Safe committed-snapshot sync remains exactly the
+helper in DEVELOPMENT_WORKFLOW.md. No distribution was created or pushed.
 
 ### Armed CANCEL repair and remaining owner decision
 
@@ -246,7 +288,7 @@ Show individual/combined response and effective low-rate limits. Native
 `eqPeakRange/eqPeakQ` use bilinear-warped half-gain edges, not a misleading
 constant-Hz width. `Equalizer::magnitude` evaluates its actual state-space
 transfer function; tests compare it with rendered Float32 steady-tone DFT.
-The graph, native processor integration and GUI/CLI commands remain pending;
+At that isolated-kernel checkpoint, graph/native integration and GUI/CLI were pending;
 no disconnected new product controls are exposed.
 
 ## Isolated kernel checkpoint

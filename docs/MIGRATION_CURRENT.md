@@ -13,11 +13,11 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
-eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
+eligibility gaps. Remaining unported FX/SAVE controls stay disabled. No package/push.
 
 ### In progress: original Q/eQ DSP and graphic editing — 9 November 2026
 
-**Connected GUI/CLI preview verified; final Linux gain-repair rerun next.**
+**Windows/Linux GUI/CLI software verified; live-control choice and EQ MIDI pending.**
 Per-loop eQ now uses the existing native processor from original track/live eQ
 checkboxes, FX/eQ navigation, original numeric controls/presets and running-app
 `aion.py eq` commands. The approved graph adds ten selectable draggable points,
@@ -47,10 +47,11 @@ and host-thread restore, full queue, MIDI panic cancellation, expanded track 20,
 and same/changed sample-rate lifecycle. Actual WebView2 pointer/keyboard/graph/
 bandwidth/reload/reset/DEL tests pass at 64/128, with nonzero native PCM and no
 runtime exceptions. Full retained core realtime regression executable passed;
-the subsequent EQ timeline-origin repair has its own connected regression.
+subsequent EQ-only repairs have focused connected/lifecycle regression coverage.
 
 Warmed **actual Engine** (20 playing stereo loops, all ten EQ bands, 512 warm +
-2048 measured calls/scenario) at 48kHz: worst Windows 64/128 **590.8/947.9us**,
+2048 measured calls/scenario) at 48kHz: final worst Windows 64/128 **447/734.6us**,
+Linux **513.378/826.279us**,
 deadlines **1333.33/2666.67us**, no observed overruns. This includes native mixing/
 EQ/telemetry, not JUCE wrapper/device or round-trip latency; no worst-case promise.
 See [EQ_MIGRATION.md](EQ_MIGRATION.md) for commands, repaired test-harness failures,
@@ -58,8 +59,9 @@ scope and remaining Linux/physical/listening/release checks. No package or push.
 
 Linux 9/9 focused tests (54.20s), production EQ/CLI and retained production MIDI
 regressions at 64/128, loop-edits/panic ownership and ASan/UBSan/leaks 2/2 (3.47s)
-pass before the final toggle repair. Final focused Linux rerun is pending in this
-snapshot. Actual Windows 24-case/80,048-frame unchanged rebuild/scheduledFade
+pass. Final toggle/CANCEL/bandwidth-CLI changes additionally pass **3/3 CTests
+(1.12s)**, production/external CLI at both block sizes and **1/1 ASan/UBSan/leak
+connected test (2.03s)**. Actual Windows 24-case/80,048-frame unchanged rebuild/scheduledFade
 oracle proves the flat settled gain; the original prototype failed at 2.23e-6
 against the unchanged 1e-6 limit. Windows final connected/bypass, processor and
 actual UI 64/128 pass, including send-failure recovery, focused CLI changes and
@@ -81,7 +83,8 @@ Native finish/stop/panic cancellation now share that rule; explicit DEL resets
 it. Tests inspect actual audio-owned EQ fields, not only the UI model. All 22
 unchanged original stopRecording cases, Windows production/external CLI and real
 64/128 main CANCEL pointers pass. Focused bandwidth CLI (`eq ... width`) uses the
-same native inverse as graph handles. Final Linux repeat for this repair is next.
+same native inverse as graph handles. Final Linux core/processor/CLI/sanitizer
+checks for this repair pass on committed snapshot **b0ce92d**.
 
 **Owner choice pending:** original EffectManager.update/triggerRebuild skips live
 graph changes during OD/SUB/MULT and scheduled STOP. The current unpublished
