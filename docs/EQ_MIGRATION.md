@@ -52,7 +52,10 @@ both block sizes (limit 1e-6). Linux ASan/UBSan/leaks **1/1 PASS (11.35s)** with
 no diagnostics. Logs: `build/eq-midi-core-final-windows.log`, `eq-midi-linux.log`,
 `eq-midi-processor-windows-{64,128}.log`, `eq-midi-asan-linux.log` and retained
 core/processor logs. The reference parameter gate was subsequently strengthened
-to exact Float32 equality; both OSes must run that final script after sync.
+to exact Float32 equality: final Windows **1/1 PASS (.79s)** and Linux
+**1/1 PASS (2.10s)** on script snapshot **392750e** after clean helper sync
+(`build/eq-midi-exact-final-{windows,linux}.log`). No product source changed
+after production snapshot 6766d40; later changes are tests, docs and packaging.
 
 Final actual Windows UI checks also replace the document with an active EQ learn:
 learning cancels, the accepted mapping and selected tab 20 survive, and its actual

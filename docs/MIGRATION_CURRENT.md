@@ -22,6 +22,8 @@ The ZIP now includes optional CLI, project/dependency notices, current EQ scope
 and exact source archive. An initial Git archive argument-splitting failure was
 fixed and packaging rerun. This preview predates the EQ MIDI increment below;
 it is not a claim of release readiness or completed original-asset permissions.
+The accepted EQ MIDI increment below is being packaged as a refreshed Windows
+preview using the same helper; the resulting manifest identifies its exact commit.
 
 ### In progress: original Q/eQ DSP and graphic editing — 9 November 2026
 
@@ -38,7 +40,8 @@ EQ/external CLI at both block sizes, retained core/processor MIDI regressions
 and Linux ASan/UBSan/leaks **1/1 (11.35s)**. CC-vs-GUI stereo peak error is **0**,
 limit **1e-6**. New actual Windows document-replacement tests retain the selected
 tab/mapping and cancel only temporary learning. The final parameter oracle uses
-exact Float32 equality. Dense 256-CC/20-stereo-loop Engine measurements show
+exact Float32 equality; final script **392750e** passes Windows **1/1 (.79s)**
+and Linux **1/1 (2.10s)**. Dense 256-CC/20-stereo-loop Engine measurements show
 zero observed overruns: worst Windows 64/128 **508.2/1068.2us**, Linux
 **978.429/1493.24us**, deadlines **1333.33/2666.67us**. Device/wrapper/round-trip
 latency and physical expression/Linux WebKit/listening remain separate checks.
