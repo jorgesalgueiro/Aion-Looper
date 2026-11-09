@@ -1006,15 +1006,15 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
   let action;const t={state,stopPending,queuedSourceReady:ready,undoCount:count,redoCount:count};
   const wait=Symbol('wait'),c={window:{AionCommandQueue:{wait}},snapshot:{tracks:[t],nextUndo:0,nextRedo:0},scheduler:{enqueue:resolver=>{action=resolver();}}};vm.createContext(c);
   vm.runInContext(source.slice(start,end)+'restoreHistory('+redo+','+(global?'null':'0')+');',c);
-  const enabled=count>0&&(['playing','stopped','stopping'].includes(state)||(state==='queued'&&!stopPending));
+  const enabled=count>0&&['playing','stopped','stopping','queued'].includes(state);
   if(state==='finalizing')assert.equal(action,wait,'Accepted history gesture waits without a premature depth decision');
   else assert.equal(!!action,enabled,'Shared local/global history dispatch guard');
   const lines=source.split('\n').filter(l=>l.includes('r.undo.disabled=')||l.includes('r.redo.disabled='));assert.equal(lines.length,2);
   const r={undo:{},redo:{}};const ui={r,t,active:true};vm.createContext(ui);vm.runInContext(lines.join('\n'),ui);
   assert.equal(r.undo.disabled,!enabled);assert.equal(r.redo.disabled,!enabled);
-  const line=source.split('\n').find(l=>l.includes('const historyAvailable='));assert(line);const toolbar={snapshot:{tracks:[t]},available:false};vm.createContext(toolbar);vm.runInContext(line+'globalThis.available=historyAvailable(0);',toolbar);assert.equal(toolbar.available,['playing','stopped','stopping'].includes(state)||(state==='queued'&&!stopPending),'Global toolbar matches shared history state eligibility');
+  const line=source.split('\n').find(l=>l.includes('const historyAvailable='));assert(line);const toolbar={snapshot:{tracks:[t]},available:false};vm.createContext(toolbar);vm.runInContext(line+'globalThis.available=historyAvailable(0);',toolbar);assert.equal(toolbar.available,['playing','stopped','stopping','queued'].includes(state),'Global toolbar matches shared history state eligibility');
  }
- console.log('PASS: local/global history dispatch and original controls enabled before/after queued graph birth, excluding pending stops');
+ console.log('PASS: local/global history dispatch and original controls enabled before/after queued graph birth, including pending stops');
 }
 
 // Queued MULT shares one action for pre-birth doubling and constructed-source input capture.

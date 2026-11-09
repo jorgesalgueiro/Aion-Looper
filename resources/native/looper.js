@@ -145,7 +145,7 @@
             const target=id??snapshot[redo?'nextRedo':'nextUndo'],t=snapshot.tracks[target];
             // Original empty history is a no-op. Resolve at dispatch so a rapid
             // repeated gesture uses the last acknowledged depth, not stale UI.
-            if(!t?.[redo?'redoCount':'undoCount']||!(['playing','stopped','stopping'].includes(t.state)||(t.state==='queued'&&!t.stopPending)))return null;
+            if(!t?.[redo?'redoCount':'undoCount']||!(['playing','stopped','stopping','queued'].includes(t.state)))return null;
             return {action:redo?(id===null?'redoGlobal':'redo'):(id===null?'undoGlobal':'undo'),track:id??0,value:0};
         },{track:id});
         const multiply=id=>scheduler.enqueue(()=>{
@@ -385,7 +385,7 @@
             if(document.activeElement!==metroVolume)metroVolume.value=snapshot.metronomeVolume??0.5;
             document.getElementById('metroVolDisplay').textContent=Number(snapshot.metronomeVolume??0.5).toFixed(2);
             stopAll.disabled=!active;clearAll.disabled=!active||busy;
-            const historyAvailable=id=>Number.isInteger(id)&&id>=0&&(['playing','stopped','stopping'].includes(snapshot.tracks[id]?.state)||(snapshot.tracks[id]?.state==='queued'&&!snapshot.tracks[id].stopPending));
+            const historyAvailable=id=>Number.isInteger(id)&&id>=0&&['playing','stopped','stopping','queued'].includes(snapshot.tracks[id]?.state);
             globalUndo.disabled=!active||!historyAvailable(snapshot.nextUndo);
             globalRedo.disabled=!active||!historyAvailable(snapshot.nextRedo);
             globalUndo.textContent=snapshot.nextUndo>=0?`UNDO L${snapshot.nextUndo+1}`:'UNDO';
@@ -424,8 +424,8 @@
                 r.reset.disabled=!active||editing||t.playbackRate===1;
                 r.retrigger.disabled=!active||!t.length||editing;
                 r.stut.disabled=!active||t.state!=='playing';r.stut.classList.toggle('btn-active',!!t.stuttering);
-                r.undo.disabled=!active||!t.undoCount||!(['playing','stopped','stopping'].includes(t.state)||(t.state==='queued'&&!t.stopPending));
-                r.redo.disabled=!active||!t.redoCount||!(['playing','stopped','stopping'].includes(t.state)||(t.state==='queued'&&!t.stopPending));
+                r.undo.disabled=!active||!t.undoCount||!(['playing','stopped','stopping','queued'].includes(t.state));
+                r.redo.disabled=!active||!t.redoCount||!(['playing','stopped','stopping','queued'].includes(t.state));
                 r.reverse.checked=!!t.reverse;
                 r.mult.disabled=!active||!t.length||!['playing','stopped','stopping','multiplying','queued'].includes(t.state)||snapshot.tracks.some((other,id)=>id!==i&&['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(other.state));
                 r.normalize.disabled=!active||!t.length||!['playing','stopped','queued','stopping'].includes(t.state)||snapshot.tracks.some(t=>['armed','recording','overdubbing','substituting','multiplying','finalizing'].includes(t.state));

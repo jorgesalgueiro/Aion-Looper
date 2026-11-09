@@ -358,7 +358,8 @@ bool LoopBank::restore(Track& track,std::uint32_t id,bool redo) noexcept {
     auto& fromCount=redo?track.info.redoCount:track.info.undoCount;
     auto& toCount=redo?track.info.undoCount:track.info.redoCount;
     const bool prebirth=track.info.state==LoopState::queued&&track.queuedSourcePending&&!track.queuedSourceTicket;
-    const bool stopping=track.info.state==LoopState::stopping;
+    const bool stopping=track.info.state==LoopState::stopping
+        ||(track.info.state==LoopState::queued&&track.info.stopPending&&hasPreparedQueuedSource(track,true));
     const bool running=track.info.state==LoopState::playing||hasPreparedQueuedSource(track);
     if(!track.clip||!fromCount||toCount>=to.size()||track.storageVersion==std::numeric_limits<std::uint64_t>::max()||(!running&&track.info.state!=LoopState::stopped&&!prebirth&&!stopping))return false;
     const auto restored=from[fromCount-1];

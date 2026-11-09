@@ -48,6 +48,7 @@ void stoppingNormTests();
 void stoppingHistoryTests();
 void stoppingMultiplyTests();
 void queuedStopMultiplyTests();
+void queuedStopHistoryTests();
 void pendingRetriggerTests();
 void queuedEarlyRestartTests();
 void prebirthNormTests();
@@ -113,6 +114,7 @@ int main(int argc,char** argv) {
     if(argc==2&&std::string_view(argv[1])=="--stopping-history"){stoppingHistoryTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--stopping-multiply"){stoppingMultiplyTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--queued-stop-multiply"){queuedStopMultiplyTests();return 0;}
+    if(argc==2&&std::string_view(argv[1])=="--queued-stop-history"){queuedStopHistoryTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--pending-retrigger"){pendingRetriggerTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--early-restart"){queuedEarlyRestartTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--stopping-norm"){stoppingNormTests();return 0;}

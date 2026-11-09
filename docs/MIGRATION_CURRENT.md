@@ -15,6 +15,28 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### Under acceptance: queued PLAY with STOP pending Undo/Redo — 9 November 2026
+
+Next slice acceptance: unchanged `Loop.undo/redo` restores stored PCM/history
+without restarting the constructed future graph or changing its original start,
+STOP or older Apply. Preserve pre-grid silence/visual zero and post-grid source
+PCM/progress through STOP, forward/reverse and same/following-grid STOP. Local,
+global, GUI and CLI share native restore; cover cancellation/prepare, full-pool
+growth rejection, rapid history, NORM and 64/128 with no callback new/delete.
+Current guards reject this valid state. Keep the accepted RTRG work below intact.
+
+Initial reproduction `build/queued-stop-history-repro-windows.log`: native Undo
+rejected the first unchanged-JS same-grid case. Native restore now treats a
+constructed pending-STOP queue as a stopping graph, freezing its source and
+retaining its visual clock for activation. Shared GUI/local/global controls admit
+the state; no IDs/schema/assets/dependencies change. Windows original-JS **120
+cases**, **432 exact stereo WAVs**, **5,148,336 frames**, peak **6.37177635e-8**,
+unchanged **1e-6** PCM and **1e-12** progress limits PASS. Actual Engine **152**
+cases and frontend admission PASS. Original local/global pointers PASS at 64 so
+far; 128, retained regressions, four new production GUI/CLI RPC cases, Linux and
+sanitizers are pending/running. This slice is not yet accepted. Logs use
+`build/queued-stop-history-*` per checkout.
+
 ### Implemented preview: pending RTRG and integrated core-button combinations — 9 November 2026
 
 Acceptance: original `Loop.retrigger/play/_teardown` starts an unborn queued

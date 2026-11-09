@@ -1035,7 +1035,7 @@ void pendingRetriggerTests(){
     // It has no old queue, graph, STOP, STUT or Apply to cancel. After RTRG every
     // actual stereo sample must match from the first callback, including fades.
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(unsigned state=0;state<3;++state)for(unsigned edit=0;edit<11;++edit){
-        if((edit==3&&state==1)||(edit==5&&state!=2))continue; // Unported queued-STOP history; STUT requires playing.
+        if(edit==5&&state!=2)continue; // STUT requires playing; queued-STOP history is now ported.
         Fixture f(block);f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
         f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);f.prepare();f.record(id);f.command(LoopAction::stopImmediate,id);for(unsigned n=0;n<8;++n)f.cycle();
         const auto source=id?0u:1u;if(edit==4){f.record(source);f.command(LoopAction::stopImmediate,source);for(unsigned n=0;n<8;++n)f.cycle();}
@@ -1196,9 +1196,9 @@ void stoppingMultiplyTests(){
     check(allocations.load()==0,"Stopping MULT zero callback new/delete");std::cout<<"PASS: stopping MULT "<<cases<<" Engine 64/128 exact retained-source stereo, STOP/phase, input/no-input, worker delay/OOM/cancel/prepare/full pool and zero callback new/delete\n";
 }
 
-void stoppingHistoryTests(){
+void stoppingHistoryTestsImpl(bool queued){
     using namespace aion;unsigned cases=0;
-    const auto setup=[](Fixture& f,unsigned id,bool reverse,bool lengthChange,bool pending=false,unsigned capacity=81920){
+    const auto setup=[queued](Fixture& f,unsigned id,bool reverse,bool lengthChange,bool pending=false,unsigned capacity=81920,bool later=false){
         f.engine=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
         f.control=std::make_unique<Engine>(MeterEventScope::acceptedPlayback,QueuedStartMode::messageCallback);
         for(auto* e:{f.engine.get(),f.control.get()}){e->prepare(48000,capacity,{true,48000,0});e->setMonitoring(false);e->setTarget(1);}
@@ -1206,23 +1206,30 @@ void stoppingHistoryTests(){
         f.command(LoopAction::overdub,id);f.cycle();f.command(LoopAction::finish,id);f.cycle(true);f.command(LoopAction::stopImmediate,id);f.cycle();
         if(lengthChange){f.command(LoopAction::multiply,id);f.cycle(true);}
         for(auto* e:{f.engine.get(),f.control.get()})check(e->enqueueLoop({LoopAction::reverse,id,0,e->generation(),0,reverse?1.:0.}),"Stopping history direction");
-        f.command(LoopAction::play,id);f.cycle();for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
-        if(pending)f.command(LoopAction::applyStart,id);f.command(LoopAction::stop,id);f.cycle();check(f.view->tracks[id].state==LoopState::stopping,"History fixture has actual scheduled STOP");
+        if(queued){
+            MeterGraphEvent discarded;while(f.engine->popMeterGraphEvent(discarded)){}
+            for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});
+            f.command(LoopAction::play,id);f.cycle();const auto q=f.next(MeterGraphEventKind::queuedPlay,id);const auto grid=f.view->tracks[id].scheduledFrame;
+            for(auto* e:{f.engine.get(),f.control.get()}){LoopCommand birth{LoopAction::meterQueuedGraphRequest,id,0,e->generation(),0,0};birth.meterGraphTicket=1;birth.meterQueueId=q.queueId;birth.meterBufferId=q.bufferId;check(e->enqueueLoop(birth),"History constructed future source callback");}
+            f.cycle();(void)f.next(MeterGraphEventKind::started,id);(void)f.next(MeterGraphEventKind::queuedGraphAccepted,id);
+            if(later)while(f.engine->clock()+f.block<grid-960)f.cycle();
+        }else{f.command(LoopAction::play,id);f.cycle();for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({SyncMode::fixed,137.3,1,1,4,false});}
+        if(pending)f.command(LoopAction::applyStart,id);f.command(LoopAction::stop,id);f.cycle();check(f.view->tracks[id].state==(queued?LoopState::queued:LoopState::stopping)&&(!queued||f.view->tracks[id].stopPending),"History fixture has actual source and scheduled STOP");
     };
     // Only the observed engine changes history: every subsequent stereo sample
     // must still equal the original, unedited source through its STOP deadline.
-    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool global:{false,true})for(bool lengthChange:{false,true})for(bool pending:{false,true}){
-        Fixture f(block);setup(f,id,reverse,lengthChange,pending);const auto before=f.view->tracks[id];
+    for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(bool reverse:{false,true})for(bool global:{false,true})for(bool lengthChange:{false,true})for(bool pending:{false,true})for(bool later:{false,true}){if(!queued&&later)continue;
+        Fixture f(block);setup(f,id,reverse,lengthChange,pending,81920,later);const auto before=f.view->tracks[id];
         for(bool redo:{false,true,false}){
             const auto action=global?(redo?LoopAction::redoGlobal:LoopAction::undoGlobal):(redo?LoopAction::redo:LoopAction::undo);
             check(f.engine->enqueueLoop({action,id,++f.request,f.engine->generation(),0,0}),"Observed stopping history command");f.cycle();const auto now=f.view->tracks[id];
-            check(!f.view->rejected&&now.state==LoopState::stopping&&now.scheduledFrame==before.scheduledFrame
+            check(!f.view->rejected&&now.state==before.state&&now.scheduledFrame==before.scheduledFrame
                 &&now.phaseApplyFrame==(before.phaseApplyFrame>f.engine->clock()?before.phaseApplyFrame:0),"Undo/Redo preserves stopping source and existing deadlines");
             check(now.undoCount==before.undoCount-(redo?0:1)&&now.redoCount==(redo?0:1)&&now.length==(lengthChange&&!redo?before.length/2:before.length),"Local/global stopping history restores exact depth/length");
-            if(!pending)check(now.stutterClock&&now.sourceRevision==before.sourceRevision,"History keeps source identity and original visual clock");
+            if(!pending)check(now.stutterClock==!queued&&now.sourceRevision==before.sourceRevision,"History keeps source identity and original visual clock");
         }
-        while(f.engine->clock()<before.scheduledFrame){f.cycle();if(f.engine->clock()<before.scheduledFrame)check(f.view->tracks[id].stutterClock,"Stopping history visual clock survives an older pending phase source");}
-        for(unsigned n=0;n<1024/block;++n)f.cycle();check(f.view->tracks[id].state==LoopState::stopped&&!f.view->tracks[id].stutterClock,"Original stop retires history-held audio and visual clock");
+        while(f.engine->clock()<before.scheduledFrame){f.cycle();if(f.engine->clock()<before.scheduledFrame)check(f.view->tracks[id].stutterClock==(!queued||f.view->tracks[id].state==LoopState::stopping),"History visual clock retains pre-grid suppression and survives old pending phase");}
+        if(queued){while(f.engine->clock()<before.scheduledFrame+static_cast<std::uint64_t>(std::ceil(60./137.3*48000))+1024)f.cycle();}else for(unsigned n=0;n<1024/block;++n)f.cycle();check(f.view->tracks[id].state==LoopState::stopped&&!f.view->tracks[id].stutterClock,"Original stop retires history-held audio and visual clock");
         f.command(LoopAction::clear,id);for(unsigned n=0;n<16;++n)f.cycle();++cases;
     }
     for(unsigned block:{64u,128u})for(unsigned id:{0u,19u})for(unsigned cancel=0;cancel<5;++cancel){
@@ -1236,11 +1243,14 @@ void stoppingHistoryTests(){
         Fixture f(block);setup(f,id,false,true,false,8192);f.command(LoopAction::undo,id);f.cycle();
         for(auto* e:{f.engine.get(),f.control.get()})e->configureSync({}); // Fill with manual takes without changing the owned STOP deadline.
         for(unsigned other=0;other<LoopBank::trackCount;++other)if(other!=id&&f.view->freeFrames){f.record(other);f.command(LoopAction::stopImmediate,other);f.cycle();}
-        const auto before=f.view->tracks[id];check(!f.view->freeFrames,"History growth fixture fills capture pool");
+        const auto before=f.view->tracks[id];check(!f.view->freeFrames,"History growth fixture fills capture pool");if(queued)check(before.state==LoopState::queued&&before.stopPending,"Growth rejection is tested before queued start/STOP");
         f.command(LoopAction::redo,id);f.cycle();check(f.view->rejected&&f.view->tracks[id].waveformId==before.waveformId&&f.view->tracks[id].redoCount==before.redoCount,"Full-pool stopping Redo preserves PCM/history atomically");++cases;
     }
-    check(allocations.load()==0,"Stopping history no callback new/delete");std::cout<<"PASS: stopping history "<<cases<<" Engine 64/128 local/global, exact retained-source stereo, STOP/phase deadlines, cancel/prepare/full pool and zero callback new/delete\n";
+    check(allocations.load()==0,"Stopping history no callback new/delete");std::cout<<"PASS: "<<(queued?"queued STOP history ":"stopping history ")<<cases<<" Engine 64/128 local/global, exact retained-source stereo, STOP/phase deadlines, cancel/prepare/full pool and zero callback new/delete\n";
 }
+
+void stoppingHistoryTests(){stoppingHistoryTestsImpl(false);}
+void queuedStopHistoryTests(){stoppingHistoryTestsImpl(true);}
 
 void stoppingNormTests(){
     using namespace aion;unsigned cases=0;
@@ -2593,7 +2603,7 @@ void meterQueuedTests(){
     queuedOverlapCapacityTests();
     queuedChainCapacityTests();
     queuedTripleCapacityTests();
-    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();stoppingHistoryTests();stoppingMultiplyTests();queuedStopMultiplyTests();pendingRetriggerTests();normPendingTests();
+    queuedHistoryTests();postbirthHistoryTests();stoppingMergeTests();queuedMergeDestinationTests();queuedMergeSourceTests();postbirthMultiplyTests();queuedMultiplyInputTests();prebirthMultiplyTests();prebirthNormTests();queuedNormTests();stoppingNormTests();stoppingHistoryTests();stoppingMultiplyTests();queuedStopMultiplyTests();pendingRetriggerTests();queuedStopHistoryTests();normPendingTests();
     queuedEarlySpeedTests();
     queuedEarlyRestartTests();
     queuedEarlyControlTests();

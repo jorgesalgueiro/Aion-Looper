@@ -141,6 +141,33 @@ let socket;
         const stopped=await state('stopped');assert.equal(stopped.tracks[0].scheduledFrame,0);assert(!stopped.tracks[0].stutterClock);await wait(s=>s.frame>=deadline.tracks[0].scheduledFrame&&s.outputPeak===0,'Original STOP silences retained MULT source');
         assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);console.log('PASS: original MULT/Undo/Redo/NORM pointers during scheduled STOP, waveform/length/history/source/clock/deadline and natural PCM silence at '+process.argv[2]);ws.close();return;
     }
+    if(process.argv.includes('--queued-stop-history-only')){
+        const fs=require('node:fs'),path=require('node:path');
+        await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(s=>s.masterGain===1,'Queued history audible master');await mode('off');
+        await click('#loop-action-0');await state('recording');await delay(350);await click('#loop-action-0');await state('playing');
+        await evaluate(`(async()=>{const s=await AionNative.request({operation:'snapshot'});return AionNative.request({operation:'loop',action:'overdub',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0});})()`);await state('overdubbing');await delay(150);await click('#loop-action-0');await state('playing');await click('#native-stop-all');await state('stopped');
+        await evaluate(`(()=>{for(const text of ['UNDO','REDO','MULT'])[...document.querySelectorAll('#loop-0 button')].find(e=>e.textContent.trim()===text).id='queued-history-'+text;})()`);
+        const rendered=async selector=>{for(let n=0;n<180;++n){if(await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});return e&&!e.disabled;})()`))return;await delay(40);}assert.fail('Queued history control not enabled: '+selector);};
+        await rendered('#queued-history-MULT');await exactlyOne(()=>click('#queued-history-MULT'),'Queued history length-changing seed');await state('stopped');
+        for(const reverse of [false,true])for(const global of [false,true]){
+            await mode('off');if(await evaluate(`document.getElementById('loop-0-reverse').checked`)!==reverse)await click('#loop-0-reverse');await parameter('#numBars',8);await parameter('#timeSigNum',1);await parameter('#bpmInput',60);await mode('static');
+            await wait(s=>s.gridPosition>.02&&s.gridPosition<.1,'Early eight-second history grid',14000);await click('#loop-action-0');await state('queued');fs.writeFileSync(path.join(pcmDirectory,'early-source-start'),'1');await wait(s=>s.tracks[0].queuedSourceReady,'History constructed source');
+            await exactlyOne(()=>evaluate(`(async()=>{const s=await AionNative.request({operation:'snapshot'});return AionNative.request({operation:'loop',action:'stop',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0});})()`),'Explicit queued history STOP');
+            const before=await wait(s=>s.tracks[0].state==='queued'&&s.tracks[0].stopPending,'Queued history with pending STOP');const undo=global?'#btnGlobalUndo':'#queued-history-UNDO',redo=global?'#btnGlobalRedo':'#queued-history-REDO';
+            for(const action of [undo,redo,undo]){
+                await rendered(action);await exactlyOne(()=>click(action),'Trusted queued STOP '+action);
+                const after=await wait(s=>s.tracks[0].length===(action===redo?before.tracks[0].length:before.tracks[0].length/2),'Queued history stored length');
+                assert.equal(after.tracks[0].state,'queued');assert(after.tracks[0].stopPending);assert(!after.tracks[0].stutterClock);assert.equal(after.outputPeak,0);
+                assert.equal(after.tracks[0].scheduledFrame,before.tracks[0].scheduledFrame);assert.equal(after.tracks[0].sourceRevision,before.tracks[0].sourceRevision);assert.equal(after.tracks[0].undoCount,before.tracks[0].undoCount-(action===redo?0:1));assert.equal(after.tracks[0].redoCount,action===redo?0:1);
+                if(action===redo)assert.equal(after.tracks[0].waveformId,before.tracks[0].waveformId);
+            }
+            const undone=await snapshot();await wait(s=>s.tracks[0].state==='stopped'&&s.frame>before.tracks[0].scheduledFrame+4800&&s.outputPeak===0,'Queued history original STOP and cleanup',14000);
+            await mode('off');await click('#loop-action-0');await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>.02,'Next PLAY uses restored history PCM');assert.equal((await snapshot()).tracks[0].waveformId,undone.tracks[0].waveformId);await click('#native-stop-all');await state('stopped');
+            await rendered(redo);await exactlyOne(()=>click(redo),'Restore fixture stored history');await wait(s=>s.tracks[0].waveformId===before.tracks[0].waveformId,'Restore exact history identity');
+            console.log('PASS: queued STOP history pointers reverse='+reverse+' global='+global+' at '+process.argv[2]);
+        }
+        assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);ws.close();return;
+    }
     if(process.argv.includes('--stopping-history-only')){
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
         await wait(s=>s.masterGain===1,'Stopping history audible master');await mode('off');

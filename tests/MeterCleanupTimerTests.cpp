@@ -613,6 +613,29 @@ void processorEarlyStartTests(bool& audioWatch){
     }
     std::cout<<"PASS: actual production GUI/CLI RPC Apply/Q/nudge/RTRG plus single/two/three-Apply-to-RTRG early/prefix overlap, pending/active NORM and early/scheduled-source speed before/after original source grid, real callback ownership, 5/50ms deadlines, audible replacement and retained clip at 64/128\n";
 }
+void processorQueuedStopHistoryTests(bool& audioWatch){
+    for(unsigned block:{64u,128u})for(bool global:{false,true}){
+        auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
+        const auto rpc=[&](const char* text){auto r=p->request({juce::JSON::parse(text)});check(static_cast<bool>(r["ok"]),"Queued STOP history production RPC");return r;};
+        rpc(R"({"operation":"setParameter","id":"syncMode","value":0})");rpc(R"({"operation":"setParameter","id":"masterGain","value":1})");rpc(R"({"operation":"setParameter","id":"inputMonitor","value":0})");
+        juce::AudioBuffer<float> audio(2,static_cast<int>(block));juce::MidiBuffer midi;midi.ensureSize(256);unsigned cycles=0;
+        const auto clock=[&]{return p->inspectCallbackClockAudioThread().endFrame;};
+        const auto cycle=[&]{const auto frame=clock();for(unsigned n=0;n<block;++n){const float value=.3f*static_cast<float>(std::sin((frame+n)*.037));audio.setSample(0,static_cast<int>(n),value);audio.setSample(1,static_cast<int>(n),-.5f*value);}audioWatch=true;p->processBlock(audio,midi);audioWatch=false;if(++cycles%4==0)rpc(R"({"operation":"snapshot"})");};
+        const auto command=[&](const char* action){auto* data=new juce::DynamicObject();juce::var request(data);data->setProperty("operation","loop");data->setProperty("action",action);data->setProperty("track",19);data->setProperty("generation",static_cast<int>(p->inspectCallbackClockAudioThread().generation));data->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis())+4000);check(static_cast<bool>(p->request({request})["ok"]),"Shared GUI/CLI queued STOP history action");};
+        cycle();command("record");for(unsigned n=0;n<512/block;++n)cycle();command("finish");cycle();command("overdub");for(unsigned n=0;n<512/block;++n)cycle();command("finish");cycle();command("stopImmediate");cycle();command("multiply");cycle();
+        const auto stored=rpc(R"({"operation":"snapshot"})")["tracks"][19];check(static_cast<int>(stored["length"])==1024&&static_cast<int>(stored["undoCount"])==2,"Production queued history seeded with local and global history");
+        rpc(R"({"operation":"setParameter","id":"syncBpm","value":120})");rpc(R"({"operation":"setParameter","id":"syncBars","value":8})");rpc(R"({"operation":"setParameter","id":"syncNum","value":1})");rpc(R"({"operation":"setParameter","id":"syncMode","value":1})");p->setNonRealtime(false);command("play");cycle();rpc(R"({"operation":"snapshot"})");check(p->requestQueuedMeterGraphMessageThread(19),"Production history constructs its actual future graph");cycle();rpc(R"({"operation":"snapshot"})");command("stop");cycle();const auto before=rpc(R"({"operation":"snapshot"})")["tracks"][19];
+        check(before["state"].toString()=="queued"&&static_cast<bool>(before["stopPending"]),"Production history actually has queued STOP");
+        for(bool redo:{false,true,false}){command(global?(redo?"redoGlobal":"undoGlobal"):(redo?"redo":"undo"));cycle();const auto s=rpc(R"({"operation":"snapshot"})");const auto t=s["tracks"][19];
+            check(!static_cast<bool>(s["rejected"])&&t["state"].toString()=="queued"&&static_cast<bool>(t["stopPending"])&&!static_cast<bool>(t["stutterClock"])
+                &&static_cast<juce::int64>(t["scheduledFrame"])==static_cast<juce::int64>(before["scheduledFrame"])&&!static_cast<juce::int64>(t["phaseApplyFrame"])
+                &&static_cast<int>(t["length"])==(redo?1024:512)&&static_cast<int>(t["undoCount"])==(redo?2:1)&&static_cast<int>(t["redoCount"])==(redo?0:1),"Production shared history restores storage without early source/phase/STOP changes");
+        }
+        const auto grid=static_cast<std::uint64_t>(static_cast<juce::int64>(before["scheduledFrame"]));while(clock()<grid+1024){cycle();check(audio.getMagnitude(0,static_cast<int>(block))==0,"Production history retains silent same-grid start/STOP");}
+        const auto stopped=rpc(R"({"operation":"snapshot"})");check(stopped["tracks"][19]["state"].toString()=="stopped"&&!static_cast<bool>(stopped["rejected"]),"Production history cannot revive source after old STOP");
+    }
+    std::cout<<"PASS: four production GUI/CLI local/global queued STOP Undo/Redo cases at 64/128, retained source/deadline, exact lengths/depth, visual suppression, natural silence and no processBlock new/delete\n";
+}
 void processorBufferReceiptTests(bool& audioWatch){
     for(unsigned block:{64u,128u}){
         auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,static_cast<int>(block));p->prepareToPlay(48000,static_cast<int>(block));p->setNonRealtime(true);
@@ -1630,6 +1653,7 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     clearDispatcherTests(audioWatch);
     processorBufferReceiptTests(audioWatch);
     processorEarlyStartTests(audioWatch);
+    processorQueuedStopHistoryTests(audioWatch);
     processorQueuedHistoryTests(audioWatch);
     processorQueuedMultiplyTests(audioWatch);
     processorPostbirthMultiplyTests(audioWatch);processorQueuedInputMultiplyTests(audioWatch);processorMultiplyWorkerMetadataTests(audioWatch);
