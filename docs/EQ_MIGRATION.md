@@ -70,8 +70,11 @@ Initial Windows sound baseline: **480** unchanged-worklet cases, **2,968,872 ste
 frames**, **972 nonzero tail segments**, maximum **4.99755863e-8** under **1e-6**.
 Includes all ten presets, every active band/gain/Q boundary, mono/absent input,
 silence tails, bypass re-entry/reset and 64/128/37 processing subdivisions.
+The final Windows and Linux corpus adds the retained full unit impulse/tail:
+**481 cases / 3,034,408 stereo frames per OS**, same **4.99755863e-8** peak.
 Analytical automation: **15 cases**, **184,335 stereo frames** (rerun after the
-browser correction below); it is separate from actual browser evidence.
+browser correction below), maximum **4.99999986e-10** on both OSes; it is
+separate from actual browser evidence.
 
 Actual WebView2: **48 comparisons**, **270,336 mono/stereo frames**, maximum
 **8.57054142e-8**, **1e-6** peak / **1e-5** relative-RMS limits. Defaults/Radio/
@@ -95,12 +98,18 @@ product AudioContext. The helper owns/guards port 9236 and closes its own app.
 
 Curve acceptance: **48 frequency points** from actual Float32 steady-tone output
 at 8/22.05/48/96 kHz, flat/all-active settings, maximum amplitude-response error
-**2.01394e-9** under **1e-6** on Windows. **60 bandwidth ranges / 120 inverse
+**2.01394e-9** under **1e-6** on both OSes. **60 bandwidth ranges / 120 inverse
 edge checks** cover Q 0.1/0.707/1/10, 20/1000/22000 Hz and five sample rates,
 including the approved effective-frequency limit. Filter construction, validation,
 configuration, reset, smoothing, rendering and curve/handle math show zero
 `new/delete` in the scoped allocation guard. This is not a measured production
 callback or a full-bank performance claim.
+Added **240 half-gain response checks**, boost/cut at both edges, maximum
+**6.7677e-12** under **1e-6** on both OSes, so a self-consistent but incorrect
+range/inverse pair cannot pass alone. Finite Float32 overflow is contained
+without contaminating the other channel. Both expanded unit cases also pass
+Linux ASan/UBSan/leaks. Single-owner instances are explicit: UI curve calculation
+must use its own instance/settings snapshot, never read a live audio filter.
 
 One newly introduced curve test was corrected rather than changing sound:
 an ideal state-space transfer function was incorrectly asserted equal to a
@@ -126,10 +135,51 @@ node tests/EqAutomationParity.cjs build/windows-core/Release/aion_eq_probe.exe
 Linux commands after safe committed-snapshot sync:
 
 ```sh
+# Regenerate once when newly adding CMake targets; retain existing cache options.
+cmake -S . -B build/linux
 cmake --build build/linux --target aion_eq_tests aion_eq_probe -j2
 ctest --test-dir build/linux -R '^(eq_realtime_contract|js_native_eq_kernel|js_native_eq_automation)$' --no-tests=error --output-on-failure
+cmake -S . -B build/overlap-asan
+cmake --build build/overlap-asan --target aion_eq_tests aion_eq_probe -j2
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build/overlap-asan -R '^(eq_realtime_contract|js_native_eq_automation)$' --no-tests=error --output-on-failure
 ```
 
-Linux results, sanitizer/curve measurements and final commit are recorded in the
-current handoff after execution. Reuse prior accepted loop/source regressions:
-this checkpoint does not yet change the production callback, UI, IDs or state.
+Windows **4/4** focused CTests: **42.59s**. Linux **4/4**: **42.28s** (the identical
+set was inadvertently repeated after its first result was collected late;
+**43.74s**, not extra coverage). Linux existing Makefile sanitizer cache required
+one CMake regeneration for the new targets; its initial missing-target error was
+setup, not a DSP failure. ASan/UBSan/leak subset **2/2**, **6.83s**, no diagnostics.
+After adding overflow/half-gain checks, only the affected unit target was rebuilt
+and rerun on Windows and Linux Release plus Linux sanitizers; PASS. Existing
+sound/browser suites were reused because DSP did not change.
+
+Warmed Release measurement, identical `tests/EqBenchmark.cpp`, separate OS
+caches and no concurrent task test/build job: 48 kHz, **20 stereo kernels**, all
+ten bands active, **512 warm + 2048 measured callbacks per scenario**, steady and
+all-parameter targets every 16 callbacks. No production routing/mixing, driver,
+other engines, worst-case/long-session or round-trip-latency claim.
+
+| Block | Windows worst observed kernel time | Linux worst observed kernel time | Buffer deadline |
+| --- | --- | --- | --- |
+| 64 | 318.5 us | 369.077 us | 1333.33 us |
+| 128 | 534.5 us | 2254.67 us | 2666.67 us |
+
+No observed overrun in these scoped runs. Linux's 128-frame steady run included
+the 2254.67 us outlier (p99 503.699 us); do not hide it or infer an OS ranking.
+Build/run the manual utility with `--target aion_eq_benchmark`, then
+`build/windows-core/Release/aion_eq_benchmark.exe` or
+`build/linux/aion_eq_benchmark`. It is intentionally not a CTest timing gate.
+
+Implementation **78fa041**, strengthened acceptance **fc6edc5**. Logs in each
+checkout: `build/eq-{final,build,benchmark}-OS.log`, Windows browser
+`build/eq-webaudio-windows.log`, Linux `build/eq-sanitizer-linux.log` and final
+expanded units `build/eq-unit-final{-sanitizer}-linux.log`.
+
+Next is connected acceptance: shared bounded GUI/CLI commands, versioned state,
+original panel/presets plus approved graph points/ranges. Align the component's
+128-frame clock with the connected graph's render origin, preserve graph reuse/
+teardown and bypass fades, and cover record/OD/SUB exclusion, source/clear/reset,
+queue rejection and editor lifecycle. Until then the product effect stays
+disabled. Reuse prior accepted loop/source regressions: this checkpoint does not
+yet change the production callback, UI, IDs or state. Linux WebKit interaction,
+physical drivers/hardware, listening, deferred wrappers and release remain open.

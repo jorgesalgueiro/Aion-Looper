@@ -18,7 +18,7 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | DEL; MERGE source / GO | Native cleanup and immutable worker merge, original confirmation/history/PCM gates | Queued-source clone/mix verified in Windows/Linux audio and Windows pointer tests; queued-destination and scheduled-stop source/destination audio/ownership and Windows pointer checks also pass; other stopping-state controls require their own eligibility audit |
 | Waveform click WAV | Native stored-PCM export, filenames, bounded leases and picker lifecycle | OS cancel/overwrite and non-Windows dialogs remain separate checks |
 | SAVE (Dry/Wet) | **Unported; disabled** | Native wet rendering, chain state, rate/pan/volume, three-second tail, paired filenames and lifecycle checks; dry-only export is not equivalent |
-| FX, FULL PRESET, CHAIN PRESET, manual chain, per-effect controls | **Unported; disabled**, except the independently ported Reverse control | Native effects/state/presets plus original GUI and shared CLI, deterministic sound and interaction acceptance |
+| FX, FULL PRESET, CHAIN PRESET, manual chain, per-effect controls | **Product integration unported; disabled**, except Reverse. Original Q/eQ isolated DSP/smoothing and curve/bandwidth math now pass Windows/Linux and actual Windows WebAudio sound gates; [EQ_MIGRATION.md](EQ_MIGRATION.md) | Connect shared GUI/CLI/state/presets and owner-approved graphic point/range editing; complete routing/lifecycle/real UI acceptance before enabling Q/eQ, then remaining effects |
 
 Finalization dispatch, rapid queued history/MULT and the integral-sample source
 fade repair are verified. Worker/source pre-start tempo ordering is verified.
@@ -34,8 +34,9 @@ The owner confirmed core
 looping/editing first. Each functional
 slice must pass its relevant Windows/Linux tests before the next. The final
 integrated pass must exercise combinations rather than merely enable controls.
-No new effects implementation, dependency, package or product redesign is implied
-by this inventory. Existing sessions, IDs, expanded capacity and logo are preserved.
+Q/eQ DSP groundwork is in progress; its complete product controls remain disabled.
+No dependency change or package is implied by this inventory. Existing sessions,
+IDs, expanded capacity and logo are preserved.
 
 Retained input-capture MULT acceptance: a constructed
 queued source corresponds to the original JS playing graph before its audible

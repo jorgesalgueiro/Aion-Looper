@@ -48,10 +48,25 @@ same **1e-6** amplitude limit (Windows peak **2.01394e-9**, 48 frequency points)
 and test-change rationale are in EQ_MIGRATION. Browser worklet loading uses one
 debugger-owned test document; product CSP/native-only audio remain unchanged.
 
-Next: finish Linux kernel/reference/sanitizer verification, then connect this
-same DSP to bounded GUI/CLI commands and compatible effect state, original EQ
+Linux **4/4 focused CTests PASS, 42.28s**, same case/frame/peak counts as Windows;
+ASan/UBSan/leaks **2/2 PASS, 6.83s**, no diagnostics. Strengthened overflow and
+**240 half-gain checks** pass Windows/Linux Release plus Linux sanitizers; peak
+half-gain amplitude error **6.7677e-12**. The exact same warmed 20-stereo-kernel
+Release fixture (all ten bands, steady/rapid-target) observed worst 64/128 times
+Windows **318.5/534.5us**, Linux **369.077/2254.67us**, deadlines
+**1333.33/2666.67us**, no observed overruns. Kernel-only measurements, not full
+callback/device/round-trip or worst-case guarantees; retain the Linux outlier.
+Implementation **78fa041**, added acceptance **fc6edc5**; exact commands/logs and
+the inadvertent duplicate Linux test run are recorded in EQ_MIGRATION.
+
+Next: connect this same DSP to bounded GUI/CLI commands and compatible effect state, original EQ
 controls/presets and the approved interactive graph. Complete lifecycle/routing/
 bypass-fade/record-capture and actual 64/128 UI acceptance before enabling it.
+Curve evaluation belongs to a separate UI/worker-owned instance/settings snapshot,
+never concurrent reads of the live audio filter. Connect the render-quantum origin
+and original graph reuse/teardown explicitly; isolated time-zero worklet evidence
+does not establish those lifetimes. Original raw low-rate failures remain tests;
+the effective-frequency repair and graphic editing are owner-approved scope.
 Retain all prior accepted core-loop evidence below. No claim of product callback,
 full-bank/physical input, Linux WebKit, hardware or deferred-wrapper acceptance.
 

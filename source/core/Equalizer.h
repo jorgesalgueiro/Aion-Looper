@@ -41,6 +41,9 @@ bool eqPeakQ(float frequency,double edge,double sampleRate,float& q) noexcept;
 // of each original 128-frame render quantum, independent of device block size.
 // Storage is fixed; construction, configuration, reset and processing allocate
 // nothing. Absent input channels receive zero while their filter tails continue.
+// Instances are single-owner, not concurrently readable. A GUI/worker curve
+// uses its OWN instance prepared from a coherent accepted-settings snapshot;
+// never call magnitude/configure/getters across threads on a live audio instance.
 class Equalizer {
 public:
     // A failed prepare/configure is atomic: it preserves the complete old filter.
@@ -50,7 +53,7 @@ public:
     void process(const float* left, const float* right, float* outLeft,
                  float* outRight, std::size_t frames) noexcept;
     bool ready() const noexcept { return prepared; }
-    // Message/UI-side curve evaluation; no PCM scan, FFT or audio-thread traffic.
+    // On a separately owned curve instance: no PCM scan, FFT or audio telemetry.
     bool magnitude(double frequency,double& amplitude) const noexcept;
 private:
     struct Coefficients { double a1=0,a2=0,a3=0,m0=0,m1=0,m2=0; };
