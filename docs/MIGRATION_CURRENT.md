@@ -15,7 +15,7 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
-### Under acceptance: pending RTRG and integrated core-button combinations — 9 November 2026
+### Implemented preview: pending RTRG and integrated core-button combinations — 9 November 2026
 
 Acceptance: original `Loop.retrigger/play/_teardown` starts an unborn queued
 PLAY or stopping graph immediately, cancels its old queue/STOP/Apply/STUT and
@@ -25,22 +25,46 @@ rate and rapid/deferred RTRG, obsolete callbacks, cancellation and prepare at
 64/128. Capture/finalizing/empty states remain guarded in the processor; the
 existing GUI command FIFO waits through finalization. GUI/CLI share this action.
 
-The implementation retires old source ownership before publishing a fresh
+Implementation **bcb65c8**, direct CLI/shortcut coverage **531386c**. Native
+retires old source ownership before publishing a fresh
 immediate graph receipt. The original RTRG button now admits those states. IDs,
 schema, reference/preserved assets/logo and dependencies are unchanged. Initial
 unborn rejection: `build/pending-rtrg-repro-windows.log`.
 
-Windows evidence so far: original JS **240 cases**, **480 exact stereo WAVs**,
-**10,829,592 frames**, peak error **8.29155743e-8**, unchanged **1e-6** limit;
-Start metadata <=**1e-12**. Actual Engine **250 cases**: independent stopped-source
+Original JS **240 cases**, **480 exact stereo WAVs** and **10,829,592 frames per
+OS**, PASS under the unchanged **1e-6** PCM limit; Windows measured peak error
+**8.29155743e-8**. Start metadata <=**1e-12**. Actual Engine **250 cases per OS**:
+independent stopped-source
 baseline compares every stereo sample from the first fresh callback (including
 fades), tracks 0/19, reverse/rate/edit combinations, late callbacks, cancellation,
 same/new-rate prepare and zero callback new/delete. Retained early-restart checks
 PASS (64 source cases, 64 cancellation/FIFO cases, 32 silent-tail cases).
-Frontend admission PASS. Production Standalone, mouse host and processor build PASS.
-Actual Windows UI combinations, retained regressions, connected audio audit,
-Linux and sanitizer acceptance are still running/pending; this slice is not yet
-declared accepted. Logs use `build/pending-rtrg-*` in each checkout.
+Frontend admission **88 cases PASS**. Windows retained CTest **19/19 PASS,
+438.09s**, plus original STUT PASS; Linux **21/21 PASS, 1051.54s**, including the
+new corpus and frontend, plus original STUT PASS. Prior queued/stopping MULT,
+NORM, history and MERGE source modes pass with the updated oracle renderer.
+Connected capture/OD/SUB audit **126 cases**, **965,826 frames per OS**, peak
+**7.39475750e-8**, unchanged **1e-6** limit. Windows also ran `--loop-edits`,
+`--meter-queued` and `--meter-overlap`; both OSes retain **132** queued STOP MULT
+and **88** stopping-history Engine checks. No failing case/tolerance removed.
+
+Actual Windows UI **10 scenarios per block size**, PASS **64/128**: unborn queue,
+constructed queued STOP, sounding STOP, MULT/NORM/history/STUT/reverse-speed/MERGE
+then RTRG, rapid healthy taps and `/` during a paused real worker finalization.
+Old queue/STOP/cleanup deadlines pass without source revival or silencing the
+new nonzero playback; stored clip/history remain intact. The first fixture used
+the wrong `]` key and failed the deferred case. Corrected only test input to the
+unchanged original `/`; reran all 20 scenarios, without product/tolerance changes.
+
+Both Standalone builds and full production processor/external CLI suites PASS.
+New actual external `loop retrigger 1` cases cover unborn queue and scheduled
+STOP at 64/128, immediate PLAY, no old deadline and unchanged stored identity/
+length/history. Linux production/CLI ran alone after heavy checks. Linux Debug
+ASan/UBSan/leaks: new **250** Engine cases and retained **160** early-restart cases
+PASS, no diagnostics. Scope is synthetic PCM and production message-loop/CLI,
+not physical devices or driver latency. Logs use `build/pending-rtrg-*` in each
+checkout; final UI/CLI logs include `ui-final-windows` and
+`production-cli-final-{windows,linux}`.
 
 The early-restart regression's former unborn/stopping RTRG rejection expectations
 were implementation-coupled to this defect. They now assert immediate PLAY and
@@ -49,9 +73,52 @@ PCM checks remain. Stronger replacement evidence is the unchanged original-metho
 corpus plus the independent first-sample Engine comparison. The source oracle
 now honors actual source/volume disconnection at original teardown; its prior
 modes are rerun to protect the shared renderer. It excludes browser gain/fade
-envelopes/resampling and advancing worker latency. UI uses synthetic PCM through
-the production processor/editor, not physical drivers. Queued STOP Undo/Redo,
-FX/SAVE/presets, Linux WebKit/device checks and release gates remain pending.
+envelopes/resampling and advancing worker latency.
+
+After acceptance, identical ignored Release Engine timing fixtures ran Windows
+then Linux with no concurrent tests/builds: 48kHz stereo, 512-frame clip, 512 warm
+playing callbacks, **20 scenarios per OS** (unborn/queued STOP/sounding STOP,
+reverse and pending Apply), fresh/healthy RTRG, playback beyond the old deadline
+and clear. Maximum observed callbacks at 64/128: Windows **90.6/137.3us**, Linux
+**108.981/146.55us**, against **1333.33/2666.67us** deadlines. These are scoped
+Engine samples, not full processBlock/round-trip latency, a worst-case/full-bank
+guarantee, OS ranking or speedup. Harness `build/pending-rtrg-bench-src/bench.cpp`
+SHA256 `a820e4c13c02252cbe3c28372069964c6aba919658d7e240d0d1155d44fdf15e`;
+separate `build/pending-rtrg-bench-{windows,linux}` caches import each OS's current
+Release core; logs `build/pending-rtrg-bench-OS.log`.
+
+Focused reproduction commands (existing caches; CMake/CTest resolution and safe
+committed WSL sync in DEVELOPMENT_WORKFLOW.md; retained selections in CTest logs):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe aion_reference_probe aion_dsp_probe --parallel 2
+./build/windows-core/Release/aion_core_tests.exe --pending-retrigger
+./build/windows-core/Release/aion_core_tests.exe --early-restart
+node tests/QueuedMergeSources.cjs --pending-rtrg --native build/windows-core/Release/aion_start_probe.exe
+node tests/AudioParityAudit.cjs build/windows-core/Release/aion_reference_probe.exe
+cmake --build --preset windows-dev --target AionLooper_Standalone aion_mouse_host aion_midi_processor_tests --parallel 2
+./tools/TestMouseWorkflow.ps1 -PendingRetriggerOnly
+./build/windows/Release/aion_midi_processor_tests.exe
+```
+
+```sh
+# Commit in Windows and sync the clean mirror first; do not copy build caches.
+cmake --build build/linux --target aion_core_tests aion_start_probe aion_reference_probe aion_dsp_probe aion_midi_processor_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --pending-retrigger
+./build/linux/aion_core_tests --early-restart
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^js_native_pending_retrigger$'
+node tests/AudioParityAudit.cjs build/linux/aion_reference_probe
+cmake --build build/overlap-asan --target aion_core_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --pending-retrigger
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./build/overlap-asan/aion_core_tests --early-restart
+# Run alone after the heavy checks.
+./build/linux/aion_midi_processor_tests
+```
+
+Next: queued PLAY with STOP pending still guards local/global Undo/Redo; compare
+and port that eligibility before the effects/SAVE/preset engine. Broader Linux
+WebKit interaction, physical devices/drivers/latency, long-session/full-bank,
+deferred wrappers/DAWs and Apple/release gates remain separate. No package/push.
 
 ### Implemented preview: MULT on queued PLAY with STOP pending — 7 November 2026
 
@@ -67,7 +134,8 @@ Implementation **d744339**. Native now admits only a constructed pending-stop qu
 immutable source before storage replacement and retains the visual clock through
 original grid activation. Shared MULT GUI/CLI dispatch enables this state; public
 IDs/schema, preserved UI/reference/logo and dependencies are unchanged. Other
-queued STOP actions (including RTRG/history) retain their existing guards.
+queued STOP actions (RTRG/history) retained their guards at that checkpoint;
+the newer RTRG entry above supersedes that part of the historical status.
 
 Initial rejection `build/queued-stop-multiply-repro-windows.log`. The first
 implementation failed unchanged queued-state/paired-PCM assertions by making
