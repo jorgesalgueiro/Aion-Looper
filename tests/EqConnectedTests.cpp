@@ -98,6 +98,51 @@ static void liveStateControls(unsigned block,aion::LoopAction action){
     check(dryBytes==wetBytes,"live EQ edits/toggles/presets never enter stored PCM or capture feedback");
     std::cout<<"live EQ state "<<static_cast<unsigned>(expected)<<" / "<<block<<": peak error "<<error<<", audible edit "<<changed<<'\n';
 }
+static void midiEqControls(unsigned block){
+    using namespace aion;
+    auto gui=std::make_unique<Engine>(),midi=std::make_unique<Engine>();
+    for(auto* e:{gui.get(),midi.get()}){e->prepare(48000,32768);e->setMonitoring(false);check(e->enqueue({0,1})&&e->enqueueLoop({LoopAction::record,0,1,e->generation()}),"EQ MIDI capture fixture");}
+    std::array<float,128> gl{},gr{},ml{},mr{};float* g[]{gl.data(),gr.data()},* m[]{ml.data(),mr.data()};std::uint64_t frame=0;
+    auto render=[&](bool input,std::span<const MidiEvent> events={}){
+        for(unsigned i=0;i<block;++i){gl[i]=ml[i]=input?static_cast<float>(.13*std::sin((frame+i)*.073)):0;gr[i]=mr[i]=input?static_cast<float>(.11*std::cos((frame+i)*.039)):0;}
+        watch=true;gui->process(g,2,block,{},true);midi->process(m,2,block,events,true);watch=false;frame+=block;
+    };
+    for(unsigned n=0;n<2048/block;++n)render(true);
+    for(auto* e:{gui.get(),midi.get()})check(e->enqueueLoop({LoopAction::finish,0,2,e->generation()}),"EQ MIDI finish fixture");render(false);
+    for(auto* e:{gui.get(),midi.get()}){
+        check(e->enqueueLoop({LoopAction::play,0,3,e->generation()}),"EQ MIDI play fixture");
+        LoopCommand c{LoopAction::equalizer,0,4,e->generation()};c.equalizer={eqPresetValues(8),true,8};check(e->enqueueLoop(c),"EQ MIDI initial filter");
+    }
+    render(false);
+    MidiSettings mapping;mapping.enabled=true;mapping.bindings.fill(0);mapping.learnTarget=static_cast<int>(MidiSettings::eqBase+4);mapping.learnToken=1;mapping.learnGeneration=midi->generation();
+    check(midi->configureMidi(mapping),"EQ MIDI learn configured");
+    std::array<EqSettings,20> expected{};expected[0]={eqPresetValues(8),true,8};
+    unsigned request=10;double error=0;float peak=0;
+    auto target=[&](unsigned track,unsigned value,unsigned offset){
+        auto& settings=expected[track];settings.values[4]=eqMidiValue(4,value);settings.preset=0;
+        LoopCommand c{LoopAction::equalizer,track,request++,gui->generation()};c.frame=frame+offset;c.equalizer=settings;c.eqMask=1u<<4;
+        check(gui->enqueueLoop(c),"sample-accurate GUI reference for MIDI EQ");
+    };
+    auto compare=[&]{
+        for(unsigned i=0;i<block;++i){error=std::max({error,std::abs(static_cast<double>(gl[i])-ml[i]),std::abs(static_cast<double>(gr[i])-mr[i])});peak=std::max(peak,std::abs(ml[i]));}
+        for(unsigned track:{0u,19u})check(midi->inspectAudioThread(track).track.equalizer==expected[track],"EQ MIDI updates only selected tab, including preset-to-Custom");
+        const auto a=gui->inspectAudioThread().track,b=midi->inspectAudioThread().track;
+        check(a.state==b.state&&a.position==b.position&&a.length==b.length&&a.undoCount==b.undoCount,"EQ MIDI cannot enter transport/held/history paths");
+    };
+    // Learn consumes zero at 17; the following packet at 18 must work before any
+    // editor/message acknowledgement, using the same global coefficient clock.
+    const std::array<MidiEvent,2> burst{{{17,176,11,0,3},{18,191,11,127,3}}};target(0,127,18);render(false,burst);compare();
+    MidiLearnResult learned;check(midi->popMidiLearn(learned)&&learned.target==97&&midi->midiLearnCurrent(learned),"EQ MIDI captured result");
+    mapping.bindings[97]=learned.binding;mapping.learnTarget=-1;++mapping.learnToken;check(midi->configureMidi(mapping),"EQ MIDI accepted mapping handoff");
+    for(unsigned n=0;n<128;++n){
+        if(n==32||n==96){mapping.eqTrack=n==32?19:0;check(midi->configureMidi(mapping),"EQ MIDI selected tab changes");}
+        target(mapping.eqTrack,n,3);const MidiEvent event{3,static_cast<std::uint8_t>(176+n%16),11,static_cast<std::uint8_t>(n),3};render(false,{&event,1});compare();
+    }
+    check(error<=1e-6&&peak>.001f,"learned and preassigned EQ CC PCM matches sample-timed GUI, at 64/128");
+    mapping.bindings[97]=midiBinding(2,11,16);check(midi->configureMidi(mapping),"EQ MIDI channel filter");
+    const MidiEvent ignored{1,176,11,0,3};render(false,{&ignored,1});compare();
+    std::cout<<"EQ MIDI "<<block<<": same-block learn, all CC values/channels, selected-tab isolation, channel filter, PCM peak error "<<error<<'\n';
+}
 int main(int argc,char** argv){
     using namespace aion;
     const bool reference=argc==2&&std::string_view(argv[1])=="--reference";
@@ -216,6 +261,7 @@ int main(int argc,char** argv){
         std::cout<<"connected EQ "<<block<<" frames: peak error "<<error<<'\n';
     }
     for(unsigned block:{64u,128u})for(auto action:{LoopAction::overdub,LoopAction::substitute,LoopAction::multiply,LoopAction::stop})liveStateControls(block,action);
+    for(unsigned block:{64u,128u})midiEqControls(block);
     check(operations==0,"callback new/delete prohibited");
     std::cout<<"PASS batch atomicity, connected EQ/actual toggle gain, live OD/SUB/MULT/STOP controls and dry capture, epoch/mask rollback, panic/clear, full-queue bank, zero callback new/delete\n";
 }

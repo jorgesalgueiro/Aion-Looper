@@ -74,6 +74,25 @@ int main(int argc,char** argv){
         check(request(R"({"operation":"loop","action":"clear","track":19})")["ok"],"DEL accepted");
         check(!static_cast<bool>(request(R"({"operation":"equalizer","action":"toggle","track":19})")["ok"]),"EQ waits behind unacknowledged DEL barrier");
         state=process();check(!static_cast<bool>(state["tracks"][19]["equalizer"]["enabled"]),"DEL resets EQ");
+        check(request(R"({"operation":"midiConfig","action":"eqTrack","track":19})")["ok"],"EQ MIDI selected tab configured");
+        check(request(R"({"operation":"midiConfig","action":"learn","target":97})")["ok"],"EQ slider MIDI learn starts");process();
+        midi.addEvent(juce::MidiMessage::controllerEvent(1,11,0),17);midi.addEvent(juce::MidiMessage::controllerEvent(16,11,127),18);state=process();
+        check(renderedEq.values[4]==24&&renderedEq.preset==0,"actual MidiBuffer learn consumes zero then immediately applies following EQ CC before message acknowledgement");
+        state=process();check(static_cast<int>(state["midi"]["bindings"][97])==aion::midiBinding(2,11),"accepted EQ binding reaches the following audio configuration acknowledgement");
+        check(request(R"({"operation":"midiConfig","action":"learn","target":98})")["ok"],"overlapping EQ learn starts");process();
+        midi.addEvent(juce::MidiMessage::controllerEvent(1,11,0),19);state=process();
+        check(static_cast<int>(state["midi"]["bindings"][98])==0&&static_cast<int>(state["midi"]["bindings"][97])==aion::midiBinding(2,11),"conflicting EQ binding rejected without stealing prior control");
+        juce::MemoryBlock midiSaved;p->getStateInformation(midiSaved);
+        for(const auto* bad:{"20","-1","nan","18446744073709551616"}){
+            auto xml=juce::AudioProcessor::getXmlFromBinary(midiSaved.getData(),static_cast<int>(midiSaved.getSize()));xml->getChildByName("MidiSettings")->setAttribute("eqTrack",bad);
+            juce::MemoryBlock malformed;p->copyXmlToBinary(*xml,malformed);p->setStateInformation(malformed.getData(),static_cast<int>(malformed.getSize()));p->getStateInformation(after);check(after==midiSaved,"malformed EQ MIDI tab rolls back complete state");
+        }
+        auto oldMidi=juce::AudioProcessor::getXmlFromBinary(midiSaved.getData(),static_cast<int>(midiSaved.getSize()));auto* oldMapping=oldMidi->getChildByName("MidiSettings");oldMapping->setAttribute("version",3);oldMapping->removeAttribute("eqTrack");
+        for(unsigned i=93;i<aion::MidiSettings::bindingCount;++i)oldMapping->removeAttribute("binding"+juce::String(i));
+        juce::MemoryBlock oldBytes;p->copyXmlToBinary(*oldMidi,oldBytes);p->setStateInformation(oldBytes.getData(),static_cast<int>(oldBytes.getSize()));state=process();
+        check(static_cast<int>(state["midi"]["bindings"][97])==0&&static_cast<int>(state["midi"]["eqTrack"])==0,"version 3 preserves old bindings and defaults appended EQ mappings/tab");
+        p->setStateInformation(midiSaved.getData(),static_cast<int>(midiSaved.getSize()));state=process();
+        check(static_cast<int>(state["midi"]["bindings"][97])==aion::midiBinding(2,11)&&static_cast<int>(state["midi"]["eqTrack"])==19,"EQ MIDI bindings and selected tab survive state restore without editor");
         // A real external CLI process controls this production processor. The
         // local server is an explicit fixture, not another audio engine.
         const auto root=juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory().getChildFile("eq-cli-"+juce::Uuid().toString());

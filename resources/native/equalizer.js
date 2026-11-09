@@ -18,11 +18,18 @@
     const bands=[['LC','lcFreq',null],['LS','lsFreq','lsGain'],...Array.from({length:6},(_,i)=>[`P${i+1}`,`p${i+1}Freq`,`p${i+1}Gain`]),['HS','hsFreq','hsGain'],['HC','hcFreq',null]];
     const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
     window.AionEqualizerUI=({rpc,enqueue,current,notify})=>{
-        let track=0,selected=2,alive=true,serial=0,curveBusy=false,curveKey='',curve=null,drag=null,dirty=true,drawAt=0;
+        let track=0,selected=2,alive=true,serial=0,curveBusy=false,curveKey='',curve=null,drag=null,dirty=true,drawAt=0,selectionSequence=0,selectionPending=false,selectionFence=0;
         const tabs=document.getElementById('fx-tabs-container'),container=document.getElementById('fx-controls-container');
         const controls=new Map(),toggles=[];
         const send=(action,data={},key)=>{dirty=true;enqueue(track,{action,...data},key);};
-        const select=id=>{if(drag)return;track=id;dirty=true;curve=null;curveKey='';++serial;render();};
+        const select=id=>{
+            if(drag)return;const owner=++selectionSequence;selectionPending=true;
+            track=id;dirty=true;curve=null;curveKey='';++serial;render();
+            rpc({operation:'midiConfig',action:'eqTrack',track:id}).then(reply=>{
+                if(!alive||owner!==selectionSequence)return;if(!reply.ok)throw Error(reply.error);
+                selectionFence=reply.revision;selectionPending=false;
+            }).catch(e=>{if(alive&&owner===selectionSequence){selectionPending=false;selectionFence=0;notify(e.message);}});
+        };
         const module=document.createElement('div');module.className='retro-module';module.style.borderColor='#4fd';
         module.innerHTML='<div class="module-header" style="color:#4fd"><span id="native-eq-title">EQ (10-Band) (Q)</span><label><input id="native-eq-enabled" type="checkbox"> eQ</label></div><div class="module-content"><div class="effect-preset-row effect-preset-row-wide"><select id="sel_eq" class="effect-preset-select" aria-label="EQ Preset"><option value="">Load Preset...</option></select><button id="native-eq-reset" type="button">RESET</button></div><canvas id="eqCanvas" class="eq-canvas" width="600" height="240" tabindex="0" role="application" aria-label="EQ curve: click a point, drag frequency and gain; horizontal handles edit bandwidth. Arrow keys move selected point, brackets change Q."></canvas><div id="native-eq-point" style="font-size:10px;color:#4fd;min-height:2em"></div><div id="native-eq-controls" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px"></div></div>';
         container.append(module);
@@ -97,7 +104,9 @@
             readout.textContent=`${b[0]}: ${v[b[1]].toFixed(1)} Hz${b[2]?` / ${v[b[2]].toFixed(1)} dB`:''}${selected>=2&&selected<=7?` / Q ${v[`p${selected-1}Q`].toFixed(2)}`:''} · Shift: fine · Alt: gain · Ctrl: frequency`;
         }
         function render(){
-            const s=current(),settings=s?.tracks[track]?.equalizer;if(!settings||!alive)return;
+            const s=current();
+            if(!selectionPending&&!drag&&Number.isInteger(s?.midi?.eqTrack)&&s.midi.revision>=selectionFence&&s.midi.eqTrack!==track){track=s.midi.eqTrack;curve=null;curveKey='';++serial;dirty=true;}
+            const settings=s?.tracks[track]?.equalizer;if(!settings||!alive)return;
             module.querySelector('#native-eq-title').textContent=`Loop ${track+1} — EQ (10-Band) (Q)`;
             [...tabs.children].forEach((b,i)=>b.classList.toggle('active',i===track));
             enabled.checked=settings.enabled;preset.value=settings.preset;

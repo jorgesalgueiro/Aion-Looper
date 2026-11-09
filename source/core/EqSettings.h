@@ -14,5 +14,16 @@ struct EqSettings {
 };
 EqValues eqPresetValues(unsigned id) noexcept;
 bool validEqSettings(const EqSettings&) noexcept;
+// Original range-widget bounds, rather than the wider stored/DSP domain.
+inline constexpr std::array<std::array<double,2>,24> eqMidiRanges{{
+    {20,500},{40,1000},{-24,24},{60,4000},{-24,24},{.1,10},
+    {100,4000},{-24,24},{.1,10},{200,6000},{-24,24},{.1,10},
+    {400,8000},{-24,24},{.1,10},{1000,12000},{-24,24},{.1,10},
+    {2000,16000},{-24,24},{.1,10},{1500,20000},{-24,24},{3000,22000}}};
+inline float eqMidiValue(unsigned parameter,unsigned value) noexcept {
+    if(parameter>=eqMidiRanges.size()||value>127)return 0;
+    const auto& range=eqMidiRanges[parameter];
+    return static_cast<float>((value/127.0)*(range[1]-range[0])+range[0]);
+}
 inline constexpr std::uint32_t eqAllParameters=(1u<<24)-1;
 }

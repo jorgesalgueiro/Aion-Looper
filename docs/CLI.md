@@ -34,6 +34,28 @@ the existing native IDs, not display track numbers. MIDI Learn still requires
 an incoming routed MIDI message. Native input availability, queue bounds,
 capture exclusivity and state guards remain enforced.
 
+EQ slider targets **93..116** follow the selected EQ loop tab (one binding per
+parameter, matching the original effect-controller workflow). Order: lcFreq,
+lsFreq, lsGain; P1 through P6 frequency/gain/Q; hsFreq, hsGain, hcFreq.
+Select the controller destination from the running app or CLI (this MIDI field
+uses the native **0..19** track index):
+
+```sh
+python tools/aion.py midi eqTrack --data '{"track":19}'
+python tools/aion.py midi learn --data '{"target":97}'
+python tools/aion.py midi cancelLearn
+python tools/aion.py midi clear --data '{"target":97}'
+python tools/aion.py midi save
+```
+
+Target 97 is P1 gain. Send a CC to learn it; its first packet is consumed, then
+later values apply continuously, including zero. Right-click the corresponding
+EQ slider to learn, Shift+right-click to clear, Escape or ten seconds to cancel.
+Mappings use original slider bounds, clear the preset name to Custom, and do
+not enable bypassed EQ or trigger transport. The selected tab and mappings
+persist in native state and keep working without an editor. Existing channel
+filters/conflict rules apply; physical controller verification remains separate.
+
 MERGE also uses the shared loop command:
 
 ```sh

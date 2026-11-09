@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/Equalizer.h"
 #include "core/EqSettings.h"
+#include "core/MidiController.h"
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
@@ -10,6 +11,21 @@
 int main(){
     aion::Equalizer eq;aion::SmoothedEqualizer smooth;bool smoothed=false;std::string operation;std::cout<<std::setprecision(9);
     while(std::cin>>operation){
+        if(operation=="midicc"){
+            auto bank=std::make_unique<aion::LoopBank>();bank->prepare(4096,0,48000);
+            aion::MidiController midi;aion::MidiSettings settings;settings.enabled=true;settings.bindings.fill(0);
+            for(unsigned p=0;p<24;++p)settings.bindings[aion::MidiSettings::eqBase+p]=aion::midiBinding(2,20+p);
+            auto unused=[](void*,aion::LoopAction,unsigned,double){return false;};
+            aion::MidiController::Dispatch dispatch{*bank,0,48000,1,nullptr,unused};unsigned track,channel,p,value;
+            while(std::cin>>track>>channel>>p>>value){
+                if(track>=20||channel<1||channel>16||p>=24||value>127)return 2;
+                settings.eqTrack=track;
+                if(!midi.configure(settings))return 2;
+                midi.begin(dispatch);
+                midi.event({0,static_cast<std::uint8_t>(175+channel),static_cast<std::uint8_t>(20+p),static_cast<std::uint8_t>(value),3},dispatch);
+                std::cout<<bank->trackView(track).equalizer.values[p]<<'\n';
+            }return 0;
+        }
         if(operation=="presets"){
             std::cout<<'[';for(unsigned id=1;id<=10;++id){if(id>1)std::cout<<',';std::cout<<"{\"name\":\""<<aion::eqPresetNames[id-1]<<"\",\"values\":[";const auto p=aion::eqPresetValues(id);for(unsigned i=0;i<24;++i){if(i)std::cout<<',';std::cout<<p[i];}std::cout<<"]}";}std::cout<<"]\n";continue;
         }

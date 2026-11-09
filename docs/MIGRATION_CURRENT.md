@@ -13,11 +13,28 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
-eligibility gaps. Remaining unported FX/SAVE controls stay disabled. No package/push.
+eligibility gaps. Remaining unported FX/SAVE controls stay disabled.
+Owner-requested Windows development package and GitHub push completed at
+**0e1780a**: `dist/Aion-Looper-0.4.3-0e1780a57bad-win64-Standalone.zip` (6,612,161
+bytes; SHA256 `0AB31C042F3CAA21AD58A4EDA18FE39E1F8FA059A94A4482FAE9A91B4A5E7BFA`).
+Packaged EXE matches the built SHA256; CLI help works with the configured Python.
+The ZIP now includes optional CLI, project/dependency notices, current EQ scope
+and exact source archive. An initial Git archive argument-splitting failure was
+fixed and packaging rerun. This preview predates the EQ MIDI increment below;
+it is not a claim of release readiness or completed original-asset permissions.
 
 ### In progress: original Q/eQ DSP and graphic editing — 9 November 2026
 
-**Windows/Linux GUI/CLI software verified; live controls approved; EQ MIDI pending.**
+**EQ MIDI Learn is the current increment; Windows software checks pass, Linux pending.**
+All 24 original effect-slider CC ranges now route to the selected EQ loop tab,
+using shared GUI/CLI state, append-only targets 93..116 and version-4 MIDI state
+(legacy versions 1/2/3 preserved). The new unchanged-JS gate covers **51,072** values;
+64/128 Engine PCM, production MidiBuffer/external CLI and actual Windows pointers/
+keys prove immediate learn bursts, tab isolation, conflicts, Escape/clear and
+actual focused slider updates. See [EQ_MIGRATION.md](EQ_MIGRATION.md) for exact
+scope, test-harness repairs and commands. Linux and retained regression results
+will be recorded after the committed-snapshot acceptance run. The earlier
+connected baseline and persistent/live-control acceptance are retained below.
 Per-loop eQ now uses the existing native processor from original track/live eQ
 checkboxes, FX/eQ navigation, original numeric controls/presets and running-app
 `aion.py eq` commands. The approved graph adds ten selectable draggable points,

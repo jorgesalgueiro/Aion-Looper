@@ -2,10 +2,56 @@
 
 Active slice: ten-band per-loop eQ, before the other unported FX/SAVE controls.
 The filter kernel was a prerequisite. Connected Windows/Linux software acceptance
-is recorded below; live controls are owner-approved and EQ MIDI Learn remains open. Do not infer
+is recorded below; live controls are owner-approved and EQ MIDI Learn is under
+cross-platform acceptance (see the latest section). Do not infer
 full-chain, wet SAVE, hardware, deferred-wrapper or release acceptance.
 
 ## Connected implementation and current verification — 9 November 2026
+
+### Selected-tab EQ MIDI Learn — current increment
+
+Acceptance: original continuous CC ranges and selected-tab routing for all 24
+parameters; first learn packet consumed, subsequent same-block packets applied
+at their sample offsets; no held transport action; shared GUI/CLI access;
+conflict/cancellation, editor-free operation and backward-compatible state.
+The original context-menu/handler/setter remain unchanged in preserved assets.
+Native EQ uses fixed IDs **93..116**, appended after the existing 93 targets.
+`MidiSettings` version **4** adds these CC-only bindings and `eqTrack` (0..19).
+Versions 1/2/3 retain their 33/73/93 mappings; new fields default unassigned/tab 1.
+Malformed new state is rejected before any APVTS/MIDI/EQ mutation. Tab selection
+uses the existing bounded MIDI configuration queue, revision-fenced in the UI;
+CLI `midi eqTrack` reaches that same message owner. An absent editor retains the
+last accepted tab. UI/serialization stay off audio; the existing 256-event input
+bound, conflict/provisional learn, cancellation and timeout machinery is reused.
+
+New reference gate `js_native_eq_midi`: **51,072** unchanged handler/setter cases,
+all 24 original widget ranges, all 16 channels, tabs 1/20, all 128 values plus
+repeated/nonmonotonic/zero extremes. Probe output is compared to Float32 reference
+values with nine-digit-printing allowance (max(1e-8, abs(value)*1e-8)). This is
+parameter precision, not a relaxed PCM limit. Production Engine tests compare
+actual stereo PCM with sample-timed GUI controls at **1e-6**, including learn at
+sample 17/following CC at 18 before message acknowledgment, all values/channels,
+selected-tab isolation and channel filtering. Callback new/delete remains tracked.
+
+Windows actual processor/external CLI and real WebView2 pointer/key tests pass
+at 64/128: learning, focused DOM slider updates, tab routing, conflicts, Escape,
+Shift-clear, save/restore and version-3 migration. Existing GUI/graph/reset/CANCEL/
+reload and dry audio regressions remain. The first new oracle invocation used a
+relative fixture path under CTest; it now resolves from its own directory. A
+processor test initially expected the audio binding snapshot in the capture block;
+it now separately asserts immediate rendered gain and the following configuration
+acknowledgment, retaining both requirements. The legacy-schema test still checks
+all old mappings; only the expected writer version and unknown-future version
+moved from 3/4 to 4/5. No assertion was deleted or tolerance weakened.
+
+Linux software/sanitizer verification and retained MIDI regression results are
+pending this increment's committed-snapshot run. No physical pedal, Linux WebKit,
+plugin, latency or listening acceptance is implied. Reproduce with the existing
+core/processor targets, `js_native_eq_midi`, `eq_connected_contract`,
+`js_native_eq_connected`, `native_frontend_commands`, `js_native_midi`, then
+`tools/TestEqUi.ps1`; use the sanitizer cache for connected audio as above.
+
+### Earlier connected GUI/CLI checkpoint (before EQ MIDI)
 
 Owner selection: persistent EQ per track. Healthy original Start/retrigger/history
 already reuse their graph; separate graphs are a reconstruction fallback. Native

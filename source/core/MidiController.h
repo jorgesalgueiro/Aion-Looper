@@ -5,13 +5,14 @@ namespace aion {
 // Packed binding: kind (1 note, 2 CC, 3 program), number, optional channel.
 constexpr std::uint16_t midiBinding(unsigned kind,unsigned number,unsigned channel=0) noexcept {return static_cast<std::uint16_t>(kind|(number<<2)|(channel<<9));}
 struct MidiSettings {
-    static constexpr unsigned bindingCount=93,volumeBase=33,panBase=53,muteBase=73;
-    static constexpr bool continuous(int target) noexcept {return target>=static_cast<int>(volumeBase)&&target<static_cast<int>(muteBase);}
+    static constexpr unsigned eqBase=93,bindingCount=eqBase+24,volumeBase=33,panBase=53,muteBase=73;
+    static constexpr bool continuous(int target) noexcept {return (target>=static_cast<int>(volumeBase)&&target<static_cast<int>(muteBase))||(target>=static_cast<int>(eqBase)&&target<static_cast<int>(bindingCount));}
     static constexpr bool globalMode(int target) noexcept {return target>=30&&target<static_cast<int>(volumeBase);}
     bool enabled=false;
     std::array<std::uint16_t,MidiSettings::bindingCount> bindings=[] {std::array<std::uint16_t,MidiSettings::bindingCount> b{};for(unsigned i=0;i<10;++i)b[i]=midiBinding(1,36+i);b[30]=midiBinding(1,46);b[31]=midiBinding(1,47);b[32]=midiBinding(1,48);return b;}();
     std::uint32_t revision=0,learnToken=0,learnGeneration=0;
     int learnTarget=-1,modeOverride=-1;
+    unsigned eqTrack=0; // Original effect bindings follow the selected loop tab.
 };
 struct MidiEvent {std::uint32_t offset=0;std::uint8_t status=0,data1=0,data2=0,size=0;};
 struct MidiLearnResult {int target=-1;std::uint16_t binding=0;std::uint32_t token=0,generation=0,cancellation=0;};
@@ -23,6 +24,7 @@ struct MidiView {
     std::uint32_t observed=0;
     int learnTarget=-1,mode=0;
     bool enabled=false,sustain=false;
+    unsigned eqTrack=0;
 };
 class MidiController {
 public:

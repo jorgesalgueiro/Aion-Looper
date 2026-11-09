@@ -379,7 +379,7 @@ void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
     std::lock_guard stateGuard(midiSettingsMutex);
     auto state=parameters.copyState();juce::ValueTree stored("MidiSettings");
     {std::lock_guard guard(midiSettingsMutex);stored.setProperty("enabled",midiSettings.enabled,nullptr);
-     stored.setProperty("version",3,nullptr);
+     stored.setProperty("version",4,nullptr);stored.setProperty("eqTrack",static_cast<int>(midiSettings.eqTrack),nullptr);
      for(unsigned i=0;i<aion::MidiSettings::bindingCount;++i)stored.setProperty("binding"+juce::String(i),static_cast<int>(midiSettings.bindings[i]),nullptr);}
     state.removeChild(state.getChildWithName("MidiSettings"),nullptr);state.appendChild(stored,nullptr);
     saveEqualizers(state);
@@ -392,9 +392,10 @@ void AionProcessor::setStateInformation(const void* data, int size) {
         aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
         if(stored.isValid()){
             const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
-            const auto version=stored.getProperty("version",1).toString();if(version!="1"&&version!="2"&&version!="3")return;
-            const unsigned count=version=="3"?aion::MidiSettings::bindingCount:version=="2"?aion::MidiSettings::muteBase:aion::MidiSettings::volumeBase;
+            const auto version=stored.getProperty("version",1).toString();if(version!="1"&&version!="2"&&version!="3"&&version!="4")return;
+            const unsigned count=version=="4"?aion::MidiSettings::bindingCount:version=="3"?aion::MidiSettings::eqBase:version=="2"?aion::MidiSettings::muteBase:aion::MidiSettings::volumeBase;
             for(unsigned i=0;i<count;++i){const auto value=stored.getProperty("binding"+juce::String(i)).toString();if(value.isEmpty()||!value.containsOnly("0123456789")||value.getLargeIntValue()>65535)return;next.bindings[i]=static_cast<std::uint16_t>(value.getIntValue());}
+            if(version=="4") {const auto value=stored.getProperty("eqTrack").toString();if(value.isEmpty()||value.length()>2||!value.containsOnly("0123456789")||value.getIntValue()>=static_cast<int>(aion::LoopBank::trackCount))return;next.eqTrack=static_cast<unsigned>(value.getIntValue());}
         }
         {
             std::lock_guard guard(midiSettingsMutex);next.learnToken=midiSettings.learnToken+1;
@@ -459,6 +460,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             event->setProperty("frame",static_cast<juce::int64>(item.frame));event->setProperty("status",item.event.status);event->setProperty("data1",item.event.data1);event->setProperty("data2",item.event.data2);event->setProperty("size",item.event.size);recentMidi.add(juce::var(event));}
         midiView->setProperty("recent",recentMidi);
         midiView->setProperty("bindings",bindings);midiView->setProperty("enabled",latest.midi.enabled);midiView->setProperty("revision",static_cast<int>(latest.midi.revision));
+        midiView->setProperty("eqTrack",static_cast<int>(latest.midi.eqTrack));
         midiView->setProperty("mode",latest.midi.mode);midiView->setProperty("modeRevision",static_cast<int>(latest.midi.modeRevision));midiView->setProperty("sustain",latest.midi.sustain);
         {std::lock_guard guard(midiSettingsMutex);midiView->setProperty("learnTarget",midiSettings.learnTarget);}
         midiView->setProperty("messages",static_cast<int>(latest.midi.messages));midiView->setProperty("overflows",static_cast<int>(latest.midi.overflows));midiView->setProperty("rejected",static_cast<int>(latest.midi.rejected));midiView->setProperty("actions",static_cast<int>(latest.midi.actions));
@@ -638,7 +640,9 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             if(target.isVoid()||static_cast<int>(target)==midiSettings.learnTarget)cancelMidiLearn();
             result->setProperty("ok",true);result->setProperty("revision",static_cast<int>(midiSettings.revision));return reply;
         }
-        else if(action=="mode"){
+        else if(action=="eqTrack"){
+            const auto value=request.getProperty("track",{});if(!value.isInt()||static_cast<int>(value)<0||static_cast<int>(value)>=static_cast<int>(aion::LoopBank::trackCount))return fail("Invalid EQ MIDI track");next.eqTrack=static_cast<unsigned>(static_cast<int>(value));
+        }else if(action=="mode"){
             const auto value=request.getProperty("mode",{});if(!value.isInt()||static_cast<int>(value)<0||static_cast<int>(value)>2)return fail("Invalid performance mode");next.modeOverride=static_cast<int>(value);
         }else if(action=="save"){
            #if JucePlugin_Build_Standalone
@@ -650,7 +654,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if(!updateMidi(next))return fail("MIDI configuration is invalid or queue is full");
         if(action=="learn")midiLearnDeadline=aion::MidiSettings::continuous(next.learnTarget)?juce::Time::getMillisecondCounterHiRes()+10000:0;
         else if(action=="clear"||action=="enable"||action=="toggle")midiLearnDeadline=0;
-        midiStatus=action=="learn"?"Waiting for MIDI Note, CC or Program Change...":"MIDI configuration queued";
+        midiStatus=action=="learn"?(aion::MidiSettings::continuous(next.learnTarget)?"Waiting for MIDI CC...":"Waiting for MIDI Note, CC or Program Change..."):"MIDI configuration queued";
        #if JucePlugin_Build_Standalone
         if(enableDevices)if(auto* holder=juce::StandalonePluginHolder::getInstance())
             for(const auto& device:juce::MidiInput::getAvailableDevices())holder->deviceManager.setMidiInputDeviceEnabled(device.identifier,true);

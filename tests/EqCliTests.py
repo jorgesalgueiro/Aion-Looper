@@ -26,4 +26,10 @@ assert not cli('eq', '20', 'set', '--values', '{"p1Gain":3,"p6Q":0}', code=1)['o
 assert cli('eq', '20', 'get')['equalizer'] == s
 assert cli('eq', '20', 'reset')['applied']
 assert cli('eq', '20', 'off')['applied']
+assert cli('midi', 'eqTrack', '--data', '{"track":19}')['ok']
+assert cli('midi', 'learn', '--data', '{"target":97}')['ok']
+assert cli('status')['midi']['learnTarget'] == 97
+assert cli('midi', 'cancelLearn')['ok']
+assert cli('midi', 'clear', '--data', '{"target":97}')['ok']
+assert not cli('midi', 'eqTrack', '--data', '{"track":20}', code=1)['ok']
 print('PASS external eq CLI: expanded track, preset/enable/XY/Q, bandwidth edge, curve, atomic rejection, reset/bypass')

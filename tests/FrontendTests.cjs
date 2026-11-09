@@ -1106,3 +1106,10 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  }
  console.log('PASS: original MERGE GO eligibility includes queued destination and retains source/busy guards');
 }
+{
+ const scope={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),scope);
+ const names=['lcFreq','lsFreq','lsGain',...Array.from({length:6},(_,i)=>[`p${i+1}Freq`,`p${i+1}Gain`,`p${i+1}Q`]).flat(),'hsFreq','hsGain','hcFreq'];
+ names.forEach((name,i)=>{const id='eq'+name[0].toUpperCase()+name.slice(1);assert.equal(scope.window.AionMidiSliderTarget(id),93+i);assert.equal(scope.window.AionMidiElementTarget({id}),93+i);});
+ assert.equal(scope.window.AionMidiSliderTarget('native-eq-enabled'),-1);assert.equal(scope.window.AionMidiSliderTarget('eqUnknown'),-1);
+ console.log('PASS: all 24 EQ ranges use append-only continuous targets; unported/checkbox controls stay unmapped');
+}

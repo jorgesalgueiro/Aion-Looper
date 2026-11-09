@@ -21,15 +21,23 @@ int main(){
         std::array<EqSettings,20> bank{};for(auto& s:bank){s.enabled=true;s.values[2]=3;s.values[22]=-3;for(unsigned p=0;p<6;++p){s.values[4+p*3]=p%2?-3.f:3.f;s.values[5+p*3]=2;}}
         if(!engine.enqueueEqBank(bank,request+1))return 4;request+=20;
         for(unsigned n=0;n<512;++n)process(false);
-        for(bool targets:{false,true}){
+        for(unsigned scenario=0;scenario<3;++scenario){
+            const bool targets=scenario==1,midiLoad=scenario==2;
+            std::array<MidiEvent,256> events{};
+            if(midiLoad){
+                MidiSettings mapping;mapping.enabled=true;mapping.bindings[97]=midiBinding(2,11);
+                if(!engine.configureMidi(mapping))return 6;
+                for(unsigned i=0;i<events.size();++i)events[i]={i*block/256,176,11,static_cast<std::uint8_t>(i%128),3};
+                for(unsigned n=0;n<512;++n){left.fill(0);right.fill(0);engine.process(channels,2,block,events);while(engine.popView(view)){};}
+            }
             std::vector<double> times;times.reserve(2048);unsigned overruns=0;const double deadline=block/48000.0*1e6;
             for(unsigned n=0;n<2048;++n){
                 if(targets&&n%16==0){for(auto& s:bank)for(unsigned p=0;p<6;++p)s.values[4+p*3]=(n%32?1.f:-1.f)*(p%2?-3.f:3.f);
                     if(!engine.enqueueEqBank(bank,request+1))return 5;request+=20;}
-                left.fill(0);right.fill(0);const auto begin=Clock::now();engine.process(channels,2,block);const auto end=Clock::now();
+                left.fill(0);right.fill(0);const auto begin=Clock::now();engine.process(channels,2,block,midiLoad?std::span<const MidiEvent>(events):std::span<const MidiEvent>{});const auto end=Clock::now();
                 while(engine.popView(view)){};const auto elapsed=std::chrono::duration<double,std::micro>(end-begin).count();times.push_back(elapsed);if(elapsed>deadline)++overruns;
             }
-            std::sort(times.begin(),times.end());std::cout<<"Engine 20 stereo loops / 10 EQ bands / "<<block<<" / "<<(targets?"targets":"steady")<<": p50 "<<times[1024]<<"us, p99 "<<times[2027]<<"us, max "<<times.back()<<"us; deadline "<<deadline<<"us, observed overruns "<<overruns<<"/2048\n";
+            std::sort(times.begin(),times.end());std::cout<<"Engine 20 stereo loops / 10 EQ bands / "<<block<<" / "<<(midiLoad?"256 EQ CC/block":targets?"targets":"steady")<<": p50 "<<times[1024]<<"us, p99 "<<times[2027]<<"us, max "<<times.back()<<"us; deadline "<<deadline<<"us, observed overruns "<<overruns<<"/2048\n";
         }
     }
 }

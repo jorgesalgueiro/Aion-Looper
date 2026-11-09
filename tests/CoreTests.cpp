@@ -100,6 +100,7 @@ static void hostTransportTests() {
     std::cout<<"PASS: optional host validation, preroll, meter/cycle, loss/reset and coherent bounded snapshots at 64/128\n";
 }
 int main(int argc,char** argv) {
+    if(argc==2&&std::string_view(argv[1])=="--midi"){midiTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-buffers"){meterBufferTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-playback"){meterPlaybackTests();return 0;}
     if(argc==2&&std::string_view(argv[1])=="--meter-stops"){meterStopTests();return 0;}

@@ -3,7 +3,7 @@
 #include <cmath>
 namespace aion {
 bool MidiController::valid(const MidiSettings& s) noexcept {
-    if(s.learnTarget < -1||s.learnTarget>=static_cast<int>(MidiSettings::bindingCount)||(s.learnTarget>=20&&s.learnTarget<30)||s.modeOverride < -1||s.modeOverride>2)return false;
+    if(s.eqTrack>=LoopBank::trackCount||s.learnTarget < -1||s.learnTarget>=static_cast<int>(MidiSettings::bindingCount)||(s.learnTarget>=20&&s.learnTarget<30)||s.modeOverride < -1||s.modeOverride>2)return false;
     for(unsigned i=0;i<MidiSettings::bindingCount;++i){const auto b=s.bindings[i];if(!b)continue;
         const unsigned kind=b&3,number=(b>>2)&127,channel=b>>9;
         if(!kind||channel>16||(i>=20&&i<30)||(MidiSettings::continuous(static_cast<int>(i))&&kind!=2)||(kind==2&&(number==120||number==123)))return false;
@@ -76,6 +76,13 @@ void MidiController::main(unsigned id,int requestedMode,Dispatch& d) noexcept {
     else apply(A::finish,id,0,d);
 }
 void MidiController::continuous(int target,std::uint8_t cc,Dispatch& d) noexcept {
+    if(target>=static_cast<int>(MidiSettings::eqBase)){
+        const auto parameter=static_cast<unsigned>(target)-MidiSettings::eqBase;
+        const auto t=d.bank.trackView(settings.eqTrack);auto eq=t.equalizer;
+        eq.values[parameter]=eqMidiValue(parameter,cc);eq.preset=0;
+        if(d.bank.setEqualizer(settings.eqTrack,eq,1u<<parameter,t.eqRequest,t.clearEpoch))++actions;else ++rejections;
+        return;
+    }
     const bool pan=target>=static_cast<int>(MidiSettings::panBase);
     const auto track=static_cast<unsigned>(target)-(pan?MidiSettings::panBase:MidiSettings::volumeBase);
     // Original setLoopPan uses parseInt after mapping 0..127 onto 0..10.
@@ -198,5 +205,5 @@ void MidiController::tick(Dispatch& d, bool nonRealtime) noexcept {
         else if(task.kind==TaskKind::erase&&(t.state==LoopState::playing||t.state==LoopState::stopping||t.state==LoopState::stopped))apply(LoopAction::clear,task.track,0,d);
     }
 }
-MidiView MidiController::view() const noexcept {return {settings.bindings,settings.revision,modeRevision,messages,overflows,actions,rejections,recent,observed,settings.learnTarget,mode,settings.enabled,sustain};}
+MidiView MidiController::view() const noexcept {return {settings.bindings,settings.revision,modeRevision,messages,overflows,actions,rejections,recent,observed,settings.learnTarget,mode,settings.enabled,sustain,settings.eqTrack};}
 }
