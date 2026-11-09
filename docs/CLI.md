@@ -4,7 +4,8 @@ This development CLI controls an already running, newly built Aion-Looper
 Standalone. It shares the GUI's processor, audio/MIDI devices, parameter IDs,
 loop commands and session. It does not launch a second audio engine or control
 DAW plugin instances. Python 3.8+ is required; there are no third-party Python
-dependencies. A compiled/bundled CLI and release packaging remain future work.
+dependencies. Current Windows development preview ZIPs include `tools/aion.py`;
+a compiled CLI and release-ready packaging remain future work.
 
 From the repository, start the development Standalone built as described in
 BUILDING.md, then run:

@@ -12,8 +12,9 @@ requested-package steps, not routine development commands.
 Development CLI: start the current Standalone, then run
 `python tools/aion.py instances` / `python tools/aion.py status` from the repository.
 See [CLI.md](CLI.md) for commands, per-instance selection, limits and current
-coverage. This Python client is not yet bundled by the historical package tools;
-do not label those older packages CLI-enabled or release-ready.
+coverage. Current Standalone preview packages include this optional Python client;
+historical packages without `tools/aion.py` are not CLI-enabled. No preview is
+release-ready on that basis.
 
 This is a foundation/preview. Only tests actually recorded in VALIDATION.md are
 verified; commands for other systems are setup instructions, not validation claims.
@@ -459,13 +460,15 @@ main/export/merge tests. No new package or version bump is needed.
 
 After the existing Release Standalone passes its gates, run
 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/PackageStandalone.ps1`.
-It packages only the already-built Standalone, test instructions, current scope
-and dependency notices into one commit-labelled ZIP under `dist/`. No installer,
+It packages the already-built Standalone, optional Python CLI, test instructions,
+current scope, project/dependency notices and an exact Git source snapshot into
+one commit-labelled ZIP under `dist/`. Commit tracked changes first. No installer,
 plugin-format rebuild, SDK cache or version bump is required. Extract it and run
 `Standalone/Aion-Looper.exe`; Evergreen WebView2 Runtime is required. The manifest
-records the executable SHA256, source commit and any tracked local overrides
-(including a locally edited logo), so a local preview is not mistaken for a clean
-commit build. Physical audio/driver and DAW validation remain separate gates.
+records the executable SHA256 and source commit. The helper does not build or
+prove binary freshness: build the committed Standalone before packaging and
+verify its packaged hash. Original-asset permissions and physical audio/driver
+validation remain separate release gates.
 
 ### IPC reload regression
 
