@@ -146,6 +146,7 @@ python tools/aion.py eq 1 on
 python tools/aion.py eq 1 set --values '{"p1Freq":1800,"p1Gain":4,"p1Q":0.7}'
 python tools/aion.py eq 1 get
 python tools/aion.py eq 1 curve
+python tools/aion.py eq 1 width --band 1 --edge 2500
 python tools/aion.py eq 1 reset
 python tools/aion.py eq 1 off
 ```
@@ -156,6 +157,37 @@ MIDI Learn is still pending: the original `main.js` learns effect ranges and rou
 them through the selected `EffectManager` tab; do not claim that workflow is ported
 or enable disconnected mappings. Linux WebKit pointers, listening/physical devices,
 long-session release checks and deferred plugin wrappers also remain separate.
+
+### Armed CANCEL repair and remaining owner decision
+
+The original `LoopManager.stopRecording` armed branch empties the take and drops
+its graph while retaining effect parameters, enable flags and preset. Native
+`finish` (the actual main-button CANCEL path), `stop` and panic previously reached
+`clear`, erasing audio-side EQ while the message model could retain its old value.
+`eq-cancel-failing-windows.log` records the actual-audio assertion before repair.
+They now share `cancelArmed`, which preserves EQ fields while clearing runtime
+capture/filter ownership. Explicit DEL still resets EQ. Message reconciliation
+protects pending accepted intent, otherwise adopts actual audio values even after
+an internal cleanup with no DEL epoch. The existing MIDI schema and other controls
+are unchanged.
+
+Regression evidence: **22 unchanged original stopRecording cases**, native core
+finish/stop/panic/DEL and actual production `inspectAudioThread` fields; Windows
+64/128 production/external CLI and actual static-arm/main-CANCEL pointers PASS.
+The first fixture restored Off rather than the saved default Dynamic sync mode;
+it now restores the original mode before byte comparisons. The first pointer test
+revealed that main CANCEL uses finish, beyond the initially tested stop alias;
+both paths are now protected. A local test-variable declaration was also repaired;
+no assertion or tolerance was relaxed. CLI width/edge coverage uses native
+`eqPeakQ` and checks its returned edge within .01Hz for Float32 Q storage.
+
+**Pending owner choice:** the unchanged original skips graph updates when its
+loop state is OD/SUB/MULT/stopping. Stored controls can then disagree with its
+running EQ. The proposed persistent native version responds live in those states.
+An explicit question is pending; do not treat the previous persistent-tail choice
+as approval of this separate workflow/sound change. This is unpublished preview
+work, not full EQ parity or a gate to start another effect. EQ MIDI Learn, Linux
+WebKit pointers, listening/hardware and release checks also remain pending.
 
 ## Observable acceptance, defined before integration
 
@@ -328,11 +360,6 @@ checkout: `build/eq-{final,build,benchmark}-OS.log`, Windows browser
 `build/eq-webaudio-windows.log`, Linux `build/eq-sanitizer-linux.log` and final
 expanded units `build/eq-unit-final{-sanitizer}-linux.log`.
 
-Next is connected acceptance: shared bounded GUI/CLI commands, versioned state,
-original panel/presets plus approved graph points/ranges. Align the component's
-128-frame clock with the connected graph's render origin, preserve graph reuse/
-teardown and bypass fades, and cover record/OD/SUB exclusion, source/clear/reset,
-queue rejection and editor lifecycle. Until then the product effect stays
-disabled. Reuse prior accepted loop/source regressions: this checkpoint does not
-yet change the production callback, UI, IDs or state. Linux WebKit interaction,
-physical drivers/hardware, listening, deferred wrappers and release remain open.
+That historical kernel-only checkpoint did not establish connected acceptance.
+Current GUI/CLI/state/graph, render-origin, bypass, capture/lifetime and interaction
+evidence is above, with remaining owner/controller/platform checks explicit.

@@ -235,7 +235,7 @@ void LoopBank::acceptResult() noexcept {
     if(deferred.ticket)submitQueuedMeterGraph(deferred.track,deferred.ticket,deferred.queueId,deferred.bufferId,deferred.generation);
 }
 bool LoopBank::finish(Track& track) noexcept {
-    if(track.info.state==LoopState::armed){clear(track);return true;}
+    if(track.info.state==LoopState::armed){cancelArmed(track);return true;}
     if(!capturing(track.info.state))return false;
     track.endAt=0;track.info.stopPending=false;
     if(!track.captureLength||(track.info.state==LoopState::multiplying&&track.captureLength<128)){
@@ -391,7 +391,7 @@ void LoopBank::stop(Track& track) noexcept {
     track.info.mergeSerial=0;
     if(track.info.state==LoopState::finalizing&&job.merge&&job.track==static_cast<std::uint32_t>(&track-tracks.data()))job.mergeNotify=false;
     track.info.stuttering=track.info.stutterClock=false;track.historyClock=false;
-    if(track.info.state==LoopState::armed){clear(track);return;}
+    if(track.info.state==LoopState::armed){cancelArmed(track);return;}
     track.queuedSourceTicket=0;
     track.rate=track.targetRate=static_cast<float>(track.phaseRate);track.rateRemaining=0;track.rateIncrement=0;
     track.queuedGainAt=0;
@@ -406,6 +406,13 @@ void LoopBank::cutQueuedSource(Track& track) noexcept {
     stop(track);
     // AudioGraph.cleanup disconnects its nodes immediately, without STOP's tail.
     track.last=track.tail=track.blendFrom={};track.tailRemaining=track.blendRemaining=0;
+}
+void LoopBank::cancelArmed(Track& track) noexcept {
+    // Original stopRecording cancels the take, not its configured effects.
+    // Main CANCEL uses finish; CLI/MIDI/panic may use stop. DEL still calls
+    // clear() directly. Reconstruct runtime filters on their next tick.
+    const auto settings=track.info.equalizer;const auto request=track.info.eqRequest;
+    clear(track);track.info.equalizer=settings;track.info.eqRequest=request;
 }
 void LoopBank::clear(Track& track) noexcept {
     (*equalizers)[static_cast<unsigned>(&track-tracks.data())]={};

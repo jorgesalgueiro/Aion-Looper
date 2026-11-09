@@ -300,6 +300,7 @@ private:
     bool schedulePhase(Track&,std::uint32_t,double,bool,bool replacePending=false,Clip* sourceBuffer=nullptr,const SourceMetadata* metadata=nullptr) noexcept;
     float& sample(Track&, std::uint32_t frame, std::uint32_t channel) noexcept;
     bool finish(Track&) noexcept;
+    void cancelArmed(Track&) noexcept;
     void acceptResult() noexcept;
     void workerLoop() noexcept;
     void shutdown();

@@ -66,8 +66,9 @@ void AionProcessor::serviceEqualizer(){
     for(unsigned i=0;i<eqSettings.size();++i){
         if(eqPending[i]){
             if(latest.lastRequestId>=eqPending[i]){eqSettings[i]=latest.tracks[i].equalizer;eqPending[i]=0;eqClearing[i]=false;}
-        }else if(eqClearEpochs[i]!=latest.tracks[i].clearEpoch)eqSettings[i]=latest.tracks[i].equalizer;
-        eqClearEpochs[i]=latest.tracks[i].clearEpoch;
+        }else eqSettings[i]=latest.tracks[i].equalizer;
+        // Accepted pending intent is protected above. Otherwise audio owns the
+        // truth, including internal capture cleanup without a DEL epoch change.
     }
 }
 void AionProcessor::equalizerCleared(unsigned track,bool all,std::uint32_t requestId){

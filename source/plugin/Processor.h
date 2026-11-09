@@ -135,7 +135,6 @@ private:
     bool eqRestorePending=false;
     std::array<std::uint32_t,aion::LoopBank::trackCount> eqPending{};
     std::array<bool,aion::LoopBank::trackCount> eqClearing{};
-    std::array<std::uint64_t,aion::LoopBank::trackCount> eqClearEpochs{};
     void serviceEqualizer();
     void equalizerCleared(unsigned track,bool all,std::uint32_t requestId);
     void equalizerSnapshot(juce::DynamicObject&,unsigned track);

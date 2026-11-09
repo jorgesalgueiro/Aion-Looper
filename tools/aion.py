@@ -138,9 +138,11 @@ def main(argv=None):
     rename.add_argument('track', type=track); rename.add_argument('name')
     eq = commands.add_parser('eq', help='Per-loop equalizer on the running audio engine')
     eq.add_argument('track', type=track)
-    eq.add_argument('action', choices=('get', 'curve', 'on', 'off', 'toggle', 'reset', 'preset', 'set'))
+    eq.add_argument('action', choices=('get', 'curve', 'on', 'off', 'toggle', 'reset', 'preset', 'set', 'width'))
     eq.add_argument('--preset', help='Original preset name, e.g. Radio')
     eq.add_argument('--values', type=strict_json, help='Parameter object, e.g. {"p1Freq":1000,"p1Gain":3}')
+    eq.add_argument('--band', type=int, choices=range(1, 7), help='Peak band 1..6 for width')
+    eq.add_argument('--edge', type=float, help='Bandwidth edge frequency in Hz for width')
     midi = commands.add_parser('midi')
     midi.add_argument('action'); midi.add_argument('--data', type=strict_json, default={})
     for name in ('metronome', 'release-stutter', 'cancel-export'):
@@ -208,6 +210,8 @@ def main(argv=None):
             request['preset'] = args.preset
         elif args.action == 'set':
             request['values'] = args.values
+        elif args.action == 'width':
+            request.update(band=args.band, edge=args.edge)
     elif args.command == 'rename':
         request = {'operation': 'renameLoop', 'track': args.track, 'name': args.name}
     elif args.command == 'midi':

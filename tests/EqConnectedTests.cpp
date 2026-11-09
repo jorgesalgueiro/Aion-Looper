@@ -32,6 +32,19 @@ int main(int argc,char** argv){
     for(unsigned id=0;id<=10;++id)check(validEqSettings({eqPresetValues(id),true,static_cast<std::uint8_t>(id)}),"original preset valid");
     auto malformed=EqSettings{};malformed.preset=1;check(!validEqSettings(malformed),"mismatched preset rejected");
     {
+        auto bank=std::make_unique<LoopBank>();bank->prepare(262144,0,48000);
+        SyncSettings clock;clock.mode=SyncMode::fixed;clock.bars=1;bank->configureSync(clock);
+        for(unsigned i=0;i<64;++i)bank->tick({});
+        const EqSettings settings{eqPresetValues(8),true,8};check(bank->setEqualizer(0,settings,eqAllParameters,1,0),"Configure EQ before arming");
+        for(auto action:{LoopAction::finish,LoopAction::stop,LoopAction::stopAll}){
+            watch=true;check(bank->apply(LoopAction::record,0),"Arm for EQ cancellation");check(bank->trackView(0).state==LoopState::armed,"Waiting for recording grid");
+            check(bank->apply(action,0),"Cancel armed take");bank->tick({});watch=false;
+            check(bank->trackView(0).state==LoopState::empty&&bank->trackView(0).equalizer==settings,"Finish/stop/panic cancel take without erasing configured EQ");
+        }
+        watch=true;check(bank->apply(LoopAction::clear,0),"Explicit DEL");watch=false;
+        check(bank->trackView(0).equalizer==EqSettings{},"DEL intentionally resets EQ");
+    }
+    {
         // Same-rate Engine prepare stops playback BEFORE resetting its timeline.
         // Retaining the former filter frame here shifts later automation by a
         // partial worklet quantum despite apparently correct saved settings.

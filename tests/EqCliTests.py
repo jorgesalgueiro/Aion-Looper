@@ -18,8 +18,12 @@ assert cli('eq', '20', 'set', '--values', '{"p1Gain":4,"p1Freq":1800,"p1Q":0.1}'
 s = cli('eq', '20', 'get')['equalizer']
 assert s['values']['p1Freq'] == 1800 and s['values']['p1Gain'] == 4 and not s['preset']
 assert len(cli('eq', '20', 'curve')['points']) == 256
+assert cli('eq', '20', 'width', '--band', '1', '--edge', '2500')['applied']
+s = cli('eq', '20', 'get')['equalizer']
+assert s['values']['p1Q'] > 1
+assert abs(cli('eq', '20', 'curve')['ranges'][0][1] - 2500) < .01  # Float32 Q -> Hz edge.
 assert not cli('eq', '20', 'set', '--values', '{"p1Gain":3,"p6Q":0}', code=1)['ok']
 assert cli('eq', '20', 'get')['equalizer'] == s
 assert cli('eq', '20', 'reset')['applied']
 assert cli('eq', '20', 'off')['applied']
-print('PASS external eq CLI: expanded track, preset/enable/XY/Q, curve, atomic rejection, reset/bypass')
+print('PASS external eq CLI: expanded track, preset/enable/XY/Q, bandwidth edge, curve, atomic rejection, reset/bypass')

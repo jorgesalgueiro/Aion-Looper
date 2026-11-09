@@ -22,7 +22,8 @@ int main(int argc,char** argv){
         auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,48000,block);p->prepareToPlay(48000,block);
         juce::AudioBuffer<float> audio(2,block);juce::MidiBuffer midi;midi.ensureSize(1024);
         auto snapshot=[&]{return p->request({juce::JSON::parse(R"({"operation":"snapshot"})")});};
-        auto process=[&]{audio.clear();watching=true;p->processBlock(audio,midi);watching=false;midi.clear();return snapshot();};
+        aion::EqSettings renderedEq;
+        auto process=[&]{audio.clear();watching=true;p->processBlock(audio,midi);renderedEq=p->inspectAudioThread(19).track.equalizer;watching=false;midi.clear();return snapshot();};
         auto state=process();const auto generation=static_cast<int>(state["generation"]);
         auto request=[&](const char* json){auto v=juce::JSON::parse(json);auto* o=v.getDynamicObject();o->setProperty("generation",generation);o->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis()+4000));return p->request({v});};
         check(request(R"({"operation":"equalizer","action":"preset","track":19,"preset":"Radio"})")["ok"],"expanded-track preset accepted");
@@ -42,6 +43,17 @@ int main(int argc,char** argv){
             auto xml=juce::AudioProcessor::getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));xml->getChildByName("LoopEqualizers")->getChildElement(19)->setAttribute("p1Gain",bad);
             juce::MemoryBlock malformed;juce::AudioProcessor::copyXmlToBinary(*xml,malformed);p->setStateInformation(malformed.getData(),static_cast<int>(malformed.getSize()));p->getStateInformation(after);check(after==saved,"malformed EQ state rolls back APVTS/MIDI/EQ together");
         }
+        const auto savedSyncMode=static_cast<int>(state["syncMode"]);
+        check(request(R"({"operation":"setParameter","id":"syncMode","value":1})")["ok"],"static arm mode");process();
+        for(const auto* cancelAction:{"stop","finish","stopAll"}){
+            check(request(R"({"operation":"loop","action":"record","track":19})")["ok"],"arm with configured EQ");state=process();
+            check(state["tracks"][19]["state"].toString()=="armed","static recording awaits grid");
+            auto cancel=juce::JSON::parse(R"({"operation":"loop","action":"stop","track":19})");cancel.getDynamicObject()->setProperty("action",cancelAction);
+            check(request(juce::JSON::toString(cancel,true).toRawUTF8())["ok"],"cancel armed recording");state=process();
+            check(state["tracks"][19]["state"].toString()=="empty"&&renderedEq.enabled&&renderedEq.preset==8&&static_cast<bool>(state["tracks"][19]["equalizer"]["enabled"]),"ARM CANCEL must preserve configured EQ in actual audio AND UI, as original stopRecording does");
+        }
+        auto restoreMode=juce::JSON::parse(R"({"operation":"setParameter","id":"syncMode","value":0})");restoreMode.getDynamicObject()->setProperty("value",savedSyncMode);
+        check(p->request({restoreMode})["ok"],"restore original sync mode");process();
         // Full performance queue: failed edits preserve intent. Restore waits
         // until a complete twenty-command batch fits, never publishing a prefix.
         unsigned accepted=0;for(unsigned i=0;i<300;++i)if(request(R"({"operation":"loop","action":"volume","track":0,"value":1})")["ok"])++accepted;

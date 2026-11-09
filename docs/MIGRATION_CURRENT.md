@@ -67,60 +67,27 @@ double-click reset. Next parity work remains EQ MIDI Learn (original selected-ta
 effect CC workflow), plus Linux WebKit/listening and release checks; do not move
 to another effect under a claim of complete EQ controller parity.
 
-The earlier isolated-kernel checkpoint follows for reusable evidence:
+Kernel evidence remains in [EQ_MIGRATION.md](EQ_MIGRATION.md): 481 unchanged-
+worklet cases / 3,034,408 stereo frames (peak 4.99755863e-8), 15 target-automation
+cases / 184,335 frames (4.99999986e-10), 48 actual-browser comparisons / 270,336
+mono/stereo frames (8.57054142e-8), plus half-gain/range/overflow and zero tracked
+new/delete tests. The owner-approved Nyquist repair preserves stored settings;
+raw original low-rate failures remain separate regressions. Historical prototype
+and isolated-kernel timings, browser retarget repair, all exact commands and
+test-change rationale remain there. Retain prior core-loop evidence below.
 
-The next active feature is original per-loop Q/eQ. The owner approved a low-rate
-Nyquist safety repair and requested direct graphic point/bandwidth editing after
-studying open-source EQ/JSFX. [EQ_MIGRATION.md](EQ_MIGRATION.md) contains the exact
-acceptance, reference defect, research/license decisions and commands. This is
-**isolated DSP groundwork**, not a completed/connected product effect: existing
-FX controls remain disabled; no product GUI/CLI/state/IDs/assets changed.
+Latest lifecycle repair: original armed CANCEL preserves EQ configuration.
+Native finish/stop/panic cancellation now share that rule; explicit DEL resets
+it. Tests inspect actual audio-owned EQ fields, not only the UI model. All 22
+unchanged original stopRecording cases, Windows production/external CLI and real
+64/128 main CANCEL pointers pass. Focused bandwidth CLI (`eq ... width`) uses the
+same native inverse as graph handles. Final Linux repeat for this repair is next.
 
-Native ten-band stereo SVF, atomic validation, fixed storage, original 50 ms
-target smoothing on a device-independent 128-frame coefficient clock, exact
-state-space response and warped peak bandwidth/inverse-handle calculations are
-implemented. Stored frequencies survive the approved low-rate limit. Normal
-44.1 kHz+ parameters retain original coefficients; malformed/non-finite input
-cannot permanently poison filter state. Scoped zero new/delete tests pass.
-
-Windows **4/4 focused CTests PASS, 42.59s**: isolated realtime/curve contract,
-original UI asset bytes, **481 unchanged-worklet cases / 3,034,408 stereo frames**,
-peak **4.99755863e-8**, and **15 automation cases / 184,335 frames**, peak
-**4.99999986e-10**, under **1e-6**. Actual WebView2 OfflineAudioContext **48
-comparisons / 270,336 mono/stereo frames PASS**, peak **8.57054142e-8** under
-**1e-6**, relative RMS <= **1e-5**. Browser testing found and fixed the prior-sample
-AudioParam retarget anchor; the earlier mathematical-only model missed it. The
-original reference/methods and strict PCM limits remain intact.
-
-The initial ideal-curve/unit-impulse test confused linear transfer with original
-nonlinear tiny-state flushing. Its exact 65536-frame unit impulse/tail remains an
-unchanged-JS PCM case; curve verification now uses actual steady tones at the
-same **1e-6** amplitude limit (Windows peak **2.01394e-9**, 48 frequency points).
-**60 ranges / 120 inverse checks** cover the peak bandwidth handles. Full details
-and test-change rationale are in EQ_MIGRATION. Browser worklet loading uses one
-debugger-owned test document; product CSP/native-only audio remain unchanged.
-
-Linux **4/4 focused CTests PASS, 42.28s**, same case/frame/peak counts as Windows;
-ASan/UBSan/leaks **2/2 PASS, 6.83s**, no diagnostics. Strengthened overflow and
-**240 half-gain checks** pass Windows/Linux Release plus Linux sanitizers; peak
-half-gain amplitude error **6.7677e-12**. The exact same warmed 20-stereo-kernel
-Release fixture (all ten bands, steady/rapid-target) observed worst 64/128 times
-Windows **318.5/534.5us**, Linux **369.077/2254.67us**, deadlines
-**1333.33/2666.67us**, no observed overruns. Kernel-only measurements, not full
-callback/device/round-trip or worst-case guarantees; retain the Linux outlier.
-Implementation **78fa041**, added acceptance **fc6edc5**; exact commands/logs and
-the inadvertent duplicate Linux test run are recorded in EQ_MIGRATION.
-
-Next: connect this same DSP to bounded GUI/CLI commands and compatible effect state, original EQ
-controls/presets and the approved interactive graph. Complete lifecycle/routing/
-bypass-fade/record-capture and actual 64/128 UI acceptance before enabling it.
-Curve evaluation belongs to a separate UI/worker-owned instance/settings snapshot,
-never concurrent reads of the live audio filter. Connect the render-quantum origin
-and original graph reuse/teardown explicitly; isolated time-zero worklet evidence
-does not establish those lifetimes. Original raw low-rate failures remain tests;
-the effective-frequency repair and graphic editing are owner-approved scope.
-Retain all prior accepted core-loop evidence below. No claim of product callback,
-full-bank/physical input, Linux WebKit, hardware or deferred-wrapper acceptance.
+**Owner choice pending:** original EffectManager.update/triggerRebuild skips live
+graph changes during OD/SUB/MULT and scheduled STOP. The current unpublished
+persistent prototype responds live; the owner has been asked to select live
+controls or the original limitation. Do not assume approval or claim full EQ
+workflow parity. Finish that choice and EQ MIDI Learn before another effect.
 
 ### Implemented preview: queued PLAY with STOP pending Undo/Redo — 9 November 2026
 
