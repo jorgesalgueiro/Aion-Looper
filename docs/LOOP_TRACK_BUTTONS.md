@@ -18,7 +18,8 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | DEL; MERGE source / GO | Native cleanup and immutable worker merge, original confirmation/history/PCM gates | Queued-source clone/mix verified in Windows/Linux audio and Windows pointer tests; queued-destination and scheduled-stop source/destination audio/ownership and Windows pointer checks also pass; other stopping-state controls require their own eligibility audit |
 | Waveform click WAV | Native stored-PCM export, filenames, bounded leases and picker lifecycle | OS cancel/overwrite and non-Windows dialogs remain separate checks |
 | SAVE (Dry/Wet) | **Unported; disabled** | Native wet rendering, chain state, rate/pan/volume, three-second tail, paired filenames and lifecycle checks; dry-only export is not equivalent |
-| FX, FULL PRESET, CHAIN PRESET, manual chain, per-effect controls | **Product integration unported; disabled**, except Reverse. Original Q/eQ isolated DSP/smoothing and curve/bandwidth math now pass Windows/Linux and actual Windows WebAudio sound gates; [EQ_MIGRATION.md](EQ_MIGRATION.md) | Connect shared GUI/CLI/state/presets and owner-approved graphic point/range editing; complete routing/lifecycle/real UI acceptance before enabling Q/eQ, then remaining effects |
+| Q/eQ, FX/eQ navigation | **Connected preview, Windows PASS; Linux verification next.** Shared GUI/CLI, original 24 controls/10 presets, versioned state and approved point/range graph; strict connected worklet PCM, exact record/OD/SUB dry WAV, actual 64/128 pointer/keyboard/reload and production CLI checks; [EQ_MIGRATION.md](EQ_MIGRATION.md) | Affected Linux regression/processor/sanitizer gates in this snapshot; listening/physical and Linux WebKit remain separate |
+| Other FX, FULL PRESET, CHAIN PRESET, manual chain | **Unported; disabled**, except accepted Reverse and Q/eQ above | Port the remaining effects individually before wet SAVE/full-chain acceptance |
 
 Finalization dispatch, rapid queued history/MULT and the integral-sample source
 fade repair are verified. Worker/source pre-start tempo ordering is verified.
@@ -34,7 +35,7 @@ The owner confirmed core
 looping/editing first. Each functional
 slice must pass its relevant Windows/Linux tests before the next. The final
 integrated pass must exercise combinations rather than merely enable controls.
-Q/eQ DSP groundwork is in progress; its complete product controls remain disabled.
+Q/eQ is connected in the development preview; its Linux integration gate is next.
 No dependency change or package is implied by this inventory. Existing sessions,
 IDs, expanded capacity and logo are preserved.
 

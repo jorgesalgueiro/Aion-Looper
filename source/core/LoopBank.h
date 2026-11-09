@@ -11,12 +11,13 @@
 #include "core/Wav.h"
 #include "core/MeterWindow.h"
 #include "core/MeterGraphEvents.h"
+#include "core/EqSettings.h"
 
 namespace aion {
 // Application queues wait for explicit source creation; direct DSP clients may schedule at the grid.
 enum class QueuedStartMode { sampleGrid, messageCallback };
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest }; // Source/reset primitives are core-only, never exposed by IPC.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer }; // Append-only. Source/reset primitives remain core-only.
 constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart||action==LoopAction::meterQueuedWindowRequest||action==LoopAction::meterQueuedGraphRequest;}
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
@@ -37,6 +38,8 @@ struct LoopView {
     bool queuedSourceReady = false; // Transient audio-owned readiness, never persisted.
     float volume = 1, feedback = 0.8f, peak = 0, pan = 5, playbackRate = 1;
     bool muted = false, solo = false, finalizationFailed = false, reverse = false;
+    EqSettings equalizer{};
+    std::uint32_t eqRequest=0;
 };
 // Audio owns capture blocks/state; the worker borrows pinned takes and owns immutable clips.
 // Capture storage is allocated in prepare; clip allocation/deletion stays off the callback.
@@ -53,6 +56,8 @@ public:
     void prepare(std::uint32_t frames = defaultFrames, std::uint32_t fadeFrames = 240, double sampleRate = 48000);
     bool finalizationPending() const noexcept { return jobState.load(std::memory_order_acquire) != 0; }
     bool apply(LoopAction, std::uint32_t track, float value = 0) noexcept;
+    bool setEqualizer(std::uint32_t,const EqSettings&,std::uint32_t mask,std::uint32_t request,
+                      std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
     bool setStartDelay(std::uint32_t track,double value) noexcept;
     bool clearMergedSource(std::uint32_t track,double serial) noexcept;
     Stereo tick(Stereo input, bool nonRealtime = false) noexcept;
@@ -142,7 +147,8 @@ public:
     int nextRedo() const noexcept { return redoSize?redoOrder[redoSize-1]:-1; }
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
-    void resetTimeline() noexcept { deferredMultiplyGraph={};meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetEqualizers() noexcept;
+    void resetTimeline() noexcept { resetEqualizers();deferredMultiplyGraph={};meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     void setMeterCallbackClock(const CallbackClockStamp& callback) noexcept {meterCallbackClock=callback;}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
@@ -358,6 +364,16 @@ private:
     std::unique_ptr<MeterGraphEvents> meterGraphEvents=std::make_unique<MeterGraphEvents>();
     std::unique_ptr<std::array<MeterWindow,trackCount>> meterWindows=std::make_unique<std::array<MeterWindow,trackCount>>();
     std::array<Track, trackCount> tracks{};
+    struct TrackEq {
+        SmoothedEqualizer filter{};
+        bool prepared=false;
+        double fadeFrom=1,lastFade=1;
+        std::uint64_t fadeAt=0;
+        bool fading=false;
+    };
+    // Construction-time heap, not extra large audio stack frames/telemetry scans.
+    std::unique_ptr<std::array<TrackEq,trackCount>> equalizers=std::make_unique<std::array<TrackEq,trackCount>>();
+    Stereo tickEqualizer(unsigned,Stereo,bool sourceActive) noexcept;
     std::array<std::uint16_t, maxBlocks> freeBlocks{};
     std::vector<float> audio;
     std::uint32_t totalBlocks = 0, freeCount = 0, fadeLength = 240;

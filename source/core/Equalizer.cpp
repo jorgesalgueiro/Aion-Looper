@@ -132,9 +132,9 @@ double SmoothedEqualizer::valueAt(std::size_t i) const noexcept {
 EqValues SmoothedEqualizer::currentValues() const noexcept {
     EqValues values{};for(std::size_t i=0;i<values.size();++i)values[i]=static_cast<float>(valueAt(i));return values;
 }
-bool SmoothedEqualizer::prepare(double sr,const EqValues& values) noexcept {
+bool SmoothedEqualizer::prepare(double sr,const EqValues& values,std::uint64_t firstFrame) noexcept {
     if(!filter.prepare(sr,values))return false;
-    rate=sr;target=last=values;frame=0;changedAt={};
+    rate=sr;target=last=values;frame=firstFrame;changedAt.fill(frame);
     for(std::size_t i=0;i<start.size();++i)start[i]=values[i];
     initialized=true;return true;
 }

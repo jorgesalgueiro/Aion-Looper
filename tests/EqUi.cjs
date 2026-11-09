@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Actual CDP pointers/keys into the production editor and hardware-free audio
+// processor. This is not OS/driver, listening or Linux WebKit acceptance.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
+(async()=>{
+    assert(process.env.AION_MOUSE_TEST_RUN,'Use tools/TestEqUi.ps1 with its owned host');let target;
+    for(let n=0;n<100;++n){try{target=(await(await fetch('http://127.0.0.1:9235/json')).json()).find(t=>t.url.includes('juce.backend'));}catch{}if(target)break;await wait(100);}
+    assert(target);socket=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{socket.addEventListener('open',r,{once:true});socket.addEventListener('error',j,{once:true});});
+    let serial=0;const replies=new Map(),errors=[];
+    socket.addEventListener('message',e=>{const r=JSON.parse(e.data);if(r.method==='Runtime.exceptionThrown')errors.push(r.params.exceptionDetails);replies.get(r.id)?.(r);});
+    const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++serial,timer=setTimeout(()=>{replies.delete(id);reject(Error(method+' timeout'));},12000);replies.set(id,r=>{clearTimeout(timer);replies.delete(id);r.error?reject(Error(JSON.stringify(r.error))):resolve(r.result);});socket.send(JSON.stringify({id,method,params}));});
+    const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
+    const rpc=request=>evaluate(`AionNative.request(${JSON.stringify(request)})`),snapshot=()=>rpc({operation:'snapshot'});
+    const until=async(predicate,label)=>{let s;for(let n=0;n<120;++n){s=await snapshot();if(predicate(s))return s;await wait(50);}const t={...s?.tracks[0]};delete t.wavePeaks;assert.fail(label+': '+JSON.stringify({frame:s?.frame,request:s?.lastRequestId,track:t,errors}));};
+    const rect=async selector=>{
+        await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing '+${JSON.stringify(selector)});e.scrollIntoView({block:'center',behavior:'instant'});})()`);
+        await wait(150);
+        return evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,left:r.x,top:r.y,width:r.width,height:r.height,disabled:!!e.disabled,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};})()`);
+    };
+    const click=async selector=>{const r=await rect(selector);assert(!r.disabled&&r.hit,selector+' blocked '+JSON.stringify(r));const down=call('Input.dispatchMouseEvent',{type:'mousePressed',x:r.x,y:r.y,button:'left',clickCount:1});await wait(20);const up=call('Input.dispatchMouseEvent',{type:'mouseReleased',x:r.x,y:r.y,button:'left',clickCount:1});await Promise.all([down,up]);};
+    const drag=async (x,y,dx,dy)=>{
+        const down=call('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});await wait(15);
+        const move=call('Input.dispatchMouseEvent',{type:'mouseMoved',x:x+dx,y:y+dy,button:'left',buttons:1});await wait(30);
+        const up=call('Input.dispatchMouseEvent',{type:'mouseReleased',x:x+dx,y:y+dy,button:'left',clickCount:1});await Promise.all([down,move,up]);
+    };
+    await call('Runtime.enable');await call('Page.enable');await call('Emulation.setFocusEmulationEnabled',{enabled:true});
+    await call('Page.bringToFront');
+    for(let n=0;n<100;++n){if(await evaluate(`!!document.querySelector('#native-eq-enabled')&&typeof AionNative?.request==='function'&&!!document.querySelector('#loop-0-eq')`))break;await wait(100);}
+    await until(s=>s.audioReady&&s.inputAvailable,'native audio active');
+    await evaluate(`document.documentElement.style.scrollBehavior='auto'`);
+    for(const [id,value]of [['masterGain',1],['inputMonitor',0],['syncMode',0],['autoPlayAfterRecord',0],['metronomeVolume',0]])assert((await rpc({operation:'setParameter',id,value})).ok);
+    await click('#loop-action-0');await until(s=>s.tracks[0].state==='recording','record');await wait(250);await click('#loop-action-0');
+    await until(s=>s.tracks[0].state==='stopped','committed capture');await click('#loop-action-0');const before=await until(s=>s.tracks[0].state==='playing'&&s.outputPeak>.01,'playback PCM');
+    await click('#loop-0-eq');await until(s=>s.tracks[0].equalizer.enabled,'original checkbox');
+    await click('#loop-0-eq + span');
+    // Original preset select's production change handler; pointer/keyboard graph
+    // and original checkbox tests below use actual compositor input events.
+    await evaluate(`document.querySelector('#sel_eq').value='Radio';document.querySelector('#sel_eq').dispatchEvent(new Event('change',{bubbles:true}))`);
+    let s=await until(s=>s.tracks[0].equalizer.preset==='Radio','original preset');await wait(250);
+    let r=await rect('#eqCanvas');let x=r.left+Math.log(1500/10)/Math.log(22000/10)*r.width,y=r.top+(24-8)/48*r.height;
+    await call('Page.captureScreenshot',{format:'png'}).then(r=>fs.writeFileSync(path.resolve(__dirname,`../build/eq-ui-before-${process.argv[2]}.png`),Buffer.from(r.data,'base64')));
+    console.log('EQ point target',JSON.stringify({r,x,y,dom:await evaluate(`(()=>{const e=document.elementFromPoint(${x},${y});return {tag:e?.tagName,id:e?.id,readout:document.querySelector('#native-eq-point').textContent,viewport:[innerWidth,innerHeight]};})()`)}));
+    await drag(x,y,25,-12);s=await until(s=>s.tracks[0].equalizer.values.p1Freq>1500&&s.tracks[0].equalizer.values.p1Gain>8,'XY point drag');assert.equal(s.tracks[0].equalizer.preset,'');
+    await wait(250);let curve=await rpc({operation:'equalizer',action:'curve',track:0});r=await rect('#eqCanvas');
+    x=r.left+Math.log(curve.ranges[0][1]/10)/Math.log(curve.maximum/10)*r.width;y=r.top+(24-s.tracks[0].equalizer.values.p1Gain)/48*r.height;
+    const oldQ=s.tracks[0].equalizer.values.p1Q;await drag(x,y,15,0);s=await until(s=>s.tracks[0].equalizer.values.p1Q<oldQ,'horizontal bandwidth handle');
+    await call('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowUp',code:'ArrowUp',windowsVirtualKeyCode:38});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowUp',code:'ArrowUp',windowsVirtualKeyCode:38});
+    const keyboard=await until(v=>v.tracks[0].equalizer.values.p1Gain>s.tracks[0].equalizer.values.p1Gain,'keyboard graph gain');
+    assert.equal(keyboard.tracks[0].waveformId,before.tracks[0].waveformId);assert.equal(keyboard.tracks[0].length,before.tracks[0].length);assert.equal(keyboard.tracks[0].undoCount,before.tracks[0].undoCount);
+    await call('Page.captureScreenshot',{format:'png'}).then(r=>fs.writeFileSync(path.resolve(__dirname,`../build/eq-ui-${process.argv[2]}.png`),Buffer.from(r.data,'base64')));
+    const saved=keyboard.tracks[0].equalizer;await evaluate(`window.eqOldDocument=true`);await call('Page.reload');
+    for(let n=0;n<100;++n){if(await evaluate(`!window.eqOldDocument&&document.querySelector('#native-eq-enabled')?.checked===true&&document.querySelectorAll('#loopContainer > div').length===20`))break;await wait(100);}
+    await evaluate(`document.documentElement.style.scrollBehavior='auto'`);await wait(200);
+    s=await snapshot();assert.deepEqual(s.tracks[0].equalizer,saved,'reload retains native settings');assert.equal(s.tracks[0].state,'playing');assert(s.outputPeak>0);
+    await click('#native-eq-reset');s=await until(s=>s.tracks[0].equalizer.values.p1Gain===0&&s.tracks[0].equalizer.values.p1Freq===1000,'original flat reset');
+    await click('#native-eq-enabled');await until(s=>!s.tracks[0].equalizer.enabled,'bypass');
+    await click('#loop-0-eq');await until(s=>s.tracks[0].equalizer.enabled,'reenable');
+    await click('#loop-0 .loop-track-delete');s=await until(s=>s.tracks[0].state==='empty'&&!s.tracks[0].equalizer.enabled,'DEL resets effect');
+    assert.equal(s.tracks[0].equalizer.values.p1Freq,1000);assert.equal(errors.length,0,JSON.stringify(errors));
+    console.log(`PASS actual EQ UI ${process.argv[2]}: original toggle/preset, XY point/range handles, keyboard, nonzero PCM/immutable dry identity, reload, reset/bypass/DEL, no runtime exceptions`);
+    socket.close();
+})().catch(error=>{console.error(error);socket?.close();process.exitCode=1;});

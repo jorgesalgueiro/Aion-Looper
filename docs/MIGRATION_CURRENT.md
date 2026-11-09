@@ -17,6 +17,45 @@ eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was mad
 
 ### In progress: original Q/eQ DSP and graphic editing — 9 November 2026
 
+**Connected preview, Windows acceptance complete; Linux verification next.**
+Per-loop eQ now uses the existing native processor from original track/live eQ
+checkboxes, FX/eQ navigation, original numeric controls/presets and running-app
+`aion.py eq` commands. The approved graph adds ten selectable draggable points,
+six horizontal bandwidth ranges and fine/axis/keyboard editing. Other effects,
+chain/full presets and wet SAVE remain disabled. Preserved UI/reference assets,
+logo, APVTS IDs and existing action IDs are unchanged (EQ action appended).
+
+The owner selected persistent per-track EQ on 9 November: source edits/history/
+restarts retain filter state. Clear, panic and reconfiguration reset runtime
+filters; DEL resets settings. Original 20ms down/up toggle fade and 50ms target
+smoothing are retained. Normal reference retriggers already reuse their graph;
+fallback reconstruction/overlap transition identity is not claimed. Version-1
+`LoopEqualizers` state preserves older presets (defaults/off) and rejects malformed
+EQ before APVTS/MIDI mutation. Host-thread restores publish only through the
+message producer, with atomic bounded batch admission and clear-epoch guards.
+
+Windows: 8/8 focused CTests PASS (48.06s); original kernel/automation/asset/frontend/
+bridge gates retained. New connected unchanged-worklet comparison: **16,384 stereo
+frames at 64/128**, XY and preset smoothing/global render quantum/toggle fade,
+peak **7.46020546e-9**, limit **1e-6**. Record/OD/SUB dry WAV bytes are exact with
+EQ enabled/bypassed; queue rejection, panic/DEL, full-bank restore and callback
+new/delete checks pass. Production processor + **external CLI** pass independently
+at 64/128, covering strict/atomic validation, pending intent serialization, legacy
+and host-thread restore, full queue, MIDI panic cancellation, expanded track 20,
+and same/changed sample-rate lifecycle. Actual WebView2 pointer/keyboard/graph/
+bandwidth/reload/reset/DEL tests pass at 64/128, with nonzero native PCM and no
+runtime exceptions. Full retained core realtime regression executable passed;
+the subsequent EQ timeline-origin repair has its own connected regression.
+
+Warmed **actual Engine** (20 playing stereo loops, all ten EQ bands, 512 warm +
+2048 measured calls/scenario) at 48kHz: worst Windows 64/128 **590.8/947.9us**,
+deadlines **1333.33/2666.67us**, no observed overruns. This includes native mixing/
+EQ/telemetry, not JUCE wrapper/device or round-trip latency; no worst-case promise.
+See [EQ_MIGRATION.md](EQ_MIGRATION.md) for commands, repaired test-harness failures,
+scope and remaining Linux/physical/listening/release checks. No package or push.
+
+The earlier isolated-kernel checkpoint follows for reusable evidence:
+
 The next active feature is original per-loop Q/eQ. The owner approved a low-rate
 Nyquist safety repair and requested direct graphic point/bandwidth editing after
 studying open-source EQ/JSFX. [EQ_MIGRATION.md](EQ_MIGRATION.md) contains the exact

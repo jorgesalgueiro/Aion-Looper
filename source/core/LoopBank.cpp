@@ -408,6 +408,7 @@ void LoopBank::cutQueuedSource(Track& track) noexcept {
     track.last=track.tail=track.blendFrom={};track.tailRemaining=track.blendRemaining=0;
 }
 void LoopBank::clear(Track& track) noexcept {
+    (*equalizers)[static_cast<unsigned>(&track-tracks.data())]={};
     track.historyClock=false;
     clearRetained(track);
     const auto removedBuffer=track.clip?track.clip->waveformId:0;
@@ -443,7 +444,9 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         // not proof that the independent queued graph callback was delivered.
         if(meterQueuedIds[next])publishMeterQueueEnd(next,MeterGraphEventKind::queuedCancel);
         else publishMeterPanic(next);
-        stop(tracks[next]);}return true;}
+        stop(tracks[next]);
+        auto& eq=(*equalizers)[next];eq={};(void)eq.filter.prepare(rate,tracks[next].info.equalizer.values,frame);eq.prepared=true;
+        }return true;}
     if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks){++track.clearEpoch;clear(track);}return true;}
     if(action==LoopAction::undoGlobal){const int next=nextUndo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),false);}
     if(action==LoopAction::redoGlobal){const int next=nextRedo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),true);}
@@ -704,6 +707,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::undoGlobal:
         case LoopAction::redoGlobal:
         case LoopAction::clearAll:
+        case LoopAction::equalizer: // Dedicated validated settings command, never float payload.
         case LoopAction::stopAll:break;
     }
     return false;
@@ -917,6 +921,44 @@ Stereo LoopBank::tickRetained(const Track& track) noexcept {
     }
     return mix;
 }
+void LoopBank::resetEqualizers() noexcept {
+    for(unsigned i=0;i<trackCount;++i){auto& eq=(*equalizers)[i];eq={};(void)eq.filter.prepare(rate,tracks[i].info.equalizer.values,0);eq.prepared=true;}
+}
+bool LoopBank::setEqualizer(std::uint32_t id,const EqSettings& settings,std::uint32_t mask,std::uint32_t request,std::uint64_t epoch,bool checkEpoch) noexcept {
+    if(id>=trackCount||!validEqSettings(settings)||(mask&~eqAllParameters)||(checkEpoch&&epoch!=tracks[id].clearEpoch))return false;
+    auto& t=tracks[id];auto& eq=(*equalizers)[id];
+    const bool toggle=t.info.equalizer.enabled!=settings.enabled;
+    for(unsigned i=0;i<24;++i)if(!(mask&(1u<<i))&&settings.values[i]!=t.info.equalizer.values[i])return false;
+    const bool active=hasPlaybackSource(t)||hasPreparedQueuedSource(t,true)||t.tailRemaining||retainedCounts[id];
+    if(!eq.prepared){(void)eq.filter.prepare(rate,settings.values,frame);eq.prepared=true;}
+    if(toggle){
+        // Original rebuild immediately inserts/removes EQ and schedules a 20ms
+        // down/up volume fade. Persistent track state otherwise survives edits.
+        if(settings.enabled)(void)eq.filter.prepare(rate,settings.values,frame);
+        eq.fadeFrom=eq.lastFade;eq.fadeAt=frame;eq.fading=active;
+    }else if(settings.enabled){
+        if(!active)(void)eq.filter.prepare(rate,settings.values,frame);
+        else for(unsigned i=0;i<24;++i)if(mask&(1u<<i))(void)eq.filter.setTarget(i,settings.values[i]);
+    }
+    t.info.equalizer=settings;t.info.eqRequest=request;return true;
+}
+Stereo LoopBank::tickEqualizer(unsigned id,Stereo input,bool sourceActive) noexcept {
+    auto& eq=(*equalizers)[id];const auto& settings=tracks[id].info.equalizer;
+    if(settings.enabled){
+        if(!eq.prepared){(void)eq.filter.prepare(rate,settings.values,frame);eq.prepared=true;}
+        eq.filter.process(&input.left,&input.right,&input.left,&input.right,1);
+        // STOP's existing source tail bounds audible output. Preserve filter
+        // continuity for source edits, but never let a stopped filter revive PCM.
+        if(!sourceActive)input={};
+    }
+    double fade=1;
+    if(eq.fading){const double duration=rate*.02,age=static_cast<double>(frame-eq.fadeAt);
+        if(age<duration)fade=eq.fadeFrom*(1-age/duration);
+        else if(age<2*duration)fade=(age-duration)/duration;
+        else eq.fading=false;
+    }
+    eq.lastFade=fade;return {static_cast<float>(input.left*fade),static_cast<float>(input.right*fade)};
+}
 Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
     applyPhaseEvents();
     input={safe(input.left),safe(input.right)};Stereo mix{};
@@ -939,6 +981,7 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         const bool audible=t.clip&&!t.queuedSourcePending&&!(t.multiplyCaptureSource&&t.startAt)&&(v.state==LoopState::playing||v.state==LoopState::stopping||v.state==LoopState::overdubbing||v.state==LoopState::substituting||v.state==LoopState::multiplying||(v.state==LoopState::finalizing&&t.playWhileFinalizing));
         if(t.rateRemaining){t.rate+=t.rateIncrement;if(--t.rateRemaining==0)t.rate=t.targetRate;}
         if(t.panRemaining){t.panGain.left+=t.panIncrement.left;t.panGain.right+=t.panIncrement.right;if(--t.panRemaining==0)t.panGain=t.panTarget;}
+        const bool eqSource=audible||t.tailRemaining||retainedCounts[static_cast<unsigned>(&t-tracks.data())];
         Stereo out{};
         if(audible){
             const auto* source=playbackClip(t);const auto sourceLength=source->length;
@@ -967,16 +1010,22 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         }else if(t.tailRemaining){const float progress=static_cast<float>(--t.tailRemaining)/fadeLength;out={t.tail.left*progress,t.tail.right*progress};t.last=out;}
         else t.last={};
         const auto retainedOut=tickRetained(t);out.left+=retainedOut.left;out.right+=retainedOut.right;t.last=out;
+        // A source can advance behind the queued volume gate. Feed the EQ first,
+        // as in the original graph, but gate both audible output and STOP's raw
+        // source tail. Never feed already-filtered PCM back through this chain.
+        auto equalized=tickEqualizer(static_cast<unsigned>(&t-tracks.data()),out,eqSource);
         if(t.queuedGainAt){
-            if(frame<t.queuedGainAt)out={};
+            if(frame<t.queuedGainAt){out={};equalized={};}
             else if(fadeLength&&frame-t.queuedGainAt<fadeLength){
                 const auto gain=static_cast<float>(frame-t.queuedGainAt+1)/fadeLength;
                 out={out.left*gain,out.right*gain};
+                equalized={equalized.left*gain,equalized.right*gain};
             }else t.queuedGainAt=0;
             // STOP/clear tails and replacements must use the audible value,
             // never leak a source that was advancing behind a closed graph gate.
             t.last=out;
         }
+        out=equalized;
         const bool excluded=soloTrack>=0&&soloTrack!=static_cast<int>(&t-tracks.data());
         const float desired=v.muted||excluded?0:v.volume;
         const float step=fadeLength?1.0f/static_cast<float>(fadeLength*4):2;

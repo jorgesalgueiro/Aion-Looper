@@ -1,8 +1,119 @@
 # Original Q/eQ migration
 
 Active slice: ten-band per-loop eQ, before the other unported FX/SAVE controls.
-The filter kernel is a prerequisite, not acceptance of the complete GUI/CLI
-effect. Keep the product checkbox disabled until integration passes.
+The filter kernel was a prerequisite. Connected Windows preview acceptance is
+recorded below; Linux verification is pending in this snapshot. Do not infer
+full-chain, wet SAVE, hardware, deferred-wrapper or release acceptance.
+
+## Connected implementation and current verification — 9 November 2026
+
+Owner selection: persistent EQ per track. Healthy original Start/retrigger/history
+already reuse their graph; separate graphs are a reconstruction fallback. Native
+source edits retain filter state, while clear/panic/reconfiguration reset runtime
+filters. Stopped source tails remain bounded by the existing source lifetime;
+silent EQ cannot revive stopped playback. DEL resets EQ to original defaults/off.
+This intentional persistence choice is separate from unchanged-worklet parity.
+
+EQ runs before queued volume gating, loop volume/pan and MASTER, after source
+mixing. Raw record/OD/SUB capture and stored-PCM WAV export exclude it. Toggle
+insertion/removal retains the original 20ms down/up gate; controls use the proven
+50ms target smoother and global 128-frame coefficient clock. Same-rate timeline
+reset now explicitly resets that clock; a connected non-quantum target regression
+guards the defect found during review. Overlapping browser graphs/transition
+envelopes beyond this persistent model are not claimed bit-identical.
+
+The dedicated `equalizer` RPC validates track/generation/expiry and bounded named
+parameter batches. Existing GUI scheduling orders it with edits/DEL/panic; CLI
+uses the same message owner/processor. Full preset/XY batches reject atomically.
+Commands carry clear epochs; message intent reconciles to real audio completion,
+including dropped MIDI-panic work. State is a strict version-1 `LoopEqualizers`
+child of the existing APVTS tree (20 tracks, enable/preset/24 values), with legacy
+default/off loading. Host restore never publishes to the SPSC queue from a host
+thread: the message timer admits a complete 20-command bank or retries. Existing
+parameter/action IDs, MIDI schema and presets remain compatible. Effect MIDI
+Learn and wrapper-host automation are still deferred; no disabled mapping target
+was enabled. Project-file PCM persistence and other FX/full/chain presets remain
+independent work.
+
+The original eQ toggles, FX/eQ navigation, preset names and three-column numeric
+controls are adapted in native presentation code, leaving preserved assets intact.
+The approved graph uses a separate message-owned native filter for bounded
+256-point response/6-range queries, throttled to <=10Hz with document/selection/
+settings fencing. Ten points can be selected even when they coincide; drag XY,
+Shift for fine changes, Alt for gain only, Ctrl for frequency only. Selected peak
+handles change Q through the same native warped bandwidth calculation. Arrow
+keys edit frequency/gain; `[`/`]` edit Q; original numeric double-click resets
+remain. Editor reload retains native settings and guards obsolete curve replies.
+
+Windows evidence in `build/eq-*` (ignored local logs):
+
+- `eq-core-windows.log`: **8/8 PASS, 48.06s** including prior kernel/automation,
+  new preset table (240 Float32 settings), asset bytes, frontend and bridge gates.
+- `EqConnectedParity.cjs`: **2 stereo 64/128 cases / 16,384 frames**, actual Engine
+  capture/playback/control output versus unchanged original worklet; XY/preset
+  target smoothing and toggle fade; peak **7.46020546e-9 <= 1e-6**. The connected
+  fixture also proves exact dry WAV through record/OD/SUB, masks/epochs, panic/
+  DEL, full-queue bank admission, same-rate clock reset and zero tracked callback
+  new/delete. Existing 481 kernel + 15 automation + 48 actual-browser sound cases
+  remain unchanged; these different layers are not a claim of all transition PCM.
+- `eq-processor-windows-{64,128}.log`: actual production processor and external
+  Python CLI PASS, strict bad-batch/state rollback, save-before-audio, legacy/
+  host-thread restore, full queue, MIDI-panic cancellation, DEL, track 20,
+  same/changed sample rates, zero tracked callback new/delete.
+- `eq-ui-final-windows.log`, `eq-ui-{64,128}.png`: actual compositor pointers and
+  keys PASS on original toggles, XY/range graph, keyboard, native nonzero PCM,
+  immutable dry identity, reload, flat reset, bypass and DEL; no runtime exceptions.
+  Preset change handler is exercised directly; OS select popup interaction and
+  listening/physical drivers are not claimed.
+- `eq-core-regression-windows.log`: complete retained core realtime executable
+  PASS. It preceded the final timeline-reset-only repair; the added connected
+  clock regression covers that repair without repeating unrelated suites.
+- `eq-engine-benchmark-windows.log`: 20 stereo playing loops/all ten bands,
+  512 warm + 2048 measured calls per steady/rapid-target scenario at 48kHz.
+  Worst 64/128 **590.8/947.9us** (p99 target **475.9/680.2us**), deadlines
+  **1333.33/2666.67us**, 0 observed overruns. Full Engine, not JUCE/device/round-trip
+  latency or a worst-case guarantee. Prior isolated-kernel timings remain below.
+
+Failures were retained and repaired: initial fixture read a saturated old snapshot;
+it now drains every block. Panic fixture initially left MIDI disabled; enable is
+now explicit. JUCE's stopped message loop cannot be restarted for a second block
+fixture; processor CLI tests now run as separate 64/128 processes. Pointer tests
+exposed scrolling/stale coordinates and old-document reload readiness; the product
+reveals the graph below the sticky header and tests await the actual new document.
+No audio limit/tolerance or preserved reference was weakened. An approval-service
+usage-limit failure initially prevented the UI test from executing; review later
+recovered and the actual test then ran. No package/push was made.
+
+Exact development commands (installed CMake executable may be under Visual Studio):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_eq_tests aion_eq_probe aion_eq_connected_tests aion_core_tests aion_eq_engine_benchmark
+ctest --test-dir build/windows-core -C Release --output-on-failure -R '^(eq_.*contract|js_native_eq_.*|native_frontend_commands|native_bridge_lifecycle|original_ui_bytes)$'
+node tests/EqConnectedParity.cjs build/windows-core/Release/aion_eq_connected_tests.exe
+cmake --build build/windows --config Release --target aion_eq_processor_tests aion_mouse_host AionLooper_Standalone
+build/windows/Release/aion_eq_processor_tests.exe 64
+build/windows/Release/aion_eq_processor_tests.exe 128
+tools/TestEqUi.ps1
+build/windows-core/Release/aion_core_tests.exe
+build/windows-core/Release/aion_eq_engine_benchmark.exe
+```
+
+Running-app CLI (1-based tracks):
+
+```sh
+python tools/aion.py eq 1 preset --preset Radio
+python tools/aion.py eq 1 on
+python tools/aion.py eq 1 set --values '{"p1Freq":1800,"p1Gain":4,"p1Q":0.7}'
+python tools/aion.py eq 1 get
+python tools/aion.py eq 1 curve
+python tools/aion.py eq 1 reset
+python tools/aion.py eq 1 off
+```
+
+Next gate in this snapshot: commit locally, safe WSL sync, affected Linux builds/
+reference/processor/CLI/ownership tests and sanitizers, then update these notes
+with actual results. Linux WebKit pointer interaction, listening/physical devices,
+long-session release validation and deferred plugin wrappers remain separate.
 
 ## Observable acceptance, defined before integration
 

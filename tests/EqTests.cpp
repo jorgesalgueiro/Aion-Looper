@@ -143,6 +143,13 @@ int main(){
         check(!eqPeakRange(0,1,48000,low,high)&&low==7&&high==8,"Invalid bandwidth query atomic");
         check(!eqPeakQ(1000,24000,48000,q)&&q==3,"Invalid Nyquist edge rejected");
     }
+    for(unsigned origin:{1u,37u,63u,127u,129u}){
+        SmoothedEqualizer continuous,attached;check(continuous.prepare(48000)&&attached.prepare(48000,eqDefaults(),origin),"Attach EQ to nonzero global render quantum");
+        al.fill(0);ar.fill(0);continuous.process(nullptr,nullptr,al.data(),ar.data(),origin>128?128:origin);
+        if(origin>128)continuous.process(nullptr,nullptr,al.data(),ar.data(),origin-128);
+        check(continuous.setTarget(4,12)&&attached.setTarget(4,12),"Same global target offset");left.fill(.1f);right.fill(-.2f);
+        for(unsigned n=0;n<16;++n){continuous.process(left.data(),right.data(),al.data(),ar.data(),128);attached.process(left.data(),right.data(),bl.data(),br.data(),128);check(al==bl&&ar==br,"Nonzero attachment retains global 128-frame coefficient clock");}
+    }
     watching=false;check(operations.load()==0,"EQ prepare/configure/reset/process must never allocate or free");
     std::cout<<"PASS: EQ atomic validation, finite recovery/overflow, stereo/tails/reset, exact 64/128 and in-place, curve/steady-tone DFT max "<<responseError<<", bandwidth half-gain max "<<halfGainError<<", handle inverse, zero new/delete\n";
 }

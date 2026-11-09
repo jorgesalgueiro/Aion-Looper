@@ -76,7 +76,7 @@ private:
 // This owns only filter/automation state, not product presets or transport.
 class SmoothedEqualizer {
 public:
-    bool prepare(double sampleRate,const EqValues& = eqDefaults()) noexcept;
+    bool prepare(double sampleRate,const EqValues& = eqDefaults(),std::uint64_t firstFrame=0) noexcept;
     bool setTarget(std::size_t parameter,float value) noexcept;
     bool setTargets(const EqValues&) noexcept;
     void reset() noexcept; // Reconstruct worklet/AudioParams at stored targets.

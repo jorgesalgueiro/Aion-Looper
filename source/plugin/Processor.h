@@ -128,5 +128,19 @@ private:
     std::array<std::uint64_t, aion::LoopBank::trackCount> nameClearEpochs{};
     std::uint32_t nameGeneration = 0;
     std::uint32_t nextRequest = 0;
+    // Non-audio intent/state owner under midiSettingsMutex. The message thread
+    // alone publishes commands. A host restore never becomes a second producer.
+    using EqBank=std::array<aion::EqSettings,aion::LoopBank::trackCount>;
+    EqBank eqSettings{};
+    bool eqRestorePending=false;
+    std::array<std::uint32_t,aion::LoopBank::trackCount> eqPending{};
+    std::array<bool,aion::LoopBank::trackCount> eqClearing{};
+    std::array<std::uint64_t,aion::LoopBank::trackCount> eqClearEpochs{};
+    void serviceEqualizer();
+    void equalizerCleared(unsigned track,bool all,std::uint32_t requestId);
+    void equalizerSnapshot(juce::DynamicObject&,unsigned track);
+    bool equalizerRequest(const juce::var&,juce::DynamicObject&);
+    void saveEqualizers(juce::ValueTree&);
+    static bool readEqualizers(const juce::ValueTree&,EqBank&);
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AionProcessor)
 };

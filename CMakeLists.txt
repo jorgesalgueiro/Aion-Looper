@@ -34,6 +34,7 @@ option(AION_BUILD_AUV3 "Build AUv3 with Apple's Xcode generator" ${auv3_default}
 option(AION_BUILD_LV2 "Build deferred/opt-in JUCE LV2 wrapper" OFF)
 add_library(aion_core STATIC source/core/Engine.cpp source/core/LoopBank.cpp source/core/ReferenceDsp.cpp source/core/Wav.cpp source/core/MidiController.cpp)
 target_sources(aion_core PRIVATE source/core/Equalizer.cpp)
+target_sources(aion_core PRIVATE source/core/EqSettings.cpp)
 find_package(Threads REQUIRED)
 target_link_libraries(aion_core PUBLIC Threads::Threads)
 target_include_directories(aion_core PUBLIC source)
@@ -46,6 +47,11 @@ if(BUILD_TESTING)
     add_executable(aion_eq_tests tests/EqTests.cpp)
     target_link_libraries(aion_eq_tests PRIVATE aion_core)
     add_test(NAME eq_realtime_contract COMMAND aion_eq_tests)
+    add_executable(aion_eq_connected_tests tests/EqConnectedTests.cpp)
+    target_link_libraries(aion_eq_connected_tests PRIVATE aion_core)
+    add_test(NAME eq_connected_contract COMMAND aion_eq_connected_tests)
+    add_executable(aion_eq_engine_benchmark tests/EqEngineBenchmark.cpp)
+    target_link_libraries(aion_eq_engine_benchmark PRIVATE aion_core)
     add_executable(aion_eq_benchmark tests/EqBenchmark.cpp)
     target_link_libraries(aion_eq_benchmark PRIVATE aion_core)
     find_package(Threads REQUIRED)
@@ -83,6 +89,8 @@ if(BUILD_TESTING)
         add_executable(aion_eq_probe tests/EqProbe.cpp)
         target_link_libraries(aion_eq_probe PRIVATE aion_core)
         add_test(NAME js_native_eq_kernel COMMAND "${AION_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/EqParity.cjs" "$<TARGET_FILE:aion_eq_probe>")
+        add_test(NAME js_native_eq_presets COMMAND "${AION_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/EqPresets.cjs" "$<TARGET_FILE:aion_eq_probe>")
+        add_test(NAME js_native_eq_connected COMMAND "${AION_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/EqConnectedParity.cjs" "$<TARGET_FILE:aion_eq_connected_tests>")
         set_tests_properties(js_native_eq_kernel PROPERTIES TIMEOUT 120)
         add_test(NAME js_native_eq_automation COMMAND "${AION_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/EqAutomationParity.cjs" "$<TARGET_FILE:aion_eq_probe>")
         set_tests_properties(js_native_eq_automation PROPERTIES TIMEOUT 120)
@@ -218,7 +226,7 @@ execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/too
     --source "${CMAKE_CURRENT_SOURCE_DIR}/resources/ui"
     --manifest "${CMAKE_CURRENT_SOURCE_DIR}/resources/reference-manifest.json"
     --output "${ui_archive}" COMMAND_ERROR_IS_FATAL ANY)
-juce_add_binary_data(AionUi NAMESPACE AionUi HEADER_NAME UiData.h SOURCES "${ui_archive}" resources/native/bridge.js resources/native/loop-view.js resources/native/controls.js resources/native/midi-view.js resources/native/midi.js resources/native/looper.js)
+juce_add_binary_data(AionUi NAMESPACE AionUi HEADER_NAME UiData.h SOURCES "${ui_archive}" resources/native/bridge.js resources/native/loop-view.js resources/native/controls.js resources/native/midi-view.js resources/native/midi.js resources/native/equalizer.js resources/native/looper.js)
 juce_add_plugin(AionLooper
     COMPANY_NAME "Jorge Salgueiro"
     COMPANY_WEBSITE "https://github.com/jorgesalgueiro/Aion-Looper"
@@ -245,7 +253,7 @@ include(cmake/Vst3Programs.cmake)
 include(cmake/StandaloneClock.cmake)
 include(cmake/DeviceDelivery.cmake)
 
-target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/ui/WebEditor.cpp)
+target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/plugin/ProcessorEqualizer.cpp source/ui/WebEditor.cpp)
 target_include_directories(AionLooper PRIVATE source)
 target_compile_definitions(AionLooper PUBLIC
     JUCE_WEB_BROWSER=1 JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
@@ -271,6 +279,11 @@ target_link_libraries(AionLooper PRIVATE aion_core AionUi
 # Production-processor acceptance needs no audio device or browser window.
 # Excluded by default; explicitly build before enabling/running this CTest gate.
 if(BUILD_TESTING AND (WIN32 OR linux_desktop))
+    add_executable(aion_eq_processor_tests EXCLUDE_FROM_ALL tests/EqProcessorTests.cpp)
+    target_include_directories(aion_eq_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
+    target_compile_definitions(aion_eq_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
+        AION_CLI_PYTHON="${Python3_EXECUTABLE}" AION_EQ_CLI_TEST="${CMAKE_CURRENT_SOURCE_DIR}/tests/EqCliTests.py")
+    target_link_libraries(aion_eq_processor_tests PRIVATE AionLooper)
     add_executable(aion_midi_processor_tests EXCLUDE_FROM_ALL tests/MidiProcessorTests.cpp tests/DeviceSplitTests.cpp tests/MeterCleanupTimerTests.cpp)
     target_include_directories(aion_midi_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
     target_compile_definitions(aion_midi_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
@@ -280,6 +293,11 @@ if(BUILD_TESTING AND (WIN32 OR linux_desktop))
     target_link_libraries(aion_midi_processor_tests PRIVATE AionLooper)
     option(AION_TEST_NATIVE_PROCESSOR "Register the optional production processor CTest" OFF)
     if(AION_TEST_NATIVE_PROCESSOR)
+        foreach(eq_block IN ITEMS 64 128)
+            add_test(NAME native_eq_processor_${eq_block} COMMAND aion_eq_processor_tests ${eq_block})
+            set_tests_properties(native_eq_processor_${eq_block} PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
+                FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected" LABELS "native;processor;equalizer")
+        endforeach()
         add_test(NAME native_midi_processor COMMAND aion_midi_processor_tests)
         set_tests_properties(native_midi_processor PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE
             FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected"

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/Equalizer.h"
+#include "core/EqSettings.h"
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
@@ -9,6 +10,9 @@
 int main(){
     aion::Equalizer eq;aion::SmoothedEqualizer smooth;bool smoothed=false;std::string operation;std::cout<<std::setprecision(9);
     while(std::cin>>operation){
+        if(operation=="presets"){
+            std::cout<<'[';for(unsigned id=1;id<=10;++id){if(id>1)std::cout<<',';std::cout<<"{\"name\":\""<<aion::eqPresetNames[id-1]<<"\",\"values\":[";const auto p=aion::eqPresetValues(id);for(unsigned i=0;i<24;++i){if(i)std::cout<<',';std::cout<<p[i];}std::cout<<"]}";}std::cout<<"]\n";continue;
+        }
         if(operation=="prepare"||operation=="configure"||operation=="smooth"){
             double rate=0;if(operation!="configure"&&!(std::cin>>rate))return 2;
             aion::EqValues values{};for(auto& value:values)if(!(std::cin>>value))return 2;

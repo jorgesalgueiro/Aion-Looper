@@ -21,6 +21,10 @@ struct LoopCommand {
     std::uint32_t stutterRevision = 0;
     std::uint32_t meterGraphTicket = 0; // Internal only; never rounded through float value.
     std::uint64_t meterQueueId = 0, meterBufferId = 0; // Conditional raw reset only, never JS numbers/float values.
+    EqSettings equalizer{};
+    std::uint32_t eqMask=eqAllParameters;
+    std::uint64_t eqClearEpoch=0;
+    bool eqCheckEpoch=true;
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct ExportRequest {std::uint32_t track=0,generation=0;std::uint64_t waveformId=0;};
@@ -68,6 +72,10 @@ public:
     void setMetronome(bool enabled,float volume) noexcept {metronome.setEnabled(enabled);metronome.setVolume(volume);}
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
+    bool enqueueEqBank(const std::array<EqSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;
+    void prepareEqBank(const std::array<EqSettings,LoopBank::trackCount>& settings) noexcept {
+        for(unsigned i=0;i<settings.size();++i)(void)loops.setEqualizer(i,settings[i],eqAllParameters,0,0,false);
+    } // Stopped prepare owner only; never a message-thread shortcut into audio.
     // Single message owner publishes a cumulative source-retirement fence.
     // Independent of the performance FIFO, so cleanup cannot be lost on overflow.
     bool retireQueuedSourceThrough(std::uint32_t requestedGeneration,unsigned track,std::uint32_t ticket) noexcept {
@@ -150,7 +158,7 @@ private:
     Metronome metronome;
     CountIn countIn;
     std::uint32_t countInTrack=0;
-    SpscQueue<LoopCommand, 256> loopCommands;
+    std::unique_ptr<SpscQueue<LoopCommand,256>> loopCommands=std::make_unique<SpscQueue<LoopCommand,256>>();
     std::unique_ptr<SpscQueue<EngineView,8>> views=std::make_unique<SpscQueue<EngineView,8>>(); // Construction-time storage, never allocate snapshots on audio.
     std::unique_ptr<SpscQueue<WaveformEvent,8>> waveforms=std::make_unique<SpscQueue<WaveformEvent,8>>(); // Allocate off callback, avoid large engine stack frames.
     std::array<std::uint64_t,LoopBank::trackCount> sentWaveforms{};

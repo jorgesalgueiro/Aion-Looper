@@ -3,12 +3,22 @@
 #include <atomic>
 #include <cstdint>
 #include <type_traits>
+#include <span>
 namespace aion {
 template<class T, std::uint32_t N> class SpscQueue {
     static_assert(N >= 2 && (N & (N - 1)) == 0);
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::atomic<std::uint32_t>::is_always_lock_free);
 public:
+    // Sole-producer atomic batch publication, useful for a complete preset bank.
+    // Reject before writing if there is insufficient room; never publish a prefix.
+    bool pushBatch(std::span<const T> batch) noexcept {
+        const auto w=write.load(std::memory_order_relaxed),r=read.load(std::memory_order_acquire);
+        if(batch.size()>static_cast<std::uint32_t>((r-w-1)&(N-1)))return false;
+        auto next=w;
+        for(const auto& value:batch){values[next]=value;next=(next+1)&(N-1);}
+        write.store(next,std::memory_order_release);return true;
+    }
     bool push(const T& value) noexcept {
         const auto w = write.load(std::memory_order_relaxed);
         const auto next = (w + 1) & (N - 1);

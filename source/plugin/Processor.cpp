@@ -133,6 +133,7 @@ void AionProcessor::timerCallback(){
    #endif
     serviceMidi();
     serviceMeters(true);
+    serviceEqualizer();
     const auto written=exportWriteResult->load(std::memory_order_acquire);
     if(written>0){exportWriteResult->store(0);exportBusy=false;exportStatus=written==1?"WAV saved":"WAV export failed: could not write the selected file";}
     // This shared service also owns meter generations. Keep it scheduled until
@@ -187,6 +188,7 @@ void AionProcessor::prepareToPlay(double rate, int) {
     aion::DeviceOutputLatency latency;
     try{latency=outputLatencyReader?outputLatencyReader():standaloneOutputLatency(*this);}catch(...){latency={};}
     engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
+    {std::lock_guard guard(midiSettingsMutex);engine.prepareEqBank(eqSettings);eqRestorePending=false;eqPending.fill(0);eqClearing.fill(false);}
     deviceClockOwner=nextDeviceClockOwner;
     deviceClockEpoch=deviceClockOwner?deviceClockOwner->advance():0;
     activeDeviceClockEpoch.store(deviceClockEpoch,std::memory_order_release);
@@ -374,17 +376,20 @@ void AionProcessor::processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuff
 }
 juce::AudioProcessorEditor* AionProcessor::createEditor() { return new AionWebEditor(*this); }
 void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
+    std::lock_guard stateGuard(midiSettingsMutex);
     auto state=parameters.copyState();juce::ValueTree stored("MidiSettings");
     {std::lock_guard guard(midiSettingsMutex);stored.setProperty("enabled",midiSettings.enabled,nullptr);
      stored.setProperty("version",3,nullptr);
      for(unsigned i=0;i<aion::MidiSettings::bindingCount;++i)stored.setProperty("binding"+juce::String(i),static_cast<int>(midiSettings.bindings[i]),nullptr);}
     state.removeChild(state.getChildWithName("MidiSettings"),nullptr);state.appendChild(stored,nullptr);
+    saveEqualizers(state);
     if (auto xml = state.createXml()) copyXmlToBinary(*xml, data);
 }
 void AionProcessor::setStateInformation(const void* data, int size) {
     if (size <= 0 || size > 1024 * 1024) return;
     if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName("AionState")) {
-        auto state=juce::ValueTree::fromXml(*xml);aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
+        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;if(!readEqualizers(state,restoredEq))return;
+        aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
         if(stored.isValid()){
             const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
             const auto version=stored.getProperty("version",1).toString();if(version!="1"&&version!="2"&&version!="3")return;
@@ -394,6 +399,7 @@ void AionProcessor::setStateInformation(const void* data, int size) {
         {
             std::lock_guard guard(midiSettingsMutex);next.learnToken=midiSettings.learnToken+1;
             if(!updateMidi(next))return;
+            eqSettings=restoredEq;eqRestorePending=true;eqPending.fill(0);eqClearing.fill(false);
             parameters.replaceState(state);
         }
         // Preset restoration changes values without automation events. Ask wrappers
@@ -420,6 +426,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     // epochs cross from audio; string allocation and destruction stay here.
     aion::EngineView view{};
     while (engine.popView(view)) latest = view;
+    serviceEqualizer();
     aion::WaveformEvent waveform{};
     while(engine.popWaveform(waveform))waveformCache[waveform.track]=waveform;
     aion::LiveInputEvent live{};while(engine.popLiveInput(live))latestLiveInput=live;
@@ -527,10 +534,13 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             object->setProperty("effectiveRate",t.effectiveRate);object->setProperty("dynamicRecorded",t.dynamicRecorded);
             object->setProperty("pan", t.pan); object->setProperty("playbackRate", t.playbackRate);
             object->setProperty("volume", t.volume); object->setProperty("feedback", t.feedback);
+            equalizerSnapshot(*object,static_cast<unsigned>(trackIndex));
             object->setProperty("finalizationFailed", t.finalizationFailed); object->setProperty("solo", t.solo); object->setProperty("muted", t.muted); object->setProperty("peak", t.peak);
             tracks.add(juce::var(object));
         }
         result->setProperty("tracks", juce::var(tracks));
+    } else if(operation=="equalizer") {
+        result->setProperty("ok",equalizerRequest(request,*result));
     } else if (operation == "cancelExport") {
         cancelExport();result->setProperty("ok",true);
     } else if (operation == "exportLoop") {
@@ -578,6 +588,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation()))return fail("Audio generation changed");
         engine.cancelStutter(static_cast<unsigned>(static_cast<int>(id)));result->setProperty("ok",true);
     } else if (operation == "loop") {
+        {std::lock_guard guard(midiSettingsMutex);if(eqRestorePending)return fail("Wait for pending EQ state restore");}
         const auto expiration = request.getProperty("expiresAt", {});
         if (!(expiration.isInt() || expiration.isInt64() || expiration.isDouble())) return fail("Missing command expiration");
         const double expiresAt = static_cast<double>(expiration);
@@ -605,6 +616,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
                                 static_cast<std::uint32_t>(static_cast<int>(generation)), 0, actionName=="multiply"?(inputAvailable(*this)?1.0f:0.0f):(actionName=="startDelay"||actionName=="clearMergedSource")?number:static_cast<double>(static_cast<float>(number))}))
             return fail("Audio generation changed or command queue is full");
         nextRequest = requestId;
+        if(actionName=="clear"||actionName=="clearAll")equalizerCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         result->setProperty("ok", true); result->setProperty("queued", true);
         result->setProperty("requestId", static_cast<juce::int64>(requestId));
     } else if(operation=="midiConfig"){

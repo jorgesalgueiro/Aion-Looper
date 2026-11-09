@@ -12,7 +12,7 @@ void Engine::prepare(double sampleRate, std::uint32_t poolFrames,DeviceOutputLat
         loops.prepare(poolFrames, static_cast<std::uint32_t>(rate * 0.005), rate);
     else (void) loops.apply(LoopAction::stopAll, 0);
     loops.resetTimeline();loops.resetMeterGraphEvents(generation());liveInput->cancel();meterTransfer->reset();meterGraphStarts->clear();sentWaveforms.fill(0);waveformCursor=0;metronome.prepare(rate);countIn.prepare(rate);preparedRate = rate;
-    LoopCommand oldCommand{}; while (loopCommands.pop(oldCommand)) {};
+    LoopCommand oldCommand{}; while (loopCommands->pop(oldCommand)) {};
     hasPendingLoop = false; lastRequestId = 0; rejected = false;
     transport={};
     callbackClock={};
@@ -33,11 +33,22 @@ bool Engine::enqueue(GainCommand command) noexcept {
 bool Engine::enqueueLoop(LoopCommand command) noexcept {
     if (command.generation == 0 || command.generation != generation() || command.track >= LoopBank::trackCount
         || !std::isfinite(command.value)) return false;
+    if(command.action==LoopAction::equalizer&&(!validEqSettings(command.equalizer)||(command.eqMask&~eqAllParameters)))return false;
     if(isMeterCommand(command.action)&&!command.meterGraphTicket)return false;
     if((command.action==LoopAction::meterQueuedWindowStart||command.action==LoopAction::meterQueuedWindowRequest||command.action==LoopAction::meterQueuedGraphRequest)
         &&(command.frame||!command.meterQueueId||!command.meterBufferId))return false;
     if(command.action==LoopAction::stutterStart)command.stutterRevision=stutterRevisions[command.track].load(std::memory_order_acquire);
-    return loopCommands.push(command);
+    return loopCommands->push(command);
+}
+bool Engine::enqueueEqBank(const std::array<EqSettings,LoopBank::trackCount>& settings,std::uint32_t firstRequest) noexcept {
+    if(!firstRequest||firstRequest>UINT32_MAX-LoopBank::trackCount||!generation())return false;
+    std::array<LoopCommand,LoopBank::trackCount> batch{};
+    for(unsigned i=0;i<settings.size();++i){
+        if(!validEqSettings(settings[i]))return false;
+        auto& c=batch[i];c.action=LoopAction::equalizer;c.track=i;c.requestId=firstRequest+i;
+        c.generation=generation();c.equalizer=settings[i];c.eqCheckEpoch=false;
+    }
+    return loopCommands->pushBatch(batch);
 }
 bool Engine::applyMidi(LoopAction action,std::uint32_t track,double value) noexcept {
     if(action==LoopAction::record&&!midiInputAvailable)return false;
@@ -46,7 +57,7 @@ bool Engine::applyMidi(LoopAction action,std::uint32_t track,double value) noexc
             if(!isMeterCommand(command.action)){lastRequestId=std::max(lastRequestId,command.requestId);rejected=true;}
         };
         if(hasPendingLoop){discardedUiCommand(pendingLoop);hasPendingLoop=false;}
-        LoopCommand discarded{};for(unsigned n=0;n<256&&loopCommands.pop(discarded);++n)discardedUiCommand(discarded);
+        LoopCommand discarded{};for(unsigned n=0;n<256&&loopCommands->pop(discarded);++n)discardedUiCommand(discarded);
     }
     return applyLoop(action,track,value);
 }
@@ -122,7 +133,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
             if(dueStart.clearEpoch==loops.trackView(dueStart.track).clearEpoch)(void)loops.startMeterGraph(dueStart.track,dueStart.ticket);
             ++loopApplied;
         }
-        if (!hasPendingLoop) hasPendingLoop = loopCommands.pop(pendingLoop);
+        if (!hasPendingLoop) hasPendingLoop = loopCommands->pop(pendingLoop);
         while (hasPendingLoop && (pendingLoop.frame <= frame||isMeterCommand(pendingLoop.action)) && loopApplied < 128) {
             if(pendingLoop.action==LoopAction::meterQueuedWindowStart||pendingLoop.action==LoopAction::meterQueuedWindowRequest||pendingLoop.action==LoopAction::meterQueuedGraphRequest){
                 // The callback has already happened on the message owner.
@@ -145,11 +156,13 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
             }else{
                 lastRequestId = pendingLoop.requestId;
                 const bool cancelledStutter=pendingLoop.action==LoopAction::stutterStart&&pendingLoop.stutterRevision!=stutterRevisions[pendingLoop.track].load(std::memory_order_acquire);
-                rejected = pendingLoop.generation != generation() ||
-                    (!cancelledStutter&&!applyLoop(pendingLoop.action,pendingLoop.track,pendingLoop.value));
+                rejected = pendingLoop.generation != generation() || (!cancelledStutter&&
+                    !(pendingLoop.action==LoopAction::equalizer
+                      ?loops.setEqualizer(pendingLoop.track,pendingLoop.equalizer,pendingLoop.eqMask,pendingLoop.requestId,pendingLoop.eqClearEpoch,pendingLoop.eqCheckEpoch)
+                      :applyLoop(pendingLoop.action,pendingLoop.track,pendingLoop.value)));
             }
             if(nonRealtime)loops.completeOfflineEdits();
-            ++loopApplied; hasPendingLoop = loopCommands.pop(pendingLoop);
+            ++loopApplied; hasPendingLoop = loopCommands->pop(pendingLoop);
         }
         midiContext.frame=frame;
         while(midiRead<midiEvents.size()&&midiEvents[midiRead].offset<=static_cast<unsigned>(i)){

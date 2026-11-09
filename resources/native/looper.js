@@ -130,6 +130,7 @@
         const enabled = () => snapshot?.audioReady && Date.now()-advancedAt < 1000;
         const scheduler = new window.AionCommandQueue({ready:()=>enabled()||scheduler.items[0]?.metadata===true,
             run:async c=>{
+                if(c.action==='equalizer')return sendEqualizer(c.track,c.eq);
                 if(c.action==='exportLoop'){
                     const reply=await rpc({operation:'exportLoop',track:c.track,generation:c.generation,waveformId:c.waveformId,filename:c.filename});
                     if(!reply.ok&&!reply.exportBusy)throw Error(reply.error||'WAV export unavailable');
@@ -179,6 +180,15 @@
             : ['queued','stopping'].includes(t.state)?'stop'
             : t.state === 'playing' ? (mode === 'normal' ? 'stop' : mode) : 'finish';
         const notify = message => {error=String(message); status.textContent=error;};
+        const equalizer=window.AionEqualizerUI({rpc,current:()=>snapshot,notify,
+            enqueue:(track,eq,key)=>scheduler.enqueue(()=>({action:'equalizer',track,eq}),{track,key:key?`${track}:${key}`:undefined})});
+        async function sendEqualizer(track,eq){
+            if(!enabled())return;
+            const generation=snapshot.generation;
+            const reply=await rpc({operation:'equalizer',track,...eq,generation,expiresAt:Date.now()+3000});
+            if(!reply.ok)throw Error(reply.error||'EQ command rejected');
+            await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,resolve,reject,deadline:Date.now()+4000};});
+        }
         async function setParameter(id, value) {
             try {const reply=await rpc({operation:'setParameter',id,value});if(!reply.ok)throw Error(reply.error);}
             catch(e) {notify(e.message);}
@@ -272,6 +282,7 @@
                 const row=document.createElement('div');row.id=`loop-${i}`;row.className='loop empty';row.innerHTML=markup[i];
                 stripHandlers(row);
                 row.querySelectorAll('button,input,select,textarea').forEach(e => {e.disabled=true;e.title='Unavailable in this preview';});
+                equalizer.bindRow(row,i);
                 const bind=(element,callback,event='click') => {element.dataset.nativeControl='true';element.title=element.getAttribute('aria-label')||element.textContent.trim();element.addEventListener(event,callback);return element;};
                 // Original header background/state text is also a short-action target.
                 // Nested controls and the waveform keep their own actions; main clicks
@@ -366,6 +377,7 @@
             for(let i=0;i<s.tracks.length;++i){
                 const row=document.getElementById(`live-loop-${i}`),header=row.querySelector('.loop-header');
                 row.querySelectorAll('input').forEach(e=>{e.disabled=true;e.title='Unavailable in this preview';});
+                equalizer.bindRow(row,i);
                 header.addEventListener('click',()=>{if(enabled())mainAction(i);});
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const reverse=row.querySelector(`#live-loop-${i}-reverse`);
@@ -375,6 +387,7 @@
         }
         function refresh() {
             if(!snapshot)return;
+            equalizer.update();
             const active=enabled();
             if(document.activeElement!==master)master.value=snapshot.masterGain;
             if(document.activeElement!==monitor)monitor.checked=snapshot.inputMonitor;
