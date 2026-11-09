@@ -15,6 +15,46 @@ Owner scope confirmed: **core looping/editing first**, then FX/SAVE/presets.
 [LOOP_TRACK_BUTTONS.md](LOOP_TRACK_BUTTONS.md) records the inventory and remaining
 eligibility gaps. No FX/SAVE placeholder was enabled and no package/push was made.
 
+### In progress: original Q/eQ DSP and graphic editing — 9 November 2026
+
+The next active feature is original per-loop Q/eQ. The owner approved a low-rate
+Nyquist safety repair and requested direct graphic point/bandwidth editing after
+studying open-source EQ/JSFX. [EQ_MIGRATION.md](EQ_MIGRATION.md) contains the exact
+acceptance, reference defect, research/license decisions and commands. This is
+**isolated DSP groundwork**, not a completed/connected product effect: existing
+FX controls remain disabled; no product GUI/CLI/state/IDs/assets changed.
+
+Native ten-band stereo SVF, atomic validation, fixed storage, original 50 ms
+target smoothing on a device-independent 128-frame coefficient clock, exact
+state-space response and warped peak bandwidth/inverse-handle calculations are
+implemented. Stored frequencies survive the approved low-rate limit. Normal
+44.1 kHz+ parameters retain original coefficients; malformed/non-finite input
+cannot permanently poison filter state. Scoped zero new/delete tests pass.
+
+Windows **4/4 focused CTests PASS, 42.59s**: isolated realtime/curve contract,
+original UI asset bytes, **481 unchanged-worklet cases / 3,034,408 stereo frames**,
+peak **4.99755863e-8**, and **15 automation cases / 184,335 frames**, peak
+**4.99999986e-10**, under **1e-6**. Actual WebView2 OfflineAudioContext **48
+comparisons / 270,336 mono/stereo frames PASS**, peak **8.57054142e-8** under
+**1e-6**, relative RMS <= **1e-5**. Browser testing found and fixed the prior-sample
+AudioParam retarget anchor; the earlier mathematical-only model missed it. The
+original reference/methods and strict PCM limits remain intact.
+
+The initial ideal-curve/unit-impulse test confused linear transfer with original
+nonlinear tiny-state flushing. Its exact 65536-frame unit impulse/tail remains an
+unchanged-JS PCM case; curve verification now uses actual steady tones at the
+same **1e-6** amplitude limit (Windows peak **2.01394e-9**, 48 frequency points).
+**60 ranges / 120 inverse checks** cover the peak bandwidth handles. Full details
+and test-change rationale are in EQ_MIGRATION. Browser worklet loading uses one
+debugger-owned test document; product CSP/native-only audio remain unchanged.
+
+Next: finish Linux kernel/reference/sanitizer verification, then connect this
+same DSP to bounded GUI/CLI commands and compatible effect state, original EQ
+controls/presets and the approved interactive graph. Complete lifecycle/routing/
+bypass-fade/record-capture and actual 64/128 UI acceptance before enabling it.
+Retain all prior accepted core-loop evidence below. No claim of product callback,
+full-bank/physical input, Linux WebKit, hardware or deferred-wrapper acceptance.
+
 ### Implemented preview: queued PLAY with STOP pending Undo/Redo — 9 November 2026
 
 Acceptance: unchanged `Loop.undo/redo` restores stored PCM/history
