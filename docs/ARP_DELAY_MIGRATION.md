@@ -1,7 +1,8 @@
 # Arp Delay migration
 
-Active slice, 10 November 2026: isolated native port of the complete original
-`ArpDelayProcessor`, before enabling the A checkbox or adding disconnected controls.
+Current DSP slice, 10 November 2026: native original worklet + automation/post-pan
+with approved zero-latency causal streaming. The product A checkbox stays disabled
+until bounded track storage and shared Engine/command/state integration pass.
 Baseline: clean `f56d20c`; compressor gates are retained in COMPRESSOR_MIGRATION.
 Reference sibling is absent; `.reference/Ascii-Looper` and matching preserved
 `resources/ui/Modules/effects.js` / `loopTracks.js` are read-only inputs.
@@ -53,8 +54,9 @@ per worklet call. Oscillator normalization also depends on invocation boundaries
 These facts constrain the later native streaming adapter; do not hide a new
 buffer delay or claim callback-size independence from a kernel-only comparison.
 
-Connected GUI/CLI/MIDI/state, 50ms AudioParam automation, post-worklet pan, lifetime/
-clear/tail ownership, storage budgeting and the organic treatment remain pending.
+Connected GUI/CLI/MIDI/state, track lifetime/clear/tail ownership, storage budgeting
+and the organic treatment remain pending. Automation/post-pan and streaming DSP
+evidence follow below; they do not establish product controls or device acceptance.
 The original A control stays disabled until those acceptance checks pass.
 
 ## Windows checkpoint
@@ -141,9 +143,8 @@ through committed snapshots. Logs: `build/arp-{final-ctest-windows,ctest-linux}.
 `arp-benchmark-{windows,linux}.log`, `arp-owner-unit-{windows,linux}.log`,
 `arp-owner-asan-test.log`.
 
-Before any connected enablement: define the 128-frame reference/64-frame
-native adapter's idle/wakeup semantics without hiding latency; combine the
-accepted worklet and automation/post-pan stages, then bounded storage ownership and shared
+Before any product enablement: use the approved causal combined streaming stage
+verified below, then bounded storage ownership and shared
 GUI/CLI/MIDI/state, preserving dry PCM and accepted persistent/live policies.
 The worklet's feedback descriptor default **0.18** differs from the factory's
 **Float32(2 / 11.1)**; connected defaults must use the factory mapping. The stronger
@@ -225,8 +226,7 @@ browser command above. Linux logs: `build/arp-mod-{build,ctest,replay,benchmark}
 source traveled through the safe committed-snapshot helper. No wrappers,
 Standalone/editor changes, dependency upgrade, product voicing, package or push.
 
-Next is the accepted causal streaming chain and bounded per-track storage
-admission/failure/lifecycle handling before
+Next is bounded per-track storage admission/failure/lifecycle handling before
 shared GUI/CLI/MIDI/versioned persistence. Do not enable A or advance to another
 effect until those end-to-end gates pass. The original kernel's 84-case JS and
 15-case actual-worklet evidence is reused unchanged; this stage does not replace it.
@@ -279,6 +279,8 @@ and deferred-event lane/tail handling must be preserved. The fix affects only
 ArpModulation, not the accepted Compressor. A browser-derived `.35 -> 1` anchor
 golden regression protects the one-ULP difference. Existing **66** isolated pan/
 parameter fixtures still pass, with **zero parameter-sample error** now observed.
+Reference arithmetic/clipping was checked against Chromium's
+[AudioParamHandler](https://raw.githubusercontent.com/chromium/chromium/main/third_party/blink/renderer/modules/webaudio/audio_param_handler.cc).
 
 The test-only wrapper records first/last worklet parameters for diagnosis; the
 original process body and parameters/PCM are unchanged. All original versus
@@ -320,3 +322,73 @@ overruns/allocations in all four optimized runs. This excludes Engine/EQ/compres
 mixing/devices and round-trip latency; full-bank headroom still requires its own
 gate. Failed timing log `build/arp-graph-precache-overruns-windows.log`, final
 `arp-graph-cached-benchmark-windows.log`; do not discard the failed observation.
+
+### Linux streaming evidence and remaining timing limit
+
+Runtime **3f35d82** builds in native WSL. Focused original/kernel/stream/assets
+CTest selection passes **4/4 (28.69s)**. All **63** combined browser fixtures and
+the existing **66** modulation comparisons replay against Linux C++ with the
+same errors above; parameter samples match exactly. These replay Windows
+WebView2 PCM, not Linux WebKit rendering. ASan/UBSan/leaks pass **2/2 (20.71s)**
+without diagnostics. First sanitizer build regenerated CMake while processing
+multiple make targets and did not recognize the new second target; the next
+invocation built it successfully. Its log is retained separately, not hidden as
+a passed first build (`arp-stream-asan-first-build-failure.log`).
+
+Initial optimized Linux warmed timing (same 20 graphs / 512 warm / 2048 measured):
+grouped 64 mean/p99/max **421.771/539.6/598.2us**, no overruns; grouped 128
+**846.29/1005.2/3232.1us**, **1** wall overrun. Single-sample 64
+**527.474/638.5/4053.3us**, **1** overrun; 128 **1030.31/1321.5/4325.1us**, **1**.
+This observation remains in `build/arp-graph-benchmark-linux.log`.
+
+Rather than rerunning until a clean timing result, a test-only
+`--benchmark-cpu` diagnostic was added (test source **38d9e6b**). It records
+`CLOCK_THREAD_CPUTIME_ID` beside wall time, capturing the first 16 wall misses
+without logging or allocating during DSP. All miss counts remain reported.
+Grouped 64/128 maximum thread CPU **596.2/1431.7us**, single-sample
+**874/1349.6us**; **zero thread-CPU overruns**. One 64-frame single-sample wall
+miss measured **2220.3us wall versus 594.4us thread CPU**. That observed miss
+contains off-CPU delay; this does not prove the cause of the earlier uninstrumented
+outliers or reliable device deadlines. The other three diagnostic configurations
+had no wall misses. Checksums match Windows and no callback new/delete is seen.
+Log: `build/arp-graph-cpu-benchmark-linux.log`.
+
+Software DSP correctness is verified; **Linux/WSL wall deadline qualification is
+still open**. No audio driver/real-time scheduling, Linux WebKit interaction,
+listening, full EQ+C+A Engine mix or total round-trip latency has been validated.
+Do not mark A production/release-ready or discard these timing misses. Retain
+the native sample-rate reuse regression: unchanged values must still recompute
+cached coefficients, delay length and LFO rate when preparing at a new rate.
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_arp_tests aion_arp_stream_tests aion_arp_probe
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_delay_realtime_contract|arp_delay_streaming_contract|js_native_arp_delay|original_ui_bytes)$'
+node tests/ArpGraphWebAudio.cjs --probe build/linux/aion_arp_probe --fixtures build/arp-graph-browser-fixtures.json
+node tests/ArpModulationWebAudio.cjs --probe build/linux/aion_arp_probe --fixtures build/arp-modulation-browser-fixtures.json
+cmake --build build/overlap-asan --parallel 2 --target aion_arp_tests aion_arp_stream_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^(arp_delay_realtime_contract|arp_delay_streaming_contract)$'
+build/linux/aion_arp_stream_tests --benchmark
+build/linux/aion_arp_stream_tests --benchmark-cpu
+```
+
+Source synchronization uses committed snapshots; only generated ignored fixtures
+were copied to WSL. Linux logs: `build/arp-stream-{build,ctest,mod-replay}-linux.log`,
+`arp-graph-replay-linux.log`, `arp-stream-asan-{build,test}.log`. Current product
+controls remain disabled; next is bounded track storage/retirement before
+shared Engine/GUI/CLI/MIDI/state and organic defaults. No package or push.
+
+Final sample-rate reuse source **d940280** passes Windows native regression,
+Linux **1/1 (1.62s)** and ASan/UBSan/leaks **1/1 (18.26s)** without diagnostics.
+It compares an existing 48k owner re-prepared at 96k with unchanged controls
+against a fresh owner, through real note-clock advancement and stereo PCM.
+Runtime DSP remains **3f35d82**; no unchanged passing suites were repeated for
+the test-only CPU diagnostic or this added rate case beyond their affected tests.
+Logs: `build/arp-stream-rate-{test-linux,asan-test}.log` and
+`arp-stream-rate-unit-windows.log`.
+
+Connected-stage reminders: preserve original `repetitions / 11.1` factory mapping,
+all eight presets and same-value gesture retargets. The original `updateLoopNode`
+also retargets BPM on every Arp edit. Keep original UI ranges and master tempo
+metadata; descriptor clipping belongs to DSP. Test-seeded randomness is not a
+product-wide shared seed policy. No new parameter/action IDs or saved state were
+introduced in this DSP slice.

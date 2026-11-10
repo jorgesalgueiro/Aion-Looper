@@ -13,58 +13,49 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ### Arp Delay — combined streaming DSP slice, 10 November 2026
 
-Original A inventory and native worklet kernel are implemented; **the product A
-control remains disabled**. Owner approved persistent per-loop delay/STAY/LFO
-state and live OD/SUB/MULT/STOP controls for the later connected stage, and asks
-for a more organic/natural sound. Owner selected organic defaults for **new
-instances**; existing presets/saved sounds stay intact. This connected-stage
-voicing policy is recorded but not yet enabled by the isolated kernel.
+`ArpDelayGraph` now combines worklet, 50ms automation and stereo auto-pan;
+**product A remains disabled** until track/command integration. Runtime source
+**3f35d82** is verified in Windows and native WSL; later commits add timing and
+sample-rate regressions only. EQ/compressor, assets/logo, IDs and dependencies
+are unchanged. Full evidence/commands/history: [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md).
 
-Windows: **84 direct unchanged-worklet cases / 5,527,296 channel samples**, all
-twenty interval tables/eight presets; actual WebView2 **15 cases / 1,003,904 stereo
-frames**. Both peak **3.725290298461914e-9**, unchanged 1e-6 peak / 1e-5 RMS gates.
-Fixed-storage processing/reset, tagged O(1) delay invalidation, prepare OOM
-rollback, numerical quarantine, mono/stereo/in-place/wrap and 64/128 direct
-invocations pass. Original left-only idle and block-dependent normalization are
-retained in this kernel, not claimed as a connected callback adapter.
+Owner decisions: persistent per-loop delay/STAY/LFO across PLAY/RTRG/history;
+live OD/SUB/MULT/STOP controls; **zero added latency with causal wake-up**;
+organic defaults for **new instances**, preserving existing presets/saved sounds.
+The organic voicing is still unimplemented. While tail <1e-5 the kernel waits
+for the first left sample >=1e-5 and processes it immediately, freezing the prior
+prefix. This approved difference from original lookahead is not sound parity.
+Detector decay/rotation and worklet parameter latching retain a canonical 128
+audio-sample clock independently of callback partitions; LFO/automation continue.
 
-Linux source **551d021** passes **3/3 focused tests (27.32s)** and **1/1 ASan/
-UBSan/leaks (2.18s)**. All fifteen actual Windows browser fixtures replay against
-Linux C++ at the same peak; Linux WebKit is untested. Twenty isolated stereo
-kernels, 512 warm / 2048 measured invocations, show zero observed overruns:
-Windows max **503/849.9us**, Linux **426.066/1098.53us** at 64/128. These are not
-connected callback/device/round-trip results. Ring ownership is non-copyable.
-Final ownership source **3ae8cd0** builds on both platforms; Linux focused Release
-and ASan/UBSan/leak tests pass **1/1 each (0.40s / 2.25s)**, with no diagnostics.
+Exact native PCM/state, causal wake, mono/stereo/no input, in-place, 1/37/64/128/
+257 partitions, 8..384k rates, OOM/reset/overflow and zero watched processing/
+control/reset new/delete pass. Original 84-case kernel comparisons remain;
+full original factory/worklet/automation/pan passes **21 actual Windows browser
+fixtures / 63 comparisons**, peak **2.384185791015625e-7**. All replay against
+Linux C++ at the same peak. Existing **66** pan/parameter comparisons also pass,
+with **zero parameter-sample error** after repairing Float32 event anchors and
+deferred lanes. Nominal clipping protects valid endpoint moves. Limits unchanged.
 
-Automation/post-pan is now implemented as an isolated fixed-storage stage.
-Windows actual WebView2 AudioParam/pan comparison passes **22 fixtures / 66
-comparisons**, 64/128/37 subdivisions, rates 8..384 kHz; peak **2.2724270820617676e-7**.
-A plain sine failed the original 5 Hz pan case; corrected Chromium-compatible
-phase/interpolation retains that regression and its original tolerance. No
-product controls or voicing changed. Source **f6e9e2f** passes Linux **2/2 focused
-tests (0.85s)**, all **66** Windows browser-fixture replays at identical peak, and
-**1/1 ASan/UBSan/leaks (3.19s)** without diagnostics. Linux WebKit is untested.
-Twenty automated modulation/post-pan stages show zero observed overruns at
-64/128; worst Windows **224.7/577.8us**, Linux **255.109/369.416us**, excluding
-worklet/streaming/Engine/devices. Sine-table initialization is prepare-only;
-processing/control/reset have zero watched new/delete on both platforms.
+Windows kernel/stream/JS CTests **3/3 (31.80s)** and original assets pass. Linux
+core/stream/JS/assets **4/4 (28.69s)**; ASan/UBSan/leaks **2/2 (20.71s)**, no
+diagnostics. Linux WebKit, actual UI/device interaction and listening are untested
+for A. The current Standalone still has its existing enabled features only.
+Final rate-reuse test **d940280** also passes Windows, Linux **1/1 (1.62s)** and
+ASan/UBSan/leaks **1/1 (18.26s)**; no runtime changes after the verified snapshot.
 
-Owner selected **zero added latency with causal wake-up**. The current slice
-combines worklet/automation/pan on a canonical 128-frame clock, with near-silence
-processing suspended until the first left sample reaches 1e-5. This approved
-departure from whole-quantum lookahead must remain separate from sound-parity
-claims. Native exact partition/state and causal wake/OOM/reset/overflow tests
-pass across rates/channels and 1/37/64/128/257 samples. The complete unchanged
-factory/worklet/automation/pan passes **21 actual browser fixtures / 63 comparisons**,
-peak **2.384185791015625e-7**. A connected 96k failure exposed Float32 automation
-anchor arithmetic/deferred lanes; a valid endpoint move also exposed nominal
-clipping. Both are fixed with retained regressions and unchanged PCM limits.
-Caching coefficients repaired measured single-sample dispatch overruns; kernel/
-stream/84-case JS CTests pass **3/3 (31.80s)**. Linux streaming acceptance is next;
-bounded storage/shared GUI/CLI/MIDI/state and organic treatment remain pending.
-A stays disabled. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md). Existing
-EQ/compressor code, source assets/logo, IDs and dependencies are unchanged.
+Coefficient caching repairs the measured single-sample dispatch CPU overhead.
+Twenty combined graphs show no observed Windows overruns in the optimized run.
+Linux normal-priority WSL wall timing still has isolated misses: a CPU diagnostic
+records one **2220.3us wall / 594.4us thread CPU** miss at 64; thread CPU remains
+below the period in every measured callback. This establishes off-CPU delay for
+that observed miss, not reliable device scheduling or complete Engine headroom.
+Retain both failed timing logs; do not rerun until a clean result or claim release
+performance. No Engine/EQ/C mix, physical latency, hardware or wrapper claim.
+
+Next: bounded prepared per-track storage admission, cancellation/retirement and
+rate-change handling, then shared Engine/GUI/CLI/MIDI/versioned state and organic
+defaults. Keep A disabled until end-to-end and full-bank acceptance passes.
 
 ### Connected compressor — scoped software gates pass, finalized 10 November 2026
 
