@@ -36,10 +36,12 @@ effect, chain/full preset, wet export or A enablement is claimed. The original
 chain field has no new invented MIDI target; existing Q/C MIDI controls use the
 same active routing. PLAY/RTRG/history keep the approved persistent FX behavior.
 
-Pending owner decision: candidate chain edits apply live during OD/SUB/MULT and
-scheduled STOP, consistent with approved live FX controls. Original chain edits
-store then defer rebuild in those states. This extension has been asked about;
-do not call the slice complete before the answer and required validation.
+Owner approved live chain reordering during OD/SUB/MULT and scheduled STOP on
+10 November 2026, consistent with the approved live FX controls. Original chain
+edits store then defer rebuild in those states. This is an intentional native
+extension, separately tested rather than claimed as unchanged-JS behavior.
+The existing runtime already applies that policy; this follow-up adds focused
+live-state audio/interaction acceptance without changing product DSP or IDs.
 
 Executed software evidence:
 

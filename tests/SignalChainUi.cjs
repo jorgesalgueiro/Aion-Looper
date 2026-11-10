@@ -55,8 +55,19 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
     live=await snapshot();assert((await rpc({operation:'signalChain',action:'set',track:0,order:'CQ',generation:live.generation,expiresAt:Date.now()+3000})).ok);await until(s=>s.tracks[0].signalChain==='CQ','LIVE reinsertion');await wait(100);
     await click('#live-loop-0-compressor');await until(s=>!s.tracks[0].compressor.enabled,'reinserted LIVE toggle retains listener');
     await click('.main-tab-btn:nth-child(1)');await wait(100);
+    const loopAction=async(action,value=0)=>{const s=await snapshot();assert((await rpc({operation:'loop',action,track:0,value,generation:s.generation,expiresAt:Date.now()+3000})).ok);};
+    for(const [action,expected,order] of [['overdub','overdubbing','QC'],['substitute','substituting','CQ'],['multiply','multiplying','QC']]){
+        await loopAction(action,1);await until(s=>s.tracks[0].state===expected,'enter '+expected);
+        assert(!await evaluate(`document.querySelector(${JSON.stringify(field)}).disabled`),'chain field remains editable in '+expected);
+        await enter(field,order);const s=await until(s=>s.tracks[0].signalChain===order,'chain edit during '+expected);assert.equal(s.tracks[0].state,expected);
+        await loopAction('finish');await until(s=>s.tracks[0].state==='playing','finish '+expected);
+    }
+    for(const [id,value]of [['syncBars',16],['syncBpm',120],['syncMode',1]])assert((await rpc({operation:'setParameter',id,value})).ok);
+    await loopAction('stop');const stopping=await until(s=>s.tracks[0].state==='stopping','scheduled STOP');
+    await enter(field,'CQ');const reordered=await until(s=>s.tracks[0].signalChain==='CQ','chain edit during scheduled STOP');assert.equal(reordered.tracks[0].state,'stopping');assert.equal(reordered.tracks[0].scheduledFrame,stopping.tracks[0].scheduledFrame);
+    await loopAction('stopImmediate');await until(s=>s.tracks[0].state==='stopped','cut scheduled STOP');assert((await rpc({operation:'setParameter',id:'syncMode',value:0})).ok);
 
     await click('#loop-0 .loop-track-delete');await until(s=>s.tracks[0].state==='empty'&&s.tracks[0].signalChain==='QCATFODBVKZG','DEL resets chain');await wait(150);
     assert.equal(await evaluate(`document.querySelector(${JSON.stringify(field)}).value`),'QCATFODBVKZG');assert.equal(errors.length,0,JSON.stringify(errors));
-    console.log(`PASS actual chain UI ${process.argv[2]}: original text field, typing/normalization, expanded track, live order/omission, send failure/recovery, draft ownership, reopen/DEL and nonzero PCM`);socket.close();
+    console.log(`PASS actual chain UI ${process.argv[2]}: original field, order/omission, typing/reload/DEL, LIVE reinsertion, approved OD/SUB/MULT/scheduled-STOP edits and nonzero PCM`);socket.close();
 })().catch(error=>{console.error(error);socket?.close();process.exitCode=1;});

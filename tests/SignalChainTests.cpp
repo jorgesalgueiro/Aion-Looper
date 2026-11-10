@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/Engine.h"
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -101,9 +102,87 @@ static void bankAdmission(){
  for(unsigned i=0;i<20;++i)check(e->inspectAudioThread(i).track.signalChain==SignalChain{},"clear all resets all chains and rejects pre-clear epochs");
  e->prepare(48000,32768);check(!e->enqueueLoop(stale),"old generation rejected before queue");
 }
+// Owner-approved extension: the original stores chain edits in these states
+// without rebuilding. Verify live audio independently of that reference oracle.
+static void liveRouting(unsigned block,aion::LoopAction action){
+ using namespace aion;
+ auto dry=std::make_unique<Engine>(),wet=std::make_unique<Engine>();
+ for(auto* e:{dry.get(),wet.get()}){e->prepare(48000,65536);e->setMonitoring(false);check(e->enqueue({0,1})&&e->enqueueLoop({LoopAction::record,0,1,e->generation()}),"live chain seed");}
+ std::array<float,128> dl{},dr{},wl{},wr{};float* d[]{dl.data(),dr.data()},* w[]{wl.data(),wr.data()};
+ std::uint64_t frame=0,changeAt=UINT64_MAX,deadline=0;double error=0,changed=0;
+ SignalChain order,next;
+ SmoothedEqualizer eq,frozenEq;Compressor comp,frozenComp;
+ EqSettings qs;qs.enabled=true;qs.values[3]=550;qs.values[4]=12;
+ CompressorSettings cs;cs.enabled=true;cs.values[0]=-30;cs.values[1]=8;cs.values[5]=1;
+ bool comparing=false;constexpr float centre=.7071067811865475f;
+ const bool stopping=action==LoopAction::stop;
+ auto render=[&](bool capture){
+  for(unsigned i=0;i<block;++i)dl[i]=dr[i]=wl[i]=wr[i]=capture?static_cast<float>(.08*std::sin((frame+i)*.073)+.03*std::sin((frame+i)*.027)):0;
+  const auto begin=frame;watch=true;dry->process(d,2,block,{},true);wet->process(w,2,block,{},true);watch=false;frame+=block;
+  const auto a=dry->inspectAudioThread().track,b=wet->inspectAudioThread().track;
+  check(a.state==b.state&&a.position==b.position&&a.length==b.length&&a.undoCount==b.undoCount&&a.redoCount==b.redoCount&&a.scheduledFrame==b.scheduledFrame&&a.sourceRevision==b.sourceRevision,"live chain must preserve transport, capture, history and source ownership");
+  if(!comparing)return;
+  for(unsigned i=0;i<block;++i){
+   const auto at=begin+i;
+   if(at==changeAt){
+    if(next.contains('Q')&&!order.contains('Q'))check(eq.prepare(48000,qs.values,at),"live chain Q reinsertion");
+    if(next.contains('C')&&!order.contains('C'))check(comp.prepare(48000,cs.values,at),"live chain C reinsertion");
+    order=next;
+   }
+   float l=dl[i]/centre,r=dr[i]/centre,fl=l,fr=r;
+   for(char code:order.text()){
+    if(code=='Q')eq.process(&l,&r,&l,&r,1);
+    if(code=='C')comp.process(&l,&r,2,&l,&r,1);
+   }
+   frozenEq.process(&fl,&fr,&fl,&fr,1);frozenComp.process(&fl,&fr,2,&fl,&fr,1);
+   const auto expected=std::clamp((l+r)*.5f*centre,-1.f,1.f);
+   if(!deadline||at<deadline){
+    error=std::max({error,std::abs(static_cast<double>(wl[i])-expected),std::abs(static_cast<double>(wr[i])-expected)});
+    if(order.text()=="CQ")changed=std::max(changed,std::abs(static_cast<double>(wl[i])-(fl+fr)*.5f*centre));
+    if(order.text()=="A")check(wl[i]==dl[i]&&wr[i]==dr[i],"live omission exactly bypasses Q/C without changing enable flags");
+   }
+   if(deadline&&at>=deadline+240)check(wl[i]==0&&wr[i]==0&&dl[i]==0&&dr[i]==0,"reordered chain must not revive a stopped source");
+  }
+ };
+ auto paired=[&](LoopAction op,unsigned request){for(auto* e:{dry.get(),wet.get()})check(e->enqueueLoop({op,0,request,e->generation(),0,1}),"live chain paired action");};
+ for(unsigned n=0;n<4096/block;++n)render(true);
+ paired(LoopAction::finish,2);render(false);paired(LoopAction::play,3);
+ for(unsigned n=0;n<1024/block;++n)render(false);
+ LoopCommand q{LoopAction::equalizer,0,4,wet->generation()};q.equalizer=qs;
+ LoopCommand c{LoopAction::compressor,0,5,wet->generation()};c.compressor=cs;
+ check(wet->enqueueLoop(q)&&wet->enqueueLoop(c)&&eq.prepare(48000,qs.values,frame)&&comp.prepare(48000,cs.values,frame)&&frozenEq.prepare(48000,qs.values,frame)&&frozenComp.prepare(48000,cs.values,frame),"live chain persistent owners");
+ comparing=true;for(unsigned n=0;n<1024/block;++n)render(false);
+ if(stopping){SyncSettings sync;sync.mode=SyncMode::fixed;sync.bpm=120;sync.bars=1;for(auto* e:{dry.get(),wet.get()})e->configureSync(sync);}
+ paired(action,6);
+ const auto expectedState=action==LoopAction::overdub?LoopState::overdubbing:action==LoopAction::substitute?LoopState::substituting:action==LoopAction::multiply?LoopState::multiplying:LoopState::stopping;
+ unsigned request=7;
+ for(const auto text:{"CQ","A","Q","CQ"}){
+  next=normalizedSignalChain(text);changeAt=frame+17;
+  LoopCommand command{LoopAction::signalChain,0,request++,wet->generation(),changeAt};command.signalChain=next;
+  command.chainClearEpoch=wet->inspectAudioThread().track.clearEpoch;check(wet->enqueueLoop(command),"sub-block live chain command");
+  for(unsigned n=0;n<512/block;++n){
+   render(!stopping);const auto t=wet->inspectAudioThread().track;
+   check(t.state==expectedState&&t.signalChain==next&&t.equalizer==qs&&t.compressor==cs,"live routing acknowledged in the actual capture/STOP state");
+   if(stopping){if(!deadline)deadline=t.scheduledFrame;check(deadline>frame&&deadline==t.scheduledFrame,"reorder preserves scheduled STOP deadline");}
+  }
+ }
+ check(error<=1e-6&&changed>.001,"live chain order changes nonzero PCM with persistent owners and correct reinsertion");
+ if(stopping){while(frame<deadline+512)render(false);check(wet->inspectAudioThread().track.state==LoopState::stopped,"scheduled STOP completes normally");}
+ else{
+  comparing=false;paired(LoopAction::finish,20);render(false);const auto t=wet->inspectAudioThread().track;
+  check(t.state==LoopState::playing&&t.length==(action==LoopAction::multiply?6144u:4096u)&&t.undoCount==1,"live routing adds no capture frames or history");
+ }
+ check(error<=1e-6,"live routing stays within PCM tolerance through the scheduled STOP deadline");
+ for(auto* e:{dry.get(),wet.get()})check(e->enqueueExport({0,e->generation(),e->inspectAudioThread().track.waveformId}),"live chain dry WAV request");
+ comparing=false;render(false);WavExport a,b;bool haveA=false,haveB=false;
+ for(unsigned n=0;n<5000&&(!haveA||!haveB);++n){if(!haveA)haveA=dry->popExport(a);if(!haveB)haveB=wet->popExport(b);if(!haveA||!haveB)std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+ check(haveA&&haveB&&!a.bytes.empty()&&a.bytes==b.bytes,"routing never enters capture/feedback or changes stored WAV bytes");
+ std::cout<<"PASS live chain state "<<static_cast<unsigned>(expectedState)<<" / "<<block<<": peak "<<error<<", audible reorder "<<changed<<'\n';
+}
 int main(int argc,char** argv){
  if(argc==2&&std::string_view(argv[1])=="normalize"){std::string s;while(std::getline(std::cin,s))std::cout<<aion::normalizedSignalChain(s).text()<<'\n';return 0;}
  for(double rate:{32000.,48000.,96000.})for(unsigned block:{64u,128u})connected(block,rate);
  bankAdmission();
+ for(unsigned block:{64u,128u})for(auto action:{aion::LoopAction::overdub,aion::LoopAction::substitute,aion::LoopAction::multiply,aion::LoopAction::stop})liveRouting(block,action);
  check(operations==0,"zero callback allocation/deallocation");
 }
