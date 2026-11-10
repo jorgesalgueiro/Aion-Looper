@@ -11,7 +11,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Connected compressor — in verification, 9 November 2026
+### Connected compressor — scoped software gates pass, finalized 10 November 2026
 
 Owner approved a persistent compressor per loop across playback restarts and live
 controls during OD/SUB/MULT/scheduled STOP. Those are intentional extensions of
@@ -24,7 +24,7 @@ Windows development Standalone, mouse host and production processor targets buil
 Connected 64/128 PCM passes (peak <=1.78814e-7); all seven CC targets match timed
 GUI controls exactly, including same-block learn, all 128 values/channels and
 selected tracks 1/20. Persistent EQ -> compressor through RTRG/reverse/OD/history/
-phase, dry WAV invariance, scheduled STOP, panic/DEL, mask/epoch rejection,
+phase and ordinary STOP/PLAY, dry WAV invariance, scheduled STOP, panic/DEL, mask/epoch rejection,
 combined-bank queue admission and callback new/delete checks pass. Production
 processor/CLI/state checks pass at 64/128. Actual WebView2 compressor AND existing
 EQ pointer/key/reload/MIDI/curve tests pass at 64/128. Focused CTests: 9/9 (18.92s).
@@ -33,15 +33,35 @@ A broad MIDI processor run timed out waiting for one CLI reply; unchanged isolat
 retry passed. No assertion/time limit was weakened. The failed test's owned
 mailbox directory was removed; see ignored build logs for both runs.
 
-Linux connected/processor/sanitizer verification and connected timing are next;
-do not advance to another effect until those finish. No package or push.
+Linux Standalone and production processor targets build. Focused CTests pass
+**9/9 (15.63s)**; compressor/EQ processor/CLI and broad MIDI regressions pass at
+64/128. Final strengthened connected test passes **1/1 (1.10s)** and both final
+compressor processor invocations pass on **dc2fb4d**. Linux ASan/UBSan/leaks pass
+**2/2 (24.56s)** and the expanded STOP/PLAY **1/1 (21.18s)**, no diagnostics.
+Both platforms replay the 60 original Windows WebView2 PCM fixtures with the
+same peak above; retained capture/OD/SUB audit passes **126 cases / 965,826
+samples**, peak **7.394757495227111e-8** on each. This is not Linux WebKit UI/audio.
+
+Warmed Release Engine measurements: twenty playing stereo loops with EQ+C,
+512 warm / 2048 measured callbacks per steady/automated configuration, nonzero
+post-MASTER output. Worst observed Windows **809.5/1766.1us**, Linux
+**670.427/1028.92us** at 64/128; **0 observed overruns** in each run against
+1333.33/2666.67us periods. Includes core processing/bounded telemetry; excludes
+device callback, driver/UI/round-trip latency and any guaranteed worst case.
+Initial insufficient-pool and silent-MASTER timing fixtures were rejected and
+repaired; both conditions now fail explicitly rather than yielding accepted data.
+
+Code **dc2fb4d** is committed and verified in native WSL storage. No package,
+push, dependency upgrade or wrapper build. Linux WebKit interaction, physical
+expression, listening/driver latency, full overlapping-browser transition
+envelopes and long-session/release checks remain separate. Wet SAVE, full chain/
+preset persistence and later effects remain disabled. Next: inventory original
+**A (Arp Delay)** behavior and define its smallest complete shared GUI/CLI slice.
 See [COMPRESSOR_MIGRATION.md](COMPRESSOR_MIGRATION.md) for exact scope/commands.
 
 ### Earlier compressor checkpoint — isolated DSP, 9 November 2026
 
-
-
-The **C compressor remains disabled** pending shared GUI/CLI/MIDI/state and
+At that earlier checkpoint, **C remained disabled** pending shared GUI/CLI/MIDI/state and
 connected audio/lifecycle acceptance. Its new fixed-storage native kernel now
 passes actual unchanged-original WebView2 sound comparisons: **60 cases,
 1,966,080 stereo frames at 64/128**, final Windows/Linux replay peak

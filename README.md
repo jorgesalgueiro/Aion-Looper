@@ -40,6 +40,9 @@ workspace, playable with a mouse, keyboard, MIDI controller or command line.
   sliders, plus draggable curve points and bandwidth handles. Settings are shared
   with the CLI and saved in native state. Right-click an EQ slider to learn a MIDI
   CC; the controller follows the selected loop's EQ tab.
+- **Control each loop's dynamics with C.** The native compressor keeps the original
+  seven controls, eleven presets and curve display. Adjust it from the UI, CLI or
+  learned MIDI CCs, with settings saved in native state.
 - **Control the running app from a terminal.** The development CLI shares the
   Standalone's session, devices and native command layer.
 

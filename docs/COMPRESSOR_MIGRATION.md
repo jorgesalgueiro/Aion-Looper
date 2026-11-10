@@ -1,7 +1,7 @@
-# Compressor migration — isolated DSP slice
+# Compressor migration — native loop effect
 
-The native loop **C** effect is connected in the development build; Windows
-software checks pass and Linux completion checks are in progress. This is not a
+The native loop **C** effect is connected in the development build; scoped Windows
+and Linux software checks pass. This is not a
 release or a claim that drone/sampler compressors or remaining FX are ported.
 No preserved UI/reference assets or existing parameter/action IDs changed. No
 product AudioContext, dependency upgrade, package or wrapper build.
@@ -65,9 +65,81 @@ build/windows-core/Release/aion_effects_engine_benchmark.exe
 ```
 
 Fixture JSON is ignored local evidence; rerun TestCompressorWebAudio.ps1 to
-regenerate from the actual unchanged browser methods. Linux connected acceptance,
-ASan/UBSan and callback timing are still pending at this snapshot. No later effect
-is started; no new distributable.
+regenerate from the actual unchanged browser methods. No later effect or new
+distributable is included in this checkpoint.
+
+## Final connected verification — recorded 10 November 2026
+
+Code `dc2fb4d`, independent clean native WSL checkout:
+
+- Linux focused CTests **9/9 (15.63s)**; final STOP/PLAY connected **1/1 (1.10s)**.
+- Compressor and existing EQ production processor/state/MIDI/external CLI pass
+  at 64/128; broad MIDI suite passes. Final compressor invocations retain an
+  assigned v4 EQ target/channel while appended compressor targets default off.
+- Linux ASan/UBSan/leaks **2/2 (24.56s)**; expanded STOP/PLAY **1/1 (21.18s)**,
+  no diagnostics. Callback allocation/free checks pass.
+- Both platforms retain all **60 / 1,966,080 stereo-frame** browser fixtures,
+  peak **4.806921385380747e-7**, unchanged **1e-6 peak / 1e-5 relative RMS** gates.
+  Linux replays Windows WebView2 PCM; it is not a Linux WebKit comparison.
+- Retained capture/OD/SUB audit: **126 cases / 965,826 samples**, peak
+  **7.394757495227111e-8** on both platforms.
+
+Linux `xvfb-run` was unavailable; hardware-free processor tests used the existing
+WSL display `:0` without opening an editor. Windows actual compressor AND EQ
+pointer/key/curve/MIDI/reload checks pass at 64/128. Linux WebKit interaction,
+physical expression, listening/driver latency, full browser transition envelopes
+and long-session/release checks remain separate.
+
+Additional exact Linux commands (existing independent caches):
+
+```sh
+cmake --build build/linux --parallel 2 --target AionLooper_Standalone aion_compressor_tests aion_compressor_probe aion_compressor_connected_tests aion_compressor_processor_tests aion_eq_processor_tests aion_midi_processor_tests aion_effects_engine_benchmark aion_reference_probe
+ctest --test-dir build/linux --output-on-failure -R '^(compressor_realtime_contract|compressor_connected_contract|original_compressor_contract|eq_connected_contract|js_native_eq_connected|original_ui_bytes|native_frontend_commands|native_bridge_lifecycle|js_native_eq_midi)$'
+build/linux/aion_compressor_processor_tests 64
+build/linux/aion_compressor_processor_tests 128
+build/linux/aion_eq_processor_tests 64
+build/linux/aion_eq_processor_tests 128
+build/linux/aion_midi_processor_tests
+node tests/CompressorWebAudio.cjs --probe build/linux/aion_compressor_probe --fixtures build/compressor-browser-fixtures.json
+node tests/AudioParityAudit.cjs build/linux/aion_reference_probe
+cmake -S . -B build/overlap-asan
+cmake --build build/overlap-asan --parallel 2 --target aion_compressor_tests aion_compressor_connected_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --output-on-failure -R '^compressor_(realtime|connected)_contract$'
+build/linux/aion_effects_engine_benchmark
+```
+
+`overlap-asan` is the retained Debug/plugin-OFF cache with
+`-fsanitize=address,undefined -fno-omit-frame-pointer`. Logs: Windows
+`build/compressor-windows-focused-ctest.log`, `compressor-ui.log`,
+`compressor-eq-ui.log`, `compressor-legacy-processor-{64,128}.log`,
+`compressor-midi-processor-retry.log`; Linux `build/compressor-linux-focused-ctest.log`,
+`compressor-final-connected-test.log`, `compressor-final-processor-{64,128}.log`,
+`compressor-final-connected-asan-test.log`, `compressor-linux-midi-processor.log`.
+Browser replay/audio audit and timing logs use the corresponding platform names.
+Logs and fixtures remain ignored local evidence.
+
+### Connected callback observations
+
+Release Engine `process`, 48 kHz, twenty playing stereo loops, all EQ+C enabled,
+512 warm / 2048 measured callbacks per run. Automation changes both effect banks
+every sixteen callbacks. Accepted fixtures require all twenty sources playing
+and nonzero post-MASTER output; insufficient-pool/silent-MASTER runs were rejected.
+
+| Platform | Block | Automated | Mean us | p99 us | Maximum us | Observed overruns |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| Windows | 64 | No | 434.122 | 531.5 | 636.1 | 0 |
+| Windows | 64 | Yes | 524.120 | 651.8 | 809.5 | 0 |
+| Windows | 128 | No | 998.684 | 1253.4 | 1766.1 | 0 |
+| Windows | 128 | Yes | 851.236 | 1012.7 | 1392.1 | 0 |
+| Linux | 64 | No | 397.704 | 497.077 | 561.222 | 0 |
+| Linux | 64 | Yes | 376.059 | 473.532 | 670.427 | 0 |
+| Linux | 128 | No | 783.762 | 911.638 | 1028.92 | 0 |
+| Linux | 128 | Yes | 768.464 | 912.743 | 1008.92 | 0 |
+
+Deadlines: 1333.33/2666.67us. Includes LoopBank, smoothing, core mix and bounded
+telemetry; excludes device/driver/UI and total round-trip latency. These are
+observations, not a worst-case guarantee. Logs:
+`build/compressor-{windows,linux}-engine-timing.log`.
 
 ## Reference and acceptance defined before implementation
 
@@ -82,11 +154,11 @@ curve; do not replace the browser's exponential-knee detector with that drawing.
 
 | Observable requirement | Current native evidence | Remaining |
 | --- | --- | --- |
-| All seven controls, original defaults, eleven calculated presets | Exact Float32 preset handler comparison | Product commands, state and widgets |
-| Stereo linked detector, mono duplication, wet lookahead, immediate dry path | Actual unchanged `_createCompressor` OfflineAudioContext PCM | Connected LoopBank routing/ownership and toggles |
-| Original attack/adaptive release, knee, automatic makeup, linear gain/mix | Static and live browser oracle, peak <=1e-6 and relative RMS <=1e-5 | Connected special-state/transport/history acceptance |
-| Variable callbacks and sample rates | Fixed storage, exact subdivision/mono/recovery/reset checks | Production callback timing with EQ + compressor |
-| Safe invalid controls and PCM | Atomic rejection, NaN/Inf quarantine, extreme finite recovery, zero new/delete | Product queue exhaustion/cancellation/restore lifecycle |
+| All seven controls, original defaults, eleven calculated presets | Exact Float32 handler/range comparisons; GUI/CLI/MIDI/state | Physical controller/listening checks |
+| Stereo linked detector, mono duplication, wet lookahead, immediate dry path | Actual unchanged `_createCompressor` PCM; connected routing/toggles | Full overlapping browser graph transitions |
+| Attack/adaptive release, knee, makeup, linear gain/mix | Browser oracle <=1e-6 peak / <=1e-5 relative RMS; connected live state/history/STOP/PLAY | Linux WebKit audio/interaction |
+| Variable callbacks and sample rates | Fixed storage/subdivision/reset, production prepare, 64/128 Engine timings | Driver/round-trip/long-session checks |
+| Invalid controls, PCM and ownership | Atomic rejection, numerical recovery, callback new/delete, full queues/clear/restore, sanitizers | Integration/release stress |
 
 `Compressor` is a single-owner fixed-storage kernel with a 1024-frame stereo delay.
 It retains the browser's `min(floor(.006f * rate), 1023)` wet lookahead, including
@@ -229,14 +301,9 @@ are 1333.33/2666.67us. These are **isolated kernel** measurements: no EQ, LoopBa
 production callback, driver or round-trip latency, and no guaranteed worst case.
 No package, wrapper build, dependency upgrade or GitHub push was performed.
 
-## Next connected slice
+## Next slice and remaining limits
 
-Append the compressor settings/actions without renumbering EQ/MIDI or state IDs;
-validate versioned restore atomically. Connect Q -> C to the shared LoopBank DSP,
-bounded GUI/CLI commands, original C checkbox/panel/curve and presets, then original
-selected-effect MIDI Learn. Define persistent/rebuilt compressor ownership and
-live special-state behavior from reference/owner decisions before choosing it;
-EQ-specific approvals must not silently become compressor sound changes. Retain
-raw capture/dry export, source tails, queued gain and MASTER ordering. Test toggles,
-clear/panic/prepare, editor reopen, sessions and 64/128 real processor/UI PCM before
-enabling the product control. Remaining effects/full-chain/wet SAVE stay pending.
+Inventory original A (Arp Delay) behavior before implementing its smallest complete
+shared GUI/CLI slice. Preserve the accepted compressor cases above. Remaining
+effects/full-chain/wet SAVE stay disabled. Separate platform/hardware/listening
+and release checks listed above remain pending; software gates are not release acceptance.

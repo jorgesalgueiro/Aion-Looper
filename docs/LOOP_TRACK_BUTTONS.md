@@ -19,8 +19,8 @@ The original markup and behavior remain in `.reference/Ascii-Looper/Modules/loop
 | Waveform click WAV | Native stored-PCM export, filenames, bounded leases and picker lifecycle | OS cancel/overwrite and non-Windows dialogs remain separate checks |
 | SAVE (Dry/Wet) | **Unported; disabled** | Native wet rendering, chain state, rate/pan/volume, three-second tail, paired filenames and lifecycle checks; dry-only export is not equivalent |
 | Q/eQ, FX/eQ navigation | **Connected GUI/CLI software preview, Windows/Linux verified.** Original 24 controls/10 presets, versioned state, approved point/range graph and live OD/SUB/MULT/pending-STOP controls; selected-tab EQ CC Learn with unchanged-JS ranges and Engine/processor/CLI/Windows pointer/reload coverage at 64/128; [EQ_MIGRATION.md](EQ_MIGRATION.md) | Physical expression/listening and Linux WebKit remain separate; other effects/wet SAVE are unported |
-| C compressor | **Connected development implementation; Windows software checks pass, Linux checks pending.** Original seven controls/eleven presets, shared GUI/CLI/MIDI/state, approved persistent/live behavior, original browser DSP and 64/128 Engine/processor/CLI/Windows interaction gates; [COMPRESSOR_MIGRATION.md](COMPRESSOR_MIGRATION.md) | Linux connected/sanitizer and production callback timing; physical controller/listening, WebKit and full browser transition envelopes remain separate |
-| Other FX, FULL PRESET, CHAIN PRESET, manual chain | **Unported; disabled**, except accepted Reverse and Q/eQ above | Port the remaining effects individually before wet SAVE/full-chain acceptance |
+| C compressor | **Connected development preview; scoped Windows/Linux software checks pass.** Original seven controls/eleven presets, shared GUI/CLI/MIDI/state, approved persistent/live behavior, original browser DSP, 64/128 Engine/processor/CLI/Windows interaction gates, Linux sanitizers and measured twenty-track EQ+C callbacks; [COMPRESSOR_MIGRATION.md](COMPRESSOR_MIGRATION.md) | Physical controller/listening, Linux WebKit, full browser transition envelopes and integration/release stress remain separate |
+| Other FX, FULL PRESET, CHAIN PRESET, manual chain | **Unported; disabled**, except accepted Reverse, Q/eQ and C above | Port the remaining effects individually before wet SAVE/full-chain acceptance |
 
 Finalization dispatch, rapid queued history/MULT and the integral-sample source
 fade repair are verified. Worker/source pre-start tempo ordering is verified.
@@ -38,7 +38,8 @@ slice must pass its relevant Windows/Linux tests before the next. The final
 integrated pass must exercise combinations rather than merely enable controls.
 Q/eQ GUI/CLI software is verified on Windows/Linux; live special-state controls
 are owner-approved; EQ MIDI Learn passes its documented software scope. Next is
-the connected compressor (C) Linux/timing acceptance; other FX remain disabled.
+the original A (Arp Delay) behavior inventory; C now passes its scoped Windows/Linux
+software gates. Other FX remain disabled.
 No dependency change or package is implied by this inventory. Existing sessions,
 IDs, expanded capacity and logo are preserved.
 
