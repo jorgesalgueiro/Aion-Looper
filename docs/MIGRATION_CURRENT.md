@@ -30,14 +30,20 @@ Callbacks neither wait for preparation nor allocate/free. Ordinary loop request
 acknowledgements remain separate. Zero-frame calls may service internal storage,
 like export; they do not advance audio or drain ordinary loop commands.
 
-Initial Windows Engine tests pass at 64/128, including a worker paused inside
+Windows Engine tests pass at 64/128, including a worker paused inside
 allocation while cancellation/DEL/panic and a replacement arrive. Extended
 tests add forty-slot exhaustion/recovery, unread ready versus queued results
-through repeated prepare, and actual message/audio/worker concurrency. Windows
-affected regressions are running; Linux and sanitizer verification are pending.
-Commands/results will be finalized below before closing this slice.
+through repeated prepare, and actual message/audio/worker concurrency. Source
+**eebbbed** passes the new Windows CTest **6.51s**, Linux Release **0.43s**,
+ASan/UBSan/leaks **1/1 (1.01s)** and TSAN **1/1 (1.60s)** with the previously
+documented process-only `setarch x86_64 -R` launch; no sanitizer diagnostics.
+Storage, connected-compressor and original-assets pass on both OSes. Linux's
+full affected selection passes **5/5 (221.21s)**, including core **218.58s**.
+Windows's full affected selection passes **5/5 (751.16s)**, including core
+**728.43s**. No source changes after that verified snapshot; subsequent edits
+record evidence only. No package, push or user-facing Arp enablement.
 
-Next: product settings/terminal command receipts and original Q -> C -> A routing,
+Next: product settings committed with graph adoption and original Q -> C -> A routing,
 then shared GUI/CLI/MIDI/versioned persistence and organic new-instance defaults.
 This internal storage API does not establish cross-queue GUI gesture ordering or
 provide a user CLI command. Preserve existing frontend barriers when connecting

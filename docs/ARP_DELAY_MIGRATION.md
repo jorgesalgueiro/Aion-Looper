@@ -518,7 +518,9 @@ The callback checks cancellation/epoch/generation before `LoopBank::beginBlock`
 can adopt a ready result. Enqueue has no success receipt. Terminal statuses are
 `ready`, `cancelled`, `stale`, `busy` and `failed`. Preparation failure keeps old
 audio ownership. Cancellation after an already-committed ready result cannot undo
-that commit, including while its receipt remains unread. Results carry their
+that commit, including while its receipt remains unread. A cancellation racing
+the callback's pre-adoption revision check may finish ready or cancelled; the
+terminal receipt identifies which operation won. Results carry their
 original generation across prepare; callers must not treat an old ready result
 as evidence of a current graph. Prepare never clears message-owned outstanding
 flags or discards unread results. Zero-frame processing may service this internal
@@ -542,5 +544,46 @@ queued unfinished work. A separate message/audio/worker test exercises actual
 concurrent SPSC traffic and cancellation linearization. These are internal
 protocol/ownership tests, not rendered A audio or GUI/CLI acceptance.
 
-Initial Windows protocol tests pass. Final extended Windows/Linux regression
-and sanitizer results are pending for this snapshot.
+Source **eebbbed**: final extended protocol CTest passes Windows **6.51s**,
+Linux Release **0.43s**, ASan/UBSan/leaks **1/1 (1.01s)** and TSAN **1/1
+(1.60s)**, with no sanitizer report. TSAN uses the already documented
+process-only fixed-layout launch, retaining the earlier storage startup failure.
+Storage, connected-compressor and original-assets regressions also pass per OS.
+Linux's complete affected selection passes **5/5 (221.21s)**, core **218.58s**;
+Windows passes **5/5 (751.16s)**, core **728.43s**. Runtime/tests remain
+**eebbbed**; subsequent edits finalize evidence only. No package or push.
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_preparation_tests aion_arp_storage_tests aion_compressor_connected_tests aion_core_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_preparation_contract|arp_delay_storage_contract|core_realtime_contract|compressor_connected_contract|original_ui_bytes)$'
+```
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_arp_preparation_tests aion_arp_storage_tests aion_compressor_connected_tests aion_core_tests
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_preparation_contract|arp_delay_storage_contract|core_realtime_contract|compressor_connected_contract|original_ui_bytes)$'
+# Existing sanitizer caches from the storage section; first build regenerates Make rules.
+cmake --build build/overlap-asan --parallel 2 --target aion_core
+cmake --build build/overlap-asan --parallel 2 --target aion_arp_preparation_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^arp_preparation_contract$'
+cmake --build build/arp-storage-tsan --parallel 2 --target aion_core
+cmake --build build/arp-storage-tsan --parallel 2 --target aion_arp_preparation_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^arp_preparation_contract$'
+```
+
+Logs: `build/arp-preparation-{build,ctest}-windows.log`, and native WSL
+`build/arp-preparation-{build,ctest,asan-build,asan-test,tsan-build,tsan-test}-linux.log`.
+The test logs are saved complete CTest `LastTest.log` files, including captured
+core output and individual acceptance results.
+No original-JS/browser PCM rerun is required for this internal transaction-only
+change; verified DSP/source math is unchanged. No user-facing UI/CLI was enabled,
+so actual interaction, product persistence, chain order/bypass/tails, organic
+defaults and driver/full-bank audio headroom remain connected-stage gates.
+In particular, `cancelArmed` currently calls the raw bank clear helper and restores
+EQ/C settings. Preserve future Arp product settings/runtime through that workflow
+when connecting A; this raw preparation protocol alone does not port that policy.
+Product integration must commit settings in the same audio callback as matching
+graph adoption, before rendering or snapshots, rather than enqueue a later
+settings write after a ready receipt. The raw protocol changes no product
+settings. Its twenty independent receipts are not an atomic FX-bank restore;
+restore still needs staged all-bank readiness/OOM rollback and existing GUI/CLI
+gesture barriers before A can be enabled.
