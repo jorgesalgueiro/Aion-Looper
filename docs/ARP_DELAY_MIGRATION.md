@@ -597,10 +597,11 @@ their first occurrence and falls back to the default for an empty valid result.
 `AudioGraph.buildEffectsChain` follows that order and includes only enabled
 effects present in it; rebuilding can reuse effect nodes and their state.
 
-The current native preview still calls EQ then compressor directly in
-`LoopBank::tick`, and `resources/native/loop-view.js` supplies the default chain.
-Its manual chain control remains disabled. Port configurable routing before
-connecting A: use one shared GUI/CLI/state representation and place every ported
+Before editable-chain candidate `6d731ac`, native rendering called EQ then
+compressor directly and supplied default-only markup. That candidate now connects
+manual GUI/CLI/state ordering for Q/C; its policy/acceptance remains recorded in
+[SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md). Finish that prerequisite before
+connecting A: use the shared representation and place every ported
 effect at its user-selected position. Retain the original effect codes without
 presenting unported/custom effects as working. Preserve the approved persistent
 EQ/compressor/Arp ownership through reorder and playback restarts; explicitly

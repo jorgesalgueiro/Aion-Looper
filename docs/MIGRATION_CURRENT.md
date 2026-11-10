@@ -17,9 +17,14 @@ Candidate per-loop order/omission, shared GUI/CLI and version-1 native persisten
 are implemented for ported Q/C. Original codes stay preserved; A remains disabled.
 Windows connected audio/original-JS, production state/CLI and actual 64/128 WebView2
 checks pass. Visible toggles follow the chain without rebuilding the loop card.
-Full retained core/frontend, Linux/sanitizers and owner choice about live
-OD/SUB/MULT/scheduled-STOP chain edits are pending. This is not yet a completed
-feature/release. Details: [SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md).
+Retained Windows/Linux core/frontend, connected/reference, six processor/CLI
+cases per OS, Windows main/LIVE UI at 64/128 and Linux sanitizers pass after the
+documented fixture/adapter fixes. Runtime source **6d731ac**, Node 18/LIVE test
+extension **963722b**. Isolated warmed twenty-loop EQ/C observations show no
+64/128 deadline overruns; an earlier loaded Windows overrun is retained.
+Owner choice about live OD/SUB/MULT/scheduled-STOP chain edits is still pending;
+this candidate is not a completed feature/release. No package/push. Details and
+exact commands: [SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md).
 Do not connect Arp as a fixed Q -> C -> A path.
 
 ### Arp Delay — Engine preparation transactions, 10 November 2026
