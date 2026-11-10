@@ -12,6 +12,9 @@
 #include <string_view>
 #include <type_traits>
 #include <vector>
+#if defined(__linux__)
+#include <time.h>
+#endif
 static_assert(!std::is_copy_constructible_v<aion::ArpDelayGraph> && !std::is_move_assignable_v<aion::ArpDelayGraph>);
 namespace {thread_local bool watch=false,failNext=false;unsigned operations=0;
 void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}}
@@ -36,28 +39,46 @@ static std::vector<float> render(ArpDelayGraph& dsp,unsigned block,unsigned chan
  }
  return result;
 }
-static int benchmark(){
+static double threadCpuUs(bool enabled){
+ if(!enabled)return 0;
+#if defined(__linux__)
+ timespec t{};check(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t)==0,"thread CPU clock unavailable");
+ return t.tv_sec*1e6+t.tv_nsec*.001;
+#else
+ check(false,"--benchmark-cpu requires Linux");return 0;
+#endif
+}
+static int benchmark(bool cpuDiagnostic=false){
  constexpr unsigned warm=512,measured=2048;
  for(bool singleSample:{false,true})for(unsigned block:{64u,128u}){
   auto owners=std::make_unique<std::array<ArpDelayGraph,20>>();auto v=arpModDefaults();v[10]=.8f;v[1]=static_cast<float>(2/11.1);
   for(unsigned t=0;t<20;++t)check((*owners)[t].prepare(48000,v,123456789+t),"graph timing prepare");
-  std::vector<double> times(measured);std::array<float,128> l{},r{},ol{},orr{};double checksum=0;
+  std::vector<double> times(measured),cpuTimes(measured);std::array<float,128> l{},r{},ol{},orr{};double checksum=0;
+  struct Miss {unsigned callback=0;double wall=0,cpu=0;};std::array<Miss,16> misses{};unsigned missCount=0;
+  const double period=block/48000.0*1e6;
   for(unsigned i=0;i<128;++i){l[i]=static_cast<float>(.15*std::sin(i*.117)+.05*std::cos(i*.037));r[i]=static_cast<float>(.13*std::sin(i*.073));}
-  for(unsigned n=0;n<warm+measured;++n){const auto begin=std::chrono::steady_clock::now();watch=true;
+  for(unsigned n=0;n<warm+measured;++n){const auto begin=std::chrono::steady_clock::now();const double cpuBegin=threadCpuUs(cpuDiagnostic);watch=true;
    for(auto& owner:*owners){if(n%8==0)check(owner.setTarget(10,n%16?5.f:.1f),"graph timing controls");
     const unsigned step=singleSample?1:block;for(unsigned i=0;i<block;i+=step)check(owner.process(l.data()+i,r.data()+i,2,ol.data()+i,orr.data()+i,step),"graph timing process");
     checksum+=std::abs(ol[block-1])+std::abs(orr[block-1]);}
-   watch=false;if(n>=warm)times[n-warm]=std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-begin).count();
+   watch=false;const double cpu=threadCpuUs(cpuDiagnostic)-cpuBegin;
+   if(n>=warm){const auto i=n-warm;times[i]=std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-begin).count();cpuTimes[i]=cpu;
+    if(times[i]>period&&missCount<misses.size())misses[missCount++]={i,times[i],cpu};}
   }
-  check(checksum>1&&operations==0,"timing requires real PCM and no callback allocation");std::sort(times.begin(),times.end());double sum=0;unsigned over=0;const double period=block/48000.0*1e6;
+  check(checksum>1&&operations==0,"timing requires real PCM and no callback allocation");std::sort(times.begin(),times.end());std::sort(cpuTimes.begin(),cpuTimes.end());double sum=0;unsigned over=0,cpuOver=0;
   for(double t:times){sum+=t;over+=t>period;}
-  std::cout<<"{\"scope\":\"20 combined Arp graphs, excludes Engine/devices\",\"block\":"<<block<<",\"singleSampleCalls\":"<<singleSample<<",\"meanUs\":"<<sum/measured<<",\"p99Us\":"<<times[measured*99/100]<<",\"maximumUs\":"<<times.back()<<",\"periodUs\":"<<period<<",\"observedOverruns\":"<<over<<",\"checksum\":"<<checksum<<"}\n";
+  for(double t:cpuTimes)cpuOver+=t>period;
+  std::cout<<"{\"scope\":\"20 combined Arp graphs, excludes Engine/devices\",\"block\":"<<block<<",\"singleSampleCalls\":"<<singleSample<<",\"warmCallbacks\":"<<warm<<",\"measuredCallbacks\":"<<measured<<",\"meanUs\":"<<sum/measured<<",\"p99Us\":"<<times[measured*99/100]<<",\"maximumUs\":"<<times.back()<<",\"periodUs\":"<<period<<",\"observedOverruns\":"<<over<<",\"checksum\":"<<checksum;
+  if(cpuDiagnostic){std::cout<<",\"maximumThreadCpuUs\":"<<cpuTimes.back()<<",\"p99ThreadCpuUs\":"<<cpuTimes[measured*99/100]<<",\"threadCpuOverruns\":"<<cpuOver<<",\"wallMisses\":[";
+   for(unsigned m=0;m<missCount;++m){if(m)std::cout<<',';std::cout<<"{\"callback\":"<<misses[m].callback<<",\"wallUs\":"<<misses[m].wall<<",\"threadCpuUs\":"<<misses[m].cpu<<'}';}std::cout<<']';}
+  std::cout<<"}\n";
  }
  return 0;
 }
 int main(int argc,char** argv){
  if(argc==2&&std::string_view(argv[1])=="--benchmark")return benchmark();
- check(argc==1,"Usage: aion_arp_stream_tests [--benchmark]");
+ if(argc==2&&std::string_view(argv[1])=="--benchmark-cpu")return benchmark(true);
+ check(argc==1,"Usage: aion_arp_stream_tests [--benchmark|--benchmark-cpu]");
  for(double rate:{8000.,22050.,32000.,44100.,48000.,96000.,192000.,384000.})for(unsigned channels:{0u,1u,2u}){
   auto values=arpModDefaults();values[0]=.01f;values[1]=0;ArpDelayGraph reference;check(reference.prepare(rate,values,7),"stream baseline prepare");
   const auto expected=render(reference,128,channels,false);double energy=0;for(float s:expected)energy+=s*s;check(channels?energy>1:energy==0,"stream fixture audible or true tail silence");
