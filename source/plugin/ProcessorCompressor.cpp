@@ -87,7 +87,7 @@ bool AionProcessor::compressorRequest(const juce::var& request,juce::DynamicObje
     if(!numeric(request.getProperty("expiresAt",{}),expires)||expires<now||expires>now+5000)return fail("Compressor command expired");
     const auto generation=request.getProperty("generation",{});
     if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation())||latest.generation!=engine.generation())return fail("Audio generation changed");
-    if(eqRestorePending||compressorRestorePending||compressorClearing[track])return fail("Wait for Compressor restore/clear acknowledgement");
+    if(eqRestorePending||compressorRestorePending||chainRestorePending||compressorClearing[track])return fail("Wait for Compressor restore/clear acknowledgement");
     std::uint32_t mask=0;
     if(action=="toggle")next.enabled=!next.enabled;
     else if(action=="enable"){const auto enabled=request.getProperty("enabled",{});if(!enabled.isBool())return fail("Expected Compressor boolean");next.enabled=static_cast<bool>(enabled);}

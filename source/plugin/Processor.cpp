@@ -188,7 +188,7 @@ void AionProcessor::prepareToPlay(double rate, int) {
     aion::DeviceOutputLatency latency;
     try{latency=outputLatencyReader?outputLatencyReader():standaloneOutputLatency(*this);}catch(...){latency={};}
     engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
-    {std::lock_guard guard(midiSettingsMutex);engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);}
+    {std::lock_guard guard(midiSettingsMutex);engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);}
     deviceClockOwner=nextDeviceClockOwner;
     deviceClockEpoch=deviceClockOwner?deviceClockOwner->advance():0;
     activeDeviceClockEpoch.store(deviceClockEpoch,std::memory_order_release);
@@ -384,13 +384,14 @@ void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
     state.removeChild(state.getChildWithName("MidiSettings"),nullptr);state.appendChild(stored,nullptr);
     saveEqualizers(state);
     saveCompressors(state);
+    saveChains(state);
     if (auto xml = state.createXml()) copyXmlToBinary(*xml, data);
 }
 void AionProcessor::setStateInformation(const void* data, int size) {
     if (size <= 0 || size > 1024 * 1024) return;
     if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName("AionState")) {
-        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;CompressorBank restoredCompressor;
-        if(!readEqualizers(state,restoredEq)||!readCompressors(state,restoredCompressor))return;
+        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;CompressorBank restoredCompressor;ChainBank restoredChains;
+        if(!readEqualizers(state,restoredEq)||!readCompressors(state,restoredCompressor)||!readChains(state,restoredChains))return;
         aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
         if(stored.isValid()){
             const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
@@ -404,6 +405,7 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             if(!updateMidi(next))return;
             eqSettings=restoredEq;eqRestorePending=true;eqPending.fill(0);eqClearing.fill(false);
             compressorSettings=restoredCompressor;compressorRestorePending=true;compressorPending.fill(0);compressorClearing.fill(false);
+            chainSettings=restoredChains;chainRestorePending=true;chainPending.fill(0);chainClearing.fill(false);
             parameters.replaceState(state);
         }
         // Preset restoration changes values without automation events. Ask wrappers
@@ -541,10 +543,13 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             object->setProperty("volume", t.volume); object->setProperty("feedback", t.feedback);
             equalizerSnapshot(*object,static_cast<unsigned>(trackIndex));
             compressorSnapshot(*object,static_cast<unsigned>(trackIndex));
+            chainSnapshot(*object,static_cast<unsigned>(trackIndex));
             object->setProperty("finalizationFailed", t.finalizationFailed); object->setProperty("solo", t.solo); object->setProperty("muted", t.muted); object->setProperty("peak", t.peak);
             tracks.add(juce::var(object));
         }
         result->setProperty("tracks", juce::var(tracks));
+    } else if(operation=="signalChain") {
+        result->setProperty("ok",chainRequest(request,*result));
     } else if(operation=="equalizer") {
         result->setProperty("ok",equalizerRequest(request,*result));
     } else if(operation=="compressor") {
@@ -596,7 +601,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation()))return fail("Audio generation changed");
         engine.cancelStutter(static_cast<unsigned>(static_cast<int>(id)));result->setProperty("ok",true);
     } else if (operation == "loop") {
-        {std::lock_guard guard(midiSettingsMutex);if(eqRestorePending)return fail("Wait for pending EQ state restore");}
+        {std::lock_guard guard(midiSettingsMutex);if(eqRestorePending||compressorRestorePending||chainRestorePending)return fail("Wait for pending EQ state restore");}
         const auto expiration = request.getProperty("expiresAt", {});
         if (!(expiration.isInt() || expiration.isInt64() || expiration.isDouble())) return fail("Missing command expiration");
         const double expiresAt = static_cast<double>(expiration);
@@ -626,6 +631,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         nextRequest = requestId;
         if(actionName=="clear"||actionName=="clearAll")equalizerCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")compressorCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
+        if(actionName=="clear"||actionName=="clearAll")chainCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         result->setProperty("ok", true); result->setProperty("queued", true);
         result->setProperty("requestId", static_cast<juce::int64>(requestId));
     } else if(operation=="midiConfig"){

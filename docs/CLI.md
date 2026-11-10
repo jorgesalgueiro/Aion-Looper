@@ -77,6 +77,22 @@ CC targets 117..123 follow that parameter order and the shared `midi eqTrack`
 selection (native 0-based index), with the same learn/clear/cancellation commands
 above. No second DSP process or product AudioContext is created.
 
+The editable per-loop FX chain uses the same running processor:
+
+```sh
+python tools/aion.py chain 1 get
+python tools/aion.py chain 1 set CQ
+python tools/aion.py chain 1 set QCATFODBVKZG
+python tools/aion.py chain 1 reset
+```
+
+`chain` tracks are 1-based (1..20). `CQ` runs compressor before EQ; `Q` omits
+compressor even when enabled. Only Q and C currently process audio; other codes
+retain their positions for later ports. Lowercase/repeated codes normalize as
+in the original manual field. Empty/invalid-only text or `reset` restore the
+default. Chain presets and custom effects remain unported. Current evidence and
+pending live-routing policy: [SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md).
+
 MERGE also uses the shared loop command:
 
 ```sh

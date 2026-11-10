@@ -11,6 +11,17 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Editable chain prerequisite — 10 November 2026
+
+Candidate per-loop order/omission, shared GUI/CLI and version-1 native persistence
+are implemented for ported Q/C. Original codes stay preserved; A remains disabled.
+Windows connected audio/original-JS, production state/CLI and actual 64/128 WebView2
+checks pass. Visible toggles follow the chain without rebuilding the loop card.
+Full retained core/frontend, Linux/sanitizers and owner choice about live
+OD/SUB/MULT/scheduled-STOP chain edits are pending. This is not yet a completed
+feature/release. Details: [SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md).
+Do not connect Arp as a fixed Q -> C -> A path.
+
 ### Arp Delay — Engine preparation transactions, 10 November 2026
 
 The next internal slice connects the verified storage worker to a bounded typed
@@ -43,8 +54,21 @@ Windows's full affected selection passes **5/5 (751.16s)**, including core
 **728.43s**. No source changes after that verified snapshot; subsequent edits
 record evidence only. No package, push or user-facing Arp enablement.
 
-Next: product settings committed with graph adoption and original Q -> C -> A routing,
-then shared GUI/CLI/MIDI/versioned persistence and organic new-instance defaults.
+Owner routing clarification, 10 November: the effect chain is user-editable per
+loop. `QCATFODBVKZG` is the original default, not a fixed processing path. The
+reference `Loop.setSignalChain` normalizes/deduplicates the entered chain;
+`AudioGraph.buildEffectsChain` processes enabled effects in that order and omits
+effects absent from the chain. At that checkpoint native rendering hardcoded
+Q -> C and the markup supplied the default. The candidate above supersedes that
+limitation; its remaining acceptance gates are recorded separately.
+
+Next prerequisite: shared GUI/CLI and persisted per-loop chain order, with native
+processing following that order for ported effects. Preserve original effect codes
+and leave unported effects explicitly unavailable. Cover reordering, omission,
+bypass, save/restore and persistent effect ownership before connecting Arp Delay.
+Arp product settings must commit with graph adoption and A must run at its selected
+chain position. Then complete its GUI/CLI/MIDI/versioned persistence and organic
+new-instance defaults. Do not implement a fixed Q -> C -> A path.
 This internal storage API does not establish cross-queue GUI gesture ordering or
 provide a user CLI command. Preserve existing frontend barriers when connecting
 it. No sound-parity or device/headroom claim is added; prior DSP and WSL timing

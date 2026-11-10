@@ -414,7 +414,8 @@ const effectColors = {
         state.soloState={active:snapshot.tracks.some(t=>t.solo),loopId:snapshot.tracks.findIndex(t=>t.solo)};
         const container={};MasterMixManager.renderLive(container);return container.innerHTML;
     };
-    window.AionLiveLoopMarkup=snapshot=>snapshot.tracks.map((t,i)=>UIManager.generateLiveLoopHTML({...t,name:'',effects:{reverse:!!t.reverse},signalChain:'QCATFODBVKZG'},i));
+    window.AionLoopEffectsMarkup=(track,prefix)=>UIManager.generateEffectsControlsHTML({effects:{},signalChain:'QCATFODBVKZGH'},track,prefix);
+    window.AionLiveLoopMarkup=snapshot=>snapshot.tracks.map((t,i)=>UIManager.generateLiveLoopHTML({...t,name:'',effects:{reverse:!!t.reverse},signalChain:t.signalChain??'QCATFODBVKZG'},i));
     window.AionLivePanelState=snapshot=>{state.loops=snapshot.tracks;UIManager.updateLivePerformanceState();};
     window.AionSyncMarkup = snapshot => {
         state.syncEnabled=snapshot.syncMode!==0;state.bars=snapshot.syncBars;state.timeSig={num:snapshot.syncNum};
@@ -423,7 +424,7 @@ const effectColors = {
     window.AionLoopMarkup = (snapshot, mode) => {
         state.globalOverdubMode = mode === 'overdub'; state.globalSubstituteMode = mode === 'substitute';
         state.loops = snapshot.tracks.map(t => ({...t, duration: t.length / snapshot.sampleRate, playbackRate: t.playbackRate ?? 1, startDelay: t.startDelay ?? 0, pan: t.pan ?? 5,
-            audioBuffer: t.length > 0, undoStack: Array(t.undoCount||0), redoStack: Array(t.redoCount||0), effects: {reverse:!!t.reverse}, signalChain: 'QCATFODBVKZG', name: t.name??''}));
+            audioBuffer: t.length > 0, undoStack: Array(t.undoCount||0), redoStack: Array(t.redoCount||0), effects: {reverse:!!t.reverse}, signalChain: t.signalChain??'QCATFODBVKZG', name: t.name??''}));
         return state.loops.map((t, i) => UIManager.generateLoopHTML({...t, id:i}, i));
     };
 })();

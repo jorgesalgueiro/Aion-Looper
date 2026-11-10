@@ -55,7 +55,7 @@ int main(int argc,char** argv){
         auto restoreMode=juce::JSON::parse(R"({"operation":"setParameter","id":"syncMode","value":0})");restoreMode.getDynamicObject()->setProperty("value",savedSyncMode);
         check(p->request({restoreMode})["ok"],"restore original sync mode");process();
         // Full performance queue: failed edits preserve intent. Restore waits
-        // until a complete forty-command effects batch fits, never publishing a prefix.
+        // until the complete EQ/compressor/chain bank fits, never publishing a prefix.
         unsigned accepted=0;for(unsigned i=0;i<300;++i)if(request(R"({"operation":"loop","action":"volume","track":0,"value":1})")["ok"])++accepted;
         check(accepted==255,"bounded production command queue");
         check(!static_cast<bool>(request(R"({"operation":"compressor","action":"toggle","track":19})")["ok"]),"full queue rejects compressor toggle");

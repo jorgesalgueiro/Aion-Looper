@@ -132,6 +132,7 @@
             run:async c=>{
                 if(c.action==='equalizer')return sendEqualizer(c.track,c.eq);
                 if(c.action==='compressor')return sendCompressor(c.track,c.compressor);
+                if(c.action==='signalChain')return sendChain(c.track,c.order);
                 if(c.action==='exportLoop'){
                     const reply=await rpc({operation:'exportLoop',track:c.track,generation:c.generation,waveformId:c.waveformId,filename:c.filename});
                     if(!reply.ok&&!reply.exportBusy)throw Error(reply.error||'WAV export unavailable');
@@ -185,6 +186,15 @@
             enqueue:(track,eq,key)=>scheduler.enqueue(()=>({action:'equalizer',track,eq}),{track,key:key?`${track}:${key}`:undefined})});
         const compressor=window.AionCompressorUI({rpc,current:()=>snapshot,notify,equalizer,
             enqueue:(track,compressor,key)=>scheduler.enqueue(()=>({action:'compressor',track,compressor}),{track,key:key?`${track}:${key}`:undefined})});
+        const signalChain=window.AionSignalChainUI({current:()=>snapshot,select:id=>equalizer.select(id),
+            enqueue:(track,order)=>scheduler.enqueue(()=>({action:'signalChain',track,order}),{track})});
+        async function sendChain(track,order){
+            if(!enabled())return;
+            error='';const generation=snapshot.generation;
+            const reply=await rpc({operation:'signalChain',action:'set',track,order,generation,expiresAt:Date.now()+3000});
+            if(!reply.ok)throw Error(reply.error||'Chain command rejected');
+            await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,resolve,reject,deadline:Date.now()+4000};});
+        }
         async function sendCompressor(track,settings){
             if(!enabled())return;
             error='';const generation=snapshot.generation;
@@ -293,6 +303,7 @@
                 const row=document.createElement('div');row.id=`loop-${i}`;row.className='loop empty';row.innerHTML=markup[i];
                 stripHandlers(row);
                 row.querySelectorAll('button,input,select,textarea').forEach(e => {e.disabled=true;e.title='Unavailable in this preview';});
+                signalChain.bindRow(row,i);
                 equalizer.bindRow(row,i);
                 compressor.bindRow(row,i);
                 const bind=(element,callback,event='click') => {element.dataset.nativeControl='true';element.title=element.getAttribute('aria-label')||element.textContent.trim();element.addEventListener(event,callback);return element;};
@@ -389,6 +400,7 @@
             for(let i=0;i<s.tracks.length;++i){
                 const row=document.getElementById(`live-loop-${i}`),header=row.querySelector('.loop-header');
                 row.querySelectorAll('input').forEach(e=>{e.disabled=true;e.title='Unavailable in this preview';});
+                signalChain.bindRow(row,i);
                 equalizer.bindRow(row,i);
                 compressor.bindRow(row,i);
                 header.addEventListener('click',()=>{if(enabled())mainAction(i);});
@@ -402,6 +414,7 @@
             if(!snapshot)return;
             equalizer.update();
             compressor.update();
+            signalChain.update();
             const active=enabled();
             if(document.activeElement!==master)master.value=snapshot.masterGain;
             if(document.activeElement!==monitor)monitor.checked=snapshot.inputMonitor;

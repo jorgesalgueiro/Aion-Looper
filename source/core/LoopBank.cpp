@@ -416,7 +416,8 @@ void LoopBank::cancelArmed(Track& track) noexcept {
     // clear() directly. Reconstruct runtime filters on their next tick.
     const auto settings=track.info.equalizer;const auto request=track.info.eqRequest;
     const auto compressor=track.info.compressor;const auto compressorRequest=track.info.compressorRequest;
-    clear(track);track.info.equalizer=settings;track.info.eqRequest=request;
+    const auto chain=track.info.signalChain;const auto chainRequest=track.info.chainRequest;
+    clear(track);track.info.signalChain=chain;track.info.chainRequest=chainRequest;track.info.equalizer=settings;track.info.eqRequest=request;
     track.info.compressor=compressor;track.info.compressorRequest=compressorRequest;
 }
 void LoopBank::clear(Track& track) noexcept {
@@ -724,6 +725,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::clearAll:
         case LoopAction::equalizer: // Dedicated validated settings command, never float payload.
         case LoopAction::compressor:
+        case LoopAction::signalChain:
         case LoopAction::stopAll:break;
     }
     return false;
@@ -941,6 +943,15 @@ void LoopBank::resetEqualizers() noexcept {
     for(unsigned i=0;i<trackCount;++i){auto& eq=(*equalizers)[i];eq={};(void)eq.filter.prepare(rate,tracks[i].info.equalizer.values,0);eq.prepared=true;}
     for(unsigned i=0;i<trackCount;++i){auto& comp=(*compressors)[i];comp={};(void)comp.filter.prepare(rate,tracks[i].info.compressor.values,0);comp.prepared=true;}
 }
+bool LoopBank::setSignalChain(std::uint32_t id,const SignalChain& settings,std::uint32_t request,std::uint64_t epoch,bool checkEpoch) noexcept {
+    if(id>=trackCount||!validSignalChain(settings)||(checkEpoch&&epoch!=tracks[id].clearEpoch))return false;
+    auto& t=tracks[id];const auto previous=t.info.signalChain;
+    // Reorder retains included filters. Reinserting an omitted effect starts a
+    // new instance with current controls, like the original rebuilt graph.
+    if(settings.contains('Q')&&!previous.contains('Q')&&t.info.equalizer.enabled){auto& eq=(*equalizers)[id];(void)eq.filter.prepare(rate,t.info.equalizer.values,frame);eq.prepared=true;}
+    if(settings.contains('C')&&!previous.contains('C')&&t.info.compressor.enabled){auto& comp=(*compressors)[id];(void)comp.filter.prepare(rate,t.info.compressor.values,frame);comp.prepared=true;}
+    t.info.signalChain=settings;t.info.chainRequest=request;return true;
+}
 bool LoopBank::setCompressor(std::uint32_t id,const CompressorSettings& settings,std::uint32_t mask,std::uint32_t request,std::uint64_t epoch,bool checkEpoch) noexcept {
     if(id>=trackCount||!validCompressorSettings(settings)||(mask&~compressorAllParameters)||(checkEpoch&&epoch!=tracks[id].clearEpoch))return false;
     auto& t=tracks[id];auto& comp=(*compressors)[id];
@@ -1041,11 +1052,16 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         }else if(t.tailRemaining){const float progress=static_cast<float>(--t.tailRemaining)/fadeLength;out={t.tail.left*progress,t.tail.right*progress};t.last=out;}
         else t.last={};
         const auto retainedOut=tickRetained(t);out.left+=retainedOut.left;out.right+=retainedOut.right;t.last=out;
-        // A source can advance behind the queued volume gate. Feed the EQ first,
-        // as in the original graph, but gate both audible output and STOP's raw
+        // A source can advance behind the queued volume gate. Process its chosen
+        // effect chain before gating audible output and STOP's raw
         // source tail. Never feed already-filtered PCM back through this chain.
-        auto equalized=tickEqualizer(static_cast<unsigned>(&t-tracks.data()),out,eqSource);
-        equalized=tickCompressor(static_cast<unsigned>(&t-tracks.data()),equalized,eqSource);
+        auto equalized=out;
+        const auto id=static_cast<unsigned>(&t-tracks.data());
+        for(const auto code:v.signalChain.text()){
+            if(code=='Q')equalized=tickEqualizer(id,equalized,eqSource);
+            else if(code=='C')equalized=tickCompressor(id,equalized,eqSource);
+            // Unported original codes retain their position as metadata.
+        }
         if(t.queuedGainAt){
             if(frame<t.queuedGainAt){out={};equalized={};}
             else if(fadeLength&&frame-t.queuedGainAt<fadeLength){

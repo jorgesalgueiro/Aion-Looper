@@ -14,12 +14,13 @@
 #include "core/MeterWindow.h"
 #include "core/MeterGraphEvents.h"
 #include "core/EqSettings.h"
+#include "core/SignalChain.h"
 
 namespace aion {
 // Application queues wait for explicit source creation; direct DSP clients may schedule at the grid.
 enum class QueuedStartMode { sampleGrid, messageCallback };
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor }; // Append-only. Source/reset primitives remain core-only.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor, signalChain }; // Append-only. Source/reset primitives remain core-only.
 constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart||action==LoopAction::meterQueuedWindowRequest||action==LoopAction::meterQueuedGraphRequest;}
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
@@ -44,6 +45,8 @@ struct LoopView {
     std::uint32_t eqRequest=0;
     CompressorSettings compressor{};
     std::uint32_t compressorRequest=0;
+    SignalChain signalChain{};
+    std::uint32_t chainRequest=0;
 };
 // Audio owns capture blocks/state; the worker borrows pinned takes and owns immutable clips.
 // Capture storage is allocated in prepare; clip allocation/deletion stays off the callback.
@@ -64,8 +67,10 @@ public:
                       std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
     bool setCompressor(std::uint32_t,const CompressorSettings&,std::uint32_t mask,std::uint32_t request,
                        std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
-    // Internal storage admission only. Product A, commands/state/MIDI and chain
-    // routing remain disabled until connected acceptance; not a second FX path.
+    bool setSignalChain(std::uint32_t,const SignalChain&,std::uint32_t request,
+                        std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
+    // Internal storage admission only. Product A, its commands/state/MIDI and
+    // chain placement remain disabled until connected acceptance.
     bool requestArpStorage(unsigned id,const ArpModValues& values,std::uint32_t seed,std::uint64_t clearEpoch) noexcept {
         return id<trackCount&&clearEpoch==tracks[id].clearEpoch&&arpStorage->request(id,values,seed);
     }

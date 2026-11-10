@@ -141,6 +141,17 @@ private:
     bool equalizerRequest(const juce::var&,juce::DynamicObject&);
     void saveEqualizers(juce::ValueTree&);
     static bool readEqualizers(const juce::ValueTree&,EqBank&);
+    using ChainBank=std::array<aion::SignalChain,aion::LoopBank::trackCount>;
+    ChainBank chainSettings{};
+    bool chainRestorePending=false;
+    std::array<std::uint32_t,aion::LoopBank::trackCount> chainPending{};
+    std::array<bool,aion::LoopBank::trackCount> chainClearing{};
+    void serviceChains();
+    void chainCleared(unsigned track,bool all,std::uint32_t request);
+    void chainSnapshot(juce::DynamicObject&,unsigned track);
+    bool chainRequest(const juce::var&,juce::DynamicObject&);
+    void saveChains(juce::ValueTree&);
+    static bool readChains(const juce::ValueTree&,ChainBank&);
     using CompressorBank=std::array<aion::CompressorSettings,aion::LoopBank::trackCount>;
     CompressorBank compressorSettings{};
     bool compressorRestorePending=false;

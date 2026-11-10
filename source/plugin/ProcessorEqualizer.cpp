@@ -55,13 +55,14 @@ bool AionProcessor::readEqualizers(const juce::ValueTree& state,EqBank& bank){
 }
 void AionProcessor::serviceEqualizer(){
     std::lock_guard guard(midiSettingsMutex);
-    if(eqRestorePending||compressorRestorePending){
-        if(!meterPrepared()||nextRequest>UINT32_MAX-aion::LoopBank::trackCount*2-1)return;
+    if(eqRestorePending||compressorRestorePending||chainRestorePending){
+        if(!meterPrepared()||nextRequest>UINT32_MAX-aion::LoopBank::trackCount*3-1)return;
         const auto first=nextRequest+1;
-        if(!engine.enqueueEffectsBank(eqSettings,compressorSettings,first))return; // Both banks or neither; retry next message pass.
+        if(!engine.enqueueEffectsBank(eqSettings,compressorSettings,chainSettings,first))return; // All banks or neither; retry next message pass.
         for(unsigned i=0;i<eqSettings.size();++i){eqPending[i]=first+i;eqClearing[i]=false;}
         for(unsigned i=0;i<compressorSettings.size();++i){compressorPending[i]=first+aion::LoopBank::trackCount+i;compressorClearing[i]=false;}
-        nextRequest+=aion::LoopBank::trackCount*2;eqRestorePending=compressorRestorePending=false;
+        for(unsigned i=0;i<chainSettings.size();++i){chainPending[i]=first+aion::LoopBank::trackCount*2+i;chainClearing[i]=false;}
+        nextRequest+=aion::LoopBank::trackCount*3;eqRestorePending=compressorRestorePending=chainRestorePending=false;
     }
     if(latest.generation!=engine.generation())return;
     for(unsigned i=0;i<eqSettings.size();++i){
@@ -72,6 +73,7 @@ void AionProcessor::serviceEqualizer(){
         // truth, including internal capture cleanup without a DEL epoch change.
     }
     serviceCompressor();
+    serviceChains();
 }
 void AionProcessor::equalizerCleared(unsigned track,bool all,std::uint32_t requestId){
     std::lock_guard guard(midiSettingsMutex);
@@ -101,7 +103,7 @@ bool AionProcessor::equalizerRequest(const juce::var& request,juce::DynamicObjec
     if(!numeric(request.getProperty("expiresAt",{}),expires)||expires<now||expires>now+5000)return fail("EQ command expired");
     const auto generation=request.getProperty("generation",{});
     if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation())||latest.generation!=engine.generation())return fail("Audio generation changed");
-    if(eqRestorePending||compressorRestorePending||eqClearing[track])return fail("Wait for EQ restore/clear acknowledgement");
+    if(eqRestorePending||compressorRestorePending||chainRestorePending||eqClearing[track])return fail("Wait for EQ restore/clear acknowledgement");
     std::uint32_t mask=0;
     if(action=="toggle")next.enabled=!next.enabled;
     else if(action=="enable"){const auto enabled=request.getProperty("enabled",{});if(!enabled.isBool())return fail("Expected EQ boolean");next.enabled=static_cast<bool>(enabled);}

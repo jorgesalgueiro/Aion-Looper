@@ -587,3 +587,24 @@ settings write after a ready receipt. The raw protocol changes no product
 settings. Its twenty independent receipts are not an atomic FX-bank restore;
 restore still needs staged all-bank readiness/OOM rollback and existing GUI/CLI
 gesture barriers before A can be enabled.
+
+### Owner clarification: editable effect chain (10 November 2026)
+
+Q -> C -> A describes the beginning of the original default `QCATFODBVKZG`,
+not a fixed audio path. The unchanged reference's `Loop.setSignalChain` accepts
+a per-loop order, uppercases valid effect codes, removes duplicates preserving
+their first occurrence and falls back to the default for an empty valid result.
+`AudioGraph.buildEffectsChain` follows that order and includes only enabled
+effects present in it; rebuilding can reuse effect nodes and their state.
+
+The current native preview still calls EQ then compressor directly in
+`LoopBank::tick`, and `resources/native/loop-view.js` supplies the default chain.
+Its manual chain control remains disabled. Port configurable routing before
+connecting A: use one shared GUI/CLI/state representation and place every ported
+effect at its user-selected position. Retain the original effect codes without
+presenting unported/custom effects as working. Preserve the approved persistent
+EQ/compressor/Arp ownership through reorder and playback restarts; explicitly
+verify omission/bypass and delay tails against the reference and approved policy.
+Acceptance needs order-sensitive connected PCM at 64/128, live reorder, queue
+rejection/cancellation, clear/reset, save/restore and editor reopen evidence.
+The existing default-order DSP results do not establish editable-chain parity.
