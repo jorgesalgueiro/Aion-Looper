@@ -29,9 +29,15 @@ real LoopBank worker/epoch/clear/reset/prepare/destruction and concurrent handof
 An additional shared-worker test passes Windows: twenty Arp preparations and
 replacements coexist with capture/finalization, NORM and pinned WAV export;
 stored WAV and nonzero connected loop PCM exactly match a bank without Arp jobs.
-Watched audio operations allocate/free nothing. Windows storage, streaming,
-compressor-connected and original-assets checks pass; broader core and Linux
-verification are in progress for this snapshot.
+Watched audio operations allocate/free nothing. Runtime ownership source is
+**cbf9ab0**, extended shared-worker regression **ee3edcb**. Windows affected
+selection passes **5/5 (706.95s)**, including full core **693.56s**; the extended
+shared-worker storage binary also passes. Linux selection passes **5/5 (240.37s)**. The
+extended storage test passes Release **1/1 (0.79s)**, ASan/UBSan/leaks **1/1
+(2.89s)** and TSAN **1/1 (4.22s)**, no diagnostics. TSAN initially passed the
+earlier cases, then its extended run failed before main with an unexpected memory
+mapping. Preserve that failed log; the extended test passes with a process-only
+`setarch x86_64 -R` launch. No system ASLR setting or compiler was changed.
 
 Next: shared Engine command acceptance/outcomes and chain placement, then
 GUI/CLI/MIDI/versioned state and organic new-instance defaults. Keep A disabled

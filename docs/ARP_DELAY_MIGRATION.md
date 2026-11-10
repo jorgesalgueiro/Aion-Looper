@@ -438,10 +438,23 @@ export. Original and normalized WAV bytes and nonzero connected loop playback
 match a reference bank with no Arp jobs exactly at 64/128; the prepared effects
 remain disconnected. This protects existing worker/clip leases, not A sound parity.
 
-Windows storage, streaming, connected-compressor and original-assets checks pass.
-Initial Linux storage/streaming/compressor/assets, ASan/UBSan/leaks and TSAN pass.
-The added shared-worker regression passes Windows; its Linux/sanitizer rerun and
-the broader Windows/Linux core suites are pending for this snapshot.
+Runtime storage source **cbf9ab0** and additional shared-worker regression
+**ee3edcb**: Windows affected CTests pass **5/5 (706.95s)**, including full core
+**693.56s**; the subsequently extended storage binary also passes. Linux CTests pass
+**5/5 (240.37s)**, including full core **236.48s**. The extended shared-worker
+test passes Linux Release **1/1 (0.79s)** and ASan/UBSan/leaks **1/1 (2.89s)**,
+without diagnostics. Initial narrower storage TSAN passed **1/1 (3.49s)**.
+After extending the test, its first TSAN launch failed before main with
+`FATAL: ThreadSanitizer: unexpected memory mapping 0x5ae62db19000-0x5ae62db1c000`.
+That failure is retained, not overwritten by a random retry. Following the
+process-scoped workaround documented in the
+[upstream sanitizer issue](https://github.com/google/sanitizers/issues/1716),
+the same instrumented extended binary passes **1/1 (4.22s)** with
+`setarch x86_64 -R`; no race report. This is an address-layout launch change,
+not a source/tolerance/suppression change or a global ASLR modification.
+Environment: GCC 13.3.0, PIE executable, WSL2 kernel
+`6.18.54.1-microsoft-standard-WSL2-aion-midi`. The protected entropy sysctl was
+unreadable, so no exact entropy or proven root-cause claim is made.
 Reproduce with the existing caches (CMake regenerates for the new test target):
 
 ```powershell
@@ -454,7 +467,25 @@ cmake --build build/linux --parallel 2 --target aion_arp_storage_tests aion_core
 ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_delay_storage_contract|arp_delay_streaming_contract|core_realtime_contract|compressor_connected_contract|original_ui_bytes)$'
 cmake --build build/overlap-asan --parallel 2 --target aion_arp_storage_tests
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^arp_delay_storage_contract$'
+cmake -S . -B build/arp-storage-tsan -DAION_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS='-fsanitize=thread -fno-omit-frame-pointer' -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=thread'
+cmake --build build/arp-storage-tsan --parallel 2 --target aion_arp_storage_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^arp_delay_storage_contract$'
 ```
+
+Windows log: `build/arp-storage-ctest-windows.log` (saved full CTest log).
+Linux logs: `build/arp-storage-{build,ctest,asan-build,asan-test}-linux.log`,
+`arp-storage-tsan-{configure,build,test}-linux.log`,
+`arp-storage-shared-{release,asan,tsan}-{build,test}-linux.log` and
+`arp-storage-shared-tsan-fixed-layout-linux.log` (all under `build/`). The
+`shared-tsan-test` log is the failed startup and must remain visible.
+
+Connected-stage requirement: unlike fixed-storage compressor preparation, Arp
+cannot report terminal success from the first enable enqueue. Extend the shared
+Engine command/outcome and restore-bank paths so settings/receipts commit only
+with matching prepared storage; rejection/OOM must retain old settings/audio.
+Keep the graph's clear-epoch/slot guards and never use `prepare` as a render-time
+fallback. Seed selection, chain placement/bypass/tails and control retargeting
+remain product integration, not guarantees of this internal storage layer.
 
 No UI/bridge/audio math changed, so the existing browser/original-JS sound evidence
 is retained rather than rerun unchanged. This storage slice is not full A
