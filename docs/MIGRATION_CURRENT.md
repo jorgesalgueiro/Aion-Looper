@@ -34,6 +34,8 @@ Linux C++ at the same peak; Linux WebKit is untested. Twenty isolated stereo
 kernels, 512 warm / 2048 measured invocations, show zero observed overruns:
 Windows max **503/849.9us**, Linux **426.066/1098.53us** at 64/128. These are not
 connected callback/device/round-trip results. Ring ownership is non-copyable.
+Final ownership source **3ae8cd0** builds on both platforms; Linux focused Release
+and ASan/UBSan/leak tests pass **1/1 each (0.40s / 2.25s)**, with no diagnostics.
 
 Next: resolve native 64/reference 128-frame idle/wakeup semantics, original 50ms
 automation and post-pan before bounded shared GUI/CLI/MIDI/state integration and

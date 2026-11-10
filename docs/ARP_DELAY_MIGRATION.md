@@ -111,6 +111,10 @@ with the same peak **3.725290298461914e-9**. This is not Linux WebKit rendering.
 ASan/UBSan/leaks pass **1/1 (2.18s)** without diagnostics. The subsequent header
 guard deletes copy/move operations so a future track assignment cannot copy or
 free this ring on audio; a compile-time regression protects that restriction.
+Final ownership source **3ae8cd0** builds on Windows and Linux. Its focused Linux
+Release test passes **1/1 (0.40s)** and ASan/UBSan/leaks **1/1 (2.25s)** without
+diagnostics; Windows unit coverage also passes. This header-only ownership guard
+does not change PCM calculations, so unchanged passing sound suites were reused.
 
 Linux manual warmed Release timing, same twenty-instance configuration: 64-frame
 mean/p99/max **254.777/336.325/426.066us**, 128-frame
@@ -132,7 +136,8 @@ Use the retained Debug/plugin-OFF sanitizer cache with
 ignored browser fixture to the native WSL build directory; source changes travel
 through committed snapshots. Logs: `build/arp-{final-ctest-windows,ctest-linux}.log`,
 `arp-browser-windows.log`, `arp-browser-replay-linux.log`, `arp-asan-test.log`,
-`arp-benchmark-{windows,linux}.log`, `arp-owner-unit-windows.log`.
+`arp-benchmark-{windows,linux}.log`, `arp-owner-unit-{windows,linux}.log`,
+`arp-owner-asan-test.log`.
 
 Next, before any connected enablement: define the 128-frame reference/64-frame
 native adapter's idle/wakeup semantics without hiding latency; implement original
