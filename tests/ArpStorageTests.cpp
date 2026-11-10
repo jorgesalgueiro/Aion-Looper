@@ -191,8 +191,56 @@ static void loopWorker(unsigned block){
  // Destruction while worker work is outstanding joins before releasing slots.
  {AudioScope audio;for(unsigned id=0;id<20;++id)check(bank->requestArpStorage(id,values,id,1),"shutdown pending request");}
 }
+static void sharedWorker(unsigned block){
+ auto actual=std::make_unique<LoopBank>(),reference=std::make_unique<LoopBank>();
+ for(auto* bank:{actual.get(),reference.get()}){bank->prepare(8192,0,8000);bank->setAutoPlay(false);}
+ auto v=arpModDefaults();
+ {AudioScope audio;
+  check(actual->apply(LoopAction::record,0)&&reference->apply(LoopAction::record,0),"shared-worker record");
+  for(unsigned id=0;id<20;++id)check(actual->requestArpStorage(id,v,id,0),"Arp admission during capture");
+  for(unsigned n=0;n<2048;++n){const Stereo input{static_cast<float>(.13*std::sin(n*.071)),static_cast<float>(.17*std::cos(n*.053))};
+   (void)actual->tick(input);(void)reference->tick(input);
+  }
+  check(actual->apply(LoopAction::finish,0)&&reference->apply(LoopAction::finish,0),"finalization shares worker with Arp preparation");
+ }
+ auto wait=[&](auto ready){
+  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+  while(!ready()){
+   {AudioScope audio;actual->beginBlock();reference->beginBlock();}
+   check(std::chrono::steady_clock::now()<deadline,"shared worker bounded completion timeout");std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+ };
+ auto arpDone=[&]{for(unsigned id=0;id<20;++id)if(!actual->preparedArp(id)||actual->arpStorageView(id).pending)return false;return true;};
+ wait([&]{return !actual->finalizationPending()&&!reference->finalizationPending()&&arpDone();});
+ auto first=actual->view()[0],other=reference->view()[0];
+ check(first.length==2048&&first.length==other.length&&first.state==LoopState::stopped&&other.state==first.state,"Arp allocation preserves finalization result");
+ // Export pins the old clip, NORM prepares a replacement, Arp prepares twenty
+ // replacements. All three tasks use the existing worker and distinct leases.
+ v[11]=.3f;
+ {AudioScope audio;
+  check(actual->requestExport(0,first.waveformId)&&reference->requestExport(0,other.waveformId),"shared-worker export pin");
+  check(actual->apply(LoopAction::normalize,0)&&reference->apply(LoopAction::normalize,0),"shared-worker NORM");
+  for(unsigned id=0;id<20;++id)check(actual->requestArpStorage(id,v,id+20,0),"full bank replacement with export/edit outstanding");
+ }
+ WavExport initialActual,initialReference;bool a=false,b=false;
+ wait([&]{if(!a)a=actual->popExport(initialActual);if(!b)b=reference->popExport(initialReference);return a&&b&&!actual->finalizationPending()&&!reference->finalizationPending()&&arpDone();});
+ check(initialActual.bytes.size()==44+2048*4&&initialActual.bytes==initialReference.bytes,"pinned original WAV exact despite concurrent Arp/edit jobs");
+ first=actual->view()[0];other=reference->view()[0];
+ {AudioScope audio;check(actual->requestExport(0,first.waveformId)&&reference->requestExport(0,other.waveformId),"post-NORM export");}
+ WavExport normalizedActual,normalizedReference;a=b=false;
+ wait([&]{if(!a)a=actual->popExport(normalizedActual);if(!b)b=reference->popExport(normalizedReference);return a&&b;});
+ check(normalizedActual.bytes==normalizedReference.bytes&&normalizedActual.bytes!=initialActual.bytes,"NORM changes PCM identically while Arp shares worker");
+ for(unsigned id=0;id<20;++id)check(actual->preparedArp(id)->targets()==v,"every Arp replacement accepted without corrupting clip jobs");
+ {AudioScope audio;check(actual->apply(LoopAction::sourceRestart,0)&&reference->apply(LoopAction::sourceRestart,0),"shared-worker playback restart");}
+ bool audible=false;
+ for(unsigned n=0;n<2048;n+=block){AudioScope audio;
+  actual->beginBlock();reference->beginBlock();
+  for(unsigned i=0;i<block;++i){const auto x=actual->tick({}),y=reference->tick({});check(x.left==y.left&&x.right==y.right,"prepared storage must not alter connected loop playback");audible|=x.left!=0||x.right!=0;}
+ }
+ check(audible,"shared-worker playback comparison is nonzero");
+}
 int main(){
- for(unsigned block:{64u,128u}){admission(block);cancellationInFlight(block,false);cancellationInFlight(block,true);loopWorker(block);}
+ for(unsigned block:{64u,128u}){admission(block);cancellationInFlight(block,false);cancellationInFlight(block,true);loopWorker(block);sharedWorker(block);}
  saturation();concurrent();
- std::cout<<"PASS Arp storage: 20 tracks, exact graph PCM, worker OOM rollback, cancellation/stale results, fixed overflow/recovery, DEL/reset/rate/shutdown, concurrent ownership and zero audio new/delete at 64/128\n";
+ std::cout<<"PASS Arp storage: 20 tracks, exact graph/loop PCM/WAV, shared finalization/NORM/export worker, OOM rollback, cancellation/stale results, fixed overflow/recovery, DEL/reset/rate/shutdown, concurrent ownership and zero audio new/delete at 64/128\n";
 }

@@ -26,6 +26,9 @@ The new 64/128 tests compare exact stereo PCM/state against directly prepared
 graphs, including after OOM and at 96k. They pause worker allocation to exercise
 cancel/DEL plus a newer request, saturate/recover all forty slots, and exercise
 real LoopBank worker/epoch/clear/reset/prepare/destruction and concurrent handoff.
+An additional shared-worker test passes Windows: twenty Arp preparations and
+replacements coexist with capture/finalization, NORM and pinned WAV export;
+stored WAV and nonzero connected loop PCM exactly match a bank without Arp jobs.
 Watched audio operations allocate/free nothing. Windows storage, streaming,
 compressor-connected and original-assets checks pass; broader core and Linux
 verification are in progress for this snapshot.

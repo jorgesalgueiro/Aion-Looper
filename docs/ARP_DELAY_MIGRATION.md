@@ -432,9 +432,16 @@ worker inside allocation, cancel or DEL and request a replacement, then deliver
 the obsolete result while the new request is pending. Only the new result may
 adopt. It also covers stopped rate changes with 96k PCM, forty-slot exhaustion,
 pending shutdown, real LoopBank worker lifecycle and a concurrent handoff stress.
+An additional real-worker regression runs twenty Arp preparations during loop
+capture/finalization, then twenty replacements alongside NORM and a pinned old-PCM
+export. Original and normalized WAV bytes and nonzero connected loop playback
+match a reference bank with no Arp jobs exactly at 64/128; the prepared effects
+remain disconnected. This protects existing worker/clip leases, not A sound parity.
 
 Windows storage, streaming, connected-compressor and original-assets checks pass.
-Broader core and Linux/sanitizer verification are pending for this snapshot.
+Initial Linux storage/streaming/compressor/assets, ASan/UBSan/leaks and TSAN pass.
+The added shared-worker regression passes Windows; its Linux/sanitizer rerun and
+the broader Windows/Linux core suites are pending for this snapshot.
 Reproduce with the existing caches (CMake regenerates for the new test target):
 
 ```powershell
