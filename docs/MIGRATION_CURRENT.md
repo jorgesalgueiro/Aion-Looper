@@ -42,7 +42,13 @@ Windows actual WebView2 AudioParam/pan comparison passes **22 fixtures / 66
 comparisons**, 64/128/37 subdivisions, rates 8..384 kHz; peak **2.2724270820617676e-7**.
 A plain sine failed the original 5 Hz pan case; corrected Chromium-compatible
 phase/interpolation retains that regression and its original tolerance. No
-product controls or voicing changed. Linux acceptance for this stage is next.
+product controls or voicing changed. Source **f6e9e2f** passes Linux **2/2 focused
+tests (0.85s)**, all **66** Windows browser-fixture replays at identical peak, and
+**1/1 ASan/UBSan/leaks (3.19s)** without diagnostics. Linux WebKit is untested.
+Twenty automated modulation/post-pan stages show zero observed overruns at
+64/128; worst Windows **224.7/577.8us**, Linux **255.109/369.416us**, excluding
+worklet/streaming/Engine/devices. Sine-table initialization is prepare-only;
+processing/control/reset have zero watched new/delete on both platforms.
 
 Next: owner decision pending for native 64/reference 128-frame idle/wakeup
 semantics (zero added latency with causal wake-up, or buffered original behavior).

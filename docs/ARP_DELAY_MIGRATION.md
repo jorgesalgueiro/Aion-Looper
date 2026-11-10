@@ -139,9 +139,9 @@ through committed snapshots. Logs: `build/arp-{final-ctest-windows,ctest-linux}.
 `arp-benchmark-{windows,linux}.log`, `arp-owner-unit-{windows,linux}.log`,
 `arp-owner-asan-test.log`.
 
-Next, before any connected enablement: define the 128-frame reference/64-frame
-native adapter's idle/wakeup semantics without hiding latency; implement original
-AudioParam smoothing and post-pan; then bounded storage ownership and shared
+Before any connected enablement: define the 128-frame reference/64-frame
+native adapter's idle/wakeup semantics without hiding latency; combine the
+accepted worklet and automation/post-pan stages, then bounded storage ownership and shared
 GUI/CLI/MIDI/state, preserving dry PCM and accepted persistent/live policies.
 The worklet's feedback descriptor default **0.18** differs from the factory's
 **Float32(2 / 11.1)**; connected defaults must use the factory mapping. The stronger
@@ -197,3 +197,35 @@ stages at 48 kHz (512 warm / 2048 measured) show mean/p99/max **146.065/190.7/22
 at 64, **281.738/409.2/577.8us** at 128, zero observed overruns. This excludes
 worklet processing, streaming, Engine/devices and round-trip latency; it is not
 a combined callback deadline guarantee. Logs `build/arp-mod-{browser,ctest,benchmark}-windows.log`.
+
+Committed source **f6e9e2f** builds in native WSL. Linux focused tests pass **2/2
+(0.85s)**, and all **66** recorded Windows-browser comparisons replay against
+Linux C++ with identical maximum errors above. This is not Linux WebKit audio/UI
+validation. Linux ASan/UBSan/leaks pass **1/1 (3.19s)** with no diagnostics.
+Twenty automated stages, same warmed configuration: 64-frame mean/p99/max
+**119.752/187/255.109us**, 128-frame **243.422/331.008/369.416us**, zero observed
+overruns. The checksum agrees with Windows. Runtime source remains unchanged
+after this acceptance; Windows additionally reran ownership/allocation tests
+after making sine-table initialization explicitly prepare-only.
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_arp_tests aion_arp_probe
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_delay_realtime_contract|original_ui_bytes)$'
+node tests/ArpModulationWebAudio.cjs --probe build/linux/aion_arp_probe --fixtures build/arp-modulation-browser-fixtures.json
+cmake --build build/overlap-asan --parallel 2 --target aion_arp_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^arp_delay_realtime_contract$'
+build/linux/aion_arp_tests --benchmark-modulation
+```
+
+Windows used the same focused CTest selection with `-C Release`,
+`build/windows-core/Release/aion_arp_tests.exe --benchmark-modulation`, and the
+browser command above. Linux logs: `build/arp-mod-{build,ctest,replay,benchmark}-linux.log`,
+`arp-mod-asan-{build,test}.log`. Only the generated ignored fixture was copied;
+source traveled through the safe committed-snapshot helper. No wrappers,
+Standalone/editor changes, dependency upgrade, product voicing, package or push.
+
+Next remains the owner's pending idle/wakeup policy, then the combined streaming
+chain and bounded per-track storage admission/failure/lifecycle handling before
+shared GUI/CLI/MIDI/versioned persistence. Do not enable A or advance to another
+effect until those end-to-end gates pass. The original kernel's 84-case JS and
+15-case actual-worklet evidence is reused unchanged; this stage does not replace it.
