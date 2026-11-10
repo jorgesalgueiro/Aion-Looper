@@ -115,6 +115,13 @@ int main(int argc,char** argv){
  check(a.reset(7),"constant-work graph reset");watch=false;check(b.prepare(48000,a.targets(),7),"fresh graph reset oracle");
  watch=true;check(a.process(nullptr,nullptr,0,outL.data(),outR.data(),128)&&b.process(nullptr,nullptr,0,bl.data(),br.data(),128),"post-clear tails");watch=false;
  check(outL==bl&&outR==br&&a.state()==b.state(),"old PCM/automation cannot revive after clear");
+ {const auto settings=a.targets();ArpDelayGraph fresh;
+  check(a.prepare(96000,settings,11,384)&&fresh.prepare(96000,settings,11,384),"successful rate change with unchanged values");
+  l.fill(.2f);r.fill(-.1f);
+  for(unsigned n=0;n<512;++n){watch=true;
+   check(a.process(l.data(),r.data(),2,outL.data(),outR.data(),128)&&fresh.process(l.data(),r.data(),2,bl.data(),br.data(),128),"reprepared rate render");watch=false;
+   check(outL==bl&&outR==br&&a.state()==fresh.state(),"cached coefficients, LFO and PCM match fresh owner after rate change");}
+  check(a.state().clock==27136,"delay coefficient recomputed at 96k despite unchanged controls");}
  watch=true;check(a.reset(7,UINT64_MAX-65),"late global timeline reset");const auto terminal=a.state();
  check(!a.process(nullptr,nullptr,0,outL.data(),outR.data(),128)&&a.state()==terminal&&a.position()==UINT64_MAX-65,"timeline overflow rejection is atomic");
  check(a.process(nullptr,nullptr,0,outL.data(),outR.data(),65)&&a.position()==UINT64_MAX,"last valid timeline samples render");
