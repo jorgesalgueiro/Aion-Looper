@@ -147,3 +147,53 @@ The worklet's feedback descriptor default **0.18** differs from the factory's
 **Float32(2 / 11.1)**; connected defaults must use the factory mapping. The stronger
 organic voicing must remain distinguishable from the faithful baseline and must
 not rewrite saved sounds. No later effect has started; no package or push.
+
+## Automation / post-pan slice — 10 November 2026
+
+Acceptance: preserve original `smoothSetParam` (cancel, anchor current `.value`,
+50ms exponential target), all ten a-rate worklet parameters plus pan rate/depth,
+first-value worklet sampling on a global 128-frame clock, repeated gestures and
+stereo crossfeed pan after the complete wet/dry output. Compare actual browser
+AudioParams and nonzero stereo output at unchanged **1e-6 peak / 1e-5 relative
+RMS** audio limits; normalized parameter error <=1e-6. Cover 64/128 and arbitrary
+subdivision, static/running/stopped LFO, retarget/reset, malformed controls and
+zero callback new/delete. This is a DSP stage, not enabled product controls.
+
+`ArpModulation` adds fixed-storage automation and post-pan, reusing the verified
+Compressor timeline arithmetic without changing that effect. A single read-only
+sine table is constructed before processing, with rate-dependent strided views.
+Chromium's Float32 phase increments, static four-lane phase and interpolation
+matter: a plain analytic sine failed the retained 5 Hz browser case at peak
+**1.564621925354004e-6**. The corrected oscillator passes that case without a
+tolerance change. Initial failure remains in `build/arp-mod-initial-failure-windows.log`.
+A later pan-rate target of zero preserves the phase already reached; it does
+not force the pan back to center. Only a fresh/reset oscillator starts at center.
+
+The actual browser harness uses a test-only parameter tap with the original
+worklet descriptors, unchanged original `smoothSetParam`, and real Oscillator,
+Gain and StereoPanner nodes. It tests the factory's always-present post-pan
+routing, separately from the unchanged worklet PCM fixture. It does not yet prove
+their connected chain or streaming idle behavior. Original resources/UI stay
+unchanged. Sources used for the oscillator correction retain Chromium's BSD
+notice in the new source file:
+[oscillator](https://raw.githubusercontent.com/chromium/chromium/main/third_party/blink/renderer/modules/webaudio/oscillator_handler.cc),
+[periodic wave](https://raw.githubusercontent.com/chromium/chromium/main/third_party/blink/renderer/modules/webaudio/periodic_wave_handler.cc),
+[stereo pan specification](https://www.w3.org/TR/webaudio-1.1/#stereopanner-panning).
+
+Run the owned hardware-free browser host with
+`tools/TestArpDelayWebAudio.ps1 -Modulation`; replay its ignored, source-hash-checked
+fixture with `node tests/ArpModulationWebAudio.cjs --probe PROBE --fixtures build/arp-modulation-browser-fixtures.json`.
+The probe's `modprepare/modtarget/modrender` commands are test-only, not a second
+audio engine or the product CLI. Product A stays disabled. The zero-latency versus
+buffered exact idle-wakeup decision was requested from the owner and remains
+pending; do not infer approval from elapsed time or implement that policy yet.
+
+Windows results: **22 actual WebView2 fixtures / 66 comparisons / 2,162,688 stereo
+frames**, with 64/128/37 subdivisions and rates 8..384 kHz. Maximum audio peak
+**2.2724270820617676e-7**, maximum normalized parameter error
+**4.4373207837449527e-7**; all original thresholds retained. Focused CTests pass
+**2/2 (2.39s)**, including original assets. Twenty automated modulation/post-pan
+stages at 48 kHz (512 warm / 2048 measured) show mean/p99/max **146.065/190.7/224.7us**
+at 64, **281.738/409.2/577.8us** at 128, zero observed overruns. This excludes
+worklet processing, streaming, Engine/devices and round-trip latency; it is not
+a combined callback deadline guarantee. Logs `build/arp-mod-{browser,ctest,benchmark}-windows.log`.

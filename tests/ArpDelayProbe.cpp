@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/ArpDelay.h"
+#include "core/ArpModulation.h"
 #include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
 int main(){
- aion::ArpDelay dsp;std::string operation;std::cout<<std::setprecision(17);
+ aion::ArpDelay dsp;aion::ArpModulation mod;std::string operation;std::cout<<std::setprecision(17);
  while(std::cin>>operation){
   if(operation=="prepare"){
    double rate;std::uint32_t seed;aion::ArpValues values{};if(!(std::cin>>rate>>seed))return 2;for(auto& value:values)if(!(std::cin>>value))return 2;
@@ -24,6 +25,19 @@ int main(){
    for(unsigned i=0;i<frames;++i){if(channels&&!(std::cin>>l[i]))return 2;if(channels>1&&!(std::cin>>r[i]))return 2;}
    for(unsigned i=0;i<frames;i+=block)if(!dsp.process(channels?l.data()+i:nullptr,channels>1?r.data()+i:nullptr,channels,ol.data()+i,orr.data()+i,std::min(block,frames-i)))return 3;
    std::cout<<"pcm";for(unsigned i=0;i<frames;++i)std::cout<<' '<<ol[i]<<' '<<orr[i];std::cout<<'\n';
+  }else if(operation=="modprepare"){
+   double rate;aion::ArpModValues values{};if(!(std::cin>>rate))return 2;for(auto& v:values)if(!(std::cin>>v))return 2;
+   std::cout<<(mod.prepare(rate,values)?"ok":"rejected")<<'\n';
+  }else if(operation=="modtarget"){
+   unsigned p;float value;if(!(std::cin>>p>>value))return 2;std::cout<<(mod.setTarget(p,value)?"ok":"rejected")<<'\n';
+  }else if(operation=="modrender"){
+   unsigned frames,block;if(!(std::cin>>frames>>block)||frames>2000000||!block||block>128)return 2;
+   std::vector<float> l(frames),r(frames);for(unsigned i=0;i<frames;++i)if(!(std::cin>>l[i]>>r[i]))return 2;
+   std::cout<<"mod";
+   for(unsigned begin=0;begin<frames;begin+=block)for(unsigned i=begin;i<std::min(begin+block,frames);++i){
+    aion::ArpControlFrame controls;if(!mod.next(controls))return 3;float ol,orr;
+    mod.panStereo(l[i],r[i],controls.pan,ol,orr);for(float v:controls.parameters)std::cout<<' '<<v;std::cout<<' '<<ol<<' '<<orr;
+   }std::cout<<'\n';
   }else return 2;
  }
 }

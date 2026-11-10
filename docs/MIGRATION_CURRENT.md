@@ -37,9 +37,18 @@ connected callback/device/round-trip results. Ring ownership is non-copyable.
 Final ownership source **3ae8cd0** builds on both platforms; Linux focused Release
 and ASan/UBSan/leak tests pass **1/1 each (0.40s / 2.25s)**, with no diagnostics.
 
-Next: resolve native 64/reference 128-frame idle/wakeup semantics, original 50ms
-automation and post-pan before bounded shared GUI/CLI/MIDI/state integration and
-the organic treatment. A stays disabled. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md). Existing
+Automation/post-pan is now implemented as an isolated fixed-storage stage.
+Windows actual WebView2 AudioParam/pan comparison passes **22 fixtures / 66
+comparisons**, 64/128/37 subdivisions, rates 8..384 kHz; peak **2.2724270820617676e-7**.
+A plain sine failed the original 5 Hz pan case; corrected Chromium-compatible
+phase/interpolation retains that regression and its original tolerance. No
+product controls or voicing changed. Linux acceptance for this stage is next.
+
+Next: owner decision pending for native 64/reference 128-frame idle/wakeup
+semantics (zero added latency with causal wake-up, or buffered original behavior).
+Do not implement that choice before a reply. Then combine worklet/automation/pan
+and bounded shared GUI/CLI/MIDI/state integration and the organic treatment.
+A stays disabled. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md). Existing
 EQ/compressor code, source assets/logo, IDs and dependencies are unchanged.
 
 ### Connected compressor — scoped software gates pass, finalized 10 November 2026

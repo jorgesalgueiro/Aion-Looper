@@ -1,4 +1,5 @@
 # Actual original worklet in an owned hardware-free development host.
+param([switch]$Modulation)
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 if(Get-NetTCPConnection -LocalPort 9239 -State Listen -ErrorAction SilentlyContinue){throw 'Arp Delay test port 9239 is in use.'}
@@ -12,7 +13,8 @@ try {
     $preview=Start-Process -FilePath (Join-Path $repo 'build/windows/Release/aion_effects_browser_host.exe') -WindowStyle Hidden -PassThru
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments
     $env:WEBVIEW2_USER_DATA_FOLDER=$savedProfile
-    & node (Join-Path $repo 'tests/ArpDelayWebAudio.cjs')
+    $script=if($Modulation){'tests/ArpModulationWebAudio.cjs'}else{'tests/ArpDelayWebAudio.cjs'}
+    & node (Join-Path $repo $script)
     if($LASTEXITCODE -ne 0){throw 'Original Arp Delay browser sound comparison failed.'}
 } finally {
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments

@@ -40,7 +40,7 @@ function compare(test){
  for(let i=0;i<count;++i)for(let ch=0;ch<2;++ch){const a=pcm[i*2+ch],b=test.pcm[ch][i],error=a-b;assert(Number.isFinite(a)&&Number.isFinite(b));energy+=b*b;errorEnergy+=error*error;if(Math.abs(error)>peak){peak=Math.abs(error);location=[i,ch,a,b];}}
  const rms=energy?Math.sqrt(errorEnergy/energy):Math.sqrt(errorEnergy);console.log(JSON.stringify({label:test.label,rate:test.rate,channels:test.channels,peak,relativeRms:rms}));assert(peak<=1e-6&&rms<=1e-5,JSON.stringify({label:test.label,peak,rms,location}));return {peak,count};
 }
-(async()=>{
+if(require.main===module)(async()=>{
  try{
   let data;const fixture=option('--fixtures');
   if(fixture){data=JSON.parse(fs.readFileSync(fixture));assert.equal(data.version,1);assert.equal(data.sourceHash,hash,'Original worklet changed');}
@@ -54,3 +54,4 @@ function compare(test){
   console.log(JSON.stringify({result:'PASS',scope:'Actual original AudioWorklet only, test-seeded randomness; no post-pan/AudioParam/connected-device claim',cases:data.tests.length,stereoFrames:frames,maximumAbsoluteError:maximum,browser:data.browser.product}));
  }finally{socket?.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
+module.exports={connect,close:()=>socket?.close()};

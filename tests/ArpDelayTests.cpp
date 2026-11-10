@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/ArpDelay.h"
+#include "core/ArpModulation.h"
 #include <algorithm>
 #include <cmath>
 #include <chrono>
@@ -17,6 +18,60 @@ void* operator new(std::size_t size){if(watch)++operations;if(failNext){failNext
 void operator delete(void* p) noexcept {if(watch)++operations;std::free(p);}
 void* operator new[](std::size_t n){return ::operator new(n);}void operator delete[](void* p) noexcept{::operator delete(p);}
 void operator delete(void* p,std::size_t) noexcept{::operator delete(p);}void operator delete[](void* p,std::size_t) noexcept{::operator delete(p);}
+static void modulation(){
+ using namespace aion;
+ for(double rate:{8000.,22050.,32000.,44100.,48000.,96000.,192000.,384000.}){
+  ArpModulation a,b;auto values=arpModDefaults();values[10]=5;
+  check(a.prepare(rate,values)&&b.prepare(rate,values),"modulation prepare");
+  double energy=0;ArpControlFrame previous{};
+  for(unsigned frame=0;frame<32768;++frame){
+   if(frame%257==0){const auto p=(frame/257)%12;const float v=p<10?arpParameters[p].initial:p==10?0.f:.2f;
+    watch=true;check(a.setTarget(p,v)&&b.setTarget(p,v),"sample-offset automation gesture");watch=false;}
+   ArpControlFrame x{},y{};watch=true;check(a.next(x)&&b.next(y),"bounded modulation next");
+   float l,r;ArpModulation::panStereo(.2f,-.3f,x.pan,l,r);watch=false;
+   check(x.parameters==y.parameters&&x.worklet==y.worklet&&x.pan==y.pan,"deterministic modulation");
+   if(frame%128)check(x.worklet==previous.worklet,"first a-rate value retained through full quantum");
+   for(float value:x.parameters)check(std::isfinite(value),"finite modulation");
+   check(std::isfinite(l)&&std::isfinite(r),"finite post-pan");energy+=l*l+r*r;previous=x;
+  }
+  check(energy>1,"nonzero panner fixture");const auto old=a.targets();const auto position=a.position();auto bad=old;bad[11]=2;
+  watch=true;check(!a.setTargets(bad)&&!a.setTarget(12,0)&&!a.setTarget(10,-1)&&a.targets()==old&&a.position()==position,"invalid modulation controls atomic");
+  check(!a.prepare(1)&&a.targets()==old&&a.position()==position,"invalid modulation prepare atomic");
+  a.reset();check(b.prepare(rate,old),"fresh modulation reference");
+  for(unsigned n=0;n<256;++n){ArpControlFrame x,y;check(a.next(x)&&b.next(y)&&x.parameters==y.parameters&&x.pan==y.pan,"reset clears automation and LFO history");}watch=false;
+ }
+ float l,r;watch=true;
+ ArpModulation::panStereo(.2f,-.3f,0,l,r);check(l==.2f&&r==-.3f,"center preserves stereo");
+ ArpModulation::panStereo(.2f,-.3f,-1,l,r);check(std::abs(l+.1f)<1e-7&&r==0,"hard left crossfeeds right");
+ ArpModulation::panStereo(.2f,-.3f,1,l,r);check(std::abs(l)<1e-7&&std::abs(r+.1f)<1e-7,"hard right crossfeeds left");
+ ArpModulation::panStereo(std::numeric_limits<float>::infinity(),std::numeric_limits<float>::max(),-1,l,r);check(std::isfinite(l)&&std::isfinite(r),"panner quarantine");watch=false;
+ ArpModulation late;auto v=arpModDefaults();v[10]=5;
+ check(late.prepare(48000,v,65),"prepare on partial global quantum");ArpControlFrame initial,next;
+ watch=true;check(late.next(initial)&&late.next(next)&&initial.pan==0&&next.pan>0,"fresh LFO starts on first rendered frame, including partial quantum");
+ check(!late.prepare(48000,v,UINT64_MAX),"invalid terminal frame rejected");
+ late.reset(UINT64_MAX-1);check(late.next(initial)&&!late.next(next)&&late.position()==UINT64_MAX,"timeline overflow cannot wrap events");watch=false;
+}
+static int modulationBenchmark(){
+ constexpr unsigned warm=512,measured=2048;
+ for(unsigned block:{64u,128u}){
+  auto owners=std::make_unique<std::array<aion::ArpModulation,20>>();auto values=aion::arpModDefaults();values[10]=5;
+  for(auto& owner:*owners)check(owner.prepare(48000,values),"modulation benchmark prepare");
+  std::vector<double> times(measured);double checksum=0;
+  for(unsigned n=0;n<warm+measured;++n){
+   const auto begin=std::chrono::steady_clock::now();watch=true;
+   for(auto& owner:*owners){
+    if(n%8==0){check(owner.setTarget(10,(n%16)?5.f:.1f)&&owner.setTarget(11,(n%16)?1.f:.2f),"automated pan benchmark");}
+    for(unsigned i=0;i<block;++i){aion::ArpControlFrame c;float l,r;check(owner.next(c),"benchmark modulation render");owner.panStereo(.15f,-.1f,c.pan,l,r);checksum+=std::abs(l)+std::abs(r);}
+   }watch=false;
+   if(n>=warm)times[n-warm]=std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-begin).count();
+  }
+  check(checksum>1&&operations==0,"real PCM and zero allocation required for modulation timing");std::sort(times.begin(),times.end());double sum=0;unsigned over=0;const double period=block/48000.0*1e6;
+  for(double time:times){sum+=time;over+=time>period;}
+  std::cout<<"{\"scope\":\"20 automated Arp modulation/post-pan stages; excludes worklet/streaming/Engine/device\",\"block\":"<<block<<",\"warmCallbacks\":"<<warm<<",\"measuredCallbacks\":"<<measured
+   <<",\"meanUs\":"<<sum/measured<<",\"p99Us\":"<<times[measured*99/100]<<",\"maximumUs\":"<<times.back()<<",\"periodUs\":"<<period<<",\"observedOverruns\":"<<over<<",\"checksum\":"<<checksum<<"}\n";
+ }
+ return 0;
+}
 static int benchmark(){
  constexpr unsigned warm=512,measured=2048;
  for(unsigned block:{64u,128u}){
@@ -39,7 +94,9 @@ static int benchmark(){
 }
 int main(int argc,char** argv){
  if(argc==2&&std::string_view(argv[1])=="--benchmark")return benchmark();
- check(argc==1,"Usage: aion_arp_tests [--benchmark]");
+ if(argc==2&&std::string_view(argv[1])=="--benchmark-modulation")return modulationBenchmark();
+ check(argc==1,"Usage: aion_arp_tests [--benchmark|--benchmark-modulation]");
+ modulation();
  using namespace aion;
  for(double rate:{8000.,22050.,32000.,44100.,48000.,96000.,192000.,384000.})for(unsigned block:{64u,128u}){
   ArpDelay a,b;auto values=arpDefaults();values[0]=.01f;values[1]=.7f;values[8]=3;
@@ -75,5 +132,5 @@ int main(int argc,char** argv){
  for(unsigned n=0;n<1000;++n){const unsigned count=1+(n*37)%128;watch=true;check(a.process(in.data(),nullptr,1,l.data(),r.data(),count),"short mono block");watch=false;frames+=count;}
  check(frames>a.capacity()&&a.state().write==frames%a.capacity(),"actual ring wrap with variable direct-worklet blocks");
  check(operations==0,"process/control/reset new/delete prohibited");
- std::cout<<"PASS Arp Delay fixed storage, mono/stereo/tails, rates/64/128, note/STAY/range controls, generation reset, prepare OOM rollback and numerical quarantine; no callback new/delete\n";
+ std::cout<<"PASS Arp Delay kernel plus a-rate automation/post-pan, fixed storage, mono/stereo/tails, rates/64/128, note/STAY/range controls, generation reset, prepare OOM rollback and numerical quarantine; no callback new/delete\n";
 }
