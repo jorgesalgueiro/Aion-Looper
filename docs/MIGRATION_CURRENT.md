@@ -11,6 +11,27 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Arp Delay — isolated worklet slice, 10 November 2026
+
+Original A inventory and native worklet kernel are implemented; **the product A
+control remains disabled**. Owner approved persistent per-loop delay/STAY/LFO
+state and live OD/SUB/MULT/STOP controls for the later connected stage, and asks
+for a more organic/natural sound. Existing presets/saved sounds stay intact;
+additional Organic preset versus new-instance default policy awaits selection.
+
+Windows: **84 direct unchanged-worklet cases / 5,527,296 channel samples**, all
+twenty interval tables/eight presets; actual WebView2 **15 cases / 1,003,904 stereo
+frames**. Both peak **3.725290298461914e-9**, unchanged 1e-6 peak / 1e-5 RMS gates.
+Fixed-storage processing/reset, tagged O(1) delay invalidation, prepare OOM
+rollback, numerical quarantine, mono/stereo/in-place/wrap and 64/128 direct
+invocations pass. Original left-only idle and block-dependent normalization are
+retained in this kernel, not claimed as a connected callback adapter.
+
+Linux replay/sanitizers and isolated timing are next. Shared GUI/CLI/MIDI/state,
+50ms automation, post-worklet pan and the organic treatment remain pending before
+A can be enabled. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md). Existing
+EQ/compressor code, source assets/logo, IDs and dependencies are unchanged.
+
 ### Connected compressor — scoped software gates pass, finalized 10 November 2026
 
 Owner approved a persistent compressor per loop across playback restarts and live
