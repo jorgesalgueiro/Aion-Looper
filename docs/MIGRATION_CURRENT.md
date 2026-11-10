@@ -16,8 +16,9 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 Original A inventory and native worklet kernel are implemented; **the product A
 control remains disabled**. Owner approved persistent per-loop delay/STAY/LFO
 state and live OD/SUB/MULT/STOP controls for the later connected stage, and asks
-for a more organic/natural sound. Existing presets/saved sounds stay intact;
-additional Organic preset versus new-instance default policy awaits selection.
+for a more organic/natural sound. Owner selected organic defaults for **new
+instances**; existing presets/saved sounds stay intact. This connected-stage
+voicing policy is recorded but not yet enabled by the isolated kernel.
 
 Windows: **84 direct unchanged-worklet cases / 5,527,296 channel samples**, all
 twenty interval tables/eight presets; actual WebView2 **15 cases / 1,003,904 stereo
@@ -27,9 +28,16 @@ rollback, numerical quarantine, mono/stereo/in-place/wrap and 64/128 direct
 invocations pass. Original left-only idle and block-dependent normalization are
 retained in this kernel, not claimed as a connected callback adapter.
 
-Linux replay/sanitizers and isolated timing are next. Shared GUI/CLI/MIDI/state,
-50ms automation, post-worklet pan and the organic treatment remain pending before
-A can be enabled. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md). Existing
+Linux source **551d021** passes **3/3 focused tests (27.32s)** and **1/1 ASan/
+UBSan/leaks (2.18s)**. All fifteen actual Windows browser fixtures replay against
+Linux C++ at the same peak; Linux WebKit is untested. Twenty isolated stereo
+kernels, 512 warm / 2048 measured invocations, show zero observed overruns:
+Windows max **503/849.9us**, Linux **426.066/1098.53us** at 64/128. These are not
+connected callback/device/round-trip results. Ring ownership is non-copyable.
+
+Next: resolve native 64/reference 128-frame idle/wakeup semantics, original 50ms
+automation and post-pan before bounded shared GUI/CLI/MIDI/state integration and
+the organic treatment. A stays disabled. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md). Existing
 EQ/compressor code, source assets/logo, IDs and dependencies are unchanged.
 
 ### Connected compressor — scoped software gates pass, finalized 10 November 2026

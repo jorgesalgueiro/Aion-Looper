@@ -34,6 +34,12 @@ struct ArpState {
 // Post-worklet StereoPanner/automation/GUI/CLI integration are separate work.
 class ArpDelay {
 public:
+ ArpDelay()=default;
+ ArpDelay(const ArpDelay&)=delete;
+ ArpDelay& operator=(const ArpDelay&)=delete;
+ ArpDelay(ArpDelay&&)=delete;
+ ArpDelay& operator=(ArpDelay&&)=delete;
+ // Create/destroy this owner off audio; reset invalidates its ring in constant work.
  bool prepare(double rate,const ArpValues& =arpDefaults(),std::uint32_t seed=123456789) noexcept;
  bool setValues(const ArpValues&) noexcept;
  bool reset(std::uint32_t seed=123456789) noexcept;

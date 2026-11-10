@@ -9,6 +9,8 @@
 #include <new>
 #include <memory>
 #include <string_view>
+#include <type_traits>
+static_assert(!std::is_copy_constructible_v<aion::ArpDelay> && !std::is_move_assignable_v<aion::ArpDelay>);
 namespace {thread_local bool watch=false,failNext=false;unsigned operations=0;
 void check(bool condition,const char* message){if(!condition){std::cerr<<message<<'\n';std::exit(1);}}}
 void* operator new(std::size_t size){if(watch)++operations;if(failNext){failNext=false;throw std::bad_alloc();}if(auto* p=std::malloc(size?size:1))return p;throw std::bad_alloc();}

@@ -9,9 +9,11 @@ Reference sibling is absent; `.reference/Ascii-Looper` and matching preserved
 Owner decisions: persistent per-loop delay/STAY/modulation state across playback
 restarts, and live controls during OD/SUB/MULT/scheduled STOP. These are intentional
 connected-stage extensions; EQ/compressor approvals alone were not reused.
-The owner also requests a more organic/natural sound. Preserve the reference
-baseline first; the additional preset/new-instance policy is awaiting selection.
-Saved sounds must not change silently.
+The owner also requests a more organic/natural sound and selected **organic
+voicing by default for new instances**, preserving existing presets and saved
+sounds. Keep the faithful reference baseline for compatibility; apply the new
+default only when the connected layer creates a new instance. That voicing is
+not yet implemented/enabled by this kernel checkpoint.
 
 ## Acceptance defined before implementation
 
@@ -76,7 +78,7 @@ first browser harness attempts from loading a worklet. A separate excluded
 Blob worklet permission. It owns no processor, audio device or product controller;
 no product CSP, UI, resource or native audio behavior changed. A test-host entry
 point and test-source string-encoding defect were fixed before the browser pass.
-This fixture is never installed/packaged. Linux and sanitizer checks are next.
+This fixture is never installed/packaged.
 
 Manual warmed Release measurement, twenty isolated stereo worklet kernels at
 48 kHz, 512 warm / 2048 measured invocations: 64-frame mean/p99/max
@@ -99,3 +101,44 @@ The browser processing model is documented in the official
 [Web Audio specification](https://www.w3.org/TR/webaudio-1.0/#rendering-loop).
 Matching a worklet's PCM does not prove the separate native streaming/automation/
 post-pan implementation, musical organic voicing, UI, hardware or release scope.
+
+## Linux and ownership checkpoint
+
+On committed source **551d021**, native WSL Release build and focused CTests pass
+**3/3 (27.32s)**, including the complete 84-case oracle and original asset bytes.
+Replay of all **15 actual Windows WebView2 fixtures** against Linux C++ passes,
+with the same peak **3.725290298461914e-9**. This is not Linux WebKit rendering.
+ASan/UBSan/leaks pass **1/1 (2.18s)** without diagnostics. The subsequent header
+guard deletes copy/move operations so a future track assignment cannot copy or
+free this ring on audio; a compile-time regression protects that restriction.
+
+Linux manual warmed Release timing, same twenty-instance configuration: 64-frame
+mean/p99/max **254.777/336.325/426.066us**, 128-frame
+**513.185/622.509/1098.53us**, zero observed overruns. All timing is isolated
+worklet processing, excluding the connected chain/adapter and physical latency.
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_arp_tests aion_arp_probe
+ctest --test-dir build/linux --output-on-failure -R '^(arp_delay_realtime_contract|js_native_arp_delay|original_ui_bytes)$'
+node tests/ArpDelayWebAudio.cjs --probe build/linux/aion_arp_probe --fixtures build/arp-browser-fixtures.json
+build/linux/aion_arp_tests --benchmark
+cmake -S . -B build/overlap-asan
+cmake --build build/overlap-asan --parallel 2 --target aion_arp_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --output-on-failure -R '^arp_delay_realtime_contract$'
+```
+
+Use the retained Debug/plugin-OFF sanitizer cache with
+`-fsanitize=address,undefined -fno-omit-frame-pointer`. Copy only the generated
+ignored browser fixture to the native WSL build directory; source changes travel
+through committed snapshots. Logs: `build/arp-{final-ctest-windows,ctest-linux}.log`,
+`arp-browser-windows.log`, `arp-browser-replay-linux.log`, `arp-asan-test.log`,
+`arp-benchmark-{windows,linux}.log`, `arp-owner-unit-windows.log`.
+
+Next, before any connected enablement: define the 128-frame reference/64-frame
+native adapter's idle/wakeup semantics without hiding latency; implement original
+AudioParam smoothing and post-pan; then bounded storage ownership and shared
+GUI/CLI/MIDI/state, preserving dry PCM and accepted persistent/live policies.
+The worklet's feedback descriptor default **0.18** differs from the factory's
+**Float32(2 / 11.1)**; connected defaults must use the factory mapping. The stronger
+organic voicing must remain distinguishable from the faithful baseline and must
+not rewrite saved sounds. No later effect has started; no package or push.
