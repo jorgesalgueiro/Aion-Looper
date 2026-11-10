@@ -133,7 +133,10 @@ static void connected(unsigned block,double rate){
  }
  // Keep A active across source/history operations; independent owners are not reset.
  for(auto action:{LoopAction::overdub,LoopAction::substitute,LoopAction::multiply}){
-  paired(action,30,1);for(unsigned n=0;n<512/block;++n){const auto begin=frame;checkBlock(begin,order,UINT64_MAX,true);}paired(LoopAction::finish,31);checkBlock(frame,order,UINT64_MAX);
+  paired(action,30,1);auto target=settings;target.values[2]=settings.values[2]==.3f?.6f:.3f;controls(target,1u<<2);
+  const auto state=action==LoopAction::overdub?LoopState::overdubbing:action==LoopAction::substitute?LoopState::substituting:LoopState::multiplying;
+  for(unsigned n=0;n<512/block;++n){const auto begin=frame;checkBlock(begin,order,UINT64_MAX,true);check(wet->inspectAudioThread().track.state==state,"live Arp control during actual OD/SUB/MULT");}
+  paired(LoopAction::finish,31);checkBlock(frame,order,UINT64_MAX);
  }
  for(auto action:{LoopAction::retrigger,LoopAction::undo,LoopAction::redo}){paired(action,32);for(unsigned n=0;n<1024/block;++n)checkBlock(frame,order,UINT64_MAX);}
  const auto old=wet->inspectAudioThread().track;
@@ -144,6 +147,16 @@ static void connected(unsigned block,double rate){
  while(!wet->popArpPreparation(result)){{AudioScope guard;wet->process(nullptr,0,0);}check(std::chrono::steady_clock::now()<oomUntil,"audible OOM terminal timeout");std::this_thread::sleep_for(std::chrono::milliseconds(1));}
  check(result.status==ArpPreparationStatus::failed&&wet->inspectAudioThread().track.arp==settings,"failed replacement preserves live settings");
  for(unsigned n=0;n<1024/block;++n)checkBlock(frame,order,UINT64_MAX); // Exact old tail, STAY sequence, LFO and controls.
+ // The original defers edits in scheduled STOP; the owner approved live controls.
+ SyncSettings fixed;fixed.mode=SyncMode::fixed;fixed.bpm=120;fixed.bars=1;
+ for(auto* e:{dry.get(),wet.get()})e->configureSync(fixed);
+ paired(LoopAction::stop,51);auto target=settings;target.values[2]=.31f;controls(target,1u<<2);std::uint64_t deadline=0;
+ for(unsigned n=0;n<512/block;++n){
+  checkBlock(frame,order,UINT64_MAX);const auto info=wet->inspectAudioThread().track;
+  check(info.state==LoopState::stopping&&info.scheduledFrame>frame,"live Arp edit retains scheduled STOP");
+  if(!deadline)deadline=info.scheduledFrame;check(deadline==info.scheduledFrame,"Arp edit cannot move STOP deadline");
+ }
+ for(auto* e:{dry.get(),wet.get()})e->configureSync(SyncSettings{});
  // Ordinary STOP/PLAY retain delay/STAY/modulation; panic resets runtime in
  // constant work but keeps settings and prepared allocation. Both gate tails.
  paired(LoopAction::stopImmediate,33);gateClosedAt=frame+static_cast<unsigned>(rate*.005);
