@@ -48,6 +48,14 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
     await evaluate('window.chainOld=true');await call('Page.reload');for(let n=0;n<100;++n){if(await evaluate(`!window.chainOld&&document.querySelector(${JSON.stringify(field)})?.value==='CQ'`))break;await wait(100);}
     assert.equal(await evaluate(`document.querySelector(${JSON.stringify(field)}).value`),'CQ','reopened editor shows native chain');assert.equal((await snapshot()).tracks[19].signalChain,'CQA');
     assert(await evaluate(`document.querySelector('#loop-0 select[aria-label="Apply FX Preset"]').disabled`),'chain presets remain explicitly unavailable');
+    await click('.main-tab-btn:nth-child(4)');await wait(150);
+    assert.deepEqual(await evaluate(`[...document.querySelector('#live-loop-fx-container-0').children].map(span=>span.querySelector('input').id.split('-').at(-1))`),['reverse','compressor','eq'],'LIVE card reflects persisted order');
+    let live=await snapshot();assert((await rpc({operation:'signalChain',action:'set',track:0,order:'A',generation:live.generation,expiresAt:Date.now()+3000})).ok);await until(s=>s.tracks[0].signalChain==='A','external writer updates LIVE order');await wait(150);
+    assert.deepEqual(await evaluate(`[...document.querySelector('#live-loop-fx-container-0').children].map(span=>span.querySelector('input').id.split('-').at(-1))`),['reverse','arpDelay'],'LIVE card removes omitted effects');
+    live=await snapshot();assert((await rpc({operation:'signalChain',action:'set',track:0,order:'CQ',generation:live.generation,expiresAt:Date.now()+3000})).ok);await until(s=>s.tracks[0].signalChain==='CQ','LIVE reinsertion');await wait(100);
+    await click('#live-loop-0-compressor');await until(s=>!s.tracks[0].compressor.enabled,'reinserted LIVE toggle retains listener');
+    await click('.main-tab-btn:nth-child(1)');await wait(100);
+
     await click('#loop-0 .loop-track-delete');await until(s=>s.tracks[0].state==='empty'&&s.tracks[0].signalChain==='QCATFODBVKZG','DEL resets chain');await wait(150);
     assert.equal(await evaluate(`document.querySelector(${JSON.stringify(field)}).value`),'QCATFODBVKZG');assert.equal(errors.length,0,JSON.stringify(errors));
     console.log(`PASS actual chain UI ${process.argv[2]}: original text field, typing/normalization, expanded track, live order/omission, send failure/recovery, draft ownership, reopen/DEL and nonzero PCM`);socket.close();

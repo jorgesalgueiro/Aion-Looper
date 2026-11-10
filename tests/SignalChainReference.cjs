@@ -13,6 +13,6 @@ for(const order of ['QC','CQ','ACQ','Q','A','QCATFODBVKZG'])for(const enabled of
  const graph=new Original();graph.loop={signalChain:order,effects:Object.fromEntries(enabled.map(x=>[x,true]))};graph.nodes={};const visited=[];
  graph._createEffectNode=(name,input)=>{visited.push(name);return {output:{name,input},nodes:{owner:name}};};
  const input={name:'input'},output=graph.buildEffectsChain(input);const want=[...order].map(c=>graph._getEffectByChar(c)).filter(n=>enabled.includes(n));assert.deepEqual(visited,want);
- let current=output;for(const name of want.toReversed()){assert.equal(current.name,name);current=current.input;}assert.equal(current,input);
+ let current=output;for(const name of [...want].reverse()){assert.equal(current.name,name);current=current.input;}assert.equal(current,input);
 }
 console.log(`PASS unchanged original chain setter (${inputs.length} cases), enabled-order/omission graph routing (24 cases)`);
