@@ -32,6 +32,9 @@ struct LoopCommand {
     SignalChain signalChain{};
     std::uint64_t chainClearEpoch=0;
     bool chainCheckEpoch=true;
+    ArpRenderSettings arp{};
+    std::uint32_t arpMask=arpAllParameters;
+    std::uint64_t arpClearEpoch=0,arpSettingsRevision=0;
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct ExportRequest {std::uint32_t track=0,generation=0;std::uint64_t waveformId=0;};
@@ -41,6 +44,8 @@ struct ArpPreparationRequest {
     std::uint32_t track=0,requestId=0,generation=0,seed=0;
     std::uint64_t clearEpoch=0,cancellation=0; // cancellation captured by enqueue
     ArpModValues values=arpModDefaults();
+    bool activate=false; // Internal connected-stage install; product UI still disabled.
+    std::uint64_t settingsRevision=0;
 };
 enum class ArpPreparationStatus : std::uint8_t {ready,cancelled,stale,busy,failed};
 struct ArpPreparationResult {
@@ -187,6 +192,7 @@ private:
         ArpPreparationRequest request{};
         bool active=false,started=false,finished=false;
         ArpPreparationStatus status=ArpPreparationStatus::failed;
+        std::uint64_t installation=0;
     };
     void cancelStaleArpPreparations() noexcept;
     void serviceArpPreparations() noexcept;

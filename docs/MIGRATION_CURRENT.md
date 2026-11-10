@@ -11,6 +11,18 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Arp connected render-settings checkpoint — 10 November 2026
+
+Internal typed settings now commit with prepared storage adoption and A renders
+at its user-selected chain position. The product A control stays disabled: this
+does not expose GUI/CLI/MIDI, original presets/state, organic defaults or BPM
+integration. New Windows connected sound/control/ownership checks and retained
+preparation/storage/chain checks pass for their recorded scope; final extended
+test, full regressions, Linux/sanitizers and timing are running. Windows Standalone
+builds. No preserved assets, existing IDs or product parameters changed.
+See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md) for acceptance, lifecycle,
+the old-active-graph receipt repair and outstanding product integration.
+
 ### Editable chain prerequisite — 10 November 2026
 
 Accepted Q/C software-preview per-loop order/omission, shared GUI/CLI and version-1 native persistence

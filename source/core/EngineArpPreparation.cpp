@@ -31,7 +31,8 @@ void Engine::cancelStaleArpPreparations() noexcept {
         if(pending.finished){finishArpPreparation(id,pending.status);continue;}
         const auto& request=pending.request;
         if(request.generation!=generation()||request.cancellation!=arpCancellations[id].load(std::memory_order_acquire)
-           ||request.clearEpoch!=loops.trackView(id).clearEpoch){
+           ||request.clearEpoch!=loops.trackView(id).clearEpoch
+           ||(request.activate&&request.settingsRevision!=loops.trackView(id).arpSettingsRevision)){
             loops.cancelArpStorage(id);finishArpPreparation(id,ArpPreparationStatus::cancelled);
         }
     }
@@ -43,7 +44,7 @@ void Engine::serviceArpPreparations() noexcept {
         const auto& pending=pendingArp[id];if(!pending.active||pending.finished||!pending.started)continue;
         const auto view=loops.arpStorageView(id);if(view.pending)continue;
         finishArpPreparation(id,view.failed?ArpPreparationStatus::failed:
-            loops.preparedArp(id)?ArpPreparationStatus::ready:ArpPreparationStatus::cancelled);
+            view.active&&view.installation!=pending.installation?ArpPreparationStatus::ready:ArpPreparationStatus::cancelled);
     }
     ArpPreparationRequest request;
     for(unsigned n=0;n<LoopBank::trackCount&&arpRequests->pop(request);++n){
@@ -55,9 +56,11 @@ void Engine::serviceArpPreparations() noexcept {
             finishArpPreparation(request.track,ArpPreparationStatus::cancelled);
         else if(request.clearEpoch!=loops.trackView(request.track).clearEpoch)
             finishArpPreparation(request.track,ArpPreparationStatus::stale);
-        else if(!loops.requestArpStorage(request.track,request.values,request.seed,request.clearEpoch))
+        else if(request.activate&&request.settingsRevision!=loops.trackView(request.track).arpSettingsRevision)
+            finishArpPreparation(request.track,ArpPreparationStatus::stale);
+        else if(!loops.requestArpStorage(request.track,request.values,request.seed,request.clearEpoch,request.activate,request.settingsRevision,request.requestId))
             finishArpPreparation(request.track,ArpPreparationStatus::busy);
-        else pending.started=true;
+        else {pending.started=true;pending.installation=loops.arpStorageView(request.track).installation;}
     }
 }
 void Engine::cancelAllArpPreparations() noexcept {

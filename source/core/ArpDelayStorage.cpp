@@ -10,7 +10,7 @@ bool ArpDelayStorage::prepareStopped(double sampleRate) noexcept {
 }
 void ArpDelayStorage::releaseStopped() noexcept {
  for(auto& slot:*slots){slot.graph.reset();slot.phase.store(Phase::free,std::memory_order_relaxed);}
- active.fill(nullptr);pending.fill(nullptr);failed.fill(false);
+ active.fill(nullptr);pending.fill(nullptr);failed.fill(false);installations.fill(0);
  outstanding=workerCursor=0;rate=0;
 }
 bool ArpDelayStorage::request(unsigned track,const ArpModValues& values,std::uint32_t seed) noexcept {
@@ -45,7 +45,7 @@ ArpDelayStorage::Completion ArpDelayStorage::poll(std::uint64_t firstFrame) noex
   pending[id]=nullptr;
   if(phase==Phase::ready&&slot.graph->reset(slot.seed,firstFrame)){
    if(auto* old=active[id])old->phase.store(Phase::retired,std::memory_order_release);
-   active[id]=&slot;failed[id]=false;result.installed|=1u<<id;
+   active[id]=&slot;failed[id]=false;++installations[id];result.installed|=1u<<id;
    slot.phase.store(Phase::active,std::memory_order_release);
   }else{
    failed[id]=true;result.failed|=1u<<id;
@@ -58,7 +58,7 @@ ArpDelayGraph* ArpDelayStorage::graph(unsigned track) noexcept {
  return track<trackCount&&active[track]?&*active[track]->graph:nullptr;
 }
 ArpDelayStorage::View ArpDelayStorage::view(unsigned track) const noexcept {
- return track<trackCount?View{active[track]!=nullptr,pending[track]!=nullptr,failed[track]}:View{};
+ return track<trackCount?View{active[track]!=nullptr,pending[track]!=nullptr,failed[track],installations[track]}:View{};
 }
 void ArpDelayStorage::serviceWorker() noexcept {
  for(auto& slot:*slots)if(slot.phase.load(std::memory_order_acquire)==Phase::retired){

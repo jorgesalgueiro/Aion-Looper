@@ -15,12 +15,13 @@
 #include "core/MeterGraphEvents.h"
 #include "core/EqSettings.h"
 #include "core/SignalChain.h"
+#include "core/ArpRenderSettings.h"
 
 namespace aion {
 // Application queues wait for explicit source creation; direct DSP clients may schedule at the grid.
 enum class QueuedStartMode { sampleGrid, messageCallback };
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor, signalChain }; // Append-only. Source/reset primitives remain core-only.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor, signalChain, arpDelay }; // Append-only. Source/reset primitives remain core-only.
 constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart||action==LoopAction::meterQueuedWindowRequest||action==LoopAction::meterQueuedGraphRequest;}
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
@@ -47,6 +48,9 @@ struct LoopView {
     std::uint32_t compressorRequest=0;
     SignalChain signalChain{};
     std::uint32_t chainRequest=0;
+    ArpRenderSettings arp{};
+    std::uint64_t arpSettingsRevision=0;
+    std::uint32_t arpRequest=0;
 };
 // Audio owns capture blocks/state; the worker borrows pinned takes and owns immutable clips.
 // Capture storage is allocated in prepare; clip allocation/deletion stays off the callback.
@@ -69,12 +73,13 @@ public:
                        std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
     bool setSignalChain(std::uint32_t,const SignalChain&,std::uint32_t request,
                         std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
-    // Internal storage admission only. Product A, its commands/state/MIDI and
-    // chain placement remain disabled until connected acceptance.
-    bool requestArpStorage(unsigned id,const ArpModValues& values,std::uint32_t seed,std::uint64_t clearEpoch) noexcept {
-        return id<trackCount&&clearEpoch==tracks[id].clearEpoch&&arpStorage->request(id,values,seed);
-    }
-    void cancelArpStorage(unsigned id) noexcept {arpStorage->cancel(id);}
+    // Internal storage/render admission. Product A and its GUI/CLI/state/MIDI
+    // remain disabled until product-level connected acceptance.
+    bool requestArpStorage(unsigned id,const ArpModValues&,std::uint32_t seed,std::uint64_t clearEpoch,
+                           bool activate=false,std::uint64_t settingsRevision=0,std::uint32_t request=0) noexcept;
+    void cancelArpStorage(unsigned id) noexcept {arpStorage->cancel(id);if(id<trackCount)pendingArpSettings[id]={};}
+    bool setArp(unsigned id,const ArpRenderSettings&,std::uint32_t mask,std::uint32_t request,
+                std::uint64_t clearEpoch,std::uint64_t settingsRevision) noexcept;
     ArpDelayStorage::View arpStorageView(unsigned id) const noexcept {return arpStorage->view(id);}
     ArpDelayGraph* preparedArp(unsigned id) noexcept {return arpStorage->graph(id);} // audio-local borrow
     bool setStartDelay(std::uint32_t track,double value) noexcept;
@@ -167,7 +172,7 @@ public:
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
     void resetEqualizers() noexcept;
-    void resetTimeline() noexcept { arpStorage->clearAll();resetEqualizers();deferredMultiplyGraph={};meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { resetArps(0);resetEqualizers();deferredMultiplyGraph={};meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     void setMeterCallbackClock(const CallbackClockStamp& callback) noexcept {meterCallbackClock=callback;}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
@@ -332,6 +337,16 @@ private:
     std::thread worker;
     static_assert(trackCount==ArpDelayStorage::trackCount);
     std::unique_ptr<ArpDelayStorage> arpStorage=std::make_unique<ArpDelayStorage>();
+    struct PendingArpSettings {
+        ArpRenderSettings settings{};
+        std::uint64_t revision=0,clearEpoch=0;
+        std::uint32_t request=0;
+        bool active=false;
+    };
+    std::array<PendingArpSettings,trackCount> pendingArpSettings{}; // audio only
+    Stereo tickArp(unsigned,Stereo,bool sourceActive) noexcept;
+    void pollArps() noexcept;
+    void resetArps(std::uint64_t firstFrame) noexcept;
     Clip* result = nullptr;
     bool resultChanged = true; // Worker publishes with result through jobState.
     SpscQueue<Clip*,512> retired; // Current/held/history/job leases plus at most 128 overlap /127 scheduled reverse leases.
@@ -361,7 +376,7 @@ private:
             &&!t.queuedSourcePending&&t.queuedSourceTicket&&(includeStopping||!t.info.stopPending);
     }
     void stop(Track&) noexcept;
-    void clear(Track&) noexcept;
+    void clear(Track&,bool preserveArp=false) noexcept;
     void blend(Track&) noexcept;
     void restartSource(Track&,bool preparedQueue=false) noexcept;
     void admitQueuedSource(Track&) noexcept;

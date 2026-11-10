@@ -1,5 +1,67 @@
 # Arp Delay migration
 
+## Connected render settings and user-order routing — 10 November 2026
+
+Internal integration in progress; **product A remains disabled**. `ArpRenderSettings`
+contains twelve raw DSP targets, explicit fixture/caller seed and enabled state.
+It is not the original UI/preset/persistence schema, organic new-instance voicing,
+transport BPM adapter or product seed policy. Its unused factory baseline maps
+repetitions 2 to Float32 feedback `2 / 11.1`, preserving the original distinction
+from the raw worklet's .18 default. Existing presets/state/IDs/assets are unchanged.
+
+Acceptance defined before edits: prepared storage and matching settings commit in
+one callback before rendering/snapshots; OOM, stale revisions, cancellation and
+capacity failures preserve prior settings/sound. Raw diagnostic preparations must
+not replace enabled owners. Direct controls cannot enable an unprepared graph.
+Render A only at its selected per-loop chain position; retain persistent targets,
+STAY/delay/LFO across ordinary source restarts/history, support masked live edits,
+and retain clear/bypass/panic/prepare ownership and zero callback new/delete.
+
+`LoopBankArp` holds twenty audio-owned pending descriptors. Before poll it cancels
+descriptors with obsolete clear/settings revisions; successful storage adoption
+commits descriptor settings/request/revision immediately. The Engine protocol's
+optional `activate`/expected revision remains bounded to twenty unread transactions.
+The appended internal `LoopAction::arpDelay` performs validated, revision/epoch-
+guarded masked controls or disable; no product RPC/UI/CLI is exposed by this slice.
+Each selected bit is a gesture, including unchanged values, preserving unselected
+automation. Disable retires storage on the worker. Re-enable requires preparation.
+
+Storage publishes an audio-owned adoption serial. Readiness requires a new
+installation, rather than an older active graph's existence. This is important
+when armed-take cancellation preserves the current graph while cancelling its
+replacement: it must return `cancelled`, never an obsolete success. The new case
+pauses worker allocation, arms/cancels the take, verifies the retained owner and
+the exact terminal receipt, then releases obsolete work.
+
+The router handles A alongside Q/C in any stored order. Reordering included A
+retains its owner; omission freezes it, and reinsertion resets it without allocation
+at the current clock, matching a newly inserted reference effect. Ordinary STOP
+runs zeros through the persistent owner but bounds audible output by the existing
+source gate; PLAY/RTRG/history preserve state. Panic resets delay/STAY/LFO in
+constant work while retaining prepared storage/settings. Armed CANCEL preserves
+its current owner. Same-rate, unchanged-capacity stopped prepare resets its clock
+and retains the valid owner; rate/capacity-changing core prepare clears storage
+AND metadata. Product-level
+rate restore still needs asynchronous preparation before it can enable A again.
+
+Initial Windows checks: actual Engine PCM at 8/48/96 kHz, 64/128, eight chain
+orders/omission/reinsertion, all twelve raw targets and repeated masked gestures,
+OD/SUB/MULT/finalization, RTRG/history, STOP/PLAY and panic match independent stage
+owners at peak <=2.98023e-8 (unchanged 1e-6 limit). Callback new/delete watchers
+pass. Typed OOM/stale/mask/disable/DEL/DEL ALL/twenty-track installs, old-active
+cancellation and stopped-rate lifecycle cases pass. Retained preparation, storage
+and chain selection passed 4/4 (21.75s) before the final test-only extensions.
+The extended audible OOM case, full retained regressions, Linux/sanitizers and
+connected twenty-track callback observations remain in progress. Windows
+Standalone builds. No new original-JS audio math, UI controls or dependency change;
+prior kernel/factory/browser evidence is reused for the unchanged DSP.
+
+Next after this internal gate: original control/preset conversion and shared
+GUI/CLI/MIDI/versioned state, staged all-bank restore/OOM rollback, BPM semantics,
+organic new-instance defaults and relevant UI/performance acceptance before A is
+enabled. This protocol is not cross-queue GUI ordering or atomic FX-bank restore.
+No package or push.
+
 Current DSP slice, 10 November 2026: native original worklet + automation/post-pan
 with approved zero-latency causal streaming. Bounded track storage and internal
 Engine preparation transactions follow below. The product A checkbox stays

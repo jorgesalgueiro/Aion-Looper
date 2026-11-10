@@ -417,10 +417,12 @@ void LoopBank::cancelArmed(Track& track) noexcept {
     const auto settings=track.info.equalizer;const auto request=track.info.eqRequest;
     const auto compressor=track.info.compressor;const auto compressorRequest=track.info.compressorRequest;
     const auto chain=track.info.signalChain;const auto chainRequest=track.info.chainRequest;
-    clear(track);track.info.signalChain=chain;track.info.chainRequest=chainRequest;track.info.equalizer=settings;track.info.eqRequest=request;
+    const auto arp=track.info.arp;const auto arpRevision=track.info.arpSettingsRevision;const auto arpRequest=track.info.arpRequest;
+    clear(track,true);track.info.signalChain=chain;track.info.chainRequest=chainRequest;track.info.equalizer=settings;track.info.eqRequest=request;
     track.info.compressor=compressor;track.info.compressorRequest=compressorRequest;
+    track.info.arp=arp;track.info.arpSettingsRevision=arpRevision;track.info.arpRequest=arpRequest;
 }
-void LoopBank::clear(Track& track) noexcept {
+void LoopBank::clear(Track& track,bool preserveArp) noexcept {
     (*equalizers)[static_cast<unsigned>(&track-tracks.data())]={};
     (*compressors)[static_cast<unsigned>(&track-tracks.data())]={};
     track.historyClock=false;
@@ -442,7 +444,8 @@ void LoopBank::clear(Track& track) noexcept {
     track.blockCount=track.captureLength=0;
     if(track.clip){residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;retire(track.clip);track.clip=nullptr;}
     const auto id=static_cast<std::uint32_t>(&track-tracks.data());
-    arpStorage->clear(id);
+    if(preserveArp)cancelArpStorage(id);
+    else {arpStorage->clear(id);pendingArpSettings[id]={};}
     (*meterWindows)[id].reset();meterGraphTickets[id]=meterImmediateTickets[id]=0;meterGraphFrames[id]=0;
     meterPanicKnown[id]=false;
     meterQueuedIds[id]=meterQueuedBufferIds[id]=0;
@@ -462,6 +465,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         stop(tracks[next]);
         auto& eq=(*equalizers)[next];eq={};(void)eq.filter.prepare(rate,tracks[next].info.equalizer.values,frame);eq.prepared=true;
         auto& comp=(*compressors)[next];comp={};(void)comp.filter.prepare(rate,tracks[next].info.compressor.values,frame);comp.prepared=true;
+        if(tracks[next].info.arp.enabled){cancelArpStorage(next);if(auto* graph=arpStorage->graph(next))(void)graph->reset(tracks[next].info.arp.seed,frame);}
         }return true;}
     if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks){++track.clearEpoch;clear(track);}return true;}
     if(action==LoopAction::undoGlobal){const int next=nextUndo();return next>=0&&restore(tracks[next],static_cast<std::uint32_t>(next),false);}
@@ -726,6 +730,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::equalizer: // Dedicated validated settings command, never float payload.
         case LoopAction::compressor:
         case LoopAction::signalChain:
+        case LoopAction::arpDelay:
         case LoopAction::stopAll:break;
     }
     return false;
@@ -776,7 +781,7 @@ void LoopBank::completeOfflineEdits() noexcept {
     }
     acceptResult();
 }
-void LoopBank::beginBlock() noexcept {(void)arpStorage->poll(frame);acceptResult();for(auto& track:tracks)track.info.peak=0;}
+void LoopBank::beginBlock() noexcept {pollArps();acceptResult();for(auto& track:tracks)track.info.peak=0;}
 bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool master,bool replacePending,Clip* sourceBuffer,const SourceMetadata* metadata) noexcept {
     const auto deadline=SyncClock::deadline(target*rate);
     auto* source=sourceBuffer?sourceBuffer:track.clip;
@@ -950,6 +955,7 @@ bool LoopBank::setSignalChain(std::uint32_t id,const SignalChain& settings,std::
     // new instance with current controls, like the original rebuilt graph.
     if(settings.contains('Q')&&!previous.contains('Q')&&t.info.equalizer.enabled){auto& eq=(*equalizers)[id];(void)eq.filter.prepare(rate,t.info.equalizer.values,frame);eq.prepared=true;}
     if(settings.contains('C')&&!previous.contains('C')&&t.info.compressor.enabled){auto& comp=(*compressors)[id];(void)comp.filter.prepare(rate,t.info.compressor.values,frame);comp.prepared=true;}
+    if(settings.contains('A')&&!previous.contains('A')&&t.info.arp.enabled){if(auto* graph=arpStorage->graph(id))(void)graph->reset(t.info.arp.seed,frame);}
     t.info.signalChain=settings;t.info.chainRequest=request;return true;
 }
 bool LoopBank::setCompressor(std::uint32_t id,const CompressorSettings& settings,std::uint32_t mask,std::uint32_t request,std::uint64_t epoch,bool checkEpoch) noexcept {
@@ -1060,6 +1066,7 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         for(const auto code:v.signalChain.text()){
             if(code=='Q')equalized=tickEqualizer(id,equalized,eqSource);
             else if(code=='C')equalized=tickCompressor(id,equalized,eqSource);
+            else if(code=='A')equalized=tickArp(id,equalized,eqSource);
             // Unported original codes retain their position as metadata.
         }
         if(t.queuedGainAt){

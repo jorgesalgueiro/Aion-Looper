@@ -12,7 +12,7 @@ namespace aion {
 class ArpDelayStorage {
 public:
  static constexpr unsigned trackCount=20,capacity=trackCount*2;
- struct View {bool active=false,pending=false,failed=false;};
+ struct View {bool active=false,pending=false,failed=false;std::uint64_t installation=0;};
  struct Completion {std::uint32_t installed=0,failed=0;};
  ArpDelayStorage();
  ArpDelayStorage(const ArpDelayStorage&)=delete;
@@ -48,6 +48,7 @@ private:
  std::unique_ptr<std::array<Slot,capacity>> slots;
  std::array<Slot*,trackCount> active{},pending{}; // audio owner only
  std::array<bool,trackCount> failed{};
+ std::array<std::uint64_t,trackCount> installations{}; // audio-only actual-adoption serial
  unsigned outstanding=0,workerCursor=0;
  double rate=0; // immutable while worker/audio run
 };
