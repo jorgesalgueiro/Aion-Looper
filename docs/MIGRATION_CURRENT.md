@@ -11,6 +11,31 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Arp Delay — bounded track storage, 10 November 2026
+
+`ArpDelayStorage` now uses the existing LoopBank worker to prepare/retire graphs.
+Audio owns fixed slots and borrows active graphs; no new worker, product action,
+parameter ID, state version, GUI/CLI/MIDI control or audio-chain routing is added.
+**A remains disabled.** The verified DSP below is unchanged.
+
+Acceptance: twenty active tracks plus twenty replacement slots; one pending
+request per track; atomic rejection at capacity; worker-only allocation/free;
+exact active-owner preservation after OOM; cancellation/DEL/reset cannot adopt
+obsolete work; stopped rate changes and shutdown join before releasing storage.
+The new 64/128 tests compare exact stereo PCM/state against directly prepared
+graphs, including after OOM and at 96k. They pause worker allocation to exercise
+cancel/DEL plus a newer request, saturate/recover all forty slots, and exercise
+real LoopBank worker/epoch/clear/reset/prepare/destruction and concurrent handoff.
+Watched audio operations allocate/free nothing. Windows storage, streaming,
+compressor-connected and original-assets checks pass; broader core and Linux
+verification are in progress for this snapshot.
+
+Next: shared Engine command acceptance/outcomes and chain placement, then
+GUI/CLI/MIDI/versioned state and organic new-instance defaults. Keep A disabled
+until connected sound/state/interaction and full-bank gates pass. The recorded
+Linux/WSL scheduling limit below remains open; storage tests are not device or
+complete Engine headroom evidence. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md).
+
 ### Arp Delay — combined streaming DSP slice, 10 November 2026
 
 `ArpDelayGraph` now combines worklet, 50ms automation and stereo auto-pan;
@@ -53,9 +78,9 @@ that observed miss, not reliable device scheduling or complete Engine headroom.
 Retain both failed timing logs; do not rerun until a clean result or claim release
 performance. No Engine/EQ/C mix, physical latency, hardware or wrapper claim.
 
-Next: bounded prepared per-track storage admission, cancellation/retirement and
-rate-change handling, then shared Engine/GUI/CLI/MIDI/versioned state and organic
-defaults. Keep A disabled until end-to-end and full-bank acceptance passes.
+The subsequent storage slice is above. Shared Engine/GUI/CLI/MIDI/versioned state
+and organic defaults remain pending. Keep A disabled until end-to-end and
+full-bank acceptance passes.
 
 ### Connected compressor — scoped software gates pass, finalized 10 November 2026
 

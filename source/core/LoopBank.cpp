@@ -24,6 +24,7 @@ LoopBank::~LoopBank(){shutdown();}
 void LoopBank::shutdown(){
     stopping.store(true,std::memory_order_release);
     if(worker.joinable())worker.join();
+    arpStorage->releaseStopped();
     owned.clear();
     Clip* discarded=nullptr;while(retired.pop(discarded)){}
     result=nullptr;jobState.store(0,std::memory_order_relaxed);
@@ -38,6 +39,7 @@ void LoopBank::prepare(std::uint32_t frames,std::uint32_t fadeFrames,double samp
     for(std::uint32_t i=0;i<totalBlocks;++i)freeBlocks[i]=static_cast<std::uint16_t>(i);
     fadeLength=std::min(fadeFrames,1920u);poolFull=false;soloTrack=-1;
     rate=std::isfinite(sampleRate)&&sampleRate>0?sampleRate:48000;
+    (void)arpStorage->prepareStopped(rate);
     resetTimeline();previousInput=olderInput={};
     owned.reserve(128);stopping.store(false,std::memory_order_release);
     worker=std::thread([this]{workerLoop();});
@@ -132,6 +134,7 @@ void LoopBank::workerLoop() noexcept {
         while(retired.pop(garbage)){
             releaseOnWorker(garbage);
         }
+        arpStorage->serviceWorker();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
@@ -438,6 +441,7 @@ void LoopBank::clear(Track& track) noexcept {
     track.blockCount=track.captureLength=0;
     if(track.clip){residentBlocks-=(track.clip->length+blockFrames-1)/blockFrames;retire(track.clip);track.clip=nullptr;}
     const auto id=static_cast<std::uint32_t>(&track-tracks.data());
+    arpStorage->clear(id);
     (*meterWindows)[id].reset();meterGraphTickets[id]=meterImmediateTickets[id]=0;meterGraphFrames[id]=0;
     meterPanicKnown[id]=false;
     meterQueuedIds[id]=meterQueuedBufferIds[id]=0;
@@ -770,7 +774,7 @@ void LoopBank::completeOfflineEdits() noexcept {
     }
     acceptResult();
 }
-void LoopBank::beginBlock() noexcept {acceptResult();for(auto& track:tracks)track.info.peak=0;}
+void LoopBank::beginBlock() noexcept {(void)arpStorage->poll(frame);acceptResult();for(auto& track:tracks)track.info.peak=0;}
 bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool master,bool replacePending,Clip* sourceBuffer,const SourceMetadata* metadata) noexcept {
     const auto deadline=SyncClock::deadline(target*rate);
     auto* source=sourceBuffer?sourceBuffer:track.clip;

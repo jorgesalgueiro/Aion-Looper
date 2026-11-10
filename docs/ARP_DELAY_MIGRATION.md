@@ -392,3 +392,64 @@ also retargets BPM on every Arp edit. Keep original UI ranges and master tempo
 metadata; descriptor clipping belongs to DSP. Test-seeded randomness is not a
 product-wide shared seed policy. No new parameter/action IDs or saved state were
 introduced in this DSP slice.
+
+## Prepared track storage — 10 November 2026
+
+The next internal slice reuses LoopBank's existing edit/export worker; it does
+not start another thread or enable product A. `ArpDelayStorage` has forty
+construction-time heap slots (twenty active plus twenty replacement capacity).
+Only requested slots allocate delay rings. At 48k the worst-case forty rings
+consume 92,160,000 bytes (87.89 MiB); at 384k, 737,280,000 bytes (703.13 MiB),
+excluding fixed graph/allocator overhead. OOM rejects the replacement and keeps
+the old running graph. There is no claim that all devices can admit the maximum.
+
+Audio publishes immutable track/values/seed requests with a release store;
+the sole worker prepares at most one per service pass and publishes ready/failed.
+Audio adopts only the exact still-pending slot, resetting its fresh graph to the
+current sample clock; a stale completion cannot match a newer request. Retired
+slots are destroyed by the worker before it publishes them free. Fixed slots
+also bound retirement, so a saturated retirement queue cannot leak an owner.
+Cancelled queued requests skip allocation; cancellation during preparation may
+finish allocating but its result is rejected and retired. No callback scans PCM,
+allocates/frees, waits, or uses locks. The worker may be delayed by an existing
+clip edit; preparation is asynchronous, not a promised audio deadline.
+
+`LoopBank::requestArpStorage` checks the current clear epoch. DEL/DEL ALL and
+timeline reset detach/cancel storage; stopped prepare/rate change and destruction
+join the existing worker before releasing all slots. PLAY and ordinary playback
+do not recreate storage. These are audio-owner internal methods, not product CLI
+commands or a second DSP implementation. Graph pointers must not escape to the
+message thread or survive a poll/clear/prepare. Product command acknowledgements,
+settings masks, rendering/bypass/tails, GUI/CLI/MIDI/state and organic defaults
+remain the connected-stage work. The source DSP and original assets are unchanged.
+
+Acceptance defined before editing: all twenty tracks; exact direct-graph PCM
+and clock/state after adoption; OOM preserves active sound; bounded overflow and
+full recovery; no obsolete adoption after cancellation/clear/reset/rate change;
+worker-only destruction; zero watched callback new/delete at 64/128. New
+`arp_delay_storage_contract` includes a test-only allocation barrier: pause the
+worker inside allocation, cancel or DEL and request a replacement, then deliver
+the obsolete result while the new request is pending. Only the new result may
+adopt. It also covers stopped rate changes with 96k PCM, forty-slot exhaustion,
+pending shutdown, real LoopBank worker lifecycle and a concurrent handoff stress.
+
+Windows storage, streaming, connected-compressor and original-assets checks pass.
+Broader core and Linux/sanitizer verification are pending for this snapshot.
+Reproduce with the existing caches (CMake regenerates for the new test target):
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_storage_tests aion_core_tests aion_arp_stream_tests aion_compressor_connected_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_delay_storage_contract|arp_delay_streaming_contract|core_realtime_contract|compressor_connected_contract|original_ui_bytes)$'
+```
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_arp_storage_tests aion_core_tests aion_arp_stream_tests aion_compressor_connected_tests
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_delay_storage_contract|arp_delay_streaming_contract|core_realtime_contract|compressor_connected_contract|original_ui_bytes)$'
+cmake --build build/overlap-asan --parallel 2 --target aion_arp_storage_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^arp_delay_storage_contract$'
+```
+
+No UI/bridge/audio math changed, so the existing browser/original-JS sound evidence
+is retained rather than rerun unchanged. This storage slice is not full A
+acceptance, device/host qualification or a package. Existing WSL wall-timing
+misses remain recorded above; no new runtime performance claim is made.
