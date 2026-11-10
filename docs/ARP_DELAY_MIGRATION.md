@@ -9,6 +9,8 @@ Reference sibling is absent; `.reference/Ascii-Looper` and matching preserved
 Owner decisions: persistent per-loop delay/STAY/modulation state across playback
 restarts, and live controls during OD/SUB/MULT/scheduled STOP. These are intentional
 connected-stage extensions; EQ/compressor approvals alone were not reused.
+The owner subsequently selected **zero added latency with causal wake-up**, rather
+than buffering 128 samples to reproduce the original lookahead on small callbacks.
 The owner also requests a more organic/natural sound and selected **organic
 voicing by default for new instances**, preserving existing presets and saved
 sounds. Keep the faithful reference baseline for compatibility; apply the new
@@ -184,9 +186,8 @@ Run the owned hardware-free browser host with
 `tools/TestArpDelayWebAudio.ps1 -Modulation`; replay its ignored, source-hash-checked
 fixture with `node tests/ArpModulationWebAudio.cjs --probe PROBE --fixtures build/arp-modulation-browser-fixtures.json`.
 The probe's `modprepare/modtarget/modrender` commands are test-only, not a second
-audio engine or the product CLI. Product A stays disabled. The zero-latency versus
-buffered exact idle-wakeup decision was requested from the owner and remains
-pending; do not infer approval from elapsed time or implement that policy yet.
+audio engine or the product CLI. Product A stays disabled. The owner has now
+selected zero-latency causal wake-up; the following streaming slice implements it.
 
 Windows results: **22 actual WebView2 fixtures / 66 comparisons / 2,162,688 stereo
 frames**, with 64/128/37 subdivisions and rates 8..384 kHz. Maximum audio peak
@@ -224,8 +225,98 @@ browser command above. Linux logs: `build/arp-mod-{build,ctest,replay,benchmark}
 source traveled through the safe committed-snapshot helper. No wrappers,
 Standalone/editor changes, dependency upgrade, product voicing, package or push.
 
-Next remains the owner's pending idle/wakeup policy, then the combined streaming
-chain and bounded per-track storage admission/failure/lifecycle handling before
+Next is the accepted causal streaming chain and bounded per-track storage
+admission/failure/lifecycle handling before
 shared GUI/CLI/MIDI/versioned persistence. Do not enable A or advance to another
 effect until those end-to-end gates pass. The original kernel's 84-case JS and
 15-case actual-worklet evidence is reused unchanged; this stage does not replace it.
+
+## Causal streaming slice — acceptance
+
+The owner selected no added buffering latency. `ArpDelayGraph` combines the same
+worklet math, first-a-rate parameter latch and stereo post-pan; controls and LFO
+run on a continuous render timeline. The worklet detector decays once per **128
+audio samples**, and internal rotations normalize once per active quantum, not
+once per callback or event subdivision. Controls never restart delay/STAY/LFO.
+
+When tail <1e-5, preserve the original left-only wake trigger, but inspect input
+causally: freeze worklet history until the first left sample >=1e-5, emit zero
+before it, and process that triggering sample immediately. Normalize at wake,
+then keep processing the rest of that quantum; accumulate the detector peak
+across all slices. The skipped prefix does not advance note/grain/delay state.
+This intentionally differs from original lookahead during that wake quantum;
+there is no promise of a small bound on later feedback/sequence divergence.
+The separate original whole-invocation kernel/oracle remains available and its
+regressions must still pass. Direct and streaming APIs require reset between modes.
+
+Acceptance: exact native PCM/state under 1/37/64/128/257 partitions and arbitrary
+sample-offset controls; separate explicit causal wake/no-added-latency assertions;
+unchanged original factory/worklet/automation/pan browser PCM at existing 1e-6
+peak / 1e-5 relative RMS for awake/tail cases; mono/stereo/no input, idle/right-only,
+in-place stereo, rate changes, zero blocks, reset, bounded invalid requests, whole
+graph prepare OOM rollback, zero callback new/delete, Windows/Linux and sanitizers.
+Use fixed 128-sample pan scratch; reject >4096-frame calls before state mutation.
+Standalone GUI/CLI/MIDI, storage admission/retirement, persisted voice settings,
+editor/track integration and organic defaults remain later connected acceptance.
+
+### Windows streaming evidence
+
+Native exact PCM/state partition tests pass for rates 8..384 kHz, 0/1/2 channels,
+1/37/64/128/257 samples, matching in-place stereo, non-quantized control gestures,
+real idle/right-only/wake intervals, reset and complete graph OOM rollback.
+The causal fixture drains the real detector below 1e-5, sends right-only input
+while idle, then introduces a left impulse 17 samples into a 64-frame slice.
+The impulse is output at sample 17; only the remaining 47 samples advance the
+worklet clock/ring. No processing/control/reset new/delete is observed.
+
+The unchanged original worklet **84-case** CTest passes after extracting the shared
+render primitive; its limits were not changed. Full actual original factory,
+worklet, smoothSetParam and auto-pan now pass **21 fixtures / 63 comparisons /
+4,128,768 stereo frames**, peak **2.384185791015625e-7**, including eight presets,
+mono, six rates and live controls at 22.05/44.1/48/96 kHz. Initial combined 96k
+automation failed at **2.16066837310791e-6**: Float32 subtraction at event anchors
+and deferred-event lane/tail handling must be preserved. The fix affects only
+ArpModulation, not the accepted Compressor. A browser-derived `.35 -> 1` anchor
+golden regression protects the one-ULP difference. Existing **66** isolated pan/
+parameter fixtures still pass, with **zero parameter-sample error** now observed.
+
+The test-only wrapper records first/last worklet parameters for diagnosis; the
+original process body and parameters/PCM are unchanged. All original versus
+observed factory PCM was compared **bit-identically (0 differing samples)**,
+with identical applied-event frames. The initial failing fixture/log is retained
+in `build/arp-graph-original-fixtures.json` / `arp-graph-initial-failure-windows.log`.
+No gate or tolerance was weakened or failed case removed.
+
+Windows focused CTests passed **3/3 (3.84s)**; the subsequent final anchor/kernel/
+streaming regression selection passed **2/2 (2.20s)**. Actual browser log:
+`build/arp-graph-final-browser-windows.log`; fixture `arp-graph-browser-fixtures.json`.
+Replay requires unchanged original-source hashes. Commands:
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_tests aion_arp_stream_tests aion_arp_probe
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_delay_realtime_contract|arp_delay_streaming_contract|js_native_arp_delay|original_ui_bytes)$'
+tools/TestArpDelayWebAudio.ps1 -Graph
+node tests/ArpModulationWebAudio.cjs --fixtures build/arp-modulation-browser-fixtures.json
+build/windows-core/Release/aion_arp_stream_tests.exe --benchmark
+```
+
+Nominal AudioParam clipping also matters: `.01 -> 4` can briefly cancel to below
+the worklet's .01 minimum. The original clips arrays and their exposed last value
+after timeline calculation. Native now does the same, preventing valid gestures
+from failing midway through processing. Native and actual browser endpoint cases
+retain this regression at 8/48k, including real ring wrap and full feedback.
+
+Twenty combined DSP graphs at 48k, 512 warm / 2048 measured callbacks initially
+showed **13 overruns** at 128 with LoopBank's single-sample call pattern
+(mean/p99/max **1497.69/2173.3/3792.6us**). Coefficient caching now computes
+tempo/rotation/exp constants only when the latched worklet values change, keeping
+the same arithmetic. The retained 84-case unchanged worklet, kernel and stream
+CTest selection passes **3/3 (31.80s)** after this optimization.
+
+Final warmed timing: grouped 64 mean/p99/max **492.605/603.1/947.6us**, grouped 128
+**957.985/1149.1/1519.9us**; single-sample dispatch **606.741/725.6/821.7us** at 64,
+**1172.29/1336.8/1594.4us** at 128. Nonzero PCM, matching checksums, zero observed
+overruns/allocations in all four optimized runs. This excludes Engine/EQ/compressor/
+mixing/devices and round-trip latency; full-bank headroom still requires its own
+gate. Failed timing log `build/arp-graph-precache-overruns-windows.log`, final
+`arp-graph-cached-benchmark-windows.log`; do not discard the failed observation.

@@ -27,24 +27,27 @@ bool validArpValues(const ArpValues& values) noexcept {
  for(std::size_t p=0;p<values.size();++p)if(!std::isfinite(values[p])||values[p]<arpParameters[p].minimum||values[p]>arpParameters[p].maximum)return false;
  return true;
 }
-bool ArpDelay::prepare(double rate,const ArpValues& values,std::uint32_t seed) noexcept {
- if(!std::isfinite(rate)||rate<8000||rate>384000||!validArpValues(values))return false;
+bool ArpDelay::prepare(double rate,const ArpValues& values,std::uint32_t seed,unsigned quantumOffset) noexcept {
+ if(!std::isfinite(rate)||rate<8000||rate>384000||!validArpValues(values)||quantumOffset>=128)return false;
  try {
   std::vector<Frame> storage(static_cast<std::size_t>(std::floor(rate*4)));
   ring=std::move(storage);
  }catch(const std::bad_alloc&){return false;}
  sampleRate=rate;controls=values;generation=0;
+ configure();
  for(unsigned i=0;i<hann.size();++i)hann[i]=static_cast<float>(.5*(1-std::cos(2*std::numbers::pi*(i/1023.0))));
- return reset(seed);
+ return reset(seed,quantumOffset);
 }
 bool ArpDelay::setValues(const ArpValues& values) noexcept {
+ if(values==controls)return true;
  if(!validArpValues(values))return false;
- controls=values;return true;
+ controls=values;configure();return true;
 }
-bool ArpDelay::reset(std::uint32_t seed) noexcept {
- if(ring.empty()||generation==std::numeric_limits<std::uint32_t>::max())return false;
+bool ArpDelay::reset(std::uint32_t seed,unsigned quantumOffset) noexcept {
+ if(ring.empty()||generation==std::numeric_limits<std::uint32_t>::max()||quantumOffset>=128)return false;
  ++generation;status={};randomState=seed;rotations={};lowpass={};highpassInput={};highpassOutput={};
- wander=wanderTarget=envelopeTarget=0;envelopeAttack=0;return true;
+ wander=wanderTarget=envelopeTarget=0;envelopeAttack=0;
+ streamOffset=quantumOffset;streamPeak=0;streamActive=true;directStarted=streamStarted=false;return true;
 }
 void ArpDelay::Rotation::rotate(double cosine,double sine,bool normalize) noexcept {
  const double next=c*cosine-s*sine;s=s*cosine+c*sine;c=next;
@@ -57,33 +60,67 @@ double ArpDelay::read(std::size_t channel,std::size_t position) const noexcept {
  const auto& frame=ring[position];return frame.generation==generation?(channel?frame.right:frame.left):0;
 }
 bool ArpDelay::process(const float* left,const float* right,unsigned channels,float* outLeft,float* outRight,std::size_t frames) noexcept {
- if(ring.empty()||channels>2||frames>128||(frames&&(!outLeft||!outRight)))return false;
+ if(ring.empty()||streamStarted||channels>2||frames>128||(frames&&(!outLeft||!outRight)))return false;
+ directStarted=true;
  // Preserve the reference's LEFT-ONLY idle gate, including clock suspension.
  if(status.tail<1e-5){
   double peak=0;if(channels)for(std::size_t i=0;i<frames;++i){peak=std::max(peak,std::abs(inputAt(left,i)));if(peak>=1e-5)break;}
   if(peak<1e-5){if(frames){std::fill_n(outLeft,frames,0.0f);std::fill_n(outRight,frames,0.0f);}return true;}
  }
- const double time=controls[0],feedback=controls[1],mix=controls[2],bpm=controls[6],amplitude=controls[7],range=controls[8],humanize=controls[9];
- const bool stay=controls[3]>.5f,sync=controls[5]>.5f;
- const auto scaleIndex=static_cast<unsigned>(std::floor(controls[4]));
+ const double peak=render(left,right,channels,outLeft,outRight,frames,0,false);
+ status.tail=std::max(peak,status.tail*.9);return true;
+}
+bool ArpDelay::processCausal(const float* left,const float* right,unsigned channels,float* outLeft,float* outRight,std::size_t frames) noexcept {
+ if(ring.empty()||directStarted||channels>2||frames>128-streamOffset||(frames&&(!outLeft||!outRight)))return false;
+ if(!frames)return true;
+ streamStarted=true;
+ if(!streamOffset){streamActive=status.tail>=1e-5;streamPeak=0;}
+ std::size_t prefix=0;bool woke=false;
+ if(!streamActive){
+  while(prefix<frames&&(!channels||std::abs(inputAt(left,prefix))<1e-5))++prefix;
+  std::fill_n(outLeft,prefix,0.f);std::fill_n(outRight,prefix,0.f);
+  if(prefix<frames){streamActive=true;woke=true;}
+ }
+ if(streamActive){
+  const double peak=render(left?left+prefix:nullptr,right?right+prefix:nullptr,channels,
+                           outLeft+prefix,outRight+prefix,frames-prefix,streamOffset+static_cast<unsigned>(prefix),woke);
+  streamPeak=std::max(streamPeak,peak);
+ }
+ streamOffset+=static_cast<unsigned>(frames);
+ if(streamOffset==128){if(streamActive)status.tail=std::max(streamPeak,status.tail*.9);streamOffset=0;}
+ return true;
+}
+void ArpDelay::configure() noexcept {
+ const double time=controls[0],bpm=controls[6],humanize=controls[9];
+ config.feedback=controls[1];config.mix=controls[2];config.amplitude=controls[7];config.range=controls[8];config.humanize=humanize;
+ config.stay=controls[3]>.5f;const bool sync=controls[5]>.5f;
+ config.scale=static_cast<unsigned>(std::floor(controls[4]));
  double delayTime=time;
  if(sync){
   double nearest=subdivisions[0],distance=std::abs(time-nearest);
   for(std::size_t i=1;i<subdivisions.size();++i){const double next=std::abs(time-subdivisions[i]);if(next<distance){nearest=subdivisions[i];distance=next;}}
   delayTime=nearest*(60/bpm);
  }
- const auto delay=static_cast<unsigned>(std::max(32.0,std::floor(delayTime*sampleRate)));
+ const auto delay=static_cast<unsigned>(std::max(32.0,std::floor(delayTime*sampleRate)));config.delay=delay;
  const double factor=44100/sampleRate,driftSpeed=.0001*factor;
- const std::array<double,4> speed{{driftSpeed,driftSpeed*1.61803398875,.0007*factor,.0005*factor}};
- std::array<double,4> cosine{};for(unsigned i=0;i<4;++i)cosine[i]=1-speed[i]*speed[i]*.5;
- const double decay=std::exp(-1/std::max(64.0,delay*.5));
+ config.speed={driftSpeed,driftSpeed*1.61803398875,.0007*factor,.0005*factor};
+ for(unsigned i=0;i<4;++i)config.cosine[i]=1-config.speed[i]*config.speed[i]*.5;
+ config.decay=std::exp(-1/std::max(64.0,delay*.5));
  const auto attack=static_cast<unsigned>(std::max(32.0,std::min(std::floor(sampleRate*.012),std::floor(delay*.08))));
- const double attackCoefficient=1-std::exp(-4.0/attack);
- const double glide=1-std::exp(-1/(sampleRate*(.008+humanize*.016)));
- const double wanderCoefficient=1-std::exp(-1/(sampleRate*.15));
+ config.attack=attack;config.attackCoefficient=1-std::exp(-4.0/attack);
+ config.glide=1-std::exp(-1/(sampleRate*(.008+humanize*.016)));
+ config.wanderCoefficient=1-std::exp(-1/(sampleRate*.15));
+}
+double ArpDelay::render(const float* left,const float* right,unsigned channels,float* outLeft,float* outRight,std::size_t frames,unsigned offset,bool normalizeFirst) noexcept {
+ // Exp/tempo/rotation constants change only with the latched worklet values,
+ // not on each single-sample call from LoopBank. Arithmetic order is unchanged.
+ const auto& speed=config.speed;const auto& cosine=config.cosine;
+ const double feedback=config.feedback,mix=config.mix,amplitude=config.amplitude,range=config.range,humanize=config.humanize;
+ const auto delay=config.delay,attack=config.attack,scaleIndex=config.scale;const bool stay=config.stay;
+ const double decay=config.decay,attackCoefficient=config.attackCoefficient,glide=config.glide,wanderCoefficient=config.wanderCoefficient;
  double writePeak=0;const double size=static_cast<double>(ring.size());
  for(std::size_t i=0;i<frames;++i){
-  for(unsigned q=0;q<4;++q)rotations[q].rotate(cosine[q],speed[q],(i&511)==0);
+  for(unsigned q=0;q<4;++q)rotations[q].rotate(cosine[q],speed[q],offset+i==0||(normalizeFirst&&i==0));
   wander+=(wanderTarget-wander)*wanderCoefficient;
   if(++status.clock>=delay){
    status.clock=0;const auto& scale=scales[scaleIndex];const int length=static_cast<int>(lengths[scaleIndex]);
@@ -141,7 +178,6 @@ bool ArpDelay::process(const float* left,const float* right,unsigned channels,fl
   }
   destination={written[0],written[1],generation};
  }
- status.tail=std::max(writePeak,status.tail*.9);
- status.write=static_cast<std::uint32_t>((status.write+frames)%ring.size());return true;
+ status.write=static_cast<std::uint32_t>((status.write+frames)%ring.size());return writePeak;
 }
 }

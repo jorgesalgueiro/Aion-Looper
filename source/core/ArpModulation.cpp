@@ -75,33 +75,50 @@ void ArpModulation::retarget(std::size_t p,float value) noexcept {
  if(p==10)frequencyAutomated=true;
 }
 bool ArpModulation::setTarget(std::size_t p,float value) noexcept {
- if(!prepared||p>=target.size())return false;
+ if(!prepared||frame==UINT64_MAX||p>=target.size())return false;
  auto candidate=target;candidate[p]=value;if(!validArpModValues(candidate))return false;
  retarget(p,value);return true;
 }
 bool ArpModulation::setTargets(const ArpModValues& values) noexcept {
- if(!prepared||!validArpModValues(values))return false;
+ if(!prepared||frame==UINT64_MAX||!validArpModValues(values))return false;
  for(std::size_t p=0;p<values.size();++p)if(values[p]!=target[p])retarget(p,values[p]);
  return true;
 }
 float ArpModulation::audioRate(std::size_t p) noexcept {
  const float dest=target[p];auto& r=ramps[p];
- if(frame==changedAt[p]||!(frame%128)){
-  r.base=frame==changedAt[p]?start[p]:last[p]+(dest-last[p])*steps[0];
+ // A binary timestamp just above F starts at F+1. That leaves 127 samples,
+ // so Chromium restarts its four-lane recurrence there and finishes the last
+ // three samples serially. Preserve Float32 subtraction at the new anchor too:
+ // isolated parameter tolerances hid its error in the connected 96k graph.
+ if(frame==changedAt[p]&&deferred[p])return oldBoundary[p];
+ const auto begin=changedAt[p]+(deferred[p]?1u:0u);
+ if(frame==begin||!(frame%128)){
+  if(frame==begin){
+   const double age=double(frame)/sampleRate-double(changedAt[p])/sampleRate;
+   r.base=static_cast<float>(dest+double(start[p]-dest)*std::exp(-age/.05f));
+  }else r.base=last[p]+(dest-last[p])*steps[0];
   if(double(frame-changedAt[p])>10*.05f*sampleRate||
      std::abs(dest-r.base)<4.539992976248485e-05f*(dest==0?1:std::abs(r.base)))r.base=dest;
   r.phase=0;
+  r.scalarFrom=128-((128-static_cast<unsigned>(frame%128))%4);
  }
+ if(frame%128>=r.scalarFrom){const float v=r.base;r.base+=(dest-r.base)*steps[0];return v;}
  if(r.phase==0){
   const float d=dest-r.base;
   r.lane={r.base,r.base+d*steps[0],r.base+d*steps[1],r.base+d*steps[2]};r.next=r.base+d*steps[3];
  }
  const float v=r.lane[r.phase++];if(r.phase==4){r.phase=0;r.base=r.next;}
- return frame==changedAt[p]&&deferred[p]?oldBoundary[p]:v;
+ return v;
 }
 bool ArpModulation::next(ArpControlFrame& result) noexcept {
  if(!prepared||frame==UINT64_MAX)return false;
- for(std::size_t p=0;p<last.size();++p)last[p]=audioRate(p);
+ for(std::size_t p=0;p<last.size();++p){
+  const float value=audioRate(p);
+  // Worklet AudioParam arrays and their exposed last value are nominal-range
+  // clipped AFTER timeline arithmetic. E.g. .01 -> 4 cancellation otherwise
+  // yields .00999999046 and a valid graph gesture fails setValues mid-render.
+  last[p]=p<arpParameters.size()?std::clamp(value,arpParameters[p].minimum,arpParameters[p].maximum):value;
+ }
  if(first||!(frame%128)){std::copy_n(last.begin(),latched.size(),latched.begin());first=false;}
  result.parameters=last;result.worklet=latched;
  result.pan=oscillator(last[10])*last[11];++frame;return true;

@@ -20,6 +20,12 @@ void* operator new[](std::size_t n){return ::operator new(n);}void operator dele
 void operator delete(void* p,std::size_t) noexcept{::operator delete(p);}void operator delete[](void* p,std::size_t) noexcept{::operator delete(p);}
 static void modulation(){
  using namespace aion;
+ // Actual original worklet trace: 96k, humanize .35 -> 1 at a render boundary.
+ // The new event's first value is one ULP above .35 due to Float32 cancellation.
+ // Returning the previous value passed the isolated tolerance but failed graph PCM.
+ ArpModulation anchor;ArpControlFrame observed;
+ check(anchor.prepare(96000)&&anchor.next(observed)&&anchor.setTarget(9,1)&&anchor.next(observed)&&
+       observed.parameters[9]==.35000002384185791015625f,"original AudioParam Float32 anchor cancellation");
  for(double rate:{8000.,22050.,32000.,44100.,48000.,96000.,192000.,384000.}){
   ArpModulation a,b;auto values=arpModDefaults();values[10]=5;
   check(a.prepare(rate,values)&&b.prepare(rate,values),"modulation prepare");

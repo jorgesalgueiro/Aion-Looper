@@ -40,11 +40,18 @@ public:
  ArpDelay(ArpDelay&&)=delete;
  ArpDelay& operator=(ArpDelay&&)=delete;
  // Create/destroy this owner off audio; reset invalidates its ring in constant work.
- bool prepare(double rate,const ArpValues& =arpDefaults(),std::uint32_t seed=123456789) noexcept;
+ bool prepare(double rate,const ArpValues& =arpDefaults(),std::uint32_t seed=123456789,unsigned quantumOffset=0) noexcept;
  bool setValues(const ArpValues&) noexcept;
- bool reset(std::uint32_t seed=123456789) noexcept;
+ bool reset(std::uint32_t seed=123456789,unsigned quantumOffset=0) noexcept;
  bool process(const float* left,const float* right,unsigned channels,
               float* outLeft,float* outRight,std::size_t frames) noexcept;
+ // Streaming primitive for ArpDelayGraph: canonical 128-frame detector/rotation
+ // clock, causal LEFT-input wake-up at the first >=1e-5 sample, no lookahead.
+ // A slice may not cross that clock's boundary. Do not mix with process without
+ // reset: process retains the original whole-invocation lookahead oracle.
+ bool processCausal(const float* left,const float* right,unsigned channels,
+                    float* outLeft,float* outRight,std::size_t frames) noexcept;
+ unsigned quantumPosition() const noexcept{return streamOffset;}
  const ArpValues& values() const noexcept{return controls;}
  ArpState state() const noexcept{return status;}
  std::size_t capacity() const noexcept{return ring.size();}
@@ -53,6 +60,14 @@ private:
  struct Rotation {double c=1,s=0;void rotate(double cosine,double sine,bool normalize) noexcept;};
  double random() noexcept;
  double read(std::size_t channel,std::size_t position) const noexcept;
+ void configure() noexcept;
+ double render(const float*,const float*,unsigned,float*,float*,std::size_t,unsigned,bool) noexcept;
+ struct Configuration {
+  double feedback=0,mix=0,amplitude=0,range=0,humanize=0;
+  unsigned scale=0,delay=0,attack=0;bool stay=false;
+  std::array<double,4> speed{},cosine{};
+  double decay=0,attackCoefficient=0,glide=0,wanderCoefficient=0;
+ } config{};
  std::vector<Frame> ring;
  std::array<float,1024> hann{};
  std::array<double,2> lowpass{},highpassInput{},highpassOutput{};
@@ -60,5 +75,7 @@ private:
  ArpValues controls=arpDefaults();ArpState status{};
  double sampleRate=48000,wander=0,wanderTarget=0,envelopeTarget=0;
  unsigned envelopeAttack=0;std::uint32_t generation=0,randomState=0;
+ unsigned streamOffset=0;double streamPeak=0;
+ bool streamActive=false,directStarted=false,streamStarted=false;
 };
 }

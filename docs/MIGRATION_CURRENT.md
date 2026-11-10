@@ -11,7 +11,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Arp Delay — isolated worklet slice, 10 November 2026
+### Arp Delay — combined streaming DSP slice, 10 November 2026
 
 Original A inventory and native worklet kernel are implemented; **the product A
 control remains disabled**. Owner approved persistent per-loop delay/STAY/LFO
@@ -50,10 +50,19 @@ Twenty automated modulation/post-pan stages show zero observed overruns at
 worklet/streaming/Engine/devices. Sine-table initialization is prepare-only;
 processing/control/reset have zero watched new/delete on both platforms.
 
-Next: owner decision pending for native 64/reference 128-frame idle/wakeup
-semantics (zero added latency with causal wake-up, or buffered original behavior).
-Do not implement that choice before a reply. Then combine worklet/automation/pan
-and bounded shared GUI/CLI/MIDI/state integration and the organic treatment.
+Owner selected **zero added latency with causal wake-up**. The current slice
+combines worklet/automation/pan on a canonical 128-frame clock, with near-silence
+processing suspended until the first left sample reaches 1e-5. This approved
+departure from whole-quantum lookahead must remain separate from sound-parity
+claims. Native exact partition/state and causal wake/OOM/reset/overflow tests
+pass across rates/channels and 1/37/64/128/257 samples. The complete unchanged
+factory/worklet/automation/pan passes **21 actual browser fixtures / 63 comparisons**,
+peak **2.384185791015625e-7**. A connected 96k failure exposed Float32 automation
+anchor arithmetic/deferred lanes; a valid endpoint move also exposed nominal
+clipping. Both are fixed with retained regressions and unchanged PCM limits.
+Caching coefficients repaired measured single-sample dispatch overruns; kernel/
+stream/84-case JS CTests pass **3/3 (31.80s)**. Linux streaming acceptance is next;
+bounded storage/shared GUI/CLI/MIDI/state and organic treatment remain pending.
 A stays disabled. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md). Existing
 EQ/compressor code, source assets/logo, IDs and dependencies are unchanged.
 

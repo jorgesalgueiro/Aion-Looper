@@ -35,7 +35,7 @@ private:
  float audioRate(std::size_t) noexcept;
  float oscillator(float frequency) noexcept;
  void retarget(std::size_t,float) noexcept;
- struct Ramp {std::array<float,4> lane{};float base=0,next=0;unsigned phase=0;};
+ struct Ramp {std::array<float,4> lane{};float base=0,next=0;unsigned phase=0,scalarFrom=128;};
  ArpModValues target=arpModDefaults(),last{},start{},oldBoundary{};
  std::array<Ramp,12> ramps{};
  std::array<std::uint64_t,12> changedAt{};
