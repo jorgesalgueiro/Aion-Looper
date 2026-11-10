@@ -1,7 +1,8 @@
 # Editable loop effect chain
 
-Work in progress, 10 November 2026. This is an Arp integration prerequisite:
-`QCATFODBVKZG` is a default, never a fixed path. Product A stays disabled.
+Software-preview acceptance complete for ported Q/C, 10 November 2026.
+`QCATFODBVKZG` is a default, never a fixed path. Product A stays disabled;
+full-chain/release acceptance and the separate platform/device limits below remain.
 
 Reference: unchanged `Loop.setSignalChain`, `AudioGraph.buildEffectsChain` and
 `UIManager.generateEffectsControlsHTML` in `.reference/Ascii-Looper/Modules/loopTracks.js`.
@@ -42,6 +43,29 @@ edits store then defer rebuild in those states. This is an intentional native
 extension, separately tested rather than claimed as unchanged-JS behavior.
 The existing runtime already applies that policy; this follow-up adds focused
 live-state audio/interaction acceptance without changing product DSP or IDs.
+
+Approval follow-up, regression source `097c1cd`:
+
+- Eight actual Engine cases (OD/SUB/MULT/scheduled STOP at 64/128) reorder at
+  sample 17, omit and reinsert Q/C, and compare persistent stage owners against
+  nonzero callback PCM. Peak error on Windows and Linux is **3.57628e-7**, within
+  the unchanged **1e-6** limit; audible reorder differs from fixed QC by >0.72.
+- Capture length, source/history ownership and STOP deadline match the paired
+  unprocessed engine. STOP completes without tail revival. Stereo captured WAV
+  bytes remain exactly identical, including OD/SUB/MULT feedback/finalization.
+- Zero watched callback new/delete. Extended CTest passes Windows **1/1 (2.88s)**,
+  Linux **1/1 (0.94s)**, ASan/UBSan/leaks **1/1 (18.45s)** and TSAN **1/1
+  (30.18s)** with the documented process-only workaround; no diagnostics.
+- Actual original-field edits pass at 64/128 during all four states, through the
+  production editor/command layer; scheduled STOP retains its original deadline.
+- The first MULT fixture accidentally selected instant doubling (value 0);
+  corrected it to the existing capture command (value 1). No product code or
+  tolerance changed. Logs remain under `build/chain-live-policy-*` on each OS.
+
+The policy prerequisite is closed for Q/C. Reuse the prior full-suite, processor,
+state/CLI, reference and timing evidence below: their runtime is unchanged.
+Next: Arp product settings committed with graph adoption, then connected A at
+its user-selected chain position and shared GUI/CLI/MIDI/state acceptance.
 
 Executed software evidence:
 
@@ -132,4 +156,5 @@ are in `chain-regression-details-windows.log`; repaired frontend result is
 are `chain-ctest-linux.log` and `chain-reference-fixed-linux.log`; sanitizer and
 processor logs use their explicit names. UI including LIVE is
 `chain-ui-live-windows.log`. Both initial loaded and later isolated benchmark
-logs remain. Routing policy alone is pending before slice completion. No package/push.
+logs remain. The approved live-policy follow-up above closes this software slice;
+unported effects and the documented platform/device/release gaps remain. No package/push.

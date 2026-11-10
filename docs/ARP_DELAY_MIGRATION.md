@@ -599,9 +599,10 @@ effects present in it; rebuilding can reuse effect nodes and their state.
 
 Before editable-chain candidate `6d731ac`, native rendering called EQ then
 compressor directly and supplied default-only markup. That candidate now connects
-manual GUI/CLI/state ordering for Q/C; its policy/acceptance remains recorded in
-[SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md). Finish that prerequisite before
-connecting A: use the shared representation and place every ported
+manual GUI/CLI/state ordering for Q/C. Its live-state policy was owner-approved
+and software acceptance closed in the `097c1cd` follow-up, recorded in
+[SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md). When connecting A, use
+the shared representation and place every ported
 effect at its user-selected position. Retain the original effect codes without
 presenting unported/custom effects as working. Preserve the approved persistent
 EQ/compressor/Arp ownership through reorder and playback restarts; explicitly

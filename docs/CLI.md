@@ -90,8 +90,10 @@ python tools/aion.py chain 1 reset
 compressor even when enabled. Only Q and C currently process audio; other codes
 retain their positions for later ports. Lowercase/repeated codes normalize as
 in the original manual field. Empty/invalid-only text or `reset` restore the
-default. Chain presets and custom effects remain unported. Current evidence and
-pending live-routing policy: [SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md).
+default. Reordering applies live during overdub, substitute, MULT and scheduled
+STOP, as approved by the owner. It does not change captured PCM or a STOP deadline.
+Chain presets and custom effects remain unported. Current evidence and limits:
+[SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md).
 
 MERGE also uses the shared loop command:
 

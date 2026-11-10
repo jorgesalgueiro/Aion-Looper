@@ -13,7 +13,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ### Editable chain prerequisite — 10 November 2026
 
-Candidate per-loop order/omission, shared GUI/CLI and version-1 native persistence
+Accepted Q/C software-preview per-loop order/omission, shared GUI/CLI and version-1 native persistence
 are implemented for ported Q/C. Original codes stay preserved; A remains disabled.
 Windows connected audio/original-JS, production state/CLI and actual 64/128 WebView2
 checks pass. Visible toggles follow the chain without rebuilding the loop card.
@@ -22,9 +22,17 @@ cases per OS, Windows main/LIVE UI at 64/128 and Linux sanitizers pass after the
 documented fixture/adapter fixes. Runtime source **6d731ac**, Node 18/LIVE test
 extension **963722b**. Isolated warmed twenty-loop EQ/C observations show no
 64/128 deadline overruns; an earlier loaded Windows overrun is retained.
-Owner choice about live OD/SUB/MULT/scheduled-STOP chain edits is still pending;
-this candidate is not a completed feature/release. No package/push. Details and
-exact commands: [SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md).
+Owner approved live OD/SUB/MULT/scheduled-STOP chain edits on 10 November.
+Regression source **097c1cd** adds eight 64/128 Engine cases: peak **3.57628e-7**
+against independent persistent stage owners (limit 1e-6), exact captured WAVs,
+unchanged transport/history/STOP deadlines and zero watched callback new/delete.
+Focused Windows **1/1 (2.88s)**, Linux **1/1 (0.94s)**, ASan/UBSan/leaks **1/1
+(18.45s)** and TSAN **1/1 (30.18s)** pass; actual Windows field edits in all four
+states pass at both blocks. Product runtime is unchanged. This closes the Q/C
+routing prerequisite, not full-chain/device/release acceptance. No package/push.
+Next: Arp settings committed with graph adoption and A at its user-selected chain
+position, then shared GUI/CLI/MIDI/state. Details and exact commands:
+[SIGNAL_CHAIN_MIGRATION.md](SIGNAL_CHAIN_MIGRATION.md).
 Do not connect Arp as a fixed Q -> C -> A path.
 
 ### Arp Delay — Engine preparation transactions, 10 November 2026
