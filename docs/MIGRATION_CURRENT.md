@@ -11,6 +11,39 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Arp Delay — Engine preparation transactions, 10 November 2026
+
+The next internal slice connects the verified storage worker to a bounded typed
+Engine request/result protocol. **Product A stays disabled:** no audio-chain,
+GUI/CLI/MIDI or persisted settings are enabled by this protocol. DSP math, original
+assets, logo, product IDs, current defaults and preset/state versions are unchanged.
+
+Acceptance defined before implementation: enqueue is not success; only actual
+graph adoption produces a `ready` receipt with exact request/track/generation.
+One outstanding transaction per track includes unread terminal receipts, bounding
+both queues to twenty accepted transactions. Invalid message inputs reject before
+mutation. Audio checks current clear epoch; cancellation revisions fence queued
+and in-flight work before adoption. Failed/busy/cancelled requests preserve an
+existing graph. DEL/DEL ALL/STOP ALL invalidate unfinished requests; stopped
+prepare retains old terminal results while cancelling old unfinished requests.
+Callbacks neither wait for preparation nor allocate/free. Ordinary loop request
+acknowledgements remain separate. Zero-frame calls may service internal storage,
+like export; they do not advance audio or drain ordinary loop commands.
+
+Initial Windows Engine tests pass at 64/128, including a worker paused inside
+allocation while cancellation/DEL/panic and a replacement arrive. Extended
+tests add forty-slot exhaustion/recovery, unread ready versus queued results
+through repeated prepare, and actual message/audio/worker concurrency. Windows
+affected regressions are running; Linux and sanitizer verification are pending.
+Commands/results will be finalized below before closing this slice.
+
+Next: product settings/terminal command receipts and original Q -> C -> A routing,
+then shared GUI/CLI/MIDI/versioned persistence and organic new-instance defaults.
+This internal storage API does not establish cross-queue GUI gesture ordering or
+provide a user CLI command. Preserve existing frontend barriers when connecting
+it. No sound-parity or device/headroom claim is added; prior DSP and WSL timing
+evidence remains below. Details: [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md).
+
 ### Arp Delay — bounded track storage, 10 November 2026
 
 `ArpDelayStorage` now uses the existing LoopBank worker to prepare/retire graphs.

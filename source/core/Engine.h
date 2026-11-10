@@ -32,6 +32,19 @@ struct LoopCommand {
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct ExportRequest {std::uint32_t track=0,generation=0;std::uint64_t waveformId=0;};
+// Internal prepared-storage transaction, not a product A toggle/preset/state
+// command. Values/seed are explicit DSP inputs; product voicing is still pending.
+struct ArpPreparationRequest {
+    std::uint32_t track=0,requestId=0,generation=0,seed=0;
+    std::uint64_t clearEpoch=0,cancellation=0; // cancellation captured by enqueue
+    ArpModValues values=arpModDefaults();
+};
+enum class ArpPreparationStatus : std::uint8_t {ready,cancelled,stale,busy,failed};
+struct ArpPreparationResult {
+    std::uint32_t track=0,requestId=0,generation=0;
+    ArpPreparationStatus status=ArpPreparationStatus::failed;
+};
+struct PreparedArpInspection {bool active=false;ArpModValues targets{};ArpState state{};std::uint64_t frame=0;};
 struct AudioInspection {LoopView track{};std::uint64_t frame=0;float masterPeak=0;unsigned countInFlash=0;};
 struct EngineView {
     std::array<LoopView, LoopBank::trackCount> tracks{};
@@ -95,6 +108,13 @@ public:
         return requestedGeneration==generation();
     }
     bool enqueueExport(ExportRequest request) noexcept; // Message owner, separate from performance FIFO.
+    // Single message producer/consumer. One outstanding transaction per track,
+    // INCLUDING unread terminal receipts. No ordinary loop acknowledgement is
+    // changed; shared GUI/CLI product integration must retain gesture ordering.
+    bool enqueueArpPreparation(ArpPreparationRequest) noexcept;
+    bool popArpPreparation(ArpPreparationResult&) noexcept;
+    void cancelArpPreparation(unsigned track=LoopBank::trackCount) noexcept;
+    PreparedArpInspection inspectPreparedArpAudioThread(unsigned track) noexcept;
     bool popExport(WavExport& output) noexcept;
     void cancelStutter(std::uint32_t track = LoopBank::trackCount) noexcept {
         if(track<LoopBank::trackCount)stutterRevisions[track].fetch_add(1,std::memory_order_release);
@@ -154,6 +174,20 @@ private:
     bool applyMidi(LoopAction,std::uint32_t,double) noexcept;
     MidiController::Dispatch midiDispatch() noexcept {return {loops,frame,preparedRate,generation(),this,[](void* context,LoopAction action,std::uint32_t track,double value){return static_cast<Engine*>(context)->applyMidi(action,track,value);}};}
     LoopBank loops;
+    struct PendingArpPreparation {
+        ArpPreparationRequest request{};
+        bool active=false,started=false,finished=false;
+        ArpPreparationStatus status=ArpPreparationStatus::failed;
+    };
+    void cancelStaleArpPreparations() noexcept;
+    void serviceArpPreparations() noexcept;
+    void finishArpPreparation(unsigned,ArpPreparationStatus) noexcept;
+    void cancelAllArpPreparations() noexcept; // stopped prepare owner
+    std::array<PendingArpPreparation,LoopBank::trackCount> pendingArp{}; // audio only
+    std::array<bool,LoopBank::trackCount> outstandingArp{}; // message only
+    std::array<std::atomic<std::uint64_t>,LoopBank::trackCount> arpCancellations{};
+    std::unique_ptr<SpscQueue<ArpPreparationRequest,32>> arpRequests=std::make_unique<SpscQueue<ArpPreparationRequest,32>>();
+    std::unique_ptr<SpscQueue<ArpPreparationResult,32>> arpResults=std::make_unique<SpscQueue<ArpPreparationResult,32>>();
     SpscQueue<ExportRequest,2> exportRequests;
     bool exportOutstanding=false; // Message thread only, retained across prepare.
     std::array<std::atomic<std::uint32_t>,LoopBank::trackCount> stutterRevisions{};

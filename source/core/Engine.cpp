@@ -3,6 +3,7 @@
 #include <cmath>
 namespace aion {
 void Engine::prepare(double sampleRate, std::uint32_t poolFrames,DeviceOutputLatency reportedOutputLatency) {
+    cancelAllArpPreparations();
     auto midiContext=midiDispatch();midi->prepare(midiContext);
     double rate = sampleRate;
     if (!std::isfinite(rate) || rate < 8000.0 || rate > 384000.0) rate = 48000.0;
@@ -78,6 +79,9 @@ bool Engine::applyMidi(LoopAction action,std::uint32_t track,double value) noexc
 bool Engine::applyLoop(LoopAction action,std::uint32_t track,double value) noexcept {
     const bool ok=action==LoopAction::startDelay?loops.setStartDelay(track,value):action==LoopAction::clearMergedSource?loops.clearMergedSource(track,value):loops.apply(action,track,static_cast<float>(value));
     if(!ok)return false;
+    if(action==LoopAction::stopAll||action==LoopAction::clearAll){cancelArpPreparation();cancelStaleArpPreparations();}
+    else if(action==LoopAction::clear){cancelArpPreparation(track);cancelStaleArpPreparations();}
+    else if(action==LoopAction::clearMergedSource)cancelStaleArpPreparations();
     if(action==LoopAction::stopAll||action==LoopAction::clearAll)meterGraphStarts->clear();
     else if(action==LoopAction::clear||action==LoopAction::clearMergedSource)
         meterGraphStarts->discardIf([&](const MeterGraphStart& start) noexcept {return start.clearEpoch!=loops.trackView(start.track).clearEpoch;});
@@ -104,7 +108,10 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     loops.setMeterCallbackClock(thisCallback);
     float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
     if(nonRealtime)loops.completeOfflineEdits();
+    // A cancelled ready graph must lose its pending slot BEFORE bank adoption.
+    cancelStaleArpPreparations();
     loops.beginBlock();
+    serviceArpPreparations();
     for(unsigned id=0;id<LoopBank::trackCount;++id){
         const auto retired=sourceRetirements[id].load(std::memory_order_acquire);
         if(static_cast<std::uint32_t>(retired>>32)==thisCallback.generation)

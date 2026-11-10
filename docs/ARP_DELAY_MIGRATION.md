@@ -1,8 +1,9 @@
 # Arp Delay migration
 
 Current DSP slice, 10 November 2026: native original worklet + automation/post-pan
-with approved zero-latency causal streaming. The product A checkbox stays disabled
-until bounded track storage and shared Engine/command/state integration pass.
+with approved zero-latency causal streaming. Bounded track storage and internal
+Engine preparation transactions follow below. The product A checkbox stays
+disabled pending audio routing and shared product GUI/CLI/MIDI/state acceptance.
 Baseline: clean `f56d20c`; compressor gates are retained in COMPRESSOR_MIGRATION.
 Reference sibling is absent; `.reference/Ascii-Looper` and matching preserved
 `resources/ui/Modules/effects.js` / `loopTracks.js` are read-only inputs.
@@ -491,3 +492,55 @@ No UI/bridge/audio math changed, so the existing browser/original-JS sound evide
 is retained rather than rerun unchanged. This storage slice is not full A
 acceptance, device/host qualification or a package. Existing WSL wall-timing
 misses remain recorded above; no new runtime performance claim is made.
+
+## Engine preparation transaction — 10 November 2026
+
+`EngineArpPreparation.cpp` connects asynchronous storage preparation to typed
+terminal receipts, leaving product A and its audio chain disabled. The internal
+`ArpPreparationRequest` contains raw DSP targets, explicit seed, clear epoch,
+track, request ID and Engine generation. This is not a new product parameter,
+preset, persistence schema or user CLI. The component's raw default feedback .18
+must not replace the original factory's `2 / 11.1` mapping in the product layer.
+No DSP, assets, dependencies or existing IDs changed.
+
+Acceptance: success only after actual adoption; exact correlation; old graph
+preservation on OOM/busy/cancel/stale input; bounded closed-consumer behavior;
+cancellation before adoption and no obsolete success after DEL/panic/prepare;
+independent ordinary loop acknowledgements; zero watched callback new/delete
+at 64/128. A single message owner enqueues and reads results. Audio owns pending
+records; the existing LoopBank worker alone allocates/frees rings. Outstanding
+message ownership lasts until a terminal receipt is read, limiting all accepted
+unread transactions to twenty. Both 31-usable-entry SPSC queues exceed that
+bound. Unexpected result-queue failure retains the completed receipt for a later
+callback; it never spins or silently drops it.
+
+The callback checks cancellation/epoch/generation before `LoopBank::beginBlock`
+can adopt a ready result. Enqueue has no success receipt. Terminal statuses are
+`ready`, `cancelled`, `stale`, `busy` and `failed`. Preparation failure keeps old
+audio ownership. Cancellation after an already-committed ready result cannot undo
+that commit, including while its receipt remains unread. Results carry their
+original generation across prepare; callers must not treat an old ready result
+as evidence of a current graph. Prepare never clears message-owned outstanding
+flags or discards unread results. Zero-frame processing may service this internal
+transaction without advancing audio, matching the existing export path; ordinary
+loop commands retain their zero-frame exclusion.
+
+DEL, DEL ALL and STOP ALL cancel unfinished work. Clear-merged-source checks
+the actual source's changed epoch without cancelling an unrelated destination.
+The protocol has bounded work: at most twenty pending owners and twenty queued
+requests examined per service. There is no new thread, render-time prepare,
+second audio engine, product retry or browser/JSON work on audio.
+
+The new `arp_preparation_contract` checks correlation and stale/invalid values,
+OOM rollback/recovery, ordinary acknowledgements, all twenty unread receipts with
+saturated ordinary telemetry, queue-independent cancellation, zero-frame clocks
+and 64/128. Allocation barriers hold obsolete worker preparation while cancellation,
+DEL, DEL ALL or panic and a replacement arrive. Forty-slot exhaustion returns
+explicit busy receipts without damaging the old graph, then recovers after worker
+reclamation. Repeated prepare distinguishes unread already-ready receipts from
+queued unfinished work. A separate message/audio/worker test exercises actual
+concurrent SPSC traffic and cancellation linearization. These are internal
+protocol/ownership tests, not rendered A audio or GUI/CLI acceptance.
+
+Initial Windows protocol tests pass. Final extended Windows/Linux regression
+and sanitizer results are pending for this snapshot.
