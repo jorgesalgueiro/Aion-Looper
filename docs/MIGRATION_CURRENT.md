@@ -11,9 +11,10 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Ordered original Arp preset candidate — 12 November 2026
+### Ordered original Arp preset checkpoint — 12 November 2026
 
-The message-owner prerequisite audit found that original `applyGenericPreset`
+Accepted internal runtime/tests `b914984`. The message-owner prerequisite audit
+found that original `applyGenericPreset`
 performs eleven control edits, each followed by BPM. Native presets now compile
 from `ArpSettings` into **one** bounded FIFO command that executes those 22 writes
 in order, with one logical settings revision. Complete validation precedes live
@@ -31,15 +32,20 @@ RMS limits. Engine stereo PCM/state is exact against eleven original-style
 scheduled controls at 64/128, including 127 older dispatch entries, stale guards,
 queue exhaustion, disabled presets and zero watched callback new/delete. The
 frame-14 modulation regression proves repeated BPM is not a single final retarget.
-Windows Standalone builds; Linux/sanitizer validation is pending this snapshot.
+Linux focused selection passes **9/9 (12.03s)** and its replay of the 15 WebView2
+preset sound comparisons matches the same maximum error. ASan/UBSan/leaks passes
+**3/3 (88.26s)** and TSAN **3/3 (142.01s)**, with no sanitizer diagnostics. Both
+Standalones build. This accepts the internal ordered-preset slice, not product A.
 
 The browser launcher initially splatted a scalar string as characters and ran
 the older graph matrix (63 comparisons passed). It now uses a typed argument array
 and rejects unknown JS options; the intended preset matrix was then executed.
 No original assets or old tolerances changed. Full prior core evidence is reused:
 only the affected Arp paths/suites are rerun for this internal addition.
-Next: finish candidate validation, then message-owned original settings with
+Next: message-owned original settings with
 exact per-track acknowledgement/rollback and ordered native state integration.
+Keep original doubles/preset metadata authoritative; do not reconstruct them from
+Float32 render targets or infer success from a newer unrelated global request ID.
 Do not enable A before shared GUI/CLI, MIDI, state, BPM and new-instance voicing
 acceptance. No package/push. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md).
 

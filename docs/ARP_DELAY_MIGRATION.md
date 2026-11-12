@@ -2,6 +2,8 @@
 
 ## Ordered original preset gesture — 12 November 2026
 
+Accepted internal runtime/tests `b914984`.
+
 Before message-owned state/preset integration, resolve the old compiler handoff's
 unverified same-time preset trajectory. Acceptance defined before editing:
 execute original `applyGenericPreset`/`update`/`updateLoopNode` unchanged; preserve
@@ -29,9 +31,15 @@ product GUI/CLI/MIDI surface changes. A remains disabled until full integration.
 | Message-owned intent, saved preset name, UI/CLI/MIDI and full state restore | Still pending | The helper reports admission only; exact acknowledgement, rollback and Q/C/chain restore coordination remain required |
 
 Windows tests pass: focused **4/4 (7.15s)**, retained Arp ownership/connected/assets
-**5/5 (39.16s)** and extended preset **1/1 (4.08s)**. Standalone builds. Linux and
-sanitizer checks are pending this candidate snapshot. The broader pre-existing
-core evidence at `6654944` is retained; no unrelated suite is repeated here.
+**5/5 (39.16s)** and extended preset **1/1 (4.08s)**. Linux focused selection
+passes **9/9 (12.03s)**. Linux replay of the five original WebView2 fixtures passes
+all 15 sound comparisons with the same maximum absolute error **6.70552e-8**.
+This replay is not a Linux WebKit capture. ASan/UBSan with leak detection passes
+**3/3 (88.26s)**; ThreadSanitizer passes **3/3 (142.01s)**, using the existing
+process-only `setarch x86_64 -R` workaround. No sanitizer diagnostics. Both
+Standalones build. This accepts the internal ordered-preset slice only. The broader
+pre-existing core evidence at `6654944` is retained; no unrelated suite is repeated.
+No new callback deadline/round-trip latency or device/release claim is made.
 
 The browser launcher originally used scalar-string splatting, which passed
 characters instead of `--presets`. Its old 63-case graph run passed (peak
@@ -69,9 +77,17 @@ cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_preset_tests
 TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^(arp_preset_contract|arp_bank_contract|arp_connected_contract)$'
 ```
 
-Logs: `build/arp-preset-*-windows.log` and matching native WSL logs. Next: validate
-this snapshot on Linux; then original message-owned settings, exact request/track
-acknowledgement, rollback and coordinated native restore. Keep product A disabled.
+Logs: Windows `build/arp-preset-{ctest,retained,boundary,browser,batches-browser,standalone}-windows.log`;
+native WSL `build/arp-preset-{ctest,browser-replay,asan,tsan}-linux.log`.
+Next: original message-owned settings, exact request/track acknowledgement,
+rollback and coordinated native restore. Keep the original double control values
+and preset selection authoritative off audio; raw Float32 targets cannot recover
+their decimal precision. Match per-track `arpRequest`/revision and terminal
+preparation results; a newer unrelated global acknowledgement is not proof of
+success. Keep host restore as intent under the existing non-audio lock and only
+the message owner as Engine producer. Q/C/chain plus Arp restore ordering remains
+unimplemented; do not expose half-restored state or claim full session atomicity.
+Keep product A disabled.
 No package/push.
 
 ## Atomic Arp-only bank transaction — 12 November 2026
