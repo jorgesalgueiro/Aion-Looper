@@ -40,6 +40,7 @@ private:
  std::array<Ramp,12> ramps{};
  std::array<std::uint64_t,12> changedAt{};
  std::array<bool,12> deferred{};
+ std::array<bool,12> settled{}; // Exact constant lane; each new gesture invalidates it.
  std::array<float,4> steps{};
  ArpValues latched{};
  double sampleRate=48000,phase=0;

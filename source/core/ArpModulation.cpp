@@ -65,10 +65,11 @@ bool ArpModulation::prepare(double rate,const ArpModValues& values,std::uint64_t
  reset(firstFrame);return true;
 }
 void ArpModulation::reset(std::uint64_t firstFrame) noexcept {
- frame=firstFrame;phase=0;ramps={};deferred.fill(false);changedAt.fill(frame);oscillatorLanes={};frequencyAutomated=false;oscillatorFresh=true;
+ frame=firstFrame;phase=0;ramps={};deferred.fill(false);settled.fill(false);changedAt.fill(frame);oscillatorLanes={};frequencyAutomated=false;oscillatorFresh=true;
  last=start=target;std::copy_n(target.begin(),latched.size(),latched.begin());first=true;
 }
 void ArpModulation::retarget(std::size_t p,float value) noexcept {
+ settled[p]=false; // Equal-value gestures still retain their original boundary math.
  oldBoundary[p]=last[p]+(target[p]-last[p])*steps[0];
  deferred[p]=(double(frame)/sampleRate)*sampleRate>double(frame);
  start[p]=last[p];changedAt[p]=frame;target[p]=value;
@@ -85,6 +86,10 @@ bool ArpModulation::setTargets(const ArpModValues& values) noexcept {
  return true;
 }
 float ArpModulation::audioRate(std::size_t p) noexcept {
+ // Once the original timeline reaches the exact target, its recurrence is
+ // constant. Keep the last rendered Float32 (including signed zero); do not
+ // approximate convergence or skip any new/repeated automation gesture.
+ if(settled[p])return last[p];
  const float dest=target[p];auto& r=ramps[p];
  // A binary timestamp just above F starts at F+1. That leaves 127 samples,
  // so Chromium restarts its four-lane recurrence there and finishes the last
@@ -99,6 +104,7 @@ float ArpModulation::audioRate(std::size_t p) noexcept {
   }else r.base=last[p]+(dest-last[p])*steps[0];
   if(double(frame-changedAt[p])>10*.05f*sampleRate||
      std::abs(dest-r.base)<4.539992976248485e-05f*(dest==0?1:std::abs(r.base)))r.base=dest;
+  settled[p]=r.base==dest;
   r.phase=0;
   r.scalarFrom=128-((128-static_cast<unsigned>(frame%128))%4);
  }

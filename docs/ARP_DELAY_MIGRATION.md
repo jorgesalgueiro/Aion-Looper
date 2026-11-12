@@ -1,11 +1,39 @@
 # Arp Delay migration
 
+## Exact settled-automation fast path — 12 November 2026
+
+Active acceptance: preserve original automation/PCM and callback ownership while
+reducing redundant work after a parameter reaches its exact target. A lane may
+reuse its last rendered Float32 only after the existing timeline produces that
+exact target; no convergence threshold changes. Reset and every new/repeated
+gesture invalidate the flag, retaining boundary cancellation and deferred events.
+No product controls, presets, seed policy, dependencies or original assets change.
+
+The completed connected checkpoint below passed its software gates at `731b9c3`.
+Its first twenty-loop Q/C/A callback observations (48 kHz, 512 warm / 2048 measured)
+show limited headroom and retain all overruns:
+
+| OS / block | Mean / p99 / maximum, us | Deadline, us | Overruns |
+| --- | --- | --- | --- |
+| Windows / 64 | 1007.13 / 1203.7 / 1305 | 1333.33 | 0 |
+| Windows / 128 | 1953.62 / 2312.3 / 2745.3 | 2666.67 | 1 |
+| WSL / 64 | 900.388 / 1030.4 / 1888.7 | 1333.33 | 4 |
+| WSL / 128 | 1803.64 / 2639 / 3402.5 | 2666.67 | 17 |
+
+Windows was recorded on 10 November, Linux on 12 November after the prior usage-
+review failure prevented its launch. Both are wall-time observations, excluding
+devices, UI and round-trip latency; they do not identify scheduler versus DSP cost
+or establish reliable twenty-track deadlines. Logs are retained as
+`build/arp-connect-benchmark-{windows,linux}.log` in their respective checkouts.
+The fast path, original-fixture replays, affected tests and new timing observations
+are in progress. Product A remains disabled.
+
 ## Connected render settings and user-order routing — 10 November 2026
 
 Internal integration in progress; **product A remains disabled**. `ArpRenderSettings`
 contains twelve raw DSP targets, explicit fixture/caller seed and enabled state.
 It is not the original UI/preset/persistence schema, organic new-instance voicing,
-transport BPM adapter or product seed policy. Its unused factory baseline maps
+transport BPM adapter or product seed policy. Its factory baseline maps
 repetitions 2 to Float32 feedback `2 / 11.1`, preserving the original distinction
 from the raw worklet's .18 default. Existing presets/state/IDs/assets are unchanged.
 
@@ -51,9 +79,16 @@ owners at peak <=2.98023e-8 (unchanged 1e-6 limit). Callback new/delete watchers
 pass. Typed OOM/stale/mask/disable/DEL/DEL ALL/twenty-track installs, old-active
 cancellation and stopped-rate lifecycle cases pass. Retained preparation, storage
 and chain selection passed 4/4 (21.75s) before the final test-only extensions.
-The extended audible OOM case, full retained regressions, Linux/sanitizers and
-connected twenty-track callback observations remain in progress. Windows
-Standalone builds. No new original-JS audio math, UI controls or dependency change;
+The extended audible OOM and explicit live OD/SUB/MULT/scheduled-STOP controls pass
+on Windows/Linux, retaining the same PCM limit and unchanged STOP deadline.
+Linux ASan/UBSan/leaks and TSAN pass the connected/preparation pair (12.44s/20.69s);
+the subsequent live-controls test-only extension passes connected checks again
+(10.68s/17.73s). TSAN uses the documented process-only `setarch x86_64 -R`.
+Linux retained regressions pass **8/8 (312.66s)**, including the full core
+real-time contract (306.74s). Windows retained regressions pass **4/4 (865.81s)**,
+including the full core contract (854.46s); the separate focused selection passes
+4/4 (21.75s). Windows and Linux Standalone build. Connected twenty-track callback
+observations are recorded above. No new original-JS audio math, UI controls or dependency change;
 prior kernel/factory/browser evidence is reused for the unchanged DSP.
 
 Next after this internal gate: original control/preset conversion and shared
@@ -61,6 +96,40 @@ GUI/CLI/MIDI/versioned state, staged all-bank restore/OOM rollback, BPM semantic
 organic new-instance defaults and relevant UI/performance acceptance before A is
 enabled. This protocol is not cross-queue GUI ordering or atomic FX-bank restore.
 No package or push.
+
+Reproduction in existing caches (CMake regenerates for the added target):
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_core
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_connected_tests aion_arp_preparation_tests aion_arp_storage_tests aion_signal_chain_tests aion_eq_connected_tests aion_compressor_connected_tests aion_core_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_connected_contract|arp_preparation_contract|arp_delay_storage_contract|signal_chain_connected_contract|eq_connected_contract|compressor_connected_contract|core_realtime_contract|original_ui_bytes)$'
+cmake --build --preset windows-dev --parallel 2
+build/windows-core/Release/aion_arp_connected_tests.exe benchmark
+```
+
+After a local commit, use `SetupWslWorkspace.sh` as documented in
+DEVELOPMENT_WORKFLOW.md. In the native WSL checkout:
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_core
+cmake --build build/linux --parallel 2 --target aion_arp_connected_tests aion_arp_preparation_tests aion_arp_storage_tests aion_signal_chain_tests aion_eq_connected_tests aion_compressor_connected_tests aion_core_tests AionLooper_Standalone
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_connected_contract|arp_preparation_contract|arp_delay_storage_contract|signal_chain_connected_contract|eq_connected_contract|compressor_connected_contract|core_realtime_contract|original_ui_bytes)$'
+# Existing ASan/UBSan and TSAN cache flags are documented in the storage section.
+cmake --build build/overlap-asan --parallel 1 --target aion_core
+cmake --build build/overlap-asan --parallel 1 --target aion_arp_connected_tests aion_arp_preparation_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^(arp_connected_contract|arp_preparation_contract)$'
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_core
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_connected_tests aion_arp_preparation_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^(arp_connected_contract|arp_preparation_contract)$'
+build/linux/aion_arp_connected_tests benchmark
+```
+
+Logs: Windows `build/arp-connect-{focused,regression,regression-details,live,standalone}-windows.log`;
+native WSL `build/arp-connect-{build,ctest,live,asan-test,tsan-test,live-asan-test,live-tsan-test}-linux.log`.
+The broad regressions run at runtime source `70c575b`; `731b9c3` adds only stronger
+live-controls tests. No UI/bridge edits: reuse accepted Q/C-chain UI evidence;
+these internal tests do not validate product A interactions, Linux WebKit,
+physical drivers, listening, hardware MIDI or release readiness.
 
 Current DSP slice, 10 November 2026: native original worklet + automation/post-pan
 with approved zero-latency causal streaming. Bounded track storage and internal
