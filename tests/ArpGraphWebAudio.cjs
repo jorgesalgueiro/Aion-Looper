@@ -5,7 +5,11 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const {connect,close}=require('./ArpDelayWebAudio.cjs'),{original,factory,presets,hostDefaults,names,values}=require('./ArpDelayReference.cjs');
 const root=path.resolve(__dirname,'..'),source=fs.readFileSync(path.join(root,'resources/ui/Modules/effects.js'),'utf8');
 const smooth=source.match(/    static smoothSetParam\(audioParam, val, now, tc = 0.05\) \{[\s\S]*?\n    \}/)[0];
+function method(start,end){const a=source.indexOf(start),b=source.indexOf(end,a+start.length);assert(a>=0&&b>a,start);return source.slice(a,b).trim();}
+const presetMethods=[method('    static update(effectType, param, value) {','    static smoothSetParam('),method('    static updateLoopNode(','    static renderEffectsPanel('),method('    static applyGenericPreset(effectName, presetName) {','    /**')].join('\n');
+const presetHash=crypto.createHash('sha256').update(presetMethods).digest('hex');
 const args=process.argv.slice(2),option=name=>{const n=args.indexOf(name);return n<0?null:args[n+1];};
+for(let i=0;i<args.length;++i){if(args[i]==='--presets')continue;assert(['--probe','--fixtures','--save'].includes(args[i]),'Unknown graph oracle argument: '+args[i]);assert(args[++i],'Missing graph oracle option value');}
 const probe=option('--probe')||path.join(root,'build/windows-core/Release/aion_arp_probe.exe'),hash=crypto.createHash('sha256').update(original+'\n'+factory+'\n'+smooth).digest('hex');
 async function render(evaluate,rate,preset,channels,events,label){
  const initial=[...values(preset),preset.panSpeed??0,preset.panDepth??.8];initial[6]=137;
@@ -17,19 +21,27 @@ async function render(evaluate,rate,preset,channels,events,label){
   const observer=${JSON.stringify(`const originalProcess=ArpDelayProcessor.prototype.process;ArpDelayProcessor.prototype.process=function(inputs,outputs,parameters){this.port.postMessage([currentFrame,...${JSON.stringify(names)}.map(n=>parameters[n][0]),...${JSON.stringify(names)}.map(n=>parameters[n][parameters[n].length-1])]);return originalProcess.call(this,inputs,outputs,parameters);};`)};
   const url=URL.createObjectURL(new Blob([prefix,${JSON.stringify(original)},observer],{type:'text/javascript'}));
   try{
-   await ctx.audioWorklet.addModule(url);class Graph {${factory}} class Original {${smooth}}
+   await ctx.audioWorklet.addModule(url);class Graph {${factory}} class Original {${smooth}\n${presetMethods}}
+   const AudioEngine={get currentTime(){return ctx.currentTime;}};
    const graph=new Graph();graph.loop={params:{}};const buffer=ctx.createBuffer(channels,count,rate),input=[];
    for(let ch=0;ch<channels;++ch){const a=buffer.getChannelData(ch);for(let i=0;i<count;++i)a[i]=i>=count-4096?0:.15*Math.sin(i*(ch?.073:.117))+.05*Math.cos(i*(ch?.021:.037));input.push(Array.from(a));}
    const src=ctx.createBufferSource();src.buffer=buffer;const fx=graph._createArpDelay(src);assertFactory();function assertFactory(){if(fx.nodes.length!==4)throw Error('Original factory must create worklet/panner/oscillator/gain');}
+   graph.loop.params.arpDelay={...p};graph.loop.state='playing';graph.loop.activePresets={};graph.loop.graph={nodes:{effects:{arpDelay:fx.nodes}}};state.loops=[graph.loop];state.customEffects={};
+   Original.ARPDELAY_PRESETS=${JSON.stringify(presets)};Original.activeTab=0;Original.renderEffectsPanel=()=>{};
    const trace=[];fx.nodes[0].port.onmessage=e=>trace.push(e.data);fx.output.connect(ctx.destination);src.start();
-   const pauses=changes.map(e=>ctx.suspend(e[0]/rate)),applied=[],rendering=ctx.startRendering();
+   const pauses=changes.map(e=>ctx.suspend(e[0]/rate)),applied=[],presetGroups=[];
+   const params=names.map(n=>fx.nodes[0].parameters.get(n)).concat([fx.nodes[2].frequency,fx.nodes[3].gain]);
+   const originalSmooth=Original.smoothSetParam;Original.smoothSetParam=function(param,v,now,tc){const index=params.indexOf(param);if(index<0)throw Error('Unexpected preset AudioParam');applied.push([Math.round(now*rate),index,v]);return originalSmooth.call(this,param,v,now,tc);};
+   const rendering=ctx.startRendering();
    for(let i=0;i<changes.length;++i){await pauses[i];const [requested,p,v]=changes[i],now=ctx.currentTime;
-    const param=p<10?fx.nodes[0].parameters.get(names[p]):p===10?fx.nodes[2].frequency:fx.nodes[3].gain;
-    applied.push([Math.round(now*rate),p,v]);Original.smoothSetParam(param,v,now);await ctx.resume();}
+    if(typeof p==='string'){
+     state.bpm=v;const begin=applied.length;Original.applyGenericPreset('arpDelay',p);const writes=applied.slice(begin);if(writes.length!==22||graph.loop.activePresets.arpDelay!==p)throw Error('Original preset did not apply all writes');
+     const target=Array(12);for(const [,index,value]of writes)target[index]=Math.fround(value);if(target.some(v=>!Number.isFinite(v)))throw Error('Incomplete preset targets');presetGroups.push([Math.round(now*rate),target]);
+    }else Original.smoothSetParam(params[p],v,now);await ctx.resume();}
    const output=await rendering;
    for(let n=0;n<100&&trace.length<count/128;++n)await new Promise(r=>setTimeout(r,10));
    if(trace.length!==count/128)throw Error('Incomplete test-only worklet parameter observation');
-   return {rate,channels,input,events:applied,trace,pcm:[Array.from(output.getChannelData(0)),Array.from(output.getChannelData(1))]};
+   return {rate,channels,input,events:applied,presetGroups,trace,pcm:[Array.from(output.getChannelData(0)),Array.from(output.getChannelData(1))]};
   }finally{URL.revokeObjectURL(url);}
  })()`),initial,label};
 }
@@ -37,7 +49,8 @@ function compare(test,block){
  const commands=[`graphprepare ${test.rate} 123456789 ${test.initial.map(Math.fround).join(' ')}`],expected=[null];let frame=0;
  const count=test.pcm[0].length;
  function part(end){if(end===frame)return;commands.push(`graphrender ${end-frame} ${test.channels} ${block} `+Array.from({length:end-frame},(_,i)=>test.input.map(ch=>ch[frame+i]).join(' ')).join(' '));expected.push([frame,end]);frame=end;}
- for(const [frame,p,value]of test.events){part(frame);commands.push(`graphtarget ${p} ${Math.fround(value)}`);expected.push(null);}part(count);
+ if(test.presetGroups?.length){for(const [at,targets]of test.presetGroups){part(at);commands.push(`graphpreset ${targets.join(' ')}`);expected.push(null);}}
+ else for(const [at,p,value]of test.events){part(at);commands.push(`graphtarget ${p} ${Math.fround(value)}`);expected.push(null);}part(count);
  const run=spawnSync(probe,[],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:40*1024*1024});assert.equal(run.status,0,run.stderr);
  const lines=run.stdout.trim().split(/\r?\n/);assert.equal(lines.length,expected.length);let peak=0,energy=0,errorEnergy=0,location=[];
  for(let line=0;line<lines.length;++line){const segment=expected[line];if(!segment){assert.equal(lines[line],'ok');continue;}
@@ -51,9 +64,15 @@ function compare(test,block){
 (async()=>{
  try{
   let data;const fixture=option('--fixtures');
-  if(fixture){data=JSON.parse(fs.readFileSync(fixture));assert.equal(data.version,1);assert.equal(data.sourceHash,hash,'Unchanged original factory/worklet/automation must match');}
+  if(fixture){data=JSON.parse(fs.readFileSync(fixture));assert.equal(data.version,1);assert.equal(data.sourceHash,hash,'Unchanged original factory/worklet/automation must match');if(data.presetMethodsHash)assert.equal(data.presetMethodsHash,presetHash,'Unchanged original preset/update methods must match');}
   else{
    const {evaluate,browser}=await connect();data={version:1,sourceHash:hash,browser,tests:[]};
+   if(args.includes('--presets')){
+    data.presetMethodsHash=presetHash;
+    const changes=Object.keys(presets).map((name,i)=>[4096+i*6144,name,i%2?137.123456789:173.123456789]);
+    changes.push([57344,'chromatic-descent',173.123456789],[57472,'chromatic-descent',173.123456789]);
+    for(const rate of [8000,22050,44100,48000,96000])data.tests.push(await render(evaluate,rate,{...hostDefaults,time:.012,panSpeed:1.3,humanize:.7},2,changes,'live original preset batches'));
+   }else{
    for(const rate of [8000,22050,32000,44100,48000,96000])data.tests.push(await render(evaluate,rate,hostDefaults,2,[],'original factory defaults'));
    for(const [label,preset]of Object.entries(presets))data.tests.push(await render(evaluate,48000,preset,2,[],label));
    data.tests.push(await render(evaluate,48000,{...hostDefaults,panSpeed:5,panDepth:1},1,[],'mono into original stereo worklet + fast pan'));
@@ -64,7 +83,8 @@ function compare(test,block){
    const upper=[4,.98,1,1,19,1,300,2,3,1,5,1],minimum=[.01,0,0,0,0,0,30,0,.25,0,0,0];
    const bounds=upper.map((v,p)=>[256+p*128,p,v]).concat(minimum.map((v,p)=>[20480+p*128,p,v]));
    for(const rate of [8000,48000])data.tests.push(await render(evaluate,rate,lower,2,bounds,'AudioParam nominal endpoints/cancellation'));
-   fs.writeFileSync(option('--save')||path.join(root,'build/arp-graph-browser-fixtures.json'),JSON.stringify(data));
+   }
+   fs.writeFileSync(option('--save')||path.join(root,args.includes('--presets')?'build/arp-preset-browser-fixtures.json':'build/arp-graph-browser-fixtures.json'),JSON.stringify(data));
   }
   let maximum=0,frames=0;for(const test of data.tests)for(const block of [64,128,37]){const result=compare(test,block);maximum=Math.max(maximum,result.peak);frames+=result.frames;}
   console.log(JSON.stringify({result:'PASS',scope:'Combined original factory/worklet/automation/pan PCM; causal wake-up separately approved/tested, no Engine/GUI/device claim',fixtures:data.tests.length,comparisons:data.tests.length*3,stereoFrames:frames,maximumAbsoluteError:maximum,browser:data.browser.product}));

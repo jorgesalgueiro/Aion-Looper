@@ -39,6 +39,13 @@ static void compileProbe(){
   std::cout<<"{\"ok\":true,\"mask\":"<<renderMask<<",\"seed\":"<<result.seed<<",\"enabled\":"<<(result.enabled?"true":"false")<<",\"values\":";printValues(result.values);std::cout<<"}\n";
  }
 }
+static void presetWritesProbe(){
+ double bpm;unsigned preset;
+ while(std::cin>>bpm>>preset){ArpSettings s;s.enabled=true;ArpRenderSettings render;
+  if(!applyArpPreset(s,preset)||!compileArpSettings(s,bpm,123,render)){std::cout<<"null\n";continue;}
+  std::cout<<'[';bool first=true;for(const auto& write:arpPresetWrites(render)){if(!first)std::cout<<',';first=false;std::cout<<'['<<write.parameter<<','<<write.value<<']';}std::cout<<"]\n";
+ }
+}
 static void unit(){
  ArpSettings s;check(validArpSettings(s)&&!s.enabled&&!s.preset,"disabled reference defaults");
  ArpRenderSettings out;out.seed=19;
@@ -89,5 +96,6 @@ static void engineContract(unsigned block){
 int main(int argc,char** argv){std::cout<<std::setprecision(17);
  if(argc==2&&std::string_view(argv[1])=="catalog"){catalog();return 0;}
  if(argc==2&&std::string_view(argv[1])=="compile"){compileProbe();return 0;}
+ if(argc==2&&std::string_view(argv[1])=="preset-writes"){presetWritesProbe();return 0;}
  check(argc==1,"settings test arguments");unit();for(unsigned block:{64u,128u})engineContract(block);
 }

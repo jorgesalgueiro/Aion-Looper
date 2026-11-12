@@ -34,4 +34,12 @@ bool compileArpSettings(const ArpSettings&,double bpm,std::uint32_t seed,ArpRend
 // Every original parameter edit, even pan or an equal-value edit, retargets BPM.
 // A zero mask denotes no parameter gesture, e.g. a standalone enabled toggle.
 bool arpRenderMask(std::uint32_t controlMask,std::uint32_t& renderMask) noexcept;
+struct ArpControlWrite {unsigned parameter=0;float value=0;bool operator==(const ArpControlWrite&) const noexcept=default;};
+// Original Object.entries(preset) order: each control write is immediately
+// followed by BPM, even for equal values. This is one synchronous gesture.
+constexpr std::array<ArpControlWrite,22> arpPresetWrites(const ArpRenderSettings& settings) noexcept {
+ std::array<ArpControlWrite,22> writes{};
+ for(unsigned p=0;p<arpControls.size();++p){const auto index=arpControls[p].renderIndex;writes[p*2]={index,settings.values[index]};writes[p*2+1]={6,settings.values[6]};}
+ return writes;
+}
 }

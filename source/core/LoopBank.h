@@ -79,7 +79,7 @@ public:
                            bool activate=false,std::uint64_t settingsRevision=0,std::uint32_t request=0) noexcept;
     void cancelArpStorage(unsigned id) noexcept {if(id<trackCount){cancelArpBank();arpStorage->cancel(id);pendingArpSettings[id]={};}}
     bool setArp(unsigned id,const ArpRenderSettings&,std::uint32_t mask,std::uint32_t request,
-                std::uint64_t clearEpoch,std::uint64_t settingsRevision) noexcept;
+                std::uint64_t clearEpoch,std::uint64_t settingsRevision,bool preset=false) noexcept;
     using ArpBank=ArpDelayStorage::Bank;
     using ArpEpochs=std::array<std::uint64_t,trackCount>;
     enum class ArpBankStatus {none,pending,ready,failed,cancelled};

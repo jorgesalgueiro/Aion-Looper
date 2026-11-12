@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "LoopBank.h"
+#include "ArpSettings.h"
 #include <limits>
 namespace aion {
 bool LoopBank::requestArpBank(const ArpBank& settings,const ArpEpochs& epochs,const ArpEpochs& revisions,std::uint32_t request) noexcept {
@@ -50,9 +51,10 @@ void LoopBank::pollArps() noexcept {
  }
 }
 bool LoopBank::setArp(unsigned id,const ArpRenderSettings& settings,std::uint32_t mask,std::uint32_t request,
-                      std::uint64_t epoch,std::uint64_t revision) noexcept {
+                      std::uint64_t epoch,std::uint64_t revision,bool preset) noexcept {
  if(id>=trackCount||!validArpRenderSettings(settings)||(mask&~arpAllParameters)||epoch!=tracks[id].clearEpoch)return false;
  auto& info=tracks[id].info;
+ if(preset&&(mask!=arpAllParameters||settings.enabled!=info.arp.enabled))return false;
  if(revision!=info.arpSettingsRevision||revision==UINT64_MAX||settings.seed!=info.arp.seed)return false;
  for(unsigned p=0;p<12;++p)if(!(mask&(1u<<p))&&settings.values[p]!=info.arp.values[p])return false;
  // An enable is asynchronous and MUST use a matching prepared transaction.
@@ -62,7 +64,8 @@ bool LoopBank::setArp(unsigned id,const ArpRenderSettings& settings,std::uint32_
   // Validate before touching any lane. Each selected bit remains a gesture,
   // including an equal-value retarget; never restart unselected automation.
   if(graph->position()==UINT64_MAX)return false;
-  for(unsigned p=0;p<12;++p)if(mask&(1u<<p))(void)graph->setTarget(p,settings.values[p]);
+  if(preset){for(const auto& write:arpPresetWrites(settings))(void)graph->setTarget(write.parameter,write.value);}
+  else for(unsigned p=0;p<12;++p)if(mask&(1u<<p))(void)graph->setTarget(p,settings.values[p]);
  }else{
   cancelArpBank();arpStorage->clear(id);pendingArpSettings[id]={}; // Worker reclaims; never delete here.
  }

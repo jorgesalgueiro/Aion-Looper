@@ -1,5 +1,79 @@
 # Arp Delay migration
 
+## Ordered original preset gesture — 12 November 2026
+
+Before message-owned state/preset integration, resolve the old compiler handoff's
+unverified same-time preset trajectory. Acceptance defined before editing:
+execute original `applyGenericPreset`/`update`/`updateLoopNode` unchanged; preserve
+Object.entries order and repeated BPM writes; atomically admit and apply the
+entire gesture without callback allocation or replacing delay/STAY/LFO storage.
+Invalid/stale/full-queue cases must preserve all old automation, not just metadata.
+
+`arpPresetWrites` produces the original eleven control/BPM pairs. The typed
+`Engine::enqueueArpPreset` compiles the original double controls/catalog and uses
+one existing performance FIFO entry. `LoopBank::setArp` validates epoch/revision,
+seed, mask, enable state and all values before its fixed 22-write path. One
+logical settings revision is committed afterward. A preset neither toggles A
+nor changes its seed. Raw single-control commands retain their old behavior.
+No new action/parameter IDs, default sound, session schema, preserved asset or
+product GUI/CLI/MIDI surface changes. A remains disabled until full integration.
+
+| Reference behavior | Native status | Evidence / remaining gap |
+| --- | --- | --- |
+| Eight original named presets, ordered eleven edits plus eleven BPM writes | One command preserves all 22 writes, including equal values | 56 unchanged-JS cases / 1232 exact ordered Float32 writes |
+| Synchronous preset application | One FIFO entry and one dispatch budget slot | Whole preset applies at its sample deadline after 127 older commands; no cross-callback prefix |
+| Persistent active effect | Controls update existing graph, no prepare/reset | Exact nonzero Engine stereo PCM and graph state versus eleven scheduled edits at 8/48 kHz, 64/128 |
+| Repeated same-time BPM automation | Retain repeated retargets | Frame-14 / 48 kHz deferred-anchor regression distinguishes ordered writes from collapsed targets |
+| Invalid/stale/full queue | Prevalidate before mutation; reject complete gesture | Epoch/revision/seed/enable/mask/BPM/catalog rejection, last-slot/full FIFO, prepare cleanup and disabled controls |
+| Original sound | Actual original methods in offline WebView2 plus native batch graph | 50 preset transitions including repeated presets, five rates, 15 comparisons; peak 6.70552e-8 <=1e-6, relative RMS <=1e-5 |
+| Message-owned intent, saved preset name, UI/CLI/MIDI and full state restore | Still pending | The helper reports admission only; exact acknowledgement, rollback and Q/C/chain restore coordination remain required |
+
+Windows tests pass: focused **4/4 (7.15s)**, retained Arp ownership/connected/assets
+**5/5 (39.16s)** and extended preset **1/1 (4.08s)**. Standalone builds. Linux and
+sanitizer checks are pending this candidate snapshot. The broader pre-existing
+core evidence at `6654944` is retained; no unrelated suite is repeated here.
+
+The browser launcher originally used scalar-string splatting, which passed
+characters instead of `--presets`. Its old 63-case graph run passed (peak
+2.38419e-7); retain that log. A typed argument array plus strict JS option checking
+fix the harness, then the intended 15-case preset audio matrix passes. The fixture
+records hashes for original worklet/factory/smoothing AND preset/update methods.
+No tolerances or original sources were changed. This is test-only OfflineAudioContext
+sound evidence, not a product AudioContext, GUI interaction or physical-device test.
+
+Reproduction in existing caches:
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_core
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_preset_tests aion_arp_settings_tests aion_arp_probe aion_arp_bank_tests aion_arp_preparation_tests aion_arp_connected_tests aion_arp_storage_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_preset_contract|original_arp_preset_order|arp_settings_contract|original_arp_settings_contract|arp_bank_contract|arp_preparation_contract|arp_connected_contract|arp_delay_storage_contract|original_ui_bytes)$'
+cmake --build build/windows --config Release --parallel 2 --target AionLooper_Standalone aion_effects_browser_host
+./tools/TestArpDelayWebAudio.ps1 -Presets
+```
+
+Commit/sync with `SetupWslWorkspace.sh` before native WSL builds. Transfer only
+the generated browser fixture into the Linux build directory for replay:
+
+```sh
+cd /home/jorge/projects/Aion-Looper
+cmake --build build/linux --parallel 2 --target aion_core
+cmake --build build/linux --parallel 2 --target aion_arp_preset_tests aion_arp_settings_tests aion_arp_probe aion_arp_bank_tests aion_arp_preparation_tests aion_arp_connected_tests aion_arp_storage_tests AionLooper_Standalone
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_preset_contract|original_arp_preset_order|arp_settings_contract|original_arp_settings_contract|arp_bank_contract|arp_preparation_contract|arp_connected_contract|arp_delay_storage_contract|original_ui_bytes)$'
+cp /mnt/d/Jorge/Documents/Codex/Aion-Looper/build/arp-preset-browser-fixtures.json build/arp-preset-browser-fixtures.json
+node tests/ArpGraphWebAudio.cjs --probe build/linux/aion_arp_probe --fixtures build/arp-preset-browser-fixtures.json
+cmake --build build/overlap-asan --parallel 1 --target aion_core
+cmake --build build/overlap-asan --parallel 1 --target aion_arp_preset_tests aion_arp_bank_tests aion_arp_connected_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^(arp_preset_contract|arp_bank_contract|arp_connected_contract)$'
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_core
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_preset_tests aion_arp_bank_tests aion_arp_connected_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^(arp_preset_contract|arp_bank_contract|arp_connected_contract)$'
+```
+
+Logs: `build/arp-preset-*-windows.log` and matching native WSL logs. Next: validate
+this snapshot on Linux; then original message-owned settings, exact request/track
+acknowledgement, rollback and coordinated native restore. Keep product A disabled.
+No package/push.
+
 ## Atomic Arp-only bank transaction — 12 November 2026
 
 Runtime `6654944`, extended tests `9355190`, after `44ef94a`;

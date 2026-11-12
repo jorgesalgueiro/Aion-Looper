@@ -2,6 +2,7 @@
 #include "core/ArpDelay.h"
 #include "core/ArpModulation.h"
 #include "core/ArpDelayGraph.h"
+#include "core/ArpSettings.h"
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
@@ -35,6 +36,11 @@ int main(){
    std::cout<<(graph.prepare(rate,values,seed)?"ok":"rejected")<<'\n';
   }else if(operation=="graphtarget"){
    unsigned p;float value;if(!(std::cin>>p>>value))return 2;std::cout<<(graph.setTarget(p,value)?"ok":"rejected")<<'\n';
+  }else if(operation=="graphpreset"){
+   aion::ArpRenderSettings settings;for(auto& v:settings.values)if(!(std::cin>>v))return 2;
+   if(!aion::validArpRenderSettings(settings)){std::cout<<"rejected\n";continue;}
+   bool ok=true;for(const auto& write:aion::arpPresetWrites(settings))ok=graph.setTarget(write.parameter,write.value)&&ok;
+   std::cout<<(ok?"ok":"rejected")<<'\n';
   }else if(operation=="graphreset"){
    std::uint32_t seed;std::uint64_t frame;if(!(std::cin>>seed>>frame))return 2;std::cout<<(graph.reset(seed,frame)?"ok":"rejected")<<'\n';
   }else if(operation=="modprepare"){

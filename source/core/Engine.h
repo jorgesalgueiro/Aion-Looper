@@ -3,6 +3,7 @@
 #include "core/Transport.h"
 #include "core/OutputLatency.h"
 #include "core/LoopBank.h"
+#include "core/ArpSettings.h"
 #include "core/Metronome.h"
 #include "core/CountIn.h"
 #include "core/LiveInput.h"
@@ -35,6 +36,7 @@ struct LoopCommand {
     ArpRenderSettings arp{};
     std::uint32_t arpMask=arpAllParameters;
     std::uint64_t arpClearEpoch=0,arpSettingsRevision=0;
+    bool arpPreset=false; // Internal ordered 22-write gesture; not a product preset ID.
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct ExportRequest {std::uint32_t track=0,generation=0;std::uint64_t waveformId=0;};
@@ -106,6 +108,10 @@ public:
     void setMetronome(bool enabled,float volume) noexcept {metronome.setEnabled(enabled);metronome.setVolume(volume);}
     void setAutoPlay(bool enabled) noexcept { loops.setAutoPlay(enabled); }
     bool enqueueLoop(LoopCommand command) noexcept;
+    // Sole message owner. Compile original controls; one FIFO entry admits the
+    // complete preset and consumes one dispatch budget slot, never a prefix.
+    // Caller supplies arpDelay identity/epoch/revision/frame and explicit seed.
+    bool enqueueArpPreset(LoopCommand,const ArpSettings&,double bpm) noexcept;
     bool enqueueEqBank(const std::array<EqSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;
     bool enqueueEffectsBank(const std::array<EqSettings,LoopBank::trackCount>&,
                             const std::array<CompressorSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;

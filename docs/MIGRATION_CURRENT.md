@@ -11,6 +11,38 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Ordered original Arp preset candidate — 12 November 2026
+
+The message-owner prerequisite audit found that original `applyGenericPreset`
+performs eleven control edits, each followed by BPM. Native presets now compile
+from `ArpSettings` into **one** bounded FIFO command that executes those 22 writes
+in order, with one logical settings revision. Complete validation precedes live
+automation mutation; full queues reject the whole gesture. The preset cannot
+toggle A or replace its seed/storage. Persistent delay/STAY/LFO and editable chain
+semantics remain unchanged. Product A is still disabled; this is a shared Engine
+entry point for future GUI/CLI integration, not a visible preset/state feature.
+
+Windows converter/preset/original-JS checks pass **4/4 (7.15s)**, retained
+connected/storage/preparation/bank/original assets **5/5 (39.16s)**, and the final
+boundary extension **1/1 (4.08s)**. Actual unchanged original preset/update/factory/
+worklet methods in WebView2 pass **15** sound comparisons at 8/22.05/44.1/48/96 kHz,
+64/128/37 partitions: maximum **6.70552e-8**, unchanged 1e-6 peak / 1e-5 relative
+RMS limits. Engine stereo PCM/state is exact against eleven original-style
+scheduled controls at 64/128, including 127 older dispatch entries, stale guards,
+queue exhaustion, disabled presets and zero watched callback new/delete. The
+frame-14 modulation regression proves repeated BPM is not a single final retarget.
+Windows Standalone builds; Linux/sanitizer validation is pending this snapshot.
+
+The browser launcher initially splatted a scalar string as characters and ran
+the older graph matrix (63 comparisons passed). It now uses a typed argument array
+and rejects unknown JS options; the intended preset matrix was then executed.
+No original assets or old tolerances changed. Full prior core evidence is reused:
+only the affected Arp paths/suites are rerun for this internal addition.
+Next: finish candidate validation, then message-owned original settings with
+exact per-track acknowledgement/rollback and ordered native state integration.
+Do not enable A before shared GUI/CLI, MIDI, state, BPM and new-instance voicing
+acceptance. No package/push. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md).
+
 ### Atomic Arp-only bank checkpoint — 12 November 2026
 
 The internal Engine can now stage all twenty Arp render settings/graphs and

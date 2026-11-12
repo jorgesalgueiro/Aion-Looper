@@ -37,7 +37,7 @@ bool Engine::enqueueLoop(LoopCommand command) noexcept {
     if(command.action==LoopAction::equalizer&&(!validEqSettings(command.equalizer)||(command.eqMask&~eqAllParameters)))return false;
     if(command.action==LoopAction::compressor&&(!validCompressorSettings(command.compressor)||(command.compressorMask&~compressorAllParameters)))return false;
     if(command.action==LoopAction::signalChain&&!validSignalChain(command.signalChain))return false;
-    if(command.action==LoopAction::arpDelay&&(!validArpRenderSettings(command.arp)||(command.arpMask&~arpAllParameters)))return false;
+    if(command.action==LoopAction::arpDelay&&(!validArpRenderSettings(command.arp)||(command.arpMask&~arpAllParameters)||(command.arpPreset&&command.arpMask!=arpAllParameters)))return false;
     if(isMeterCommand(command.action)&&!command.meterGraphTicket)return false;
     if((command.action==LoopAction::meterQueuedWindowStart||command.action==LoopAction::meterQueuedWindowRequest||command.action==LoopAction::meterQueuedGraphRequest)
         &&(command.frame||!command.meterQueueId||!command.meterBufferId))return false;
@@ -198,7 +198,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
                     !(pendingLoop.action==LoopAction::equalizer
                       ?loops.setEqualizer(pendingLoop.track,pendingLoop.equalizer,pendingLoop.eqMask,pendingLoop.requestId,pendingLoop.eqClearEpoch,pendingLoop.eqCheckEpoch)
                       :pendingLoop.action==LoopAction::arpDelay
-                      ?loops.setArp(pendingLoop.track,pendingLoop.arp,pendingLoop.arpMask,pendingLoop.requestId,pendingLoop.arpClearEpoch,pendingLoop.arpSettingsRevision)
+                      ?loops.setArp(pendingLoop.track,pendingLoop.arp,pendingLoop.arpMask,pendingLoop.requestId,pendingLoop.arpClearEpoch,pendingLoop.arpSettingsRevision,pendingLoop.arpPreset)
                       :pendingLoop.action==LoopAction::signalChain
                       ?loops.setSignalChain(pendingLoop.track,pendingLoop.signalChain,pendingLoop.requestId,pendingLoop.chainClearEpoch,pendingLoop.chainCheckEpoch)
                       :pendingLoop.action==LoopAction::compressor
