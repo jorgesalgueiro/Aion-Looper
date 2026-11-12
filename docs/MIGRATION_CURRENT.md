@@ -11,6 +11,18 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Arp control/preset compiler checkpoint — 12 November 2026
+
+Current internal slice: original eleven double-precision controls, eight preset
+names/values and twenty scale labels -> accepted raw render settings. Preserve
+repetitions / 11.1 before Float32 conversion and the original per-edit BPM target.
+The 2157-case unchanged-JS target/mask oracle and actual Engine preparation/edits
+at 64/128 are the focused gates. Product A stays disabled; no GUI/CLI/MIDI/state
+surface is being presented as complete. Original assets/IDs/session formats and
+approved organic-voicing scope are unchanged. Windows/Linux final checks and
+sanitizers are in progress. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md)
+for the compact parity checklist, accepted-domain/legacy limits and next step.
+
 ### Arp exact-processing optimizations accepted — 12 November 2026
 
 Connected checkpoint runtime `70c575b`, stronger live-state tests `731b9c3`:

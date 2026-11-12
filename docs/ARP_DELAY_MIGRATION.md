@@ -1,5 +1,53 @@
 # Arp Delay migration
 
+## Original control/preset compiler — 12 November 2026
+
+Next internal prerequisite after `f974d35`; **product A remains disabled**. This
+slice defines the original eleven named controls, eight named presets and twenty
+scale labels, and compiles them to the accepted twelve-target render model. It
+does not enable GUI/CLI/MIDI, serialize a session, choose organic defaults/seeds,
+or change the processor's restore/routing implementation. Future GUI/CLI commands
+must share this converter and the existing processor/DSP owner.
+
+Acceptance defined before implementation: compare original default/preset values,
+widget limits, factory targets and live edit target selection without changing
+original methods. Retain JS decimal precision until the DSP boundary; each
+original parameter edit also retargets BPM. Invalid settings, masks, edits or BPM
+leave the previous output intact. Exercise compiled presets/edits through the
+existing Engine storage adoption at 64/128 with zero watched callback new/delete.
+
+| Reference behavior | Native checkpoint | Verification / remaining gap |
+| --- | --- | --- |
+| Eleven decimal controls; repetitions / 11.1 | `ArpSettings` stores doubles, `compileArpSettings` converts once to Float32 | Exact factory/live targets; 9.9 catches premature Float32 storage |
+| Eight preset names/values; manual edits clear selection | Stable 1..8 catalog, Custom/default 0; preset application retains enabled state | Unchanged `applyGenericPreset` final values/selection; full live batch trajectories pending |
+| Widget bounds vs wider worklet domain | Time 2s / stored 4s, amplitude 1.5 / stored 2; canonical checkbox 0/1, fractional scale preserved | Original markup/factory comparisons; not a legacy-project importer |
+| Every knob/toggle edit also writes BPM | Control-to-render mask includes BPM for each nonzero gesture; zero mask stays zero | All 2048 masks; original live handlers for every control |
+| Per-loop accepted settings/storage ownership | Compiled settings enter existing typed preparation and revision/epoch-guarded edits | All eight presets and 176 edits at 64/128; prior sound/ownership gates retained |
+
+`ArpSettings` is separate from `ArpRenderSettings`: BPM and a caller-provided seed
+are external inputs, not additional stored controls. BPM is limited to the original
+AudioParam nominal 30..300 target range; this does not change transport/stored BPM
+or implement master-tempo events. Source master-tempo changes use immediate
+`setValueAtTime`, while control edits retarget it; that adapter remains pending.
+Original preset batches issue repeated same-time BPM gestures; the target mask is
+not proof of their complete automation trajectory or cross-queue command order.
+
+The settings validator deliberately covers the known native domain, including
+the wider time/amplitude domain and finite decimals. Arbitrary legacy out-of-domain
+or non-binary truthy checkbox data is not accepted by this helper. No existing
+project/state parser uses it; investigate legacy imports before adding one and
+never silently discard/clamp stored data. Organic new-instance defaults remain
+separate from this faithful reference baseline. Original assets, IDs, presets and
+session versions remain untouched.
+
+Windows initial unit checks pass. The unchanged-JS oracle has 2157 cases: original
+factory construction, live `update`/`updateLoopNode`, preset application, all masks,
+nominal BPM bounds, wider stored endpoints and decimal repetition cases. The
+initial oracle wrapper failed because a trailing source comment swallowed its
+class terminator; only the wrapper newline was repaired. Keep
+`build/arp-settings-reference-windows.log` as the failed harness observation.
+Final Windows/Linux acceptance and sanitizer results follow in the handoff.
+
 ## Exact settled-automation fast path — 12 November 2026
 
 Active acceptance: preserve original automation/PCM and callback ownership while
