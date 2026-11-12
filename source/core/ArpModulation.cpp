@@ -87,7 +87,7 @@ bool ArpModulation::setTargets(const ArpModValues& values) noexcept {
 }
 float ArpModulation::audioRate(std::size_t p) noexcept {
  // Once the original timeline reaches the exact target, its recurrence is
- // constant. Keep the last rendered Float32 (including signed zero); do not
+ // constant. Keep the last rendered Float32; do not
  // approximate convergence or skip any new/repeated automation gesture.
  if(settled[p])return last[p];
  const float dest=target[p];auto& r=ramps[p];
@@ -104,7 +104,9 @@ float ArpModulation::audioRate(std::size_t p) noexcept {
   }else r.base=last[p]+(dest-last[p])*steps[0];
   if(double(frame-changedAt[p])>10*.05f*sampleRate||
      std::abs(dest-r.base)<4.539992976248485e-05f*(dest==0?1:std::abs(r.base)))r.base=dest;
-  settled[p]=r.base==dest;
+  // A negative-zero target has -0 in the quantum's first lane and +0 in
+  // subsequent lanes. Retain that original path instead of holding its sign.
+  settled[p]=r.base==dest&&!std::signbit(dest);
   r.phase=0;
   r.scalarFrom=128-((128-static_cast<unsigned>(frame%128))%4);
  }

@@ -7,7 +7,11 @@ reducing redundant work after a parameter reaches its exact target. A lane may
 reuse its last rendered Float32 only after the existing timeline produces that
 exact target; no convergence threshold changes. Reset and every new/repeated
 gesture invalidate the flag, retaining boundary cancellation and deferred events.
-No product controls, presets, seed policy, dependencies or original assets change.
+Negative-zero targets retain the original recurrence: its first quantum lane is
+negative zero, later lanes positive zero. A new 256-frame bit-sign regression
+failed the initial shortcut and passes after this exclusion; keep
+`build/arp-settled-zero-negative-windows.log`. No product controls, presets, seed
+policy, dependencies or original assets change.
 
 The completed connected checkpoint below passed its software gates at `731b9c3`.
 Its first twenty-loop Q/C/A callback observations (48 kHz, 512 warm / 2048 measured)
@@ -20,13 +24,19 @@ show limited headroom and retain all overruns:
 | WSL / 64 | 900.388 / 1030.4 / 1888.7 | 1333.33 | 4 |
 | WSL / 128 | 1803.64 / 2639 / 3402.5 | 2666.67 | 17 |
 
-Windows was recorded on 10 November, Linux on 12 November after the prior usage-
-review failure prevented its launch. Both are wall-time observations, excluding
+Windows was recorded on 10 November, Linux on 12 November. Both are wall-time observations, excluding
 devices, UI and round-trip latency; they do not identify scheduler versus DSP cost
 or establish reliable twenty-track deadlines. Logs are retained as
 `build/arp-connect-benchmark-{windows,linux}.log` in their respective checkouts.
-The fast path, original-fixture replays, affected tests and new timing observations
-are in progress. Product A remains disabled.
+Fast-path source `1444050`: Windows 5/5 (37.24s) plus storage/preparation 2/2
+(14.78s); Linux 7/7 (32.87s). Both OSes replay all 22 modulation fixtures / 66
+comparisons and 21 combined factory fixtures / 63 comparisons, preserving the
+original limits: max parameter error 0, audio peaks 2.27243e-7 / 2.38419e-7.
+These replay recorded original WebView2 audio, not Linux WebKit or new UI checks.
+Linux ASan/UBSan/leaks 5/5 (34.06s), TSAN 3/3 (24.24s), no diagnostics. Both
+Standalones build. The negative-zero exclusion subsequently passes affected
+Windows connected/kernel/stream tests 3/3 (5.99s); Linux verification and final
+timing are in progress. Product A remains disabled.
 
 ## Connected render settings and user-order routing — 10 November 2026
 

@@ -26,6 +26,12 @@ static void modulation(){
  ArpModulation anchor;ArpControlFrame observed;
  check(anchor.prepare(96000)&&anchor.next(observed)&&anchor.setTarget(9,1)&&anchor.next(observed)&&
        observed.parameters[9]==.35000002384185791015625f,"original AudioParam Float32 anchor cancellation");
+ // Negative zero has a distinct first SIMD lane at each quantum. Do not turn
+ // its later positive-zero lanes into a held negative-zero value.
+ ArpModulation zeros;auto zeroValues=arpModDefaults();zeroValues[2]=-0.f;
+ check(zeros.prepare(48000,zeroValues),"signed-zero automation prepare");
+ for(unsigned f=0;f<256;++f){watch=true;check(zeros.next(observed),"signed-zero automation next");watch=false;
+  check(observed.parameters[2]==0&&std::signbit(observed.parameters[2])==(f%128==0),"original signed-zero lane boundaries");}
  for(double rate:{8000.,22050.,32000.,44100.,48000.,96000.,192000.,384000.}){
   ArpModulation a,b;auto values=arpModDefaults();values[10]=5;
   check(a.prepare(rate,values)&&b.prepare(rate,values),"modulation prepare");
