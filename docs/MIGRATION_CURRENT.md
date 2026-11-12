@@ -33,6 +33,12 @@ build. Recorded original WebView2 modulation/factory fixtures pass on both OSes:
 WebKit/device/UI validation. The final quantum change repeats factory acceptance;
 modulation math is unchanged after its signed-zero-safe check.
 
+Test-only follow-up `f9d9059` first renders the old fully-wet graph before reset,
+so the frame-37 regression cannot pass merely by retaining prepare's fresh flag.
+Windows extended stream executable passes; Linux 1/1 (1.49s) and ASan/UBSan/leaks
+1/1 (15.13s) pass. Logs: `build/arp-quantum-final-restart*` on the relevant OS.
+Runtime remains `2695768`; no further runtime edits after the recorded checks.
+
 Final quiet twenty-loop Q/C/A, 48 kHz, 512 warm / 2048 measured callbacks:
 Windows 64/128 mean 883.426/1745.88us, max 1180.6/2320.2us; WSL mean
 807.894/1682.71us, max 1100.06/2264.38us. Zero observed overruns in these runs;
