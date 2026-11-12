@@ -2,7 +2,8 @@
 
 ## Atomic Arp-only bank transaction — 12 November 2026
 
-Internal prerequisite after `44ef94a`; **product A remains disabled**. Acceptance
+Runtime `6654944`, extended tests `9355190`, after `44ef94a`;
+**product A remains disabled**. Acceptance
 was defined before editing: reserve every required replacement before publishing
 work; adopt all twenty graphs/settings together; preserve old audio, STAY/LFO/
 automation and settings on late OOM, cancellation, stale revisions or exhaustion.
@@ -17,6 +18,7 @@ preserved UI asset changes are included.
 | Mixed/off bank | Disabled members retire at the same commit; all-off needs no new slot | Storage + actual Engine settings/owner checks at 64/128 |
 | Cancellation and ownership | Generation, all clear epochs/settings revisions, independent atomic cancellation | DEL/DEL ALL/STOP ALL/armed CANCEL/live edit, in-flight/queued prepare, stale result and recovery checks |
 | Bounded message protocol | One bank including unread terminal receipt; excludes per-track preparations | Exact ID/generation/status, closed consumers, full ordinary FIFO, concurrent producer/audio/worker checks |
+| Editable effect order and independent settings | Arp-only commit changes no Q/C/chain state | Success/failure checks retain Q/C settings, `ACQ` order and `CQ` omission of A; existing connected audio ordering gate also passes |
 | Original projects/presets/full FX restore | Pending message-owner adapter and validated state importer | Bank holds raw accepted Arp render settings only; does not restore Q/C/chain or parse legacy state |
 
 The bank does not own PCM clips, change track IDs/capacity or reuse a graph
@@ -43,13 +45,41 @@ preparation, storage, connected and settings tests plus unchanged-JS settings an
 original byte assets pass. Initial new-fixture failures assumed immediate slot
 reclamation and ordinary zero-block command dispatch; tests now retain the
 production capacity/dispatch contract. No old regression or tolerance changed.
-Linux, sanitizers and Standalone builds are pending for this candidate snapshot.
+Linux selection passes **8/8 (322.99s)**, including the retained core regression
+(315.13s). Unchanged-JS Arp worklet sound and streaming gates pass **2/2** on both
+OSes (Windows 31.13s, Linux 31.11s). ASan/UBSan with leak detection passes
+**3/3 (17.57s)**; ThreadSanitizer passes **3/3 (27.52s)**. Both Standalones build.
+The broader Windows core regression also passes **1/1 (848.29s)**. This accepts
+the internal Arp-only bank slice, not product Arp or session restore acceptance.
+
+The test-only extension `5262ff0` also verifies adoption at frame 37 and actual
+Engine callbacks of 0/1/7/63/64/65/127/128/3 samples at 32/48 kHz, matching the
+independent graph state/clock. Direct LoopBank panic is exercised with every old
+Arp disabled, retaining the unconditional bank cancellation guard. Extended bank
+passes: Windows **1/1 (18.65s)**, Linux **1/1 (2.36s)**, ASan/UBSan/leaks
+**1/1 (15.31s)** and TSAN **1/1 (24.19s)**. Unchanged passing suites were not
+repeated for this test-only addition. TSAN uses process-only `setarch x86_64 -R`;
+no global ASLR change. No sanitizer diagnostics were reported.
+
+Final test `9355190` retains Q/C settings and user chain order/omission across
+successful/failed bank transactions. The full bank test passes again: Windows
+**1/1 (18.53s)**, Linux **1/1 (2.47s)**, ASan/UBSan/leaks **1/1 (15.51s)** and
+TSAN **1/1 (24.50s)**. Runtime is unchanged after `6654944`; the stronger bank
+test was the only test rerun for these additions.
+
+These durations are test wall times, not callback/latency benchmarks. No new
+hardware, UI, DAW, physical MIDI, driver or release-readiness claim is made. The
+product surface did not change, so prior actual UI evidence is retained rather
+than represented as newly executed. Original sound math remains unchanged.
 
 Reproduction in existing caches:
 
 ```powershell
 cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_bank_tests aion_arp_preparation_tests aion_arp_storage_tests aion_arp_connected_tests aion_arp_settings_tests
 ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_bank_contract|arp_preparation_contract|arp_delay_storage_contract|arp_connected_contract|arp_settings_contract|original_arp_settings_contract|original_ui_bytes)$'
+cmake --build build/windows-core --config Release --parallel 2 --target aion_core_tests aion_arp_probe aion_arp_stream_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(core_realtime_contract|js_native_arp_delay|arp_delay_streaming_contract)$'
+cmake --build --preset windows-dev --parallel 2
 ```
 
 Commit in Windows before using `SetupWslWorkspace.sh`; then in the independent
@@ -59,6 +89,8 @@ native WSL checkout (build `aion_core` first to refresh existing Makefile target
 cmake --build build/linux --parallel 2 --target aion_core
 cmake --build build/linux --parallel 2 --target aion_arp_bank_tests aion_arp_preparation_tests aion_arp_storage_tests aion_arp_connected_tests aion_arp_settings_tests
 ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_bank_contract|arp_preparation_contract|arp_delay_storage_contract|arp_connected_contract|arp_settings_contract|original_arp_settings_contract|original_ui_bytes)$'
+cmake --build build/linux --parallel 2 --target aion_core_tests aion_arp_probe aion_arp_stream_tests AionLooper_Standalone
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(core_realtime_contract|js_native_arp_delay|arp_delay_streaming_contract)$'
 cmake --build build/overlap-asan --parallel 1 --target aion_core
 cmake --build build/overlap-asan --parallel 1 --target aion_arp_bank_tests aion_arp_preparation_tests aion_arp_storage_tests
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^(arp_bank_contract|arp_preparation_contract|arp_delay_storage_contract)$'
@@ -67,8 +99,11 @@ cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_bank_tests a
 TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^(arp_bank_contract|arp_preparation_contract|arp_delay_storage_contract)$'
 ```
 
-Logs: `build/arp-bank-*-windows.log` and the corresponding native WSL logs.
-Next: finish candidate validation; then message-owned original settings and
+For just the test-only extension, rebuild `aion_arp_bank_tests` in each existing
+cache and select `^arp_bank_contract$` using the corresponding environment above.
+Logs: `build/arp-bank-{ctest,core-regression,reference,standalone,edge,chain}-windows.log`;
+native WSL `build/arp-bank-{ctest,reference,asan-test,tsan-test,edge-normal,edge-asan,edge-tsan,chain-normal,chain-asan,chain-tsan}-linux.log`.
+Next: message-owned original settings and
 ordered shared GUI/CLI restore/preset integration. No package/push.
 
 ## Original control/preset compiler — 12 November 2026

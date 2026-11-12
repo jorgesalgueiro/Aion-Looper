@@ -11,7 +11,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Atomic Arp-only bank candidate — 12 November 2026
+### Atomic Arp-only bank checkpoint — 12 November 2026
 
 The internal Engine can now stage all twenty Arp render settings/graphs and
 commit them together at one callback boundary. The existing worker prepares
@@ -21,11 +21,23 @@ One outstanding transaction includes its unread correlated terminal receipt and
 excludes individual preparations. Epoch/revision/generation checks, DEL/panic,
 armed CANCEL, newer controls and stopped prepare invalidate obsolete work.
 
-Windows affected acceptance **7/7 (39.25s)** passes, including exact old graph
+Runtime `6654944`, extended tests `9355190`: Windows affected acceptance
+**7/7 (39.25s)** passes, including exact old graph
 and connected stereo Engine PCM after failure/cancellation, actual 64/128 blocks,
 concurrent ownership, zero watched callback new/delete, retained preparation/
 storage/settings/connected tests and unchanged-JS target/original-asset checks.
-Linux/sanitizer/Standalone validation is pending for this candidate snapshot.
+Linux **8/8 (322.99s)** includes the retained core regression (315.13s).
+Retained unchanged-JS Arp sound/streaming pass **2/2** on each OS (31.13s Windows,
+31.11s Linux). ASan/UBSan/leaks **3/3 (17.57s)** and TSAN **3/3 (27.52s)** pass.
+The extended bank test adds partial frame-37 adoption, variable 0/1/7/63/64/65/
+127/128/3 blocks at 32/48 kHz and direct all-old-stages-disabled panic. It passes
+Windows **1/1 (18.65s)**, Linux **1/1 (2.36s)**, ASan/UBSan/leaks **1/1 (15.31s)**
+and TSAN **1/1 (24.19s)**. The final test also preserves independent Q/C settings
+and user chain reordering/omission through successful/failed Arp transactions:
+Windows **1/1 (18.53s)**, Linux **1/1 (2.47s)**, ASan/UBSan/leaks **1/1 (15.51s)**
+and TSAN **1/1 (24.50s)**. Both Standalones build. The broader Windows core
+regression passes **1/1 (848.29s)**. This accepts the internal Arp-only bank slice,
+not product Arp/session restore or device/latency/release acceptance.
 The new fixture initially assumed immediate reclaimed capacity and ordinary
 zero-block dispatch; it now observes explicit busy receipts and real positive
 blocks. Product behavior was not changed to satisfy those assumptions.
@@ -33,7 +45,7 @@ blocks. Product behavior was not changed to satisfy those assumptions.
 This is **not** a session importer, full FX-bank transaction or product restore
 command: Q/C/chain state and command ordering still need message-owner integration.
 A stays disabled; no GUI/CLI/MIDI, defaults, state schema or preserved asset changes.
-Next: complete cross-platform validation, then message-owned original Arp settings
+Next: message-owned original Arp settings
 and ordered restore/preset commands using this transaction. No package/push.
 See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md) for contract and commands.
 
