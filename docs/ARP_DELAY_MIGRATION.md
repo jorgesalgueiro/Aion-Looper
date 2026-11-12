@@ -46,7 +46,50 @@ nominal BPM bounds, wider stored endpoints and decimal repetition cases. The
 initial oracle wrapper failed because a trailing source comment swallowed its
 class terminator; only the wrapper newline was repaired. Keep
 `build/arp-settings-reference-windows.log` as the failed harness observation.
-Final Windows/Linux acceptance and sanitizer results follow in the handoff.
+Accepted model source `af07ce9`: final Windows converter/oracle **2/2 (2.62s)**,
+plus the final direct oracle with explicit signed-zero input. The retained Windows
+selection including original assets passed **3/3 (4.56s)** before that last
+checkbox case. Native WSL final selection passes **3/3 (3.77s)**, including all
+2157 exact target/mask cases and byte-identical assets. Linux ASan/UBSan/leaks
+**1/1 (0.63s)** and TSAN **1/1 (0.95s)** pass with no diagnostics. TSAN uses the
+existing process-only `setarch x86_64 -R` workaround. Both Standalones build.
+
+No existing audio-rendering source or bridge/UI/state path changed. Retain prior
+connected PCM/browser/ownership evidence; these new checks establish target and
+model/Engine integration, not full live preset envelopes, UI interaction,
+controller hardware, arbitrary legacy imports or release acceptance. No new
+callback timing claim is made for this unused product adapter.
+
+Reproduction in existing caches:
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_core
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_settings_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_settings_contract|original_arp_settings_contract|original_ui_bytes)$'
+cmake --build --preset windows-dev --parallel 2
+```
+
+After committing/syncing with `SetupWslWorkspace.sh`, in the native WSL checkout:
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_core
+cmake --build build/linux --parallel 2 --target aion_arp_settings_tests AionLooper_Standalone
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_settings_contract|original_arp_settings_contract|original_ui_bytes)$'
+# Existing sanitizer caches/flags are documented in the storage section below.
+cmake --build build/overlap-asan --parallel 1 --target aion_core
+cmake --build build/overlap-asan --parallel 1 --target aion_arp_settings_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^arp_settings_contract$'
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_core
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_settings_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^arp_settings_contract$'
+```
+
+Logs: Windows `build/arp-settings-{ctest,checkbox,truthiness-reference,final-standalone}-windows.log`;
+native WSL `build/arp-settings-{ctest,asan-test,tsan-test,build}-linux.log`.
+Next: message-owned Arp settings and staged all-bank restore/OOM rollback, then
+the original panel through shared GUI/CLI commands, MIDI, BPM events and approved
+organic new-instance voicing. Keep product A disabled until end-to-end acceptance.
+No package or push.
 
 ## Exact settled-automation fast path — 12 November 2026
 

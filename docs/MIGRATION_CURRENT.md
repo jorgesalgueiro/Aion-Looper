@@ -13,14 +13,24 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ### Arp control/preset compiler checkpoint — 12 November 2026
 
-Current internal slice: original eleven double-precision controls, eight preset
+Accepted internal model `af07ce9`: original eleven double-precision controls, eight preset
 names/values and twenty scale labels -> accepted raw render settings. Preserve
 repetitions / 11.1 before Float32 conversion and the original per-edit BPM target.
 The 2157-case unchanged-JS target/mask oracle and actual Engine preparation/edits
 at 64/128 are the focused gates. Product A stays disabled; no GUI/CLI/MIDI/state
 surface is being presented as complete. Original assets/IDs/session formats and
-approved organic-voicing scope are unchanged. Windows/Linux final checks and
-sanitizers are in progress. See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md)
+approved organic-voicing scope are unchanged. Windows final converter/oracle 2/2
+(2.62s) plus the explicit signed-zero-input oracle pass; original assets passed in
+the retained 3/3 selection. Linux 3/3 (3.77s), ASan/UBSan/leaks 1/1 (0.63s) and
+TSAN 1/1 (0.95s) pass; both Standalones build. Tests cover all presets and 176
+compiled edits at 64/128 with no watched callback new/delete. No existing render
+math changed; previous audio/timing evidence is reused, not rerun as new proof.
+
+Next: message-owned settings and atomic bank restore before GUI/CLI/MIDI/preset
+workflow enablement; preserve original preset gesture order/BPM semantics and
+investigate legacy out-of-domain state separately. This converter is not a state
+importer, native UI feature or full Arp acceptance. No package/push.
+See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md)
 for the compact parity checklist, accepted-domain/legacy limits and next step.
 
 ### Arp exact-processing optimizations accepted — 12 November 2026
