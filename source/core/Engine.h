@@ -52,6 +52,15 @@ struct ArpPreparationResult {
     std::uint32_t track=0,requestId=0,generation=0;
     ArpPreparationStatus status=ArpPreparationStatus::failed;
 };
+// Internal atomic Arp-only bank. One outstanding including unread receipt;
+// mutually exclusive with per-track preparations. Not a full session restore.
+struct ArpBankRequest {
+    LoopBank::ArpBank settings{};
+    LoopBank::ArpEpochs clearEpochs{},settingsRevisions{};
+    std::uint32_t requestId=0,generation=0;
+    std::uint64_t cancellation=0;
+};
+struct ArpBankResult {std::uint32_t requestId=0,generation=0;ArpPreparationStatus status=ArpPreparationStatus::failed;};
 struct PreparedArpInspection {bool active=false;ArpModValues targets{};ArpState state{};std::uint64_t frame=0;};
 struct AudioInspection {LoopView track{};std::uint64_t frame=0;float masterPeak=0;unsigned countInFlash=0;};
 struct EngineView {
@@ -128,6 +137,12 @@ public:
     bool enqueueArpPreparation(ArpPreparationRequest) noexcept;
     bool popArpPreparation(ArpPreparationResult&) noexcept;
     void cancelArpPreparation(unsigned track=LoopBank::trackCount) noexcept;
+    // Same sole message producer/consumer as the per-track protocol. An unread
+    // receipt excludes either kind of preparation. Commit occurs at beginBlock,
+    // before ordinary FIFO commands, not as an ordered product restore command.
+    bool enqueueArpBank(ArpBankRequest) noexcept;
+    bool popArpBank(ArpBankResult&) noexcept;
+    void cancelArpBank() noexcept;
     PreparedArpInspection inspectPreparedArpAudioThread(unsigned track) noexcept;
     bool popExport(WavExport& output) noexcept;
     void cancelStutter(std::uint32_t track = LoopBank::trackCount) noexcept {
@@ -203,6 +218,19 @@ private:
     std::array<std::atomic<std::uint64_t>,LoopBank::trackCount> arpCancellations{};
     std::unique_ptr<SpscQueue<ArpPreparationRequest,32>> arpRequests=std::make_unique<SpscQueue<ArpPreparationRequest,32>>();
     std::unique_ptr<SpscQueue<ArpPreparationResult,32>> arpResults=std::make_unique<SpscQueue<ArpPreparationResult,32>>();
+    struct PendingArpBank {
+        ArpBankRequest request{};bool active=false,started=false,finished=false;
+        ArpPreparationStatus status=ArpPreparationStatus::failed;
+    };
+    PendingArpBank pendingArpBank{}; // audio only
+    bool outstandingArpBank=false; // sole message owner, retained across prepare
+    std::atomic<std::uint64_t> arpBankCancellation{0};
+    std::unique_ptr<SpscQueue<ArpBankRequest,2>> arpBankRequests=std::make_unique<SpscQueue<ArpBankRequest,2>>();
+    std::unique_ptr<SpscQueue<ArpBankResult,2>> arpBankResults=std::make_unique<SpscQueue<ArpBankResult,2>>();
+    void finishArpBank(ArpPreparationStatus) noexcept;
+    void cancelStaleArpBank() noexcept;
+    void serviceArpBank() noexcept;
+    void cancelQueuedArpBank() noexcept; // stopped owner
     SpscQueue<ExportRequest,2> exportRequests;
     bool exportOutstanding=false; // Message thread only, retained across prepare.
     std::array<std::atomic<std::uint32_t>,LoopBank::trackCount> stutterRevisions{};

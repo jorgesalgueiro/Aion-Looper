@@ -11,6 +11,32 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Atomic Arp-only bank candidate — 12 November 2026
+
+The internal Engine can now stage all twenty Arp render settings/graphs and
+commit them together at one callback boundary. The existing worker prepares
+replacements in the fixed forty-slot storage; late OOM/cancellation preserves
+the complete old bank. Mixed enabled/disabled and all-off banks are supported.
+One outstanding transaction includes its unread correlated terminal receipt and
+excludes individual preparations. Epoch/revision/generation checks, DEL/panic,
+armed CANCEL, newer controls and stopped prepare invalidate obsolete work.
+
+Windows affected acceptance **7/7 (39.25s)** passes, including exact old graph
+and connected stereo Engine PCM after failure/cancellation, actual 64/128 blocks,
+concurrent ownership, zero watched callback new/delete, retained preparation/
+storage/settings/connected tests and unchanged-JS target/original-asset checks.
+Linux/sanitizer/Standalone validation is pending for this candidate snapshot.
+The new fixture initially assumed immediate reclaimed capacity and ordinary
+zero-block dispatch; it now observes explicit busy receipts and real positive
+blocks. Product behavior was not changed to satisfy those assumptions.
+
+This is **not** a session importer, full FX-bank transaction or product restore
+command: Q/C/chain state and command ordering still need message-owner integration.
+A stays disabled; no GUI/CLI/MIDI, defaults, state schema or preserved asset changes.
+Next: complete cross-platform validation, then message-owned original Arp settings
+and ordered restore/preset commands using this transaction. No package/push.
+See [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md) for contract and commands.
+
 ### Arp control/preset compiler checkpoint — 12 November 2026
 
 Accepted internal model `af07ce9`: original eleven double-precision controls, eight preset

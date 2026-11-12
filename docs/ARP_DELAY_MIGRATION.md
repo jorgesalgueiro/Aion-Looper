@@ -1,5 +1,76 @@
 # Arp Delay migration
 
+## Atomic Arp-only bank transaction — 12 November 2026
+
+Internal prerequisite after `44ef94a`; **product A remains disabled**. Acceptance
+was defined before editing: reserve every required replacement before publishing
+work; adopt all twenty graphs/settings together; preserve old audio, STAY/LFO/
+automation and settings on late OOM, cancellation, stale revisions or exhaustion.
+Keep preparation/reclamation on the existing worker and zero callback new/delete.
+No reference/render math, GUI/CLI/MIDI, persisted schema, seed/default policy or
+preserved UI asset changes are included.
+
+| Behavior | Native status | Verification / remaining gap |
+| --- | --- | --- |
+| Twenty enabled replacements with twenty old owners | Fixed forty-slot preflight; one bank owns pending descriptors | Nineteen ready cannot install a prefix; twentieth commits at one frame |
+| Failure after earlier members prepared | Any failed allocation/reset discards the candidate bank | Deterministic twentieth-allocation OOM, invalid adoption clock, old pointers/state and exact later PCM |
+| Mixed/off bank | Disabled members retire at the same commit; all-off needs no new slot | Storage + actual Engine settings/owner checks at 64/128 |
+| Cancellation and ownership | Generation, all clear epochs/settings revisions, independent atomic cancellation | DEL/DEL ALL/STOP ALL/armed CANCEL/live edit, in-flight/queued prepare, stale result and recovery checks |
+| Bounded message protocol | One bank including unread terminal receipt; excludes per-track preparations | Exact ID/generation/status, closed consumers, full ordinary FIFO, concurrent producer/audio/worker checks |
+| Original projects/presets/full FX restore | Pending message-owner adapter and validated state importer | Bank holds raw accepted Arp render settings only; does not restore Q/C/chain or parse legacy state |
+
+The bank does not own PCM clips, change track IDs/capacity or reuse a graph
+pointer across owners. Worker publication/retirement still uses release/acquire
+slot phases. Graph borrows are audio-local. All twenty candidate resets succeed
+before old owners are retired; metadata and revisions commit before render or
+snapshots. Candidate cancellation never frees on audio. Cancelled/retired slots
+remain occupied until the worker reclaims them; explicit `busy` is a valid
+terminal result. Test-only capacity probes consume it before retrying; no product
+retry loop or disconnected visible control has been added.
+
+Commit occurs at `beginBlock`, before ordinary performance FIFO commands. A later
+queued panic/clear may intentionally change an already committed bank; it does
+not retroactively cancel its ready receipt. Full product gesture order must be
+implemented on the message owner before exposing restore/preset commands. This
+transaction is Arp-only, not atomic session/Q/C/chain restore. Unread old-generation
+results retain their original status/ID through repeated stopped prepare, and
+continue to own admission until consumed.
+
+Windows focused selection passes **7/7 (39.25s)**. New bank tests include exact
+nonzero stereo Engine PCM and independent graph state/PCM, actual 64/128 callbacks,
+last-slot OOM, queued/in-flight cancellation and same/new-rate prepare. Retained
+preparation, storage, connected and settings tests plus unchanged-JS settings and
+original byte assets pass. Initial new-fixture failures assumed immediate slot
+reclamation and ordinary zero-block command dispatch; tests now retain the
+production capacity/dispatch contract. No old regression or tolerance changed.
+Linux, sanitizers and Standalone builds are pending for this candidate snapshot.
+
+Reproduction in existing caches:
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_bank_tests aion_arp_preparation_tests aion_arp_storage_tests aion_arp_connected_tests aion_arp_settings_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_bank_contract|arp_preparation_contract|arp_delay_storage_contract|arp_connected_contract|arp_settings_contract|original_arp_settings_contract|original_ui_bytes)$'
+```
+
+Commit in Windows before using `SetupWslWorkspace.sh`; then in the independent
+native WSL checkout (build `aion_core` first to refresh existing Makefile targets):
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_core
+cmake --build build/linux --parallel 2 --target aion_arp_bank_tests aion_arp_preparation_tests aion_arp_storage_tests aion_arp_connected_tests aion_arp_settings_tests
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_bank_contract|arp_preparation_contract|arp_delay_storage_contract|arp_connected_contract|arp_settings_contract|original_arp_settings_contract|original_ui_bytes)$'
+cmake --build build/overlap-asan --parallel 1 --target aion_core
+cmake --build build/overlap-asan --parallel 1 --target aion_arp_bank_tests aion_arp_preparation_tests aion_arp_storage_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^(arp_bank_contract|arp_preparation_contract|arp_delay_storage_contract)$'
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_core
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_bank_tests aion_arp_preparation_tests aion_arp_storage_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^(arp_bank_contract|arp_preparation_contract|arp_delay_storage_contract)$'
+```
+
+Logs: `build/arp-bank-*-windows.log` and the corresponding native WSL logs.
+Next: finish candidate validation; then message-owned original settings and
+ordered shared GUI/CLI restore/preset integration. No package/push.
+
 ## Original control/preset compiler — 12 November 2026
 
 Next internal prerequisite after `f974d35`; **product A remains disabled**. This

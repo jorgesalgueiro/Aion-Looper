@@ -2,6 +2,17 @@
 #include "LoopBank.h"
 #include <limits>
 namespace aion {
+bool LoopBank::requestArpBank(const ArpBank& settings,const ArpEpochs& epochs,const ArpEpochs& revisions,std::uint32_t request) noexcept {
+ if(!request||pendingArpBank.active)return false;
+ for(unsigned id=0;id<trackCount;++id)if(pendingArpSettings[id].active||epochs[id]!=tracks[id].clearEpoch||
+    revisions[id]!=tracks[id].info.arpSettingsRevision||revisions[id]==UINT64_MAX)return false;
+ if(!arpStorage->requestBank(settings))return false;
+ pendingArpBank={settings,epochs,revisions,request,true};bankArpResult={request,ArpBankStatus::pending};return true;
+}
+void LoopBank::cancelArpBank() noexcept {
+ if(!pendingArpBank.active)return;
+ arpStorage->cancelBank();bankArpResult={pendingArpBank.request,ArpBankStatus::cancelled};pendingArpBank={};
+}
 bool LoopBank::requestArpStorage(unsigned id,const ArpModValues& values,std::uint32_t seed,std::uint64_t epoch,
                                 bool activate,std::uint64_t revision,std::uint32_t request) noexcept {
  if(id>=trackCount||epoch!=tracks[id].clearEpoch)return false;
@@ -17,10 +28,17 @@ void LoopBank::pollArps() noexcept {
  // Invalidate before storage can retire the old graph. This also protects direct
  // LoopBank clients; Engine cancellation adds its independent message revision.
  for(unsigned id=0;id<trackCount;++id){
+  if(pendingArpBank.active&&(pendingArpBank.epochs[id]!=tracks[id].clearEpoch||pendingArpBank.revisions[id]!=tracks[id].info.arpSettingsRevision))cancelArpBank();
   const auto& p=pendingArpSettings[id];
   if(p.active&&(p.clearEpoch!=tracks[id].clearEpoch||p.revision!=tracks[id].info.arpSettingsRevision))cancelArpStorage(id);
  }
  const auto completion=arpStorage->poll(frame);
+ if(pendingArpBank.active&&(completion.bankInstalled||completion.bankFailed)){
+  if(completion.bankInstalled)for(unsigned id=0;id<trackCount;++id){
+   auto& info=tracks[id].info;info.arp=pendingArpBank.settings[id];info.arpRequest=pendingArpBank.request;++info.arpSettingsRevision;
+  }
+  bankArpResult={pendingArpBank.request,completion.bankInstalled?ArpBankStatus::ready:ArpBankStatus::failed};pendingArpBank={};
+ }
  for(unsigned id=0;id<trackCount;++id){
   auto& p=pendingArpSettings[id];
   if((completion.installed&(1u<<id))&&p.active){
@@ -46,7 +64,7 @@ bool LoopBank::setArp(unsigned id,const ArpRenderSettings& settings,std::uint32_
   if(graph->position()==UINT64_MAX)return false;
   for(unsigned p=0;p<12;++p)if(mask&(1u<<p))(void)graph->setTarget(p,settings.values[p]);
  }else{
-  arpStorage->clear(id);pendingArpSettings[id]={}; // Worker reclaims; never delete here.
+  cancelArpBank();arpStorage->clear(id);pendingArpSettings[id]={}; // Worker reclaims; never delete here.
  }
  info.arp=settings;info.arpRequest=request;++info.arpSettingsRevision;return true;
 }
@@ -59,6 +77,7 @@ Stereo LoopBank::tickArp(unsigned id,Stereo input,bool sourceActive) noexcept {
  return sourceActive?input:Stereo{};
 }
 void LoopBank::resetArps(std::uint64_t firstFrame) noexcept {
+ cancelArpBank();
  for(unsigned id=0;id<trackCount;++id){
   const auto& settings=tracks[id].info.arp;
   if(settings.enabled){

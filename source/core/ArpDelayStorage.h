@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #pragma once
 #include "ArpDelayGraph.h"
+#include "ArpRenderSettings.h"
 #include <atomic>
 #include <memory>
 #include <optional>
@@ -13,7 +14,8 @@ class ArpDelayStorage {
 public:
  static constexpr unsigned trackCount=20,capacity=trackCount*2;
  struct View {bool active=false,pending=false,failed=false;std::uint64_t installation=0;};
- struct Completion {std::uint32_t installed=0,failed=0;};
+ using Bank=std::array<ArpRenderSettings,trackCount>;
+ struct Completion {std::uint32_t installed=0,failed=0;bool bankInstalled=false,bankFailed=false;};
  ArpDelayStorage();
  ArpDelayStorage(const ArpDelayStorage&)=delete;
  ArpDelayStorage& operator=(const ArpDelayStorage&)=delete;
@@ -24,6 +26,10 @@ public:
  // Audio only. At most one pending request per track. Rejection is atomic;
  // callers must cancel explicitly before replacing a pending request.
  bool request(unsigned track,const ArpModValues&,std::uint32_t seed) noexcept;
+ // One all-or-nothing bank, mutually exclusive with individual preparations.
+ // Admission reserves all needed slots before publishing any worker work.
+ bool requestBank(const Bank&) noexcept;
+ void cancelBank() noexcept;
  void cancel(unsigned track) noexcept; // preserve active PCM/tails/automation
  void clear(unsigned track) noexcept; // cancel + retire, no destruction
  void clearAll() noexcept;
@@ -41,12 +47,16 @@ private:
   std::atomic<Phase> phase{Phase::free};
   std::atomic<bool> cancelled{false};
   unsigned track=0;
+  bool bankMember=false; // immutable between queued publication and retirement
   std::uint32_t seed=0;
   ArpModValues values{};
   std::optional<ArpDelayGraph> graph; // constructed/destroyed ONLY off audio
  };
  std::unique_ptr<std::array<Slot,capacity>> slots;
  std::array<Slot*,trackCount> active{},pending{}; // audio owner only
+ std::array<Slot*,trackCount> bankSlots{};
+ bool bankActive=false;
+ void pollBank(std::uint64_t firstFrame,Completion&) noexcept;
  std::array<bool,trackCount> failed{};
  std::array<std::uint64_t,trackCount> installations{}; // audio-only actual-adoption serial
  unsigned outstanding=0,workerCursor=0;

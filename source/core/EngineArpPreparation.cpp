@@ -4,7 +4,7 @@
 namespace aion {
 bool Engine::enqueueArpPreparation(ArpPreparationRequest request) noexcept {
     if(request.track>=LoopBank::trackCount||!request.requestId||!request.generation
-       ||request.generation!=generation()||outstandingArp[request.track]||!validArpModValues(request.values))return false;
+       ||request.generation!=generation()||outstandingArpBank||outstandingArp[request.track]||!validArpModValues(request.values))return false;
     request.cancellation=arpCancellations[request.track].load(std::memory_order_acquire);
     if(!arpRequests->push(request))return false;
     outstandingArp[request.track]=true;return true;
@@ -14,6 +14,7 @@ bool Engine::popArpPreparation(ArpPreparationResult& result) noexcept {
     outstandingArp[result.track]=false;return true;
 }
 void Engine::cancelArpPreparation(unsigned track) noexcept {
+    if(track<=LoopBank::trackCount)cancelArpBank();
     if(track<LoopBank::trackCount)arpCancellations[track].fetch_add(1,std::memory_order_release);
     else if(track==LoopBank::trackCount)for(auto& revision:arpCancellations)revision.fetch_add(1,std::memory_order_release);
 }
@@ -26,6 +27,7 @@ void Engine::finishArpPreparation(unsigned id,ArpPreparationStatus status) noexc
     if(arpResults->push({id,request.requestId,request.generation,status}))pending={};
 }
 void Engine::cancelStaleArpPreparations() noexcept {
+    cancelStaleArpBank();
     for(unsigned id=0;id<LoopBank::trackCount;++id){
         auto& pending=pendingArp[id];if(!pending.active)continue;
         if(pending.finished){finishArpPreparation(id,pending.status);continue;}
@@ -38,6 +40,7 @@ void Engine::cancelStaleArpPreparations() noexcept {
     }
 }
 void Engine::serviceArpPreparations() noexcept {
+    serviceArpBank();
     // LoopBank has just adopted ready owners at this callback's sample clock.
     // Success is terminal at that adoption. Later cancellation does not undo it.
     for(unsigned id=0;id<LoopBank::trackCount;++id){
@@ -67,6 +70,7 @@ void Engine::cancelAllArpPreparations() noexcept {
     // Stopped prepare takes over the sole audio consumer/producer roles. Keep
     // unread old-generation results and the message owner's outstanding flags.
     cancelArpPreparation();cancelStaleArpPreparations();
+    cancelQueuedArpBank();
     ArpPreparationRequest request;
     for(unsigned n=0;n<LoopBank::trackCount&&arpRequests->pop(request);++n){
         pendingArp[request.track]={request,true,false,false};

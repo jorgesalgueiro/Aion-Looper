@@ -423,6 +423,7 @@ void LoopBank::cancelArmed(Track& track) noexcept {
     track.info.arp=arp;track.info.arpSettingsRevision=arpRevision;track.info.arpRequest=arpRequest;
 }
 void LoopBank::clear(Track& track,bool preserveArp) noexcept {
+    cancelArpBank();
     (*equalizers)[static_cast<unsigned>(&track-tracks.data())]={};
     (*compressors)[static_cast<unsigned>(&track-tracks.data())]={};
     track.historyClock=false;
@@ -457,7 +458,7 @@ void LoopBank::clear(Track& track,bool preserveArp) noexcept {
     if(freeCount)poolFull=false;
 }
 bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
-    if(action==LoopAction::stopAll){for(unsigned next=0;next<trackCount;++next){
+    if(action==LoopAction::stopAll){cancelArpBank();for(unsigned next=0;next<trackCount;++next){
         // Pending message intent survives the audible grid. That transition is
         // not proof that the independent queued graph callback was delivered.
         if(meterQueuedIds[next])publishMeterQueueEnd(next,MeterGraphEventKind::queuedCancel);

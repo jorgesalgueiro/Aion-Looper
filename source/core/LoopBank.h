@@ -77,9 +77,16 @@ public:
     // remain disabled until product-level connected acceptance.
     bool requestArpStorage(unsigned id,const ArpModValues&,std::uint32_t seed,std::uint64_t clearEpoch,
                            bool activate=false,std::uint64_t settingsRevision=0,std::uint32_t request=0) noexcept;
-    void cancelArpStorage(unsigned id) noexcept {arpStorage->cancel(id);if(id<trackCount)pendingArpSettings[id]={};}
+    void cancelArpStorage(unsigned id) noexcept {if(id<trackCount){cancelArpBank();arpStorage->cancel(id);pendingArpSettings[id]={};}}
     bool setArp(unsigned id,const ArpRenderSettings&,std::uint32_t mask,std::uint32_t request,
                 std::uint64_t clearEpoch,std::uint64_t settingsRevision) noexcept;
+    using ArpBank=ArpDelayStorage::Bank;
+    using ArpEpochs=std::array<std::uint64_t,trackCount>;
+    enum class ArpBankStatus {none,pending,ready,failed,cancelled};
+    struct ArpBankResult {std::uint32_t request=0;ArpBankStatus status=ArpBankStatus::none;};
+    bool requestArpBank(const ArpBank&,const ArpEpochs& clearEpochs,const ArpEpochs& revisions,std::uint32_t request) noexcept;
+    void cancelArpBank() noexcept;
+    ArpBankResult arpBankResult() const noexcept {return bankArpResult;}
     ArpDelayStorage::View arpStorageView(unsigned id) const noexcept {return arpStorage->view(id);}
     ArpDelayGraph* preparedArp(unsigned id) noexcept {return arpStorage->graph(id);} // audio-local borrow
     bool setStartDelay(std::uint32_t track,double value) noexcept;
@@ -344,6 +351,9 @@ private:
         bool active=false;
     };
     std::array<PendingArpSettings,trackCount> pendingArpSettings{}; // audio only
+    struct PendingArpBank {ArpBank settings{};ArpEpochs epochs{},revisions{};std::uint32_t request=0;bool active=false;};
+    PendingArpBank pendingArpBank{}; // audio only; no graph ownership crosses queues
+    ArpBankResult bankArpResult{};
     Stereo tickArp(unsigned,Stereo,bool sourceActive) noexcept;
     void pollArps() noexcept;
     void resetArps(std::uint64_t firstFrame) noexcept;
