@@ -11,7 +11,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Active Arp timing follow-up — 12 November 2026
+### Arp exact-processing optimizations accepted — 12 November 2026
 
 Connected checkpoint runtime `70c575b`, stronger live-state tests `731b9c3`:
 Windows retained regression 4/4 (865.81s), Linux 8/8 (312.66s), connected audio
@@ -19,12 +19,31 @@ peak <=2.98023e-8 (limit 1e-6); ASan/UBSan/leaks and TSAN pass. Both Standalones
 build. Internal settings/storage adoption and user-ordered routing are verified;
 the product A control remains disabled pending GUI/CLI/MIDI/presets/state/BPM.
 
-Twenty-loop Q/C/A wall observations show limited headroom: Windows 0/1 overruns
-at 64/128; WSL 4/17. Preserve those logs. Current work skips redundant automation
-recurrence only once a lane is exactly settled, invalidating it on every gesture.
-Unchanged original audio/automation fixture replay, affected ownership/streaming
-checks and new measurements must pass before accepting that optimization. No
-source/reference/UI assets, existing IDs or product defaults change. See
+Runtime `2695768` now skips redundant recurrence only for exactly settled lanes
+and submits worklet controls at their original latch boundary, including fresh
+partial-quantum starts. Every gesture invalidates the settled flag. Keep the
+failing-then-fixed negative-zero sign regression and new audible frame-37 reset
+case. No sound/default, parameter/action ID, reference or preserved UI asset changes.
+
+Windows affected tests 5/5 (20.62s) plus the extended stream executable; Linux
+6/6 (4.55s), ASan/UBSan/leaks 5/5 (35.00s), TSAN 4/4 (45.65s). Both Standalones
+build. Recorded original WebView2 modulation/factory fixtures pass on both OSes:
+66 modulation comparisons (parameter error 0) and 63 factory audio comparisons
+(peak 2.38419e-7, unchanged 1e-6 limit). These are fixture replays, not Linux
+WebKit/device/UI validation. The final quantum change repeats factory acceptance;
+modulation math is unchanged after its signed-zero-safe check.
+
+Final quiet twenty-loop Q/C/A, 48 kHz, 512 warm / 2048 measured callbacks:
+Windows 64/128 mean 883.426/1745.88us, max 1180.6/2320.2us; WSL mean
+807.894/1682.71us, max 1100.06/2264.38us. Zero observed overruns in these runs;
+matching nonzero checksums. Preserve the earlier Windows 0/1 and WSL 4/17
+overruns and intermediate results. Wall observations exclude devices/UI/roundtrip
+and do not establish continuous reliability or release readiness.
+
+Next: original Arp controls/preset conversion and shared GUI/CLI/MIDI/versioned
+state, staged all-bank restore with OOM rollback, BPM semantics and approved
+organic defaults for new instances. Keep A disabled until end-to-end acceptance.
+No package/push. Windows remains publishing owner; WSL receives committed snapshots. See
 [ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md) for scope and exact commands.
 
 ### Arp connected render-settings checkpoint — 10 November 2026

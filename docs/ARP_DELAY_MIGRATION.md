@@ -52,8 +52,49 @@ automation or post-pan LFO, which still advance per sample. Acceptance retains
 exact variable-block PCM/state and original factory fixtures. A new audible
 reset-at-frame-37 regression checks that a pending mix target takes effect on the
 first sample, matching a fresh owner, including single-sample calls across later
-boundaries. Windows's new test passes; Linux/replay/sanitizer/timing work follows.
-Product A remains disabled.
+boundaries. Runtime/test snapshot `2695768` passes Windows 5/5 (20.62s) plus the
+new restart/stream executable, Linux 6/6 (4.55s), and TSAN 4/4 (45.65s). Windows
+replays all 63 original factory comparisons at unchanged peak 2.38419e-7. Both
+Standalone builds pass. Linux replays the same 63 factory comparisons at peak
+2.38419e-7, and ASan/UBSan/leaks passes 5/5 (35.00s). No diagnostics.
+
+Final quiet observations at `2695768`, same 20 playing Q/C/A loops / 48 kHz /
+512 warm / 2048 measured callbacks, excluding preparation/reclamation:
+
+| OS / block | Mean / p99 / maximum, us | Deadline, us | Overruns |
+| --- | --- | --- | --- |
+| Windows / 64 | 883.426 / 1060.3 / 1180.6 | 1333.33 | 0 |
+| Windows / 128 | 1745.88 / 2013 / 2320.2 | 2666.67 | 0 |
+| WSL / 64 | 807.894 / 964.6 / 1100.06 | 1333.33 | 0 |
+| WSL / 128 | 1682.71 / 1860.07 / 2264.38 | 2666.67 | 0 |
+
+The workload remains non-silent with matching checksums (132697 / 285809).
+These final observations meet the sampled callback deadlines; they do not erase
+the earlier misses or prove continuous reliability, hardware latency or release
+readiness. The two exact-processing optimizations pass their scoped software
+acceptance. Product A remains disabled: continue its original controls/presets,
+shared GUI/CLI/MIDI/state and BPM/restore integration before enabling it. Full
+device/listening/long-session acceptance remains separate. No package or push.
+
+For this optimization, build `aion_arp_tests aion_arp_stream_tests
+aion_arp_connected_tests aion_arp_preparation_tests aion_arp_storage_tests
+aion_arp_probe` in the existing Windows core/Linux caches, and select
+`^(arp_delay_realtime_contract|arp_delay_streaming_contract|arp_connected_contract|arp_preparation_contract|arp_delay_storage_contract|original_ui_bytes)$`
+with CTest (`-C Release` on Windows). Replay the unchanged original audio fixtures:
+
+```sh
+node tests/ArpModulationWebAudio.cjs --probe build/linux/aion_arp_probe --fixtures build/arp-modulation-browser-fixtures.json
+node tests/ArpGraphWebAudio.cjs --probe build/linux/aion_arp_probe --fixtures build/arp-graph-browser-fixtures.json
+```
+
+On Windows substitute `build/windows-core/Release/aion_arp_probe.exe`. Fixture
+generation is documented in the existing modulation/factory sections below.
+Use the existing sanitizer flags below and the same affected target/test lists
+(TSAN includes streaming/connected/storage/preparation). Benchmark only after
+other builds/tests have stopped, with `aion_arp_connected_tests benchmark`.
+Logs are `build/arp-settled-*` and `build/arp-quantum-*` on their respective OSes;
+retain the negative-zero failure and every timing overrun observation. No original
+fixture, tolerance or ownership regression was removed or relaxed.
 
 ## Connected render settings and user-order routing — 10 November 2026
 

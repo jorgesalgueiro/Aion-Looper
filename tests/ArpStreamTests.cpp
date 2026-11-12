@@ -118,7 +118,10 @@ int main(int argc,char** argv){
  // Reset must immediately use current targets even halfway through the global
  // quantum. Here old fully-wet controls would produce silence after clear.
  {ArpDelayGraph reset, fresh;auto values=arpModDefaults();values[2]=1;
-  check(reset.prepare(48000,values,17)&&reset.setTarget(2,0),"pending mix target before partial-quantum reset");
+  check(reset.prepare(48000,values,17),"old fully-wet owner prepare");
+  l.fill(.2f);r.fill(-.1f);watch=true;
+  check(reset.process(l.data(),r.data(),2,outL.data(),outR.data(),1),"consume old owner's initial control submission");watch=false;
+  check(outL[0]==0&&outR[0]==0&&reset.setTarget(2,0),"pending mix target after audible fully-wet owner ran");
   check(reset.reset(17,37)&&fresh.prepare(48000,reset.targets(),17,37),"partial-quantum reset and fresh owner");
   l.fill(.2f);r.fill(-.1f);
   for(unsigned n=0;n<256;++n){watch=true;
