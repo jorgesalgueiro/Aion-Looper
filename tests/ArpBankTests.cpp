@@ -109,6 +109,11 @@ struct Fixture {
 static bool same(const PreparedArpInspection& a,const PreparedArpInspection& b){return a.active==b.active&&a.targets==b.targets&&a.state==b.state&&a.frame==b.frame;}
 static void protocol(unsigned block){
  Fixture f(block);auto r=f.request(1);ArpBankResult out;
+ std::array<EqSettings,20> eq{};std::array<CompressorSettings,20> compressor{};std::array<SignalChain,20> chain{};
+ eq[0].enabled=true;eq[0].values[4]=4;compressor[19].enabled=true;compressor[19].values[0]=-30;
+ chain[0]=normalizedSignalChain("ACQ");chain[19]=normalizedSignalChain("CQ"); // omit A on purpose
+ f.engine->prepareEqBank(eq);f.engine->prepareCompressorBank(compressor);f.engine->prepareChainBank(chain);
+ auto unrelated=[&]{for(unsigned id=0;id<20;++id){const auto info=f.engine->inspectAudioThread(id).track;check(info.equalizer==eq[id]&&info.compressor==compressor[id]&&info.signalChain==chain[id],"Arp-only bank preserves independent Q/C and user order/omission");}};
  {auto bad=r;bad.requestId=0;check(!f.engine->enqueueArpBank(bad),"zero bank ID rejected");bad=r;bad.generation=0;check(!f.engine->enqueueArpBank(bad),"zero generation rejected");bad=r;bad.settings[19].values[1]=NAN;check(!f.engine->enqueueArpBank(bad),"invalid last settings rejected on message owner");}
  check(f.engine->enqueueArpBank(r)&&!f.engine->popArpBank(out),"enqueue is not bank success");
  ArpPreparationRequest single;single.track=0;single.requestId=55;single.generation=r.generation;
@@ -117,13 +122,13 @@ static void protocol(unsigned block){
  waitFor([&]{f.pump(false);unsigned committed=0;for(unsigned id=0;id<20;++id){const auto info=f.engine->inspectAudioThread(id).track;committed+=info.arpRequest==r.requestId;check(info.arpRequest==0||info.arp==r.settings[id],"bank settings match request");}check(committed==0||committed==20,"Engine never exposes partially applied settings");return committed==20;},"whole bank commit timeout");
  for(unsigned n=0;n<40;++n)f.pump(false); // closed telemetry/receipt consumer
  check(!f.engine->enqueueArpBank(f.request(2))&&!f.engine->enqueueArpPreparation(single),"unread bank receipt retains bound");
- f.expect(r,ArpPreparationStatus::ready);check(!f.engine->popArpBank(out),"one terminal receipt only");
+ f.expect(r,ArpPreparationStatus::ready);check(!f.engine->popArpBank(out),"one terminal receipt only");unrelated();
  EngineView view,last;while(f.engine->popView(view))last=view;check(last.lastRequestId==777&&!last.rejected,"bank preserves ordinary acknowledgement");
  f.engine->cancelArpBank();f.pump();check(f.engine->inspectAudioThread(19).track.arp==r.settings[19],"cancel after ready does not undo committed settings");
  auto stale=f.request(3);++stale.settingsRevisions[19];check(f.engine->enqueueArpBank(stale),"stale revision validates on audio");f.expect(stale,ArpPreparationStatus::stale);
  stale=f.request(4);++stale.clearEpochs[19];check(f.engine->enqueueArpBank(stale),"stale clear epoch validates on audio");f.expect(stale,ArpPreparationStatus::stale);
  auto cancelled=f.request(5);check(f.engine->enqueueArpBank(cancelled),"queued bank cancel");f.engine->cancelArpPreparation(19);f.expect(cancelled,ArpPreparationStatus::cancelled);
- const auto old=f.inspect(19);auto failed=f.request(6);failWorker.store(true);check(f.engine->enqueueArpBank(failed),"worker OOM bank admitted");f.expect(failed,ArpPreparationStatus::failed);check(!failWorker.load()&&same(old,f.inspect(19)),"Engine failed bank preserves previous state/clock");
+ const auto old=f.inspect(19);auto failed=f.request(6);failWorker.store(true);check(f.engine->enqueueArpBank(failed),"worker OOM bank admitted");f.expect(failed,ArpPreparationStatus::failed);check(!failWorker.load()&&same(old,f.inspect(19)),"Engine failed bank preserves previous state/clock");unrelated();
  single.activate=true;single.settingsRevision=f.engine->inspectAudioThread(0).track.arpSettingsRevision;
  check(f.engine->enqueueArpPreparation(single),"individual after bank receipt consumed");
  // The failed bank may still occupy cancelled slots until its worker catches
