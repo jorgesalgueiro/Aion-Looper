@@ -205,6 +205,33 @@ static void prepareLifetime(unsigned block,bool rateChange){
  f.engine->prepare(8000,32768);f.engine->prepare(8000,32768);f.expect(ready,ArpPreparationStatus::ready);
  ArpBankResult extra;check(!f.engine->popArpBank(extra),"prepare cannot duplicate a terminal receipt");
 }
+static void variableBlocks(double rate){
+ auto engine=std::make_unique<Engine>();engine->prepare(rate,8192);engine->setMonitoring(false);
+ std::array<float,128> left{},right{};float* channels[]{left.data(),right.data()};
+ {AudioScope guard;engine->process(channels,2,37);} // deliberately partial quantum
+ ArpBankRequest request;request.settings=settings(70);request.requestId=70;request.generation=engine->generation();
+ check(engine->enqueueArpBank(request),"variable-block bank request");ArpBankResult result;
+ waitFor([&]{{AudioScope guard;engine->process(nullptr,0,0);}return engine->popArpBank(result);},"variable-block bank adoption");
+ check(result.status==ArpPreparationStatus::ready&&engine->clock()==37,"bank adopts at arbitrary current frame without advancing it");
+ ArpDelayGraph oracle;check(oracle.prepare(rate,request.settings[19].values,request.settings[19].seed,37),"partial-quantum independent graph");
+ std::array<float,128> ol{},orr{};
+ for(unsigned round=0;round<8;++round)for(unsigned frames:{0u,1u,7u,63u,64u,65u,127u,128u,3u}){
+  AudioScope guard;engine->process(channels,2,static_cast<int>(frames));check(oracle.process(nullptr,nullptr,2,ol.data(),orr.data(),frames),"variable-block oracle");
+  for(unsigned id=0;id<20;++id){const auto info=engine->inspectAudioThread(id).track;const auto graph=engine->inspectPreparedArpAudioThread(id);
+   check(info.arp==request.settings[id]&&info.arpSettingsRevision==1&&graph.active&&graph.frame==engine->clock(),"all bank owners retain settings and variable callback clock");
+   if(id==19)check(graph.state==oracle.state()&&graph.frame==oracle.position(),"partial-quantum bank graph state matches independent owner");}
+ }
+}
+static void disabledPanic(unsigned block){
+ auto bank=std::make_unique<LoopBank>();bank->prepare(8192,0,8000);LoopBank::ArpEpochs epochs{},revisions{};
+ {AudioScope guard;check(bank->requestArpBank(settings(80),epochs,revisions,80),"direct bank with all old stages disabled");
+  check(bank->apply(LoopAction::stopAll,0)&&bank->arpBankResult().status==LoopBank::ArpBankStatus::cancelled,"direct panic cancels bank without an old enabled member");}
+ for(unsigned n=0;n<32;++n){
+  {AudioScope guard;bank->beginBlock();for(unsigned i=0;i<block;++i)(void)bank->tick({});
+   for(unsigned id=0;id<20;++id)check(!bank->preparedArp(id)&&!bank->trackView(id).arp.enabled,"late bank cannot survive all-disabled panic");}
+  std::this_thread::sleep_for(std::chrono::milliseconds(1));
+ }
+}
 static void concurrent(){
  auto engine=std::make_unique<Engine>();engine->prepare(8000,8192);const auto generation=engine->generation();
  std::atomic<bool> run{true};std::thread audio([&]{while(run.load(std::memory_order_acquire)){{AudioScope guard;engine->process(nullptr,0,0);}std::this_thread::yield();}});
@@ -219,7 +246,7 @@ static void concurrent(){
  run.store(false,std::memory_order_release);audio.join();ArpBankResult result;check(!engine->popArpBank(result),"concurrent bank has no duplicate result");
 }
 int main(){
- for(unsigned block:{64u,128u}){storage(block);protocol(block);for(unsigned barrier=0;barrier<6;++barrier)paused(block,barrier);connected(block);prepareLifetime(block,false);prepareLifetime(block,true);}
- concurrent();
+ for(unsigned block:{64u,128u}){storage(block);protocol(block);for(unsigned barrier=0;barrier<6;++barrier)paused(block,barrier);connected(block);prepareLifetime(block,false);prepareLifetime(block,true);disabledPanic(block);}
+ variableBlocks(32000);variableBlocks(48000);concurrent();
  std::cout<<"PASS atomic Arp bank: all-20/mixed/off adoption, last-slot OOM/exhaustion/reset-clock rollback, exact old graph and connected stereo PCM, queue/receipt bounds, generation/epoch/revision cancellation, DEL/panic/armed-CANCEL/live-edit barriers, concurrent ownership and zero audio new/delete at 64/128\n";
 }
