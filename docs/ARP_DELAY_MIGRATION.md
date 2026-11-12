@@ -2,7 +2,7 @@
 
 ## Original settings owner / exact edit receipts — 12 November 2026
 
-Internal slice; validation in progress. Acceptance was defined before editing:
+Internal slice. Acceptance was defined before editing:
 preserve original double controls/preset/BPM/seed until exact native acceptance,
 rollback failed/cancelled candidates, reject full admission without orphan work,
 and retain accepted ordered-preset sound at 64/128 without audio allocations.
@@ -35,12 +35,51 @@ External host restore still requires the production non-audio lock/intent path.
 | GUI/CLI, MIDI, persistence and BPM workflows | Pending product integration | No new command exposed; A remains disabled |
 | Atomic original-model / complete FX restore | Pending | Existing Arp-only graph bank is not a complete session restore |
 
-`arp_owner_contract` passes Windows (2.24s). The new MIDI Stop fixture initially
+Runtime/tests `8729d33`: `arp_owner_contract` passes Windows (2.24s). The new MIDI Stop fixture initially
 failed because MIDI was disabled; enabling the real controller in the fixture
 verifies the purge and two exact cancellation receipts. No assertion or product
-behavior was relaxed. Cross-platform/sanitizer results will be recorded below.
+behavior was relaxed. Windows affected selection passes **10/10 (74.99s)**,
+plus original assets **1/1 (1.79s)**. Linux passes **11/11 (42.27s)**.
+ASan/UBSan/leaks passes **3/3 (20.78s)** and TSAN **3/3 (33.13s)**, with no
+sanitizer diagnostics; the latter uses the previously documented process-only
+fixed-layout launch. Each sanitizer selection includes owner, preparation and
+bank contracts. Windows and Linux Standalones build successfully.
 Original assets, DSP math, browser PCM tolerances and product defaults are unchanged;
-reuse the accepted original WebView2 preset oracle, replaying its saved fixtures.
+replay of the accepted original WebView2 preset oracle passes all **15** comparisons
+per OS (five rates, 64/128/37), maximum **6.70552e-8**, unchanged 1e-6 peak /
+1e-5 relative RMS limits. This is saved-fixture replay, not a new browser run.
+No GUI/CLI surface changed, so no new interaction, driver or deferred-plugin
+validation is claimed. Next: production message-owner/state integration, coordinated
+FX restore and shared GUI/CLI access; A remains disabled until those gates pass.
+
+Commands executed (existing configured caches; Linux from native WSL checkout):
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_owner_tests aion_arp_connected_tests aion_arp_storage_tests aion_arp_preparation_tests aion_arp_bank_tests aion_arp_preset_tests aion_arp_settings_tests aion_arp_probe
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_(owner|settings|connected|delay_storage|preparation|bank|preset)_contract|original_arp_settings_contract|original_arp_preset_order|js_native_arp_delay)$'
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^original_ui_bytes$'
+node tests/ArpGraphWebAudio.cjs --probe build/windows-core/Release/aion_arp_probe.exe --fixtures build/arp-preset-browser-fixtures.json
+cmake --build --preset windows-dev --parallel 2
+```
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_core
+cmake --build build/linux --parallel 2 --target aion_arp_owner_tests aion_arp_connected_tests aion_arp_storage_tests aion_arp_preparation_tests aion_arp_bank_tests aion_arp_preset_tests aion_arp_settings_tests aion_arp_probe
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_(owner|settings|connected|delay_storage|preparation|bank|preset)_contract|original_arp_settings_contract|original_arp_preset_order|js_native_arp_delay|original_ui_bytes)$'
+node tests/ArpGraphWebAudio.cjs --probe build/linux/aion_arp_probe --fixtures build/arp-preset-browser-fixtures.json
+cmake --build --preset linux-dev --parallel 2
+cmake --build build/overlap-asan --parallel 1 --target aion_core
+cmake --build build/overlap-asan --parallel 1 --target aion_arp_owner_tests aion_arp_preparation_tests aion_arp_bank_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^arp_(owner|preparation|bank)_contract$'
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_core
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_owner_tests aion_arp_preparation_tests aion_arp_bank_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^arp_(owner|preparation|bank)_contract$'
+```
+
+Windows logs: `build/arp-owner-{final,regression,assets,fixture-replay,standalone}-windows.log`
+and corresponding build logs. Native WSL logs:
+`build/arp-owner-{build,test,fixture-replay,standalone,asan-build,asan-test,tsan-build,tsan-test}-linux.log`.
+No package or push.
 
 ## Ordered original preset gesture — 12 November 2026
 
