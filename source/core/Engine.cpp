@@ -32,6 +32,7 @@ bool Engine::enqueue(GainCommand command) noexcept {
     return std::isfinite(command.gain) && command.gain >= 0.0f && command.gain <= 2.0f && commands.push(command);
 }
 bool Engine::enqueueLoop(LoopCommand command) noexcept {
+    if(command.arpTransaction)return false; // Only enqueueArpEdit may publish a tracked identity.
     if (command.generation == 0 || command.generation != generation() || command.track >= LoopBank::trackCount
         || !std::isfinite(command.value)) return false;
     if(command.action==LoopAction::equalizer&&(!validEqSettings(command.equalizer)||(command.eqMask&~eqAllParameters)))return false;
@@ -172,7 +173,8 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
             ++loopApplied;
         }
         if (!hasPendingLoop) hasPendingLoop = loopCommands->pop(pendingLoop);
-        while (hasPendingLoop && (pendingLoop.frame <= frame||isMeterCommand(pendingLoop.action)) && loopApplied < 128) {
+        if(hasPendingLoop&&pendingLoop.arpTransaction>seenArpTransaction)serviceArpPreparations();
+        while (hasPendingLoop && (!pendingLoop.arpTransaction||pendingLoop.arpTransaction<=seenArpTransaction) && (pendingLoop.frame <= frame||isMeterCommand(pendingLoop.action)||(pendingLoop.arpTransaction&&!currentArpEdit(pendingLoop))) && loopApplied < 128) {
             if(pendingLoop.action==LoopAction::meterQueuedWindowStart||pendingLoop.action==LoopAction::meterQueuedWindowRequest||pendingLoop.action==LoopAction::meterQueuedGraphRequest){
                 // The callback has already happened on the message owner.
                 // Validate against current audio ownership, not its old view.
@@ -198,7 +200,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
                     !(pendingLoop.action==LoopAction::equalizer
                       ?loops.setEqualizer(pendingLoop.track,pendingLoop.equalizer,pendingLoop.eqMask,pendingLoop.requestId,pendingLoop.eqClearEpoch,pendingLoop.eqCheckEpoch)
                       :pendingLoop.action==LoopAction::arpDelay
-                      ?loops.setArp(pendingLoop.track,pendingLoop.arp,pendingLoop.arpMask,pendingLoop.requestId,pendingLoop.arpClearEpoch,pendingLoop.arpSettingsRevision,pendingLoop.arpPreset)
+                      ?(pendingLoop.arpTransaction?applyArpEdit(pendingLoop):loops.setArp(pendingLoop.track,pendingLoop.arp,pendingLoop.arpMask,pendingLoop.requestId,pendingLoop.arpClearEpoch,pendingLoop.arpSettingsRevision,pendingLoop.arpPreset))
                       :pendingLoop.action==LoopAction::signalChain
                       ?loops.setSignalChain(pendingLoop.track,pendingLoop.signalChain,pendingLoop.requestId,pendingLoop.chainClearEpoch,pendingLoop.chainCheckEpoch)
                       :pendingLoop.action==LoopAction::compressor
@@ -207,6 +209,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
             }
             if(nonRealtime)loops.completeOfflineEdits();
             ++loopApplied; hasPendingLoop = loopCommands->pop(pendingLoop);
+            if(hasPendingLoop&&pendingLoop.arpTransaction>seenArpTransaction)serviceArpPreparations();
         }
         midiContext.frame=frame;
         while(midiRead<midiEvents.size()&&midiEvents[midiRead].offset<=static_cast<unsigned>(i)){

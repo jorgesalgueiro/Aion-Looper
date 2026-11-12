@@ -3,7 +3,7 @@
 
 namespace aion {
 bool Engine::enqueueArpPreparation(ArpPreparationRequest request) noexcept {
-    if(request.track>=LoopBank::trackCount||!request.requestId||!request.generation
+    if(request.edit||request.transaction||request.track>=LoopBank::trackCount||!request.requestId||!request.generation
        ||request.generation!=generation()||outstandingArpBank||outstandingArp[request.track]||!validArpModValues(request.values))return false;
     request.cancellation=arpCancellations[request.track].load(std::memory_order_acquire);
     if(!arpRequests->push(request))return false;
@@ -19,12 +19,16 @@ void Engine::cancelArpPreparation(unsigned track) noexcept {
     else if(track==LoopBank::trackCount)for(auto& revision:arpCancellations)revision.fetch_add(1,std::memory_order_release);
 }
 void Engine::finishArpPreparation(unsigned id,ArpPreparationStatus status) noexcept {
-    auto& pending=pendingArp[id];pending.finished=true;pending.status=status;
-    const auto& request=pending.request;
+    auto& pending=pendingArp[id];
     // At most twenty accepted, unread transactions exist, including queued,
     // preparing and completed work. The 31-result capacity exceeds that bound.
     // Retain a terminal receipt on unexpected capacity failure; never drop/spin.
-    if(arpResults->push({id,request.requestId,request.generation,status}))pending={};
+    if(!pending.finished){
+        const auto& request=pending.request;const auto info=loops.trackView(id);
+        pending.completion={id,request.requestId,request.generation,status,request.transaction,info.arpSettingsRevision,info.clearEpoch};
+        pending.finished=true;pending.status=status;
+    }
+    if(arpResults->push(pending.completion))pending={};
 }
 void Engine::cancelStaleArpPreparations() noexcept {
     cancelStaleArpBank();
@@ -35,7 +39,8 @@ void Engine::cancelStaleArpPreparations() noexcept {
         if(request.generation!=generation()||request.cancellation!=arpCancellations[id].load(std::memory_order_acquire)
            ||request.clearEpoch!=loops.trackView(id).clearEpoch
            ||(request.activate&&request.settingsRevision!=loops.trackView(id).arpSettingsRevision)){
-            loops.cancelArpStorage(id);finishArpPreparation(id,ArpPreparationStatus::cancelled);
+            if(!request.edit)loops.cancelArpStorage(id);
+            finishArpPreparation(id,ArpPreparationStatus::cancelled);
         }
     }
 }
@@ -44,13 +49,14 @@ void Engine::serviceArpPreparations() noexcept {
     // LoopBank has just adopted ready owners at this callback's sample clock.
     // Success is terminal at that adoption. Later cancellation does not undo it.
     for(unsigned id=0;id<LoopBank::trackCount;++id){
-        const auto& pending=pendingArp[id];if(!pending.active||pending.finished||!pending.started)continue;
+        const auto& pending=pendingArp[id];if(!pending.active||pending.finished||!pending.started||pending.request.edit)continue;
         const auto view=loops.arpStorageView(id);if(view.pending)continue;
         finishArpPreparation(id,view.failed?ArpPreparationStatus::failed:
             view.active&&view.installation!=pending.installation?ArpPreparationStatus::ready:ArpPreparationStatus::cancelled);
     }
     ArpPreparationRequest request;
     for(unsigned n=0;n<LoopBank::trackCount&&arpRequests->pop(request);++n){
+        if(request.transaction>seenArpTransaction)seenArpTransaction=request.transaction;
         // The single message owner cannot reuse a track before consuming its
         // terminal result. That result is published only after its old pending
         // record completes, so a new request never overwrites a live record.
@@ -61,6 +67,7 @@ void Engine::serviceArpPreparations() noexcept {
             finishArpPreparation(request.track,ArpPreparationStatus::stale);
         else if(request.activate&&request.settingsRevision!=loops.trackView(request.track).arpSettingsRevision)
             finishArpPreparation(request.track,ArpPreparationStatus::stale);
+        else if(request.edit)pending.started=true;
         else if(!loops.requestArpStorage(request.track,request.values,request.seed,request.clearEpoch,request.activate,request.settingsRevision,request.requestId))
             finishArpPreparation(request.track,ArpPreparationStatus::busy);
         else {pending.started=true;pending.installation=loops.arpStorageView(request.track).installation;}
@@ -73,6 +80,7 @@ void Engine::cancelAllArpPreparations() noexcept {
     cancelQueuedArpBank();
     ArpPreparationRequest request;
     for(unsigned n=0;n<LoopBank::trackCount&&arpRequests->pop(request);++n){
+        if(request.transaction>seenArpTransaction)seenArpTransaction=request.transaction;
         pendingArp[request.track]={request,true,false,false};
         finishArpPreparation(request.track,ArpPreparationStatus::cancelled);
     }

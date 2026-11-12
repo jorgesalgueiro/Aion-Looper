@@ -11,6 +11,25 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Original Arp settings owner — 12 November 2026, validation in progress
+
+The internal `ArpSettingsOwner` now retains original double controls, preset,
+BPM and seed on the message owner. Edits/presets commit only after an exact
+per-track terminal receipt; unrelated global acknowledgements and stale telemetry
+cannot confirm them. Admission is atomic across the existing bounded preparation
+and performance FIFOs. Cancellation uses non-reused internal identities; future
+cancelled entries cannot block or complete a replacement. No new product IDs.
+
+Acceptance: exact stereo PCM against the accepted preset path at 64/128,
+original decimal preservation, all twenty unread receipts, full-queue rejection,
+OOM/enable rollback, clear/prepare lifetime, MIDI Stop purge and concurrent
+message/audio publication, with zero watched callback new/delete. The focused
+Windows owner test passes (2.24s); cross-platform/regression checks are underway.
+This is an internal adapter, **not connected product GUI/CLI/state support**.
+Product A remains disabled. Next: finish validation, then integrate the owner into
+the production message/state path with shared GUI/CLI access and coordinated FX
+restore. No package or push.
+
 ### Ordered original Arp preset checkpoint — 12 November 2026
 
 Accepted internal runtime/tests `b914984`. The message-owner prerequisite audit

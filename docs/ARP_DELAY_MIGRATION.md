@@ -1,5 +1,47 @@
 # Arp Delay migration
 
+## Original settings owner / exact edit receipts — 12 November 2026
+
+Internal slice; validation in progress. Acceptance was defined before editing:
+preserve original double controls/preset/BPM/seed until exact native acceptance,
+rollback failed/cancelled candidates, reject full admission without orphan work,
+and retain accepted ordered-preset sound at 64/128 without audio allocations.
+
+`enqueueArpEdit` reserves one existing per-track preparation/result admission and
+one ordinary performance FIFO entry. The sole message producer checks both queue
+capacities before publishing descriptor then command. Audio registers descriptors
+before dispatch, including publication during a running callback. A monotonic
+internal token distinguishes cancelled future entries from reused caller IDs.
+There are at most twenty outstanding transactions including unread results; the
+existing 31-result queue bounds terminal delivery. Receipts capture immutable
+generation, clear epoch and settings revision at completion, including across
+stopped prepare. Existing untracked callers retain their path.
+
+`ArpSettingsOwner` owns all Arp request/result traffic for an Engine, off audio.
+It binds only explicit known original settings matching the native render bank;
+it never reconstructs doubles or preset metadata from Float32 targets. Candidates
+remain separate until exact success; queue/OOM/rejection/cancellation preserves
+confirmed values. Clear resets original settings; stale snapshots cannot reverse
+confirmed revisions. A generation change or unexplained external edit unbinds
+the owner, retaining last-confirmed precision for explicit known-state recovery.
+Cancellation after an unread ready receipt cannot undo that accepted fact.
+External host restore still requires the production non-audio lock/intent path.
+
+| Reference behavior / contract | Native status | Evidence / remaining gap |
+| --- | --- | --- |
+| Original double controls and preset metadata | Internal owner preserves them | Decimal/Float32-alias and stale-view regressions; legacy importer pending |
+| Ordered preset writes / audible result | Accepted existing DSP path reused | Exact nonzero stereo Engine PCM at 64/128 against untracked preset path |
+| Failure/cancellation keeps old settings | Exact tracked terminal receipts | Full queues, OOM, MIDI Stop, clear, prepare, same-ID and concurrent cases |
+| GUI/CLI, MIDI, persistence and BPM workflows | Pending product integration | No new command exposed; A remains disabled |
+| Atomic original-model / complete FX restore | Pending | Existing Arp-only graph bank is not a complete session restore |
+
+`arp_owner_contract` passes Windows (2.24s). The new MIDI Stop fixture initially
+failed because MIDI was disabled; enabling the real controller in the fixture
+verifies the purge and two exact cancellation receipts. No assertion or product
+behavior was relaxed. Cross-platform/sanitizer results will be recorded below.
+Original assets, DSP math, browser PCM tolerances and product defaults are unchanged;
+reuse the accepted original WebView2 preset oracle, replaying its saved fixtures.
+
 ## Ordered original preset gesture — 12 November 2026
 
 Accepted internal runtime/tests `b914984`.

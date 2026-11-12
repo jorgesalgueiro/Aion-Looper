@@ -10,6 +10,12 @@ template<class T, std::uint32_t N> class SpscQueue {
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::atomic<std::uint32_t>::is_always_lock_free);
 public:
+    // Sole producer only. With no competing producer, the consumer can only
+    // increase available room after this check. Used for bounded dual publish.
+    bool canPush() const noexcept {
+        const auto w=write.load(std::memory_order_relaxed);
+        return ((w+1)&(N-1))!=read.load(std::memory_order_acquire);
+    }
     // Sole-producer atomic batch publication, useful for a complete preset bank.
     // Reject before writing if there is insufficient room; never publish a prefix.
     bool pushBatch(std::span<const T> batch) noexcept {

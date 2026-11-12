@@ -37,6 +37,7 @@ struct LoopCommand {
     std::uint32_t arpMask=arpAllParameters;
     std::uint64_t arpClearEpoch=0,arpSettingsRevision=0;
     bool arpPreset=false; // Internal ordered 22-write gesture; not a product preset ID.
+    std::uint64_t arpTransaction=0; // Internal tracked edit identity, never a product ID.
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct ExportRequest {std::uint32_t track=0,generation=0;std::uint64_t waveformId=0;};
@@ -48,11 +49,15 @@ struct ArpPreparationRequest {
     ArpModValues values=arpModDefaults();
     bool activate=false; // Internal connected-stage install; product UI still disabled.
     std::uint64_t settingsRevision=0;
+    bool edit=false,enabled=false,preset=false;
+    std::uint32_t mask=arpAllParameters;
+    std::uint64_t transaction=0;
 };
 enum class ArpPreparationStatus : std::uint8_t {ready,cancelled,stale,busy,failed};
 struct ArpPreparationResult {
     std::uint32_t track=0,requestId=0,generation=0;
     ArpPreparationStatus status=ArpPreparationStatus::failed;
+    std::uint64_t transaction=0,settingsRevision=0,clearEpoch=0;
 };
 // Internal atomic Arp-only bank. One outstanding including unread receipt;
 // mutually exclusive with per-track preparations. Not a full session restore.
@@ -112,6 +117,10 @@ public:
     // complete preset and consumes one dispatch budget slot, never a prefix.
     // Caller supplies arpDelay identity/epoch/revision/frame and explicit seed.
     bool enqueueArpPreset(LoopCommand,const ArpSettings&,double bpm) noexcept;
+    // Sole message producer; shares the preparation receipt/admission bound.
+    // Publish an exact receipt descriptor plus one ordered performance command.
+    // Failure leaves transaction/output and both queues unchanged.
+    bool enqueueArpEdit(LoopCommand,std::uint64_t& transaction) noexcept;
     bool enqueueEqBank(const std::array<EqSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;
     bool enqueueEffectsBank(const std::array<EqSettings,LoopBank::trackCount>&,
                             const std::array<CompressorSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;
@@ -214,13 +223,18 @@ private:
         bool active=false,started=false,finished=false;
         ArpPreparationStatus status=ArpPreparationStatus::failed;
         std::uint64_t installation=0;
+        ArpPreparationResult completion{}; // immutable once terminal, even if publication must retry
     };
     void cancelStaleArpPreparations() noexcept;
     void serviceArpPreparations() noexcept;
     void finishArpPreparation(unsigned,ArpPreparationStatus) noexcept;
     void cancelAllArpPreparations() noexcept; // stopped prepare owner
+    bool currentArpEdit(const LoopCommand&) const noexcept;
+    bool applyArpEdit(const LoopCommand&) noexcept;
     std::array<PendingArpPreparation,LoopBank::trackCount> pendingArp{}; // audio only
     std::array<bool,LoopBank::trackCount> outstandingArp{}; // message only
+    std::uint64_t nextArpTransaction=0; // message only, never reset/reused at prepare
+    std::uint64_t seenArpTransaction=0; // audio only; distinguishes unregistered vs obsolete FIFO entries
     std::array<std::atomic<std::uint64_t>,LoopBank::trackCount> arpCancellations{};
     std::unique_ptr<SpscQueue<ArpPreparationRequest,32>> arpRequests=std::make_unique<SpscQueue<ArpPreparationRequest,32>>();
     std::unique_ptr<SpscQueue<ArpPreparationResult,32>> arpResults=std::make_unique<SpscQueue<ArpPreparationResult,32>>();
