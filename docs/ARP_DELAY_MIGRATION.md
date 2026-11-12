@@ -35,8 +35,25 @@ original limits: max parameter error 0, audio peaks 2.27243e-7 / 2.38419e-7.
 These replay recorded original WebView2 audio, not Linux WebKit or new UI checks.
 Linux ASan/UBSan/leaks 5/5 (34.06s), TSAN 3/3 (24.24s), no diagnostics. Both
 Standalones build. The negative-zero exclusion subsequently passes affected
-Windows connected/kernel/stream tests 3/3 (5.99s); Linux verification and final
-timing are in progress. Product A remains disabled.
+Windows connected/kernel/stream tests 3/3 (5.99s), Linux 3/3 (2.72s), and Linux
+ASan/UBSan/leaks 3/3 (30.76s). Both final Standalones build.
+
+Settled-lane observation at `faddcf1`, same workload: Windows 64 mean/p99/max
+891.641/1062.1/1213.2us (0 overruns); 128 1806.47/2128.2/2774.3us (1).
+WSL 64 837.618/987.675/1104.83us (0); 128 1694.41/1874.22/3028.45us (1).
+Checksums match the earlier workload. These separate wall observations are not a
+controlled speedup claim or a reliable-deadline acceptance; keep
+`build/arp-settled-benchmark-{windows,linux}.log`.
+
+The next bounded optimization submits worklet controls only at their existing
+128-frame latch boundary, or the first sample after prepare/reset, rather than
+resubmitting identical controls on every Engine sample. It does not defer the
+automation or post-pan LFO, which still advance per sample. Acceptance retains
+exact variable-block PCM/state and original factory fixtures. A new audible
+reset-at-frame-37 regression checks that a pending mix target takes effect on the
+first sample, matching a fresh owner, including single-sample calls across later
+boundaries. Windows's new test passes; Linux/replay/sanitizer/timing work follows.
+Product A remains disabled.
 
 ## Connected render settings and user-order routing — 10 November 2026
 

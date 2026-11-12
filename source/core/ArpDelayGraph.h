@@ -21,6 +21,6 @@ private:
  ArpDelay delay;
  ArpModulation modulation;
  std::array<float,128> pan{};
- bool prepared=false;
+ bool prepared=false,freshWorklet=true;
 };
 }

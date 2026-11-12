@@ -115,6 +115,16 @@ int main(int argc,char** argv){
  check(a.reset(7),"constant-work graph reset");watch=false;check(b.prepare(48000,a.targets(),7),"fresh graph reset oracle");
  watch=true;check(a.process(nullptr,nullptr,0,outL.data(),outR.data(),128)&&b.process(nullptr,nullptr,0,bl.data(),br.data(),128),"post-clear tails");watch=false;
  check(outL==bl&&outR==br&&a.state()==b.state(),"old PCM/automation cannot revive after clear");
+ // Reset must immediately use current targets even halfway through the global
+ // quantum. Here old fully-wet controls would produce silence after clear.
+ {ArpDelayGraph reset, fresh;auto values=arpModDefaults();values[2]=1;
+  check(reset.prepare(48000,values,17)&&reset.setTarget(2,0),"pending mix target before partial-quantum reset");
+  check(reset.reset(17,37)&&fresh.prepare(48000,reset.targets(),17,37),"partial-quantum reset and fresh owner");
+  l.fill(.2f);r.fill(-.1f);
+  for(unsigned n=0;n<256;++n){watch=true;
+   check(reset.process(l.data(),r.data(),2,outL.data(),outR.data(),1)&&fresh.process(l.data(),r.data(),2,bl.data(),br.data(),1),"single-sample partial-quantum restart");watch=false;
+   check(outL[0]==.2f&&outR[0]==-.1f&&outL[0]==bl[0]&&outR[0]==br[0]&&reset.state()==fresh.state(),"reset uses latest mix immediately, then preserves quantum boundaries");}
+ }
  {const auto settings=a.targets();ArpDelayGraph fresh;
   check(a.prepare(96000,settings,11,384)&&fresh.prepare(96000,settings,11,384),"successful rate change with unchanged values");
   l.fill(.2f);r.fill(-.1f);
