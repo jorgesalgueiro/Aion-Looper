@@ -2,7 +2,7 @@
 
 ## Production inactive FX state restoration — 13 November 2026
 
-Candidate under validation. The production state-load path now uses the accepted
+Accepted runtime `0c179a8`, cleanup correction `b71f203`. The production state-load path now uses the accepted
 coordinated bank for Q/C/user chains while A remains inactive. It carries raw A
 targets unchanged and deliberately refuses active A; original Arp serialization,
 owner/GUI/CLI/MIDI and BPM/voicing integration remain separate acceptance. No
@@ -37,8 +37,8 @@ test covers off-message host restore, older queued edits, latest-wins before and
 after unread adoption, saturated telemetry, immediate saved intent, repeated bank
 IDs, zero-frame clocks, prepare and real Timer-only editor-closed servicing. Core
 contracts pass **4/4 (32.00s)**; actual `TestSignalChainUi.ps1` pointer/PCM/reload/
-DEL/live-state checks pass at 64/128. Standalone builds. MIDI, Linux and core
-sanitizer validation are pending. Prior unchanged-JS DSP evidence is reused; this
+DEL/live-state checks pass at 64/128. Standalone builds. Cross-platform and core
+sanitizer results are recorded below. Prior unchanged-JS DSP evidence is reused; this
 changes transaction timing/ownership, not filter or worklet math. No package/push.
 
 The final cleanup audit reproduced an existing broad gate rejecting STOP ALL while
@@ -49,9 +49,54 @@ admitted during restore and that per-track/all-track clears win without revived
 FX. Windows focused cleanup tests pass **2/2 (0.91s)**. Baseline Windows MIDI
 passes **1/1 (135.18s)**; Linux native/CLI/MIDI passes **9/9 (125.87s)**, core
 **4/4 (4.14s)**; core ASan/UBSan/leaks **3/3 (28.55s)** and TSAN **3/3 (45.25s)**
-pass without sanitizer diagnostics. Linux focused cleanup and final Windows UI
-checks remain pending; no unchanged passing suites need repeating for that
-request-gate-only correction.
+pass without sanitizer diagnostics. Linux focused cleanup passes **2/2 (0.61s)**
+and final Windows actual chain UI checks pass again at **64/128**. No unchanged
+passing suites were repeated for that request-gate-only correction. Both
+Standalones build with the final correction. Core sanitizers exercise bank/
+ownership/serial paths; the JUCE processor tests themselves were not sanitizer
+builds. Driver/hardware, OS session-file dialogs and deferred plugin hosts are
+not established by these tests. No new browser DSP oracle was required: filter/
+worklet math is unchanged, and prior original-JS evidence remains applicable.
+
+Exact commands (existing caches; CMake/CTest in the VS developer environment):
+
+```powershell
+cmake --build build/windows --config Release --parallel 2 --target aion_effects_restore_processor_tests aion_signal_chain_processor_tests aion_eq_processor_tests aion_compressor_processor_tests aion_mouse_host AionLooper_Standalone
+ctest --test-dir build/windows -C Release --no-tests=error --output-on-failure -R '^native_(effects_restore|signal_chain|eq|compressor)_processor_(64|128)$'
+cmake --build build/windows --config Release --parallel 2 --target aion_midi_processor_tests
+ctest --test-dir build/windows -C Release --no-tests=error --output-on-failure -R '^native_midi_processor$'
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_bank_tests aion_arp_owner_bank_tests aion_arp_preparation_tests aion_arp_owner_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^arp_(bank|owner_bank|owner|preparation)_contract$'
+./tools/TestSignalChainUi.ps1 -Blocks @(64,128)
+# After cleanup fix: rebuild processor tests/UI host/Standalone, rerun the UI
+# command and this focused selection (the original failure log is retained):
+ctest --test-dir build/windows -C Release --no-tests=error --output-on-failure -R '^native_effects_restore_processor_(64|128)$'
+```
+
+```sh
+# Native WSL checkout, existing normal cache. Test registration only; wrappers stay off.
+cmake -S . -B build/linux -DAION_TEST_NATIVE_PROCESSOR=ON
+cmake --build build/linux --parallel 2 --target aion_core
+cmake --build build/linux --parallel 2 --target aion_arp_bank_tests aion_arp_owner_bank_tests aion_arp_owner_tests aion_arp_preparation_tests
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^arp_(bank|owner_bank|owner|preparation)_contract$'
+cmake --build build/linux --parallel 2 --target aion_effects_restore_processor_tests aion_signal_chain_processor_tests aion_eq_processor_tests aion_compressor_processor_tests aion_midi_processor_tests AionLooper_Standalone
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(native_(effects_restore|signal_chain|eq|compressor)_processor_(64|128)|native_midi_processor)$'
+cmake --build build/overlap-asan --parallel 1 --target aion_core
+cmake --build build/overlap-asan --parallel 1 --target aion_arp_bank_tests aion_arp_owner_bank_tests aion_arp_preparation_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^arp_(bank|owner_bank|preparation)_contract$'
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_core
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_bank_tests aion_arp_owner_bank_tests aion_arp_preparation_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^arp_(bank|owner_bank|preparation)_contract$'
+# After the Processor request-gate cleanup correction (core unchanged):
+cmake --build build/linux --parallel 2 --target aion_effects_restore_processor_tests AionLooper_Standalone
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^native_effects_restore_processor_(64|128)$'
+```
+
+Windows logs: `build/fx-production-{build,chain-64,focused-build,focused-64,native-build,native,core-build,core,chain-ui,midi-build,midi,cleanup-before-build,cleanup-before,cleanup-build,cleanup,cleanup-ui}-windows.log`.
+Native WSL logs: `build/fx-production-{configure,core-build,core,native-build,native,asan-build,asan-test,tsan-build,tsan-test,cleanup-build,cleanup}-linux.log`.
+No package/push. Next: original Arp state codec and owner binding through the
+existing production intent/receipt path; keep active A gated until its full
+GUI/CLI/MIDI/BPM/default-voicing and lifecycle acceptance is complete.
 
 ## Coordinated Q/C/chain/Arp transaction — 13 November 2026
 

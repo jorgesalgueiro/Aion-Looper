@@ -11,7 +11,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Production inactive FX state restore — 13 November 2026, validation in progress
+### Production inactive FX state restore — 13 November 2026
 
 Existing Q/C/chain state loads now use the coordinated native bank instead of a
 60-command batch. The message owner waits for older ordinary FIFO actions to
@@ -27,9 +27,19 @@ without reconstructing original controls or adding an Arp saved-state schema.
 All-off graph banks now commit in their first callback with no worker allocation,
 preserving the existing one-callback inactive-load workflow. Windows production
 state/legacy/shared CLI checks pass **8/8 (46.87s)**, core ownership **4/4 (32.00s)**,
-and actual WebView2 chain interaction/PCM checks pass at **64/128**. MIDI and Linux/
-sanitizer checks are pending. No package/push. Next after acceptance: versioned
-original Arp state/owner binding, then shared GUI/CLI/MIDI/BPM/voicing acceptance.
+and actual WebView2 chain interaction/PCM checks pass at **64/128**. Windows MIDI
+passes **1/1 (135.18s)**; Linux production/CLI/MIDI **9/9 (125.87s)** and core
+**4/4 (4.14s)** pass. Core ASan/UBSan/leaks **3/3 (28.55s)** and TSAN **3/3
+(45.25s)** pass without diagnostics. Both Standalones build.
+Runtime `0c179a8`, final cleanup fix `b71f203`: a reproduced pending-restore gate
+rejected STOP ALL. It now permits validated STOP ALL/DEL/DEL ALL; focused cleanup
+tests pass Windows **2/2 (0.91s)** and Linux **2/2 (0.61s)**, and final actual
+WebView2 chain checks pass again at 64/128. No assertion was removed or weakened.
+See the Arp migration notes for exact commands, logs and scope: core sanitizers
+do not establish sanitizer coverage of the JUCE processor or physical drivers.
+No package/push. Next: versioned original Arp state/owner binding, integrating
+with this sole receipt owner rather than creating a competing consumer, then
+shared GUI/CLI/MIDI/BPM/voicing acceptance before enabling A.
 
 ### Coordinated native FX bank — 13 November 2026
 
