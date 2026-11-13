@@ -86,10 +86,10 @@ static void cancellation(unsigned block){
 static void lifecycle(unsigned block){
  Fixture f(block);const auto next=settings(500);check(f.owner.restore(next,30),"ready before repeated prepare");
  wait([&]{f.pump();return f.engine->inspectAudioThread(19).track.arpRequest==30;},"ready before generation change");
- f.engine->prepare(8000,32768);f.engine->prepare(8000,32768);f.pump();f.service();
+ f.engine->prepare(8000,32768);f.engine->prepare(8000,32768);f.fresh();
  check(!f.owner.bound()&&!f.owner.restoring()&&f.owner.restoreStatus()==ArpPreparationStatus::ready&&f.originals()==next,"unread bank receipt preserves all original precision across prepare");
  check(f.owner.bind(f.latest,next),"explicit known bank rebind after same-rate prepare");
- auto before=f.originals();check(f.owner.restore(settings(600),31),"queued original bank before reset");f.engine->prepare(48000,32768);f.pump();f.service();
+ auto before=f.originals();check(f.owner.restore(settings(600),31),"queued original bank before reset");f.engine->prepare(48000,32768);f.fresh();
  check(!f.owner.bound()&&!f.owner.restoring()&&f.owner.restoreStatus()==ArpPreparationStatus::cancelled&&f.originals()==before,"prepare cancels queued bank exactly without committing candidate");
  check(f.owner.bind(f.latest),"explicit default bind after new-rate reset");
  // Earlier unrelated Arp changes make restore's revision obsolete. Fail closed

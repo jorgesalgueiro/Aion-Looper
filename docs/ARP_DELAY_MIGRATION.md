@@ -46,7 +46,12 @@ pumps a zero-frame callback and reads a fresh audio-owned view for those two
 observations. The explicit stale-view receipt test remains unchanged. No assertion,
 tolerance, product DSP or owner behavior changed. Windows focused rerun passes
 **1/1 (3.42s)**; Linux/sanitizer fixture reruns are pending. Initial failed logs are
-retained as `build/arp-owner-bank-{asan,tsan}-test-linux.log`.
+retained as `build/arp-owner-bank-{asan,tsan}-test-linux.log`. The first fixture
+rerun passed three consecutive Linux Release runs but exposed the same stale-view
+assumption at explicit rebind after prepare under both sanitizers: the owner
+correctly rejected an older generation. That fixture now also obtains a fresh
+audio-owned view before explicit rebind. Its failed logs remain
+`build/arp-owner-bank-fresh-{asan,tsan}-test.log`. Product code is unchanged.
 Reuse prior unchanged-JS sound evidence:
 DSP/automation math, preserved assets and browser tolerances did not change.
 
