@@ -177,7 +177,7 @@ static void connected(unsigned block,double rate){
  paired(LoopAction::stopImmediate,41);for(unsigned n=0;n<1024/block;++n)render(false);for(unsigned i=0;i<block;++i)check(wl[i]==0&&wr[i]==0,"no retired Arp tail revival");
  std::cout<<"PASS connected user-ordered Arp "<<rate<<" / "<<block<<": peak "<<error<<", signal "<<nonzero<<'\n';
 }
-static void benchmark(){
+static void benchmark(unsigned midiCount=0){
  for(unsigned block:{64u,128u}){
   auto engine=std::make_unique<Engine>();engine->prepare(48000,262144);engine->setMonitoring(false);check(engine->enqueue({0,1}),"benchmark master");
   std::array<float,128> l{},r{};float* audio[]{l.data(),r.data()};
@@ -188,19 +188,24 @@ static void benchmark(){
   for(unsigned id=0;id<20;++id){ArpPreparationRequest request;request.track=id;request.requestId=200+id;request.generation=engine->generation();request.values=arpFactoryTargets();request.seed=42+id;request.activate=true;check(engine->enqueueArpPreparation(request),"benchmark A preparation");}
   unsigned ready=0;const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);ArpPreparationResult receipt;
   while(ready<20){engine->process(nullptr,0,0);while(engine->popArpPreparation(receipt)){check(receipt.status==ArpPreparationStatus::ready,"benchmark A ready");++ready;}check(std::chrono::steady_clock::now()<until,"benchmark preparation timeout");std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+  std::array<MidiEvent,256> events{};
+  if(midiCount){MidiSettings midi;midi.enabled=true;for(unsigned p=0;p<9;++p)midi.bindings[MidiSettings::arpBase+p]=midiBinding(2,20+p);check(engine->configureMidi(midi),"benchmark MIDI mappings");}
   constexpr unsigned warm=512,measured=2048;std::vector<double> times(measured);double checksum=0;
   for(unsigned n=0;n<warm+measured;++n){
-   l.fill(0);r.fill(0);const auto start=std::chrono::steady_clock::now();engine->process(audio,2,block);
+   for(unsigned e=0;e<midiCount;++e)events[e]={e*block/midiCount,static_cast<std::uint8_t>(176+e%16),static_cast<std::uint8_t>(20+e%9),static_cast<std::uint8_t>((n+e)%128),3};
+   l.fill(0);r.fill(0);const auto start=std::chrono::steady_clock::now();engine->process(audio,2,block,{events.data(),midiCount});
    const auto us=std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-start).count();if(n>=warm)times[n-warm]=us;
+   ArpMidiReceipt midi;unsigned received=0;while(engine->popArpMidi(midi))++received;check(received==midiCount,"benchmark accepts every MIDI edit and drains off audio");
    for(unsigned i=0;i<block;++i)checksum+=std::abs(l[i])+std::abs(r[i]);
   }
   for(unsigned id=0;id<20;++id){const auto view=engine->inspectAudioThread(id).track;check(view.state==LoopState::playing&&view.arp.enabled,"benchmark all twenty Q/C/A loops active");}
   check(checksum>1,"benchmark is not silent");std::sort(times.begin(),times.end());double sum=0;unsigned over=0;const double deadline=block/48000.*1e6;
   for(auto time:times){sum+=time;over+=time>deadline;}
-  std::cout<<"{\"scope\":\"20 playing loops, Q/C/A default chain, internal targets; wall callback only, excludes device/UI/roundtrip\",\"block\":"<<block<<",\"rate\":48000,\"warmCallbacks\":"<<warm<<",\"measuredCallbacks\":"<<measured<<",\"meanUs\":"<<sum/measured<<",\"p99Us\":"<<times[measured*99/100]<<",\"maximumUs\":"<<times.back()<<",\"deadlineUs\":"<<deadline<<",\"observedOverruns\":"<<over<<",\"checksum\":"<<checksum<<"}\n";
+  std::cout<<"{\"scope\":\"20 playing loops, Q/C/A default chain, internal targets; wall callback only, excludes device/UI/roundtrip\",\"midiPerCallback\":"<<midiCount<<",\"block\":"<<block<<",\"rate\":48000,\"warmCallbacks\":"<<warm<<",\"measuredCallbacks\":"<<measured<<",\"meanUs\":"<<sum/measured<<",\"p99Us\":"<<times[measured*99/100]<<",\"maximumUs\":"<<times.back()<<",\"deadlineUs\":"<<deadline<<",\"observedOverruns\":"<<over<<",\"checksum\":"<<checksum<<"}\n";
  }
 }
 int main(int argc,char** argv){
  if(argc==2&&std::string_view(argv[1])=="benchmark"){benchmark();return 0;}
+ if(argc==2&&std::string_view(argv[1])=="benchmark-midi"){benchmark(256);return 0;}
  for(unsigned block:{64u,128u}){transactions(block);for(double rate:{8000.,48000.,96000.})connected(block,rate);}
 }
