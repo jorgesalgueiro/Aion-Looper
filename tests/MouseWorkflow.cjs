@@ -851,7 +851,10 @@ let socket;
     console.log('PASS: early-source trusted speed key, unchanged source/clip/deadline, pre-grid silence and audible retained grid at '+process.argv[2]);
     await wait(s=>s.gridPosition>0.03&&s.gridPosition<0.15,'Early RTRG grid phase');
     await exactlyOne(()=>click('#loop-action-0'),'Queue source for early RTRG');await state('queued');
-    assert(await evaluate(`document.querySelector('#loop-0 button[title="RTRG"]').disabled`),'Unadmitted queued source cannot expose RTRG');
+    // Accepted 9 November unborn-source RTRG starts a fresh immediate graph.
+    // Keep readiness coverage; that state no longer disables the original button.
+    assert(!(await snapshot()).tracks[0].queuedSourceReady,'Queued source is still unconstructed before explicit callback');
+    assert(await evaluate(`!document.querySelector('#loop-0 button[title="RTRG"]').disabled`),'Original RTRG admits an unborn queued source');
     require('node:fs').writeFileSync(require('node:path').join(pcmDirectory,'early-source-start'),'1');
     await wait(s=>s.tracks[0].state==='queued'&&s.tracks[0].queuedSourceReady,'Actual graph callback exposes RTRG readiness');
     assert(await evaluate(`!document.querySelector('#loop-0 button[title="RTRG"]').disabled`),'Validated queued source enables original RTRG button');

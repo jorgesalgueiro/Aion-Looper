@@ -11,7 +11,11 @@ All banks validate before changing APVTS/MIDI/FX intent; absent native Arp state
 means legacy defaults/off. This is not an importer for the original JS project
 format. Active banks prepare asynchronously alongside Q/C/user chains. Failed
 admission/preparation retains the confirmed originals and native graphs. Prepare
-binds only known native reset values, then restores the accepted original bank.
+binds only confirmed originals or known native reset values, then restores the
+accepted original bank. Same-rate prepare can retain graphs, unlike a changed-rate
+prepare; the added production regression covers both. The stopped native reset
+and FX-intent update share the existing non-audio mutex, preventing the message
+Timer from copying a reset bank over accepted settings between those operations.
 
 Shared `arp` requests and `tools/aion.py arp` support get, enable/bypass/toggle,
 named preset and one original parameter edit. Exact track receipts confirm
@@ -36,8 +40,13 @@ Failed logs remain in `build/arp-product-{tests,diagnostic,regressions,ui}.log`.
 
 Windows core/reference selection passes **11/11 (73.27s)**; actual owned WebView2
 Arp pointer/key/reload/chain/continuing-PCM checks pass at **64/128**
-(`build/arp-product-ui2.log`). Final product/CLI/Linux evidence is recorded in the
-current handoff after running it. Prior unchanged original-browser sound fixtures
+(`build/arp-product-ui2.log`). Runtime `9deb299` passes Windows production/CLI/MIDI
+**11/11 (212.53s)** and Linux **11/11 (143.71s)**; Linux core/reference **11/11
+(39.56s)** and core ASan/UBSan/leaks **3/3 (33.27s)** pass. These core sanitizer
+checks do not establish sanitizer coverage of the JUCE processor. Final prepare
+correction passes Windows Arp/FX state **4/4 (14.25s)** including the new same-rate
+case; Linux rerun follows that coherent snapshot. Both Standalones build.
+Prior unchanged original-browser sound fixtures
 remain valid for unchanged DSP, not proof of full product timing or physical IO.
 
 **Arp is not finished.** Next acceptance gaps are original MIDI control mapping
@@ -46,6 +55,45 @@ new-instance voicing/seed policy, and broader OD/SUB/MULT/scheduled STOP/session
 stress checks. Current gestures capture Master BPM; do not claim automatic tempo
 tracking. Keep this preview separate from complete parity/release acceptance.
 No package or push is part of this work.
+
+The owner chose to include organic voicing now rather than defer it. A follow-up
+asks which audible character to implement; no new voicing or random seed policy
+has been invented while that choice is pending.
+
+The full mouse workflow found a historical assertion requiring unborn queued
+RTRG to be disabled. It contradicts accepted `bcb65c8`/`531386c` original-RTRG
+behavior documented on 9 November. The fixture now explicitly retains the unborn
+`queuedSourceReady == false` check AND requires the original button enabled.
+Constructed-source readiness, trusted RTRG/PCM and all later assertions remain;
+no product retrigger behavior or numeric tolerance changed. The focused existing
+`-PendingRetriggerOnly` ten-scenario gate remains the direct unborn-action check.
+Keep failed `build/arp-product-mouse.log`; the full rerun is recorded separately.
+
+Reproducible affected commands (configured caches; use the pinned CMake/CTest
+executables documented in DEVELOPMENT_WORKFLOW.md if not on PATH):
+
+```powershell
+cmake --build build/windows --config Release --target aion_arp_processor_tests aion_effects_restore_processor_tests aion_eq_processor_tests aion_compressor_processor_tests aion_signal_chain_processor_tests aion_midi_processor_tests aion_mouse_host AionLooper_Standalone --parallel 2
+ctest --test-dir build/windows -C Release -R '^native_(arp|effects_restore|eq|compressor|signal_chain|midi)_processor(_(64|128))?$' --no-tests=error --output-on-failure
+./tools/TestArpUi.ps1 -Blocks @(64,128)
+./tools/TestMouseWorkflow.ps1 -Blocks @(64,128) -SkipMidi
+```
+
+After a committed Windows snapshot, use `tools/SetupWslWorkspace.sh` as documented.
+Then in the native WSL checkout:
+
+```sh
+cmake --build build/linux --target AionLooper --parallel 2
+cmake --build build/linux --target aion_arp_processor_tests aion_effects_restore_processor_tests aion_eq_processor_tests aion_compressor_processor_tests aion_signal_chain_processor_tests aion_midi_processor_tests aion_arp_owner_tests aion_arp_owner_bank_tests AionLooper_Standalone --parallel 2
+ctest --test-dir build/linux -R '^native_(arp|effects_restore|eq|compressor|signal_chain|midi)_processor(_(64|128))?$' --no-tests=error --output-on-failure
+ctest --test-dir build/linux -R '^(arp_(owner|owner_bank|connected|bank|settings|preset|preparation)_contract|original_arp_settings_contract|original_arp_preset_order|js_native_arp_delay|original_ui_bytes)$' --no-tests=error --output-on-failure
+cmake --build build/overlap-asan --target aion_arp_owner_tests aion_arp_owner_bank_tests --parallel 1
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan -R '^arp_(owner|owner_bank|bank)_contract$' --no-tests=error --output-on-failure
+```
+
+Logs: Windows `build/arp-product-{acceptance,core-tests,prepare-tests,ui2}.log`;
+WSL `build/arp-product-{acceptance,core,asan}.log`. Hardware-free editor PCM is
+not physical IO/listening or Linux WebKit GUI validation. Wrappers remain deferred.
 
 ## Production inactive FX state restoration — 13 November 2026
 

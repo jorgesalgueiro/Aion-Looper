@@ -35,6 +35,18 @@ This is a working **preview**, not finished Arp or release acceptance. See the
 new section of ARP_DELAY_MIGRATION.md and CLI.md. No dependency/parameter ID,
 reference/resource UI, package or push change. Continue Arp rather than another FX.
 
+Snapshot `9deb299`: Windows production/CLI/MIDI **11/11 (212.53s)**, Linux **11/11
+(143.71s)**, core/reference Windows **11/11 (73.27s)** and Linux **11/11 (39.56s)**,
+core ASan/UBSan/leaks **3/3 (33.27s)**. Final prepare correction adds same-rate
+retained-graph binding and atomic stopped reset/intent; Windows Arp/FX state
+**4/4 (14.25s)**. Its Linux and full mouse-workflow evidence follows. The mouse
+fixture's old unborn-RTRG disabled assertion contradicted accepted 9 November
+behavior; it now retains source-readiness coverage and checks enabled admission.
+Do not revert product RTRG behavior to satisfy that obsolete expectation.
+Owner requests organic voicing in this work; its audible character question is
+pending, so no voicing/seed policy was invented. Core sanitizers do not cover JUCE
+processor code; physical IO/listening/Linux WebKit GUI remain unverified.
+
 ### Production inactive FX state restore — 13 November 2026
 
 Existing Q/C/chain state loads now use the coordinated native bank instead of a

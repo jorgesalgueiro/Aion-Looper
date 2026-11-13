@@ -57,8 +57,6 @@ persist in native state and keep working without an editor. Existing channel
 filters/conflict rules apply; physical controller verification remains separate.
 CC120/123 retain the existing native panic behavior and cannot be learned as EQ.
 
-The native loop compressor uses the same processor and selected-loop CC tab:
-
 Arp Delay now has development GUI/CLI access to its original controls and eight
 presets. Commands operate on the same persistent per-loop native graph:
 

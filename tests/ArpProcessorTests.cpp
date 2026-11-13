@@ -46,6 +46,7 @@ int main(int argc,char** argv){
  std::thread host([&]{p->setStateInformation(committed.getData(),static_cast<int>(committed.getSize()));});host.join();snapshot();settle();
  juce::MemoryBlock roundtrip;p->getStateInformation(roundtrip);check(roundtrip==committed,"active bank exact original/preset/BPM/seed state roundtrip");
  check(p->inspectAudioThread(19).track.arp.enabled,"active graph recreated by host-thread intent");
+ p->prepareToPlay(8000,block);settle();check(p->inspectAudioThread(19).track.arp.enabled,"active Arp restores after same-rate generation change");
  p->prepareToPlay(22050,block);settle();check(p->inspectAudioThread(19).track.arp.enabled,"active Arp restores after sample-rate generation change");
  // Missing versioned bank is a legacy session, not an instruction to retain a
  // newer Arp from the current session. All old state schemas remain valid.

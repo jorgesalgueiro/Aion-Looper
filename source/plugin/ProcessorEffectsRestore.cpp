@@ -7,9 +7,15 @@ bool AionProcessor::serviceEffectsRestore(){
     for(unsigned n=0;n<8&&engine.popView(latest);++n){} // Bounded Timer service also owns closed-editor Arp edits/clears.
     arpOwner.service(latest);
     if(!arpOwner.bound()){
-        // prepare resets native Arp graphs. Bind only the known reset originals;
-        // the accepted session intent is restored separately through the worker.
-        if(latest.generation!=engine.generation()||!arpOwner.bind(latest))return false;
+        // A changed-rate prepare resets graphs; a same-rate prepare can retain
+        // them. Choose only confirmed originals or known reset defaults, never
+        // reconstruct original precision/preset metadata from render floats.
+        if(latest.generation!=engine.generation())return false;
+        aion::ArpSettingsOwner::Bank known{};
+        for(unsigned id=0;id<known.size();++id){const auto& old=arpOwner.track(id)->committed;aion::ArpRenderSettings render;
+            if(aion::compileArpSettings(old.controls,old.bpm,old.seed,render)&&render==latest.tracks[id].arp)known[id]=old;
+        }
+        if(!arpOwner.bind(latest,known))return false;
     }
     if(effectsRestore.active){
         if(!effectsRestore.completed){

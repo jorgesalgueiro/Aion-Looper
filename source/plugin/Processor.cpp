@@ -187,8 +187,11 @@ void AionProcessor::prepareToPlay(double rate, int) {
     vst3ProgramOverflow.store(false,std::memory_order_relaxed);midiInputReady.store(inputAvailable(*this),std::memory_order_release);
     aion::DeviceOutputLatency latency;
     try{latency=outputLatencyReader?outputLatencyReader():standaloneOutputLatency(*this);}catch(...){latency={};}
-    engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
-    {std::lock_guard guard(midiSettingsMutex);engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);arpRestorePending=arpSettings!=aion::ArpSettingsOwner::Bank{};++effectsIntent;lastEffectsRequest=nextRequest;lastOrdinaryRequest=0;}
+    {std::lock_guard guard(midiSettingsMutex);
+     // Stopped lifecycle only. Keep native reset and accepted FX intent atomic
+     // to the message Timer, including a device-thread prepare with no editor.
+     engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
+     engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);arpRestorePending=arpSettings!=aion::ArpSettingsOwner::Bank{};++effectsIntent;lastEffectsRequest=nextRequest;lastOrdinaryRequest=0;}
     deviceClockOwner=nextDeviceClockOwner;
     deviceClockEpoch=deviceClockOwner?deviceClockOwner->advance():0;
     activeDeviceClockEpoch.store(deviceClockEpoch,std::memory_order_release);
