@@ -2,7 +2,7 @@
 
 ## Atomic original settings bank restore — 13 November 2026
 
-Internal slice, validation in progress. The unchanged reference saves both
+Accepted internal slice. The unchanged reference saves both
 `loop.params` and `loop.activePresets` (`Modules/projectManager.js`); the native
 original model must preserve those double values and preset identities rather
 than infer them from rendered AudioParam targets. This change is not a legacy
@@ -52,8 +52,51 @@ assumption at explicit rebind after prepare under both sanitizers: the owner
 correctly rejected an older generation. That fixture now also obtains a fresh
 audio-owned view before explicit rebind. Its failed logs remain
 `build/arp-owner-bank-fresh-{asan,tsan}-test.log`. Product code is unchanged.
-Reuse prior unchanged-JS sound evidence:
-DSP/automation math, preserved assets and browser tolerances did not change.
+Final fixtures `46cb342` pass three consecutive owner-bank runs in each cache:
+Windows **9.88s**, Linux Release **1.65s**, ASan/UBSan/leaks **20.73s**, TSAN
+**32.27s**. The three retained sanitizer contracts passed in the initial selection;
+only the affected fixture was rebuilt/rerun. No sanitizer diagnostics were reported.
+The repeats specifically verify the observed timing-sensitive fixture repairs,
+not a long-session/device-performance claim. Runtime remains `4c71603`.
+Reuse prior unchanged-JS sound evidence: DSP/automation math, preserved assets and
+browser tolerances did not change. No new browser/UI, driver or deferred-plugin
+validation is claimed. No package or push.
+
+Executed commands (configured caches; Linux from its native WSL mirror):
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_core
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_owner_bank_tests aion_arp_owner_tests aion_arp_bank_tests aion_arp_preparation_tests aion_arp_connected_tests aion_arp_storage_tests aion_arp_preset_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_(owner_bank|owner|bank|preparation|connected|delay_storage|preset)_contract|original_arp_settings_contract|original_arp_preset_order|original_ui_bytes)$'
+cmake --build --preset windows-dev --parallel 2
+# After the fixture-only fixes:
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_owner_bank_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure --repeat until-fail:3 -R '^arp_owner_bank_contract$'
+```
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_core
+cmake --build build/linux --parallel 2 --target aion_arp_owner_bank_tests aion_arp_owner_tests aion_arp_bank_tests aion_arp_preparation_tests aion_arp_connected_tests aion_arp_storage_tests aion_arp_preset_tests
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_(owner_bank|owner|bank|preparation|connected|delay_storage|preset)_contract|original_arp_settings_contract|original_arp_preset_order|original_ui_bytes)$'
+cmake --build --preset linux-dev --parallel 2
+cmake --build build/overlap-asan --parallel 1 --target aion_core
+cmake --build build/overlap-asan --parallel 1 --target aion_arp_owner_bank_tests aion_arp_owner_tests aion_arp_bank_tests aion_arp_preparation_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -R '^arp_(owner_bank|owner|bank|preparation)_contract$'
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_core
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_owner_bank_tests aion_arp_owner_tests aion_arp_bank_tests aion_arp_preparation_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -R '^arp_(owner_bank|owner|bank|preparation)_contract$'
+# Final fixture-only rebuilds and repeats, preserving the initial failing logs:
+cmake --build build/linux --parallel 1 --target aion_arp_owner_bank_tests
+ctest --test-dir build/linux --no-tests=error --output-on-failure --repeat until-fail:3 -R '^arp_owner_bank_contract$'
+cmake --build build/overlap-asan --parallel 1 --target aion_arp_owner_bank_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure --repeat until-fail:3 -R '^arp_owner_bank_contract$'
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_owner_bank_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure --repeat until-fail:3 -R '^arp_owner_bank_contract$'
+```
+
+Windows logs: `build/arp-owner-bank-{build,test,focused-build,focused,regression-build,regression,standalone,fresh-build,fresh,final-build,final}-windows.log`.
+Native WSL logs: `build/arp-owner-bank-{build,test,standalone,asan-build,asan-test,tsan-build,tsan-test}-linux.log`,
+and fixture reruns `build/arp-owner-bank-{fresh,final}-{linux,asan,tsan}-{build,test}.log`.
 
 ## Original settings owner / exact edit receipts — 12 November 2026
 

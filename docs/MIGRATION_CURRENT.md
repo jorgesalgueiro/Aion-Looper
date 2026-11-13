@@ -11,7 +11,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Atomic original Arp bank restore — 13 November 2026, validation in progress
+### Atomic original Arp bank restore — 13 November 2026
 
 The internal settings owner now stages a complete known original Arp bank through
 the accepted Engine graph-bank transaction. It commits all original double values,
@@ -20,10 +20,20 @@ in one immutable terminal receipt. OOM, busy, cancellation and queued prepare
 preserve the old original bank. A clear after successful adoption wins only on
 its own track; the other accepted originals remain intact. No Float32 inference.
 
-The focused Windows owner-bank contract passes (3.37s), including exact nonzero
-stereo PCM versus the accepted raw Engine bank path at 64/128, all-twenty enable/
-disable, closed telemetry/unread results, concurrent callback publication and
-zero watched callback new/delete. Retained/platform/sanitizer checks are underway.
+Runtime `4c71603`, final fixtures `46cb342`: Windows affected selection passes
+**10/10 (53.83s)** and Linux **10/10 (11.80s)**; both Standalones build. Exact
+nonzero stereo PCM versus the accepted raw Engine bank path passes at 64/128,
+along with all-twenty enable/disable, closed telemetry/unread results, concurrent
+callback publication and zero watched callback new/delete. The final owner-bank
+contract passes three consecutive runs per configuration: Windows **9.88s**,
+Linux Release **1.65s**, ASan/UBSan/leaks **20.73s**, TSAN **32.27s**. The retained
+three sanitizer contracts also passed; no sanitizer diagnostics were reported.
+Initial sanitizer runs exposed stale-snapshot assumptions in the new fixture.
+It now explicitly obtains fresh audio-owned acknowledgement/clear/generation
+observations. Original stale-view coverage and all assertions remain; no product
+code, DSP or tolerances changed for those repairs. Failed logs remain recorded in
+[ARP_DELAY_MIGRATION.md](ARP_DELAY_MIGRATION.md). Reuse prior unchanged-JS PCM
+evidence: the DSP/automation math and preserved assets did not change.
 This is **Arp-only internal state ownership**, not a complete FX/session restore
 or exposed GUI/CLI feature. Product A remains disabled. Next: production owner/
 state integration and coordinated Q/C/chain/Arp restore, then shared GUI/CLI, MIDI,
