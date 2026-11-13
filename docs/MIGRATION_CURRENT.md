@@ -27,7 +27,11 @@ production rerun **2/2 (14.66s)**. Actual WebView2 controls/PCM/reload and same-
 BPM/Arp edit pass **64/128**. Browser oracle: **15 comparisons, 983,040 stereo
 frames**, five rates 8–96kHz, blocks 64/128/37, peak **1.3318e-7** (unchanged
 1e-6 limit). See ARP_DELAY_MIGRATION.md for commands and logs. Standalone builds.
-Linux/sanitizer completion for this snapshot is pending below.
+Snapshot `58a0519`: Linux Standalone builds and selected production/CLI/core/
+reference/frontend tests pass **13/13 (50.03s)**. Linux replays the same browser
+fixture with identical maximum error. Core ASan/UBSan/leaks pass **3/3 (32.76s)**;
+TSAN passes **3/3 (49.05s)**, without diagnostics. Sanitizers cover the core
+ownership tests, not JUCE processor code. Linux mirror stayed clean.
 
 External APVTS timing changes are observed by the existing message service
 (25ms Timer); this is not sample-accurate host automation. GUI/CLI submit timing

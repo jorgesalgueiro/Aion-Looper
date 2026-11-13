@@ -46,6 +46,34 @@ the unchanged original helper/factory/worklet/automation, including Sync/STAY an
 same-timestamp operations. Linux replay uses this generated test fixture, not
 modified reference code. Hardware/listening and Linux WebKit remain separate.
 
+Snapshot `58a0519` Linux validation uses native WSL storage and the safe committed
+snapshot helper (never a Windows cache). Standalone builds; selected tests below
+pass **13/13 (50.03s)**. Linux browser-fixture replay passes the same 15 cases and
+maximum error. ASan/UBSan/leak ownership tests pass **3/3 (32.76s)** and TSAN
+**3/3 (49.05s)** without diagnostics; these are core-only sanitizer builds.
+
+```sh
+# From the Windows environment, sync only after a coherent local commit:
+wsl -d Ubuntu --exec bash /mnt/d/Jorge/Documents/Codex/Aion-Looper/tools/SetupWslWorkspace.sh /mnt/d/Jorge/Documents/Codex/Aion-Looper
+# Inside WSL:
+cd /home/jorge/projects/Aion-Looper
+cmake --build build/linux --target aion_arp_processor_tests aion_effects_restore_processor_tests aion_arp_owner_bank_tests aion_arp_owner_tests aion_arp_bank_tests aion_arp_probe aion_arp_connected_tests AionLooper_Standalone --parallel 2
+ctest --test-dir build/linux -R '^(native_arp_processor_(64|128)|native_effects_restore_processor_(64|128)|arp_owner_bank_contract|arp_owner_contract|arp_bank_contract|arp_connected_contract|js_native_arp_delay|original_arp_settings_contract|original_arp_preset_order|native_frontend_commands|cli_finalization_admission)$' --no-tests=error --output-on-failure
+# Generated test evidence only; source/reference remain under the helper policy:
+cp /mnt/d/Jorge/Documents/Codex/Aion-Looper/build/arp-tempo-overlap-fixtures.json build/arp-tempo-overlap-fixtures.json
+node tests/ArpGraphWebAudio.cjs --probe build/linux/aion_arp_probe --fixtures build/arp-tempo-overlap-fixtures.json
+cmake --build build/overlap-asan --target aion_arp_owner_bank_tests aion_arp_owner_tests aion_arp_bank_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan -R '^(arp_owner_bank_contract|arp_owner_contract|arp_bank_contract)$' --no-tests=error --output-on-failure
+cmake --build build/arp-storage-tsan --target aion_arp_owner_bank_tests aion_arp_owner_tests aion_arp_bank_tests --parallel 2
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan -R '^(arp_owner_bank_contract|arp_owner_contract|arp_bank_contract)$' --no-tests=error --output-on-failure
+```
+
+The Linux logs are `build/arp-tempo-{build,tests,oracle,asan-build,asan-tests,tsan-build,tsan-tests}.log`.
+No package or format wrapper was built. Next slice: extend original-value owner
+receipts for Arp MIDI without reconstructing saved controls from render floats,
+then the approved loose timing/dynamics/stereo voicing for new instances. Do not
+claim Arp complete while these remain pending.
+
 ## Product original-state / GUI / CLI preview — 13 November 2026
 
 The production processor now uses `ArpSettingsOwner` as its sole Arp track/bank
