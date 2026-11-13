@@ -101,7 +101,9 @@ int main(int argc,char** argv){
  check(request(R"({"operation":"loop","action":"clear","track":19})")["ok"],"DEL admission");
  check(!request(R"({"operation":"arp","action":"toggle","track":19})")["ok"],"Arp cannot cross an unacknowledged DEL barrier");settle();
  const auto root=juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory().getChildFile("arp-cli-"+juce::Uuid().toString());
- {aion::LocalCommandServer server([&](const juce::var& r){return p->request({r});},root);check(server.ready(),"CLI mailbox ready");
+ unsigned presetCalls=0,failedWrites=0;
+ {aion::LocalCommandServer server([&](const juce::var& r){if(r["operation"].toString()=="arp"&&r["action"].toString()=="preset")++presetCalls;return p->request({r});},root,
+   [&](const juce::File& destination,const juce::String& text){if(failedWrites<3){++failedWrites;return false;}return destination.replaceWithText(text);});check(server.ready(),"CLI mailbox ready");
   juce::ChildProcess child;juce::StringArray command{AION_CLI_PYTHON,AION_ARP_CLI_TEST,root.getFullPathName(),server.id()};check(child.start(command),"external Arp CLI starts");
   const auto deadline=juce::Time::getMillisecondCounterHiRes()+30000;
   struct Pump final:juce::Timer{std::function<void()> tick;void timerCallback()override{tick();}} pump;
@@ -109,7 +111,7 @@ int main(int argc,char** argv){
   pump.startTimer(3);juce::MessageManager::getInstance()->runDispatchLoop();pump.stopTimer();
   if(child.isRunning()){child.kill();std::cerr<<child.readAllProcessOutput();check(false,"external Arp CLI timed out");}
   std::cout<<child.readAllProcessOutput();check(child.getExitCode()==0,"external Arp CLI acceptance");
- }check(root.deleteFile(),"empty fixture CLI root removed");
+ }check(root.deleteFile(),"empty fixture CLI root removed");check(failedWrites==3&&presetCalls==1,"failed response publication recovers without executing the accepted preset again");
  check(allocations==0,"zero production callback new/delete");
  std::cout<<"PASS production Arp: original precision, preset, async enable, strict atomic saved state, legacy, generation restore / "<<block<<'\n';
 }

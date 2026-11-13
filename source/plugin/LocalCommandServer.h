@@ -13,6 +13,7 @@ namespace aion {
 class LocalCommandServer final : private juce::Timer {
 public:
     using Handler=std::function<juce::var(const juce::var&)>;
+    using ReplyWriter=std::function<bool(const juce::File&,const juce::String&)>; // Optional deterministic failure injection, off audio only.
     static constexpr juce::int64 maxRequestBytes=32768,maxReplyBytes=2097152;
     static juce::File defaultRoot(){
         const auto overridePath=juce::SystemStats::getEnvironmentVariable("AION_CLI_DIR",{});
@@ -26,7 +27,7 @@ public:
         return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Aion-Looper/cli");
        #endif
     }
-    explicit LocalCommandServer(Handler next,juce::File root=defaultRoot()):handler(std::move(next)),
+    explicit LocalCommandServer(Handler next,juce::File root=defaultRoot(),ReplyWriter publish={}):handler(std::move(next)),writer(std::move(publish)),
         instance(juce::Uuid().toString()),token(juce::Uuid().toString()),directory(root==juce::File{}?root:root.getChildFile(instance)){
         jassert(juce::MessageManager::existsAndIsCurrentThread());
         if(directory==juce::File{})return;
@@ -62,9 +63,17 @@ private:
         }
         return !quoted&&!depth;
     }
+    void publishPendingReply(){
+        const auto destination=directory.getChildFile("response.json");
+        if(writer?writer(destination,pendingReply):destination.replaceWithText(pendingReply))pendingReply.clear();
+    }
     void timerCallback() override {
         if(servicing)return;
         const juce::ScopedValueSetter<bool> guard(servicing,true);
+        // One bounded retained reply. A transient sharing/IO failure must not
+        // lose the acknowledgement or cause the already applied command to run
+        // again. Retry publication once per message tick before claiming work.
+        if(pendingReply.isNotEmpty()){publishPendingReply();return;}
         const auto incoming=directory.getChildFile("request.json"),input=directory.getChildFile("processing.json");
         if(input.existsAsFile()||!incoming.existsAsFile()||!incoming.moveFileTo(input))return;
         juce::var envelope;
@@ -103,12 +112,13 @@ private:
             failure->setProperty("error","CLI reply exceeds byte limit; inspect state before retrying");
             response->setProperty("result",failureResult);text=juce::JSON::toString(packet,true,17);
         }
-        directory.getChildFile("response.json").replaceWithText(text);
+        pendingReply=std::move(text);publishPendingReply();
     }
     Handler handler;
+    ReplyWriter writer;
     const juce::String instance,token;
     const juce::File directory;
-    juce::String lastId;
+    juce::String lastId,pendingReply;
     juce::var lastResult;
     bool available=false,servicing=false;
 };
