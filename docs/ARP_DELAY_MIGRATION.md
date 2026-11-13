@@ -2,7 +2,7 @@
 
 ## Coordinated Q/C/chain/Arp transaction — 13 November 2026
 
-Internal candidate, validation in progress. Acceptance defined before editing:
+Accepted internal runtime `8efbcaa`, final PCM regression `80f0a48`. Acceptance defined before editing:
 stage all ported FX together; no Q/C/chain mutation before Arp allocation succeeds;
 preserve the complete old sound/state on failure or cancellation; protect newer
 control gestures and preserve arbitrary user order/omission. The original default
@@ -34,8 +34,60 @@ Two informational 48 kHz adoption callback observations (20 enabled Q/C settings
 three A graphs, empty loop playback) were **723.6 us / 64** and **1261.1 us / 128**,
 against block durations 1333.33/2666.67 us. Wall-clock samples include scheduling;
 they are neither total round-trip latency nor worst-case/deadline/driver evidence.
-Broader cross-platform/sanitizer validation is pending; no unchanged-JS DSP math,
-preserved assets, state schemas, parameter IDs or tolerances changed.
+Windows affected selection passes **15/15 (67.97s)** and Linux **15/15 (17.48s)**,
+including connected Q/C/chain, original chain/settings and original-JS connected
+EQ regressions. Both Standalones build. ASan/UBSan/leaks passes **3/3 (26.71s)**
+and TSAN **3/3 (39.92s)**; no sanitizer diagnostics. The final added live-success
+PCM/reorder comparison passes **1/1** separately: Windows **4.70s**, Linux
+**0.95s**, ASan **13.71s**, TSAN **20.02s**. Only the affected test was rebuilt
+and rerun after that test-only extension; runtime stayed unchanged.
+
+That comparison advances two initially equivalent live renderers, then suspends
+their synthetic callback clocks while independent workers prepare replacement A
+graphs. The reference uses the accepted raw A bank and existing stopped-owner
+Q/C/chain setters at the same audio frame. Exact subsequent stereo PCM checks
+successful full replacement with an actual ACQ -> CAQ order change, in addition
+to failed/cancelled rollback. No product callback calls a stopped-owner helper.
+Final informational callback samples were Windows **542.6/1207.7 us** and native
+Linux **392.13/763.657 us** at 48 kHz / 64/128; same empty-loop scope and timing
+limits as above. Full active-voice/session headroom and driver latency remain
+separate acceptance, not established by these samples or sanitizer runs.
+
+No unchanged-JS DSP math, preserved assets, state schemas, parameter IDs or
+tolerances changed. Reuse prior original WebView2 Arp sound evidence. Product
+state/GUI/CLI/MIDI/BPM and new-instance voicing remain pending, so A stays disabled.
+No package or push.
+
+Commands executed (existing caches, Linux in native WSL checkout):
+
+```powershell
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_owner_bank_tests aion_arp_bank_tests aion_arp_owner_tests aion_arp_connected_tests aion_arp_storage_tests aion_arp_preparation_tests aion_arp_preset_tests aion_signal_chain_tests aion_eq_connected_tests aion_compressor_connected_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(arp_(owner_bank|owner|bank|preparation|connected|delay_storage|preset)_contract|signal_chain_connected_contract|eq_connected_contract|compressor_connected_contract|js_native_eq_connected|original_signal_chain_contract|original_arp_settings_contract|original_arp_preset_order|original_ui_bytes)$'
+cmake --build --preset windows-dev --parallel 2
+# After the successful-replacement PCM regression was added:
+cmake --build build/windows-core --config Release --parallel 2 --target aion_arp_owner_bank_tests
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -V -R '^arp_owner_bank_contract$'
+```
+
+```sh
+cmake --build build/linux --parallel 2 --target aion_core
+cmake --build build/linux --parallel 2 --target aion_arp_owner_bank_tests aion_arp_owner_tests aion_arp_bank_tests aion_arp_preparation_tests aion_arp_connected_tests aion_arp_storage_tests aion_arp_preset_tests aion_signal_chain_tests aion_eq_connected_tests aion_compressor_connected_tests
+ctest --test-dir build/linux --no-tests=error --output-on-failure -R '^(arp_(owner_bank|owner|bank|preparation|connected|delay_storage|preset)_contract|signal_chain_connected_contract|eq_connected_contract|compressor_connected_contract|js_native_eq_connected|original_signal_chain_contract|original_arp_settings_contract|original_arp_preset_order|original_ui_bytes)$'
+cmake --build --preset linux-dev --parallel 2
+cmake --build build/overlap-asan --parallel 1 --target aion_core
+cmake --build build/overlap-asan --parallel 1 --target aion_arp_owner_bank_tests aion_arp_bank_tests aion_arp_preparation_tests
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan --no-tests=error --output-on-failure -V -R '^arp_(owner_bank|bank|preparation)_contract$'
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_core
+cmake --build build/arp-storage-tsan --parallel 1 --target aion_arp_owner_bank_tests aion_arp_bank_tests aion_arp_preparation_tests
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan --no-tests=error --output-on-failure -V -R '^arp_(owner_bank|bank|preparation)_contract$'
+# The final test-only extension rebuilds aion_arp_owner_bank_tests in each cache;
+# rerun the corresponding command above with -R '^arp_owner_bank_contract$'.
+```
+
+Windows logs: `build/fx-bank-{build,test,focused-build,focused,final-build,final,regression-build,regression,standalone,success-build,success}-windows.log`.
+Native WSL: `build/fx-bank-{build,test,standalone,asan-build,asan-test,tsan-build,tsan-test}-linux.log`
+and `build/fx-bank-success-{linux,asan,tsan}-{build,test}.log`. Initial worker-barrier
+failure remains in the first Windows test log. No thresholds or cases were removed.
 
 ## Atomic original settings bank restore — 13 November 2026
 
