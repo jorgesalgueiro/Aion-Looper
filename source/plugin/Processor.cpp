@@ -321,7 +321,7 @@ bool AionProcessor::readDevicePlayback(DevicePlaybackObservation& output) noexce
     // Bound consumption even if audio publishes while the message owner reads.
     // Views carry their own complete callback stamp; do not query audio-owned
     // engine.clock() or accept another processor's caller-supplied metadata.
-    for(unsigned n=0;n<8&&engine.popView(latest);++n){}
+    {std::lock_guard latestGuard(midiSettingsMutex);for(unsigned n=0;n<8&&engine.popView(latest);++n){}}
     const auto generation=engine.generation();
     if(generation!=prepared||latest.generation!=generation)return false;
     DevicePlaybackObservation candidate;
@@ -441,7 +441,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
     // Consume acknowledged clears before reading/editing labels. Only fixed-size
     // epochs cross from audio; string allocation and destruction stay here.
     aion::EngineView view{};
-    while (engine.popView(view)) latest = view;
+    {std::lock_guard latestGuard(midiSettingsMutex);while (engine.popView(view)) latest = view;}
     serviceEqualizer();
     aion::WaveformEvent waveform{};
     while(engine.popWaveform(waveform))waveformCache[waveform.track]=waveform;
