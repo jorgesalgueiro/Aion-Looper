@@ -1116,5 +1116,8 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  comp.forEach((name,i)=>{const id='compressor'+name[0].toUpperCase()+name.slice(1);assert.equal(scope.window.AionMidiSliderTarget(id),117+i);assert.equal(scope.window.AionMidiElementTarget({id}),117+i);});
  assert.equal(scope.window.AionMidiSliderTarget('native-compressor-enabled'),-1);
  assert.equal(scope.window.AionMidiSliderTarget('compressorUnknown'),-1);
- console.log('PASS: all seven compressor sliders append MIDI IDs 117..123 without changing existing targets');
+ const arp=['time','repetitions','mix','amplitude','range','humanize','scale','panSpeed','panDepth'];
+ arp.forEach((name,i)=>assert.equal(scope.window.AionMidiSliderTarget('arpDelay'+name[0].toUpperCase()+name.slice(1)),124+i));
+ assert.equal(scope.window.AionMidiSliderTarget('arpDelaySync'),-1);assert.equal(scope.window.AionMidiSliderTarget('arpDelayStay'),-1);
+ console.log('PASS: compressor 117..123 and Arp 124..132 slider IDs preserve existing targets; Arp flags stay unmapped');
 }

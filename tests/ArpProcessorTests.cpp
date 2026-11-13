@@ -54,6 +54,20 @@ int main(int argc,char** argv){
  check(request(R"({"operation":"setParameter","id":"syncBpm","value":117})")["ok"],"tempo admitted before prepare");
  p->prepareToPlay(8000,block);settle();
  check(static_cast<double>(state["tracks"][19]["arp"]["bpm"])==p->parameters.getRawParameterValue("syncBpm")->load()&&p->inspectAudioThread(19).track.arp.enabled,"prepare retires old tempo receipt and restores accepted original intent");
+ check(request(R"({"operation":"midiConfig","action":"enable","enabled":true})")["ok"],"Arp MIDI enable");
+ check(request(R"({"operation":"midiConfig","action":"eqTrack","track":19})")["ok"],"Arp MIDI selected track");
+ check(request(R"({"operation":"midiConfig","action":"learn","target":125})")["ok"],"Arp repetitions CC learn");process();
+ midi.addEvent(juce::MidiMessage::controllerEvent(1,11,0),17);midi.addEvent(juce::MidiMessage::controllerEvent(16,11,64),18);
+ watch=true;p->processBlock(audio,midi);watch=false;midi.clear();
+ juce::MemoryBlock midiSaved;p->getStateInformation(midiSaved);auto midiXml=p->getXmlFromBinary(midiSaved.getData(),static_cast<int>(midiSaved.getSize()));
+ const double repeats=(64/127.)*10;
+ check(midiXml->getChildByName("LoopArps")->getChildElement(19)->getDoubleAttribute("repetitions")==repeats,"immediate save consumes exact MIDI originals before Timer/snapshot");
+ state=snapshot(); // Message owner accepts captured learn; the next callback acknowledges its configuration.
+ state=process();check(static_cast<int>(state["midi"]["bindings"][125])==aion::midiBinding(2,11)&&static_cast<double>(state["tracks"][19]["arp"]["values"]["repetitions"])==repeats,"learn zero consumed; following same-block CC applies exact original value without editor");
+ check(p->inspectAudioThread(19).track.arp.values[1]==static_cast<float>(repeats/11.1),"MIDI repetitions divide in double before render Float32");
+ midi.addEvent(juce::MidiMessage::controllerEvent(1,11,63),31);watch=true;p->processBlock(audio,midi);watch=false;midi.clear();
+ p->prepareToPlay(8000,block);settle();
+ check(static_cast<double>(state["tracks"][19]["arp"]["values"]["repetitions"])==(63/127.)*10,"prepare retains unread exact MIDI intent before message telemetry service");
  check(request(R"({"operation":"arp","action":"preset","track":19,"preset":"sync-trip"})")["ok"],"restore named preset for remaining legacy/state regressions");settle();
  p->getStateInformation(committed);
  for(const char* bad:{"nan","inf","1e1000","0.2junk","-1"}){

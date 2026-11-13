@@ -13,6 +13,10 @@
 #include <cstdint>
 namespace aion {
 struct GainCommand { std::uint64_t frame; float gain; };
+struct ArpMidiReceipt {
+    unsigned track=0,parameter=0;double value=0,bpm=120;
+    std::uint32_t generation=0;std::uint64_t epoch=0,before=0,revision=0;
+};
 struct Meter { std::uint64_t frame; float peak; };
 struct LoopCommand {
     LoopAction action{};
@@ -196,6 +200,7 @@ public:
     void process(float* const* channels, int channelCount, int frames,std::span<const MidiEvent> midiEvents={}, bool nonRealtime = false,ProcessorClockObservation processorEntry = {},DeviceCallbackObservation deviceEntry = {}) noexcept;
     bool configureMidi(const MidiSettings& settings) noexcept {return midi->configure(settings);}
     bool popMidiLearn(MidiLearnResult& result) noexcept {return midi->popLearn(result);}
+    bool popArpMidi(ArpMidiReceipt& result) noexcept {return arpMidiResults->pop(result);}
     bool midiLearnCurrent(const MidiLearnResult& result) const noexcept {return midi->learnCurrent(result);}
     void cancelMidi() noexcept {midiCancellation.fetch_add(1,std::memory_order_release);}
     void cancelMidiLearn() noexcept {midiLearnCancellation.fetch_add(1,std::memory_order_release);}
@@ -225,7 +230,9 @@ private:
     bool midiInputAvailable=true;
     bool applyLoop(LoopAction,std::uint32_t,double) noexcept;
     bool applyMidi(LoopAction,std::uint32_t,double) noexcept;
-    MidiController::Dispatch midiDispatch() noexcept {return {loops,frame,preparedRate,generation(),this,[](void* context,LoopAction action,std::uint32_t track,double value){return static_cast<Engine*>(context)->applyMidi(action,track,value);}};}
+    MidiController::Dispatch midiDispatch() noexcept {return {loops,frame,preparedRate,generation(),this,[](void* context,LoopAction action,std::uint32_t track,double value){return static_cast<Engine*>(context)->applyMidi(action,track,value);},[](void* context,unsigned track,unsigned p,unsigned cc){return static_cast<Engine*>(context)->applyArpMidi(track,p,cc);}};}
+    bool applyArpMidi(unsigned,unsigned,unsigned) noexcept;
+    std::unique_ptr<SpscQueue<ArpMidiReceipt,512>> arpMidiResults=std::make_unique<SpscQueue<ArpMidiReceipt,512>>();
     LoopBank loops;
     struct PendingArpPreparation {
         ArpPreparationRequest request{};

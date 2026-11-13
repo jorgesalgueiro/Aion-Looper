@@ -11,6 +11,32 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Active Arp MIDI slider slice — 13 November 2026
+
+Nine original sliders append IDs 124..132. The existing selected-loop CC learn/
+conflict/filter/cancel path now reaches native Arp at event sample offsets.
+Exact double receipts preserve original controls/BPM/preset identity; a 511-entry
+heap SPSC journal rejects before mutation on overflow. MIDI version 6 appends nine
+bindings, retaining versions 1..5. Save/stopped prepare consume already accepted
+MIDI originals, including with no editor. Sync/STAY/enable are not CC sliders.
+
+Windows core/reference/frontend **6/6 (61.27s)**: 19,152 unchanged-JS exact-value
+cases; 2,304 stereo blocks equal scheduled GUI control PCM at 64/128; full journal,
+GUI receipt ordering and zero callback new/delete. Real Arp WebView2 tests pass
+64/128, including zero learn, same-block expression, actual slider, selected track
+20, duplicate rejection, removal and reopen cancellation. Arp production rerun
+**2/2 (33.65s)**; FX restore **2/2** in the first combined run. Extra unread-MIDI
+prepare and Linux/sanitizer validation are pending for this development snapshot.
+
+Legacy Windows MIDI hit its unchanged shared external-CLI watchdog in both
+combined and isolated runs. Both unchanged 64/128 CLI workflows now run concurrently
+in isolated mailbox roots under the SAME shared 60s limit, with every command,
+assertion, shutdown check and callback allocation guard retained. No product
+deadline/tolerance is relaxed. Revalidation is pending; do not mark this slice
+accepted or start organic voicing until its relevant gates pass. See
+ARP_DELAY_MIGRATION.md for commands and detailed evidence. Reference/UI assets,
+parameter IDs and user logo remain unchanged. No package.
+
 ### Arp automatic Master timing — 13 November 2026
 
 Master timing gestures now propagate BPM to existing active Arp graphs, using

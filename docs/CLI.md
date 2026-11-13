@@ -80,8 +80,24 @@ round trips; legacy native sessions without an Arp bank load defaults/off.
 Master timing changes now update active Arp graphs automatically, preserving
 their delay/STAY state. A following CLI Arp mutation waits for timing maintenance
 before admission and aborts if track ownership changes while waiting.
-This is a working preview, not completed Arp acceptance: Arp MIDI mappings and
-the requested new-instance organic voicing remain pending. A control gesture captures the current Master BPM;
+Arp's nine sliders share continuous MIDI targets 124..132 (Time, Reps, Mix,
+Note Vol, Oct Range, Feel, Scale, Pan Spd, Pan Dpt). For example:
+
+```sh
+python tools/aion.py midi eqTrack --data '{"track":19}'
+python tools/aion.py midi learn --data '{"target":125}'
+python tools/aion.py midi cancelLearn --data '{"target":125}'
+python tools/aion.py midi clear --data '{"target":125}'
+```
+
+`eqTrack` is the existing shared selected-loop command, with zero-based native
+track IDs; `arp` commands above use 1..20. Learning consumes its first CC, then
+following values apply immediately, including zero. Right-click the GUI slider
+to learn, Shift-right-click to remove. Sync/STAY/enable are not slider CC targets.
+Busy graph preparation or a full exact-value receipt journal rejects CC edits
+before changing audio; it does not silently change persisted originals.
+This remains an Arp preview: the requested new-instance organic voicing remains
+pending. A control gesture captures the current Master BPM;
 the `sync` checkbox selects the existing verified native subdivision behavior.
 The chain remains user-editable: omission of A bypasses routing without erasing
 its controls, and reinsertion can place it before, between or after other effects.

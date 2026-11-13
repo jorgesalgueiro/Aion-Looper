@@ -191,6 +191,8 @@ void AionProcessor::prepareToPlay(double rate, int) {
     {std::lock_guard guard(midiSettingsMutex);
      // Stopped lifecycle only. Keep native reset and accepted FX intent atomic
      // to the message Timer, including a device-thread prepare with no editor.
+     arpOwner.service(latest);
+     if(arpOwner.bound()&&!arpRestorePending&&!effectsRestore.active)for(unsigned id=0;id<arpSettings.size();++id)if(!arpOwner.track(id)->pending)arpSettings[id]=arpOwner.track(id)->committed;
      engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
      engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);arpRestorePending=arpSettings!=aion::ArpSettingsOwner::Bank{};++effectsIntent;lastEffectsRequest=nextRequest;lastOrdinaryRequest=0;}
     deviceClockOwner=nextDeviceClockOwner;
@@ -383,7 +385,7 @@ void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
     std::lock_guard stateGuard(midiSettingsMutex);
     auto state=parameters.copyState();juce::ValueTree stored("MidiSettings");
     {std::lock_guard guard(midiSettingsMutex);stored.setProperty("enabled",midiSettings.enabled,nullptr);
-     stored.setProperty("version",5,nullptr);stored.setProperty("eqTrack",static_cast<int>(midiSettings.eqTrack),nullptr);
+     stored.setProperty("version",6,nullptr);stored.setProperty("eqTrack",static_cast<int>(midiSettings.eqTrack),nullptr);
      for(unsigned i=0;i<aion::MidiSettings::bindingCount;++i)stored.setProperty("binding"+juce::String(i),static_cast<int>(midiSettings.bindings[i]),nullptr);}
     state.removeChild(state.getChildWithName("MidiSettings"),nullptr);state.appendChild(stored,nullptr);
     saveEqualizers(state);
@@ -400,10 +402,10 @@ void AionProcessor::setStateInformation(const void* data, int size) {
         aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
         if(stored.isValid()){
             const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
-            const auto version=stored.getProperty("version",1).toString();if(version!="1"&&version!="2"&&version!="3"&&version!="4"&&version!="5")return;
-            const unsigned count=version=="5"?aion::MidiSettings::bindingCount:version=="4"?aion::MidiSettings::compressorBase:version=="3"?aion::MidiSettings::eqBase:version=="2"?aion::MidiSettings::muteBase:aion::MidiSettings::volumeBase;
+            const auto version=stored.getProperty("version",1).toString();if(version!="1"&&version!="2"&&version!="3"&&version!="4"&&version!="5"&&version!="6")return;
+            const unsigned count=version=="6"?aion::MidiSettings::bindingCount:version=="5"?aion::MidiSettings::arpBase:version=="4"?aion::MidiSettings::compressorBase:version=="3"?aion::MidiSettings::eqBase:version=="2"?aion::MidiSettings::muteBase:aion::MidiSettings::volumeBase;
             for(unsigned i=0;i<count;++i){const auto value=stored.getProperty("binding"+juce::String(i)).toString();if(value.isEmpty()||!value.containsOnly("0123456789")||value.getLargeIntValue()>65535)return;next.bindings[i]=static_cast<std::uint16_t>(value.getIntValue());}
-            if(version=="4"||version=="5") {const auto value=stored.getProperty("eqTrack").toString();if(value.isEmpty()||value.length()>2||!value.containsOnly("0123456789")||value.getIntValue()>=static_cast<int>(aion::LoopBank::trackCount))return;next.eqTrack=static_cast<unsigned>(value.getIntValue());}
+            if(version=="4"||version=="5"||version=="6") {const auto value=stored.getProperty("eqTrack").toString();if(value.isEmpty()||value.length()>2||!value.containsOnly("0123456789")||value.getIntValue()>=static_cast<int>(aion::LoopBank::trackCount))return;next.eqTrack=static_cast<unsigned>(value.getIntValue());}
         }
         {
             std::lock_guard guard(midiSettingsMutex);next.learnToken=midiSettings.learnToken+1;

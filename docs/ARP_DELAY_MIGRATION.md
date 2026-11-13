@@ -1,5 +1,58 @@
 # Arp Delay migration
 
+## Nine original MIDI sliders — 13 November 2026
+
+Arp appends continuous MIDI targets **124..132**, preserving all previous IDs:
+Time, Reps, Mix, Note Vol, Oct Range, Feel, Scale, Pan Spd, Pan Dpt. They use
+the existing selected-loop tab (including track 20), right-click learn,
+Shift-right-click removal, channel/omni filtering, conflict/cancellation and
+provisional same-block learn machinery. The first learn CC is consumed even at
+zero; later values in that block apply at their sample offsets without an editor.
+Sync/STAY and enable are not continuous MIDI targets in this slice. Original
+slider normalization remains double precision; fractional Reps/Scale are retained
+despite integer widget steps, and Reps divides by 11.1 before Float32 conversion.
+
+Audio publishes exact parameter/value/BPM/epoch/revision receipts through a
+construction-time heap SPSC journal (511 usable entries). Capacity is checked
+before changing DSP: overflow rejects that edit, increments MIDI rejection
+telemetry, preserves audio/state, and recovers when the consumer drains it.
+Preparation/restore in progress also rejects affected CC edits rather than
+allocating or replacing a graph on audio. There is no UI/JSON/lock on the callback.
+The serialized non-audio owner consumes normal GUI/bank receipts before MIDI
+receipts, preserving unrelated original doubles and the user's exact command
+acknowledgement. Save and stopped prepare consume accepted MIDI before copying
+original state. MIDI schema **6** writes 133 bindings and loads schemas 1..5 with
+unassigned new targets. Future-schema rejection now tests version 7; no old
+coverage is removed. GUI and CLI reuse the existing `midiConfig` commands.
+
+Windows evidence: `arp-midi-reference.log` compares **19,152** exact doubles with
+unchanged original `App.handleMIDIMessage`, `EffectManager.update` and widget
+bounds on all 16 channels. `arp-midi-core-tests.log` passes **6/6 (61.27s)**,
+including 2,304 stereo control blocks compared exactly against scheduled shared
+GUI controls at 64/128, GUI/MIDI receipt ordering, unrelated decimal retention,
+full-journal rejection/recovery and zero callback new/delete. Actual WebView2
+`arp-midi-ui-tests.log` passes 64/128: zero learn + same-block expression, actual
+DOM slider position, expanded selected track, duplicate conflict, removal,
+learn cancellation on reload and continuing playback. Existing Arp/FX/chain
+interaction coverage remains intact; synthetic MIDI is not physical hardware.
+
+The first Arp production assertion asked for the audio mapping acknowledgement
+before the message owner accepted learn. It now explicitly services that result
+then checks the next callback, retaining the stronger immediate pre-Timer save
+and first-callback DSP checks. Rerun `arp-midi-product-rerun.log`: **2/2 (33.65s)**.
+The combined legacy MIDI run hit its unchanged external-CLI watchdog; isolated
+revalidation and additional prepare/LINUX/sanitizer evidence follow when complete.
+Do not infer release acceptance or organic voicing from this work.
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_arp_owner_tests aion_arp_owner_bank_tests aion_arp_bank_tests aion_arp_probe --parallel 2
+ctest --test-dir build/windows-core -C Release -R '^(arp_owner_contract|arp_owner_bank_contract|arp_bank_contract|js_native_arp_midi|js_native_arp_delay|native_frontend_commands)$' --no-tests=error --output-on-failure
+cmake --build build/windows --config Release --target aion_arp_processor_tests aion_midi_processor_tests aion_effects_restore_processor_tests aion_mouse_host AionLooper_Standalone --parallel 2
+ctest --test-dir build/windows -C Release -R '^(native_arp_processor_(64|128)|native_effects_restore_processor_(64|128))$' --no-tests=error --output-on-failure
+ctest --test-dir build/windows -C Release -R '^native_midi_processor$' --no-tests=error --output-on-failure
+./tools/TestArpUi.ps1
+```
+
 ## Automatic Master BPM — 13 November 2026
 
 The preserved `Modules/scales.js updateSync` helper writes active Arp BPM with

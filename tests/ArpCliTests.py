@@ -28,6 +28,9 @@ assert abs(current['syncBpm'] - 173.25) < .001
 assert cli('arp', '20', 'get')['arp']['preset'] == 'sync-trip'
 assert cli('arp', '20', 'get')['arp']['enabled']
 assert not cli('arp', '1', 'get')['arp']['enabled']
+assert cli('midi', 'eqTrack', '--data', '{"track":19}')['ok']
+assert cli('midi', 'learn', '--data', '{"target":132}')['ok']
+assert cli('midi', 'cancelLearn', '--data', '{"target":132}')['ok']
 assert cli('arp', '20', 'set', '--parameter', 'time', '--value', '0.12345678901234566')['applied']
 s = cli('arp', '20', 'get')['arp']
 assert s['values']['time'] == 0.12345678901234566 and not s['preset'], s

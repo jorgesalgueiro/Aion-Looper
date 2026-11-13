@@ -37,7 +37,7 @@
    },
    update(){const s=current(),track=equalizer.selectedTrack(),settings=s?.tracks[track]?.arp;if(!alive||!settings)return;
     module.querySelector('#native-arp-title').textContent=`Loop ${track+1} — ARP DELAY (A)`;enabled.checked=settings.enabled;preset.value=settings.preset;sync.checked=!!settings.values.sync;stay.checked=!!settings.values.stay;
-    for(const c of controls){c.edit.update(settings.values[c.name],true);c.value.textContent=c.name==='scale'?scales[Math.floor(settings.values.scale)]:String(settings.values[c.name]);}
+    for(const c of controls){const index=window.AionMidiArpParameters.indexOf(c.name);c.edit.update(settings.values[c.name],!!s.midi?.bindings[124+index]);c.value.textContent=c.name==='scale'?scales[Math.floor(settings.values.scale)]:String(settings.values[c.name]);}
     for(const t of toggles){t.input.checked=!!s.tracks[t.track].arp?.enabled;t.input.disabled=!s.audioReady;}
    }
   };

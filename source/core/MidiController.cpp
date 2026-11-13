@@ -76,6 +76,10 @@ void MidiController::main(unsigned id,int requestedMode,Dispatch& d) noexcept {
     else apply(A::finish,id,0,d);
 }
 void MidiController::continuous(int target,std::uint8_t cc,Dispatch& d) noexcept {
+    if(target>=static_cast<int>(MidiSettings::arpBase)){
+        if(d.arp&&d.arp(d.context,settings.eqTrack,static_cast<unsigned>(target)-MidiSettings::arpBase,cc))++actions;else ++rejections;
+        return;
+    }
     if(target>=static_cast<int>(MidiSettings::compressorBase)){
         const auto parameter=static_cast<unsigned>(target)-MidiSettings::compressorBase;
         const auto t=d.bank.trackView(settings.eqTrack);auto comp=t.compressor;

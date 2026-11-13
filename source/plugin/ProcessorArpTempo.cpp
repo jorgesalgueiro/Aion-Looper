@@ -17,7 +17,8 @@ void AionProcessor::serviceArpTempo(bool submit){
   if(receipt.requestId!=arpTempo.request||receipt.generation!=arpTempo.generation)return;
   // Cancellation consumes this accepted gesture; a newer timing gesture remains
   // dirty. prepare/state restore retain their own accepted original bank intent.
-  arpTempoSeen=std::max(arpTempoSeen,arpTempo.intent);arpTempo={};
+  if(receipt.status!=aion::ArpPreparationStatus::stale)arpTempoSeen=std::max(arpTempoSeen,arpTempo.intent);
+  arpTempo={}; // A MIDI revision race retries the latest uncommitted timing intent.
  }
  if(!submit||arpTempoSeen==arpTempoIntent||!arpOwner.bound()||!meterPrepared()||latest.generation!=engine.generation()
     ||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||effectsRestore.active||arpOwner.restoring())return;

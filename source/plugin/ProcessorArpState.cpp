@@ -17,6 +17,8 @@ juce::String exact(double value){
 }
 void AionProcessor::saveArps(juce::ValueTree& state){
  std::lock_guard guard(midiSettingsMutex);
+ arpOwner.service(latest); // Serialized non-audio owner: save must include already accepted MIDI even before the Timer.
+ if(arpOwner.bound()&&!arpRestorePending&&!effectsRestore.active)for(unsigned id=0;id<arpSettings.size();++id)if(!arpOwner.track(id)->pending)arpSettings[id]=arpOwner.track(id)->committed;
  juce::ValueTree bank("LoopArps");bank.setProperty("version",1,nullptr);
  const auto timing=readArpTiming();const bool pendingTempo=timing!=arpTiming||arpTempoIntent!=arpTempoSeen;
  for(unsigned id=0;id<arpSettings.size();++id){auto original=arpSettings[id];

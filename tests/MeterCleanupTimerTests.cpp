@@ -1278,49 +1278,56 @@ class CliControlRunner final : private juce::Timer {
 public:
     explicit CliControlRunner(bool& watch):audioWatch(watch){begin();startTimer(5);}
     bool finished() const noexcept {return complete;}
-    ~CliControlRunner() override {stopTimer();if(worker.joinable())worker.join();}
+    ~CliControlRunner() override {stopTimer();for(auto& worker:workers)if(worker.joinable())worker.join();}
 private:
-    bool& audioWatch;bool complete=false;unsigned block=64;
-    std::array<std::unique_ptr<AionProcessor>,2> processors;
-    std::array<std::unique_ptr<aion::LocalCommandServer>,2> servers;
-    juce::AudioBuffer<float> audio;juce::MidiBuffer midi;
-    juce::File directory;
-    std::thread worker;std::atomic<bool> done{false};
-    int exitCode=-1;juce::String output;
-    void cycle(){for(auto& p:processors){
+    bool& audioWatch;bool complete=false;double started=0;
+    std::array<std::unique_ptr<AionProcessor>,4> processors;
+    std::array<std::unique_ptr<aion::LocalCommandServer>,4> servers;
+    std::array<juce::AudioBuffer<float>,2> audio;juce::MidiBuffer midi;
+    std::array<juce::File,2> directories;
+    std::array<std::thread,2> workers;std::array<std::atomic<bool>,2> done{};
+    std::array<int,2> exitCodes{-1,-1};std::array<juce::String,2> outputs;
+    void cycle(){for(unsigned id=0;id<processors.size();++id){const unsigned pair=id/2,block=pair?128:64;auto& buffer=audio[pair];
         for(int channel=0;channel<2;++channel)for(unsigned sample=0;sample<block;++sample)
-            audio.setSample(channel,static_cast<int>(sample),.1f);
-        audioWatch=true;p->processBlock(audio,midi);audioWatch=false;
+            buffer.setSample(channel,static_cast<int>(sample),.1f);
+        audioWatch=true;processors[id]->processBlock(buffer,midi);audioWatch=false;
     }}
     void begin(){
-        directory=juce::File::getCurrentWorkingDirectory().getChildFile("cli-test-"+juce::Uuid().toString());
-        audio.setSize(2,static_cast<int>(block));midi.ensureSize(256);
-        for(unsigned id=0;id<2;++id){
+        started=wall();midi.ensureSize(256);
+        // Run both unchanged external CLI scripts inside the original shared
+        // 60s bound, with separate mailbox roots and all four native instances.
+        // Preserve every 64/128 command/assertion; do not enlarge the watchdog.
+        for(unsigned pair=0;pair<2;++pair){const unsigned block=pair?128:64;
+        directories[pair]=juce::File::getCurrentWorkingDirectory().getChildFile("cli-test-"+juce::Uuid().toString());
+        audio[pair].setSize(2,static_cast<int>(block));
+        for(unsigned id=pair*2;id<pair*2+2;++id){
             processors[id]=std::make_unique<AionProcessor>();
             auto& p=*processors[id];p.setPlayConfigDetails(2,2,48000,static_cast<int>(block));
             p.prepareToPlay(48000,static_cast<int>(block));p.setNonRealtime(true);
-            servers[id]=std::make_unique<aion::LocalCommandServer>([processor=&p](const juce::var& command){return processor->request({command});},directory);
+            servers[id]=std::make_unique<aion::LocalCommandServer>([processor=&p](const juce::var& command){return processor->request({command});},directories[pair]);
             check(servers[id]->ready(),"Production CLI mailbox starts in isolated test directory");
         }
-        cycle();done.store(false,std::memory_order_release);
-        const auto root=directory.getFullPathName(),first=servers[0]->id(),second=servers[1]->id();
-        worker=std::thread([this,root,first,second]{
+        }
+        cycle();for(unsigned pair=0;pair<2;++pair){
+        const auto root=directories[pair].getFullPathName(),first=servers[pair*2]->id(),second=servers[pair*2+1]->id();
+        workers[pair]=std::thread([this,pair,root,first,second]{
             juce::ChildProcess client;
             if(client.start(juce::StringArray{AION_CLI_PYTHON,AION_CLI_TEST,root,first,second})){
-                output=client.readAllProcessOutput();client.waitForProcessToFinish(10000);exitCode=static_cast<int>(client.getExitCode());
+                outputs[pair]=client.readAllProcessOutput();client.waitForProcessToFinish(10000);exitCodes[pair]=static_cast<int>(client.getExitCode());
             }
-            done.store(true,std::memory_order_release);
-        });
+            done[pair].store(true,std::memory_order_release);
+        });}
     }
     void timerCallback() override {
-        cycle();if(!done.load(std::memory_order_acquire))return;
-        worker.join();std::cout<<output.toStdString()<<std::flush;
-        check(exitCode==0,"External CLI production processor test passed");
+        cycle();for(auto& ready:done)if(!ready.load(std::memory_order_acquire))return;
+        for(unsigned pair=0;pair<2;++pair){workers[pair].join();std::cout<<outputs[pair].toStdString()<<std::flush;
+        check(exitCodes[pair]==0,"External CLI production processor test passed");}
         for(auto& server:servers)server.reset();
+        for(const auto& directory:directories){
         check(directory.findChildFiles(juce::File::findFilesAndDirectories,false).isEmpty(),"CLI instance shutdown removes only its owned fixed files");
-        directory.deleteFile();for(auto& p:processors)p.reset();
-        if(block==64){block=128;begin();return;}
+        directory.deleteFile();}for(auto& p:processors)p.reset();
         complete=true;stopTimer();
+        std::cout<<"External CLI 64/128 combined elapsed: "<<wall()-started<<" seconds\n";
         std::cout<<"PASS: real external CLI drives isolated production processors at 64/128; bounded message-thread mailbox, cleanup, instance isolation and zero tracked audio callback new/delete\n";
     }
 };

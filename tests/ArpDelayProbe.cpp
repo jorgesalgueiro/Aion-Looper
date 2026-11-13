@@ -11,7 +11,9 @@
 int main(){
  aion::ArpDelay dsp;aion::ArpModulation mod;aion::ArpDelayGraph graph;std::string operation;std::cout<<std::setprecision(17);
  while(std::cin>>operation){
-  if(operation=="prepare"){
+  if(operation=="arpmidi"){
+   unsigned slider,cc;while(std::cin>>slider>>cc){if(slider>=9||cc>127)return 2;std::cout<<aion::arpMidiValue(slider,cc)<<'\n';}return 0;
+  }else if(operation=="prepare"){
    double rate;std::uint32_t seed;aion::ArpValues values{};if(!(std::cin>>rate>>seed))return 2;for(auto& value:values)if(!(std::cin>>value))return 2;
    std::cout<<(dsp.prepare(rate,values,seed)?"ok":"rejected")<<'\n';
   }else if(operation=="values"){

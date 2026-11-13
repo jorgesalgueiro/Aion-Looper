@@ -136,5 +136,38 @@ static void knownPrecision(unsigned block){
  auto invalid=known;invalid[19].controls.values[2]=NAN;check(!f.owner.bind(f.latest,invalid)&&!f.owner.bound(),"invalid last known record rejects whole bind");
  check(f.owner.bind(f.latest,known),"explicit known precision bind");f.owner.service(f.latest);check(f.owner.bound()&&f.owner.track(0)->committed.controls.values[1]==2.000000001,"raw target reconciliation never reconstructs or rounds original values");
 }
-int main(){for(unsigned block:{64u,128u}){model(block);clearAndGeneration(block);rejectedAndFull(block);allTracks(block);pcm(block);protocol(block);knownPrecision(block);}concurrent();
+static void midiOriginals(unsigned block){
+ Fixture f(block),direct(block);MidiSettings settings;settings.enabled=true;
+ for(unsigned p=0;p<arpMidiControls.size();++p)settings.bindings[MidiSettings::arpBase+p]=midiBinding(2,20+p);
+ check(f.engine->configureMidi(settings),"Arp MIDI configuration");
+ for(auto* v:{&f,&direct}){
+  for(unsigned n=0;n<block;++n){v->l[n]=static_cast<float>(.3*std::sin(n*.13));v->r[n]=static_cast<float>(.2*std::cos(n*.07));}
+  v->command(LoopAction::record);for(unsigned n=0;n<8;++n)v->pump();v->command(LoopAction::finish);v->service();
+  check(v->owner.enable(0,true,120,1),"Arp MIDI PCM enable");v->done(0,true);
+ }
+ unsigned request=2;
+ for(unsigned slider=0;slider<arpMidiControls.size();++slider)for(unsigned cc=0;cc<128;++cc){
+  const auto p=arpMidiControls[slider];const double value=arpMidiValue(slider,cc);
+  check(direct.owner.set(0,p,value,120,request++,direct.latest.frame+17),"sample-offset direct counterpart");
+  const MidiEvent event{17,static_cast<std::uint8_t>(176+(cc%16)),static_cast<std::uint8_t>(20+slider),static_cast<std::uint8_t>(cc),3};
+  {float* audio[]{f.l.data(),f.r.data()};Guard guard;f.engine->process(audio,2,block,{&event,1});}
+  direct.pump();f.service();direct.service();
+  check(f.owner.bound()&&f.owner.track(0)->committed==direct.owner.track(0)->committed,"MIDI exact originals match shared GUI command without Float32 reconstruction");
+  check(f.l==direct.l&&f.r==direct.r,"MIDI stereo PCM equals sample-offset direct control at 64/128");
+ }
+ check(f.owner.set(0,0,.12345678901234566,120,50000),"GUI precision before same-block MIDI");
+ const MidiEvent simultaneous{17,176,21,64,3};
+ {float* audio[]{f.l.data(),f.r.data()};Guard guard;f.engine->process(audio,2,block,{&simultaneous,1});}f.service();
+ check(f.owner.bound()&&f.owner.track(0)->requestId==50000&&f.owner.track(0)->status==ArpPreparationStatus::ready&&f.owner.track(0)->committed.controls.values[0]==.12345678901234566&&f.owner.track(0)->committed.controls.values[1]==arpMidiValue(1,64),"ordered GUI receipt then MIDI preserves unrelated exact double and GUI acknowledgement");
+ // Paused message consumer: reject the first unreceiptable edit atomically.
+ MidiEvent event{0,176,20,64,3};
+ for(unsigned n=0;n<511;++n){Guard guard;f.engine->process(nullptr,0,0,{&event,1});}
+ const auto before=f.engine->inspectAudioThread(0).track.arpSettingsRevision;
+ {Guard guard;f.engine->process(nullptr,0,0,{&event,1});}
+ check(f.engine->inspectAudioThread(0).track.arpSettingsRevision==before,"full exact-value journal rejects before changing audio");
+ f.service();check(f.owner.bound(),"full journal reconciles without loss");
+ {Guard guard;f.engine->process(nullptr,0,0,{&event,1});}f.service();check(f.owner.bound()&&f.owner.track(0)->revision==before+1,"journal recovery accepts fresh edit");
+ f.command(LoopAction::clear);f.service();check(f.owner.bound()&&f.owner.track(0)->committed==ArpOwnedSettings{},"clear retires MIDI originals");
+}
+int main(){for(unsigned block:{64u,128u}){model(block);clearAndGeneration(block);rejectedAndFull(block);allTracks(block);pcm(block);protocol(block);knownPrecision(block);midiOriginals(block);}concurrent();
  std::cout<<"PASS original Arp owner: exact committed doubles/presets, exact stereo PCM, enable/OOM rollback, tracked acceptance/rejection, stale views/generations/clears, full queues, future cancellation and same-ID recovery, all-20 receipts, concurrent mid-callback publication, zero callback new/delete / 64/128\n";}

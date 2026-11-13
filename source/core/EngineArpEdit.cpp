@@ -2,6 +2,17 @@
 #include "Engine.h"
 #include <cmath>
 namespace aion {
+bool Engine::applyArpMidi(unsigned track,unsigned slider,unsigned cc) noexcept {
+ if(track>=LoopBank::trackCount||slider>=arpMidiControls.size()||cc>127||pendingArpBank.active||pendingArp[track].active||!arpMidiResults->canPush())return false;
+ const auto old=loops.trackView(track);const auto parameter=arpMidiControls[slider];const double value=arpMidiValue(slider,cc),bpm=loops.syncView().settings.bpm;
+ auto settings=old.arp;const auto render=arpControls[parameter].renderIndex;
+ settings.values[render]=static_cast<float>(parameter==1?value/11.1:value);settings.values[6]=static_cast<float>(std::clamp(bpm,30.,300.));
+ std::uint32_t mask=0;(void)arpRenderMask(1u<<parameter,mask);
+ if(!loops.setArp(track,settings,mask,old.arpRequest,old.clearEpoch,old.arpSettingsRevision))return false;
+ // Sole producer checked capacity before mutation; the consumer can only free
+ // space. Never accept an audio edit without its exact original-value receipt.
+ (void)arpMidiResults->push({track,parameter,value,bpm,generation(),old.clearEpoch,old.arpSettingsRevision,old.arpSettingsRevision+1});return true;
+}
 bool Engine::enqueueArpEdit(LoopCommand command,std::uint64_t& transaction) noexcept {
  if(command.action!=LoopAction::arpDelay||command.track>=LoopBank::trackCount||!command.requestId||!command.generation||command.generation!=generation()
     ||outstandingArpBank||outstandingArp[command.track]||nextArpTransaction==UINT64_MAX||!std::isfinite(command.value)

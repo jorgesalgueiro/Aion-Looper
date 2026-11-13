@@ -68,6 +68,14 @@ void ArpSettingsOwner::service(const EngineView& view) noexcept {
   r.status=commit?ArpPreparationStatus::ready:result.status==ArpPreparationStatus::ready?ArpPreparationStatus::cancelled:result.status;
   r.pending=false;pending[result.track]={};
  }
+ ArpMidiReceipt midi;
+ for(unsigned n=0;n<511&&engine.popArpMidi(midi);++n){
+  if(midi.generation!=generation||midi.track>=records.size())continue;
+  auto& r=records[midi.track];if(midi.epoch<r.clearEpoch)continue; // A later clear wins even with saturated telemetry.
+  if(midi.epoch!=r.clearEpoch||midi.before!=r.revision||midi.revision!=midi.before+1){attached=false;continue;}
+  if(!setArpControl(r.committed.controls,midi.parameter,midi.value)){attached=false;continue;}
+  r.committed.bpm=midi.bpm;r.revision=midi.revision;
+ }
  if(attached&&view.generation==generation)for(unsigned id=0;id<records.size();++id){const auto& r=records[id];const auto& audio=view.tracks[id];
   if(r.pending||audio.clearEpoch!=r.clearEpoch||audio.arpSettingsRevision<r.revision)continue;
   ArpRenderSettings expected;

@@ -27,6 +27,11 @@ struct ArpSettings {
  bool operator==(const ArpSettings&) const noexcept = default;
 };
 inline constexpr std::uint32_t arpAllControls=(1u<<11)-1;
+inline constexpr std::array<unsigned,9> arpMidiControls{0,1,2,6,7,8,4,9,10}; // Original slider order; flags are not continuous targets.
+constexpr double arpMidiValue(unsigned slider,unsigned cc) noexcept {
+ const auto& p=arpControls[arpMidiControls[slider]];
+ return (cc/127.)*(p.widgetMaximum-p.minimum)+p.minimum;
+}
 bool validArpSettings(const ArpSettings&) noexcept;
 bool applyArpPreset(ArpSettings&,unsigned id) noexcept; // Failure leaves the old object intact.
 bool setArpControl(ArpSettings&,unsigned parameter,double value) noexcept;
