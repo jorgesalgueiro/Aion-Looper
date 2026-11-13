@@ -35,8 +35,19 @@ invalidate stale candidates and fail closed instead of reconstructing originals.
 Windows focused owner-bank contract passes **1/1 (3.37s)**. Its initial fixture
 incorrectly pumped only zero-frame callbacks while waiting for an ordinary FIFO
 edit. The fixture now pumps positive 64/128 callbacks for that edit; product
-zero-frame semantics and assertions are unchanged. Full affected cross-platform
-and sanitizer validation is in progress. Reuse prior unchanged-JS sound evidence:
+zero-frame semantics and assertions are unchanged. Runtime `4c71603`: Windows
+affected selection **10/10 (53.83s)** and Linux **10/10 (11.80s)** pass. Both
+Standalones build. The initial ASan/UBSan/leak and TSAN selections each passed
+the retained three contracts but failed the new bank-owner test: their different
+timing exposed seven queued older snapshots after a deliberately closed consumer.
+One assertion inspected an old global acknowledgement; another inspected the old
+clear epoch. The fixture now drains old snapshots without consuming receipts,
+pumps a zero-frame callback and reads a fresh audio-owned view for those two
+observations. The explicit stale-view receipt test remains unchanged. No assertion,
+tolerance, product DSP or owner behavior changed. Windows focused rerun passes
+**1/1 (3.42s)**; Linux/sanitizer fixture reruns are pending. Initial failed logs are
+retained as `build/arp-owner-bank-{asan,tsan}-test-linux.log`.
+Reuse prior unchanged-JS sound evidence:
 DSP/automation math, preserved assets and browser tolerances did not change.
 
 ## Original settings owner / exact edit receipts — 12 November 2026

@@ -33,6 +33,10 @@ struct Fixture{
  explicit Fixture(unsigned frames):block(frames){engine->prepare(8000,32768);engine->setMonitoring(false);engine->setAutoPlay(true);engine->setTarget(1);pump();service();check(owner.bind(latest),"bind original bank defaults");}
  void pump(bool zero=true,bool offline=false){float* channels[]{l.data(),r.data()};Guard guard;engine->process(zero?nullptr:channels,zero?0:2,zero?0:static_cast<int>(block),{},offline);}
  void service(){while(engine->popView(latest)){}owner.service(latest);}
+ // A deliberately closed telemetry consumer may hold seven older snapshots.
+ // Drain without consuming receipts, then request a current audio-owned view;
+ // only that view can establish a later ordinary command/clear observation.
+ void fresh(){while(engine->popView(latest)){}pump();service();}
  Bank originals(){Bank result;for(unsigned id=0;id<20;++id)result[id]=owner.track(id)->committed;return result;}
  void done(){wait([&]{pump();service();return !owner.restoring();},"bank owner terminal timeout");}
  void install(const Bank& bank,unsigned request){check(owner.restore(bank,request),"original bank restore admission");done();check(owner.restoreStatus()==ArpPreparationStatus::ready&&originals()==bank&&owner.bound(),"entire original bank accepted");}
@@ -53,7 +57,7 @@ static void ownership(unsigned block){
  for(unsigned n=0;n<40;++n)f.pump(false);
  check(f.originals()==old&&f.owner.restoring()&&!f.owner.restore(off,8),"unread result retains old originals and admission bound");
  const auto stale=f.latest;f.owner.service(stale);check(!f.owner.restoring()&&f.originals()==next&&f.owner.bound(),"exact bank receipt commits all doubles/presets/seeds despite stale snapshot");
- f.service();check(f.latest.lastRequestId==99999&&f.owner.bound(),"unrelated ack does not invalidate exact accepted bank");
+ f.fresh();check(f.latest.lastRequestId==99999&&f.owner.bound(),"unrelated ack does not invalidate exact accepted bank");
  f.install(off,9);for(unsigned id=0;id<20;++id)check(!f.engine->inspectPreparedArpAudioThread(id).active,"all-off restore retains originals and retires every graph");
  f.install(next,10);
  failWorker.store(true);check(f.owner.restore(settings(400),11),"bank worker OOM admission");f.done();
@@ -76,7 +80,7 @@ static void cancellation(unsigned block){
  // Ready remains an accepted fact if DEL happens before message consumption.
  auto accepted=settings(400);check(f.owner.restore(accepted,23),"ready then clear admission");
  wait([&]{f.pump();return f.engine->inspectAudioThread(19).track.arpRequest==23;},"ready bank before clear");
- f.command(LoopAction::clear,7);f.service();accepted[7]={};
+ f.command(LoopAction::clear,7);f.fresh();accepted[7]={};
  check(f.owner.restoreStatus()==ArpPreparationStatus::ready&&f.originals()==accepted&&f.owner.bound(),"post-ready clear wins one track without losing other accepted originals");
 }
 static void lifecycle(unsigned block){
