@@ -42,6 +42,12 @@ const document=(session,crypto={randomUUID:()=>session})=>{
  const freed=bounded.api.request({operation:'hello'}),freedPacket=bounded.outgoing.at(-1);bounded.complete({promiseId:freedPacket.resultId,result:{ok:true,_aionSession:'bounded-document'}});assert.equal((await freed).ok,true,'Timeout restores one queue slot');
  bounded.close();assert.equal(bounded.timers.size,0);assert((await Promise.all(waiting)).slice(1).every(message=>message==='Editor closed'));
  const retry=current.api.request({operation:'snapshot'}),last=current.outgoing.at(-1);current.complete({promiseId:last.resultId,result:{ok:true,_aionSession:'current-document'}});assert.equal((await retry).ok,true);
+ const exactValue=(64/127)*1.5,encoded=JSON.stringify({values:{amplitude:exactValue}});
+ const precise=current.api.request({operation:'snapshot'}),precisePacket=current.outgoing.at(-1);
+ current.complete({promiseId:precisePacket.resultId,result:{ok:true,_aionSession:'old-document',arp:'not JSON'}});assert.equal(current.timers.size,1,'Stale precision payload cannot affect current request');
+ current.complete({promiseId:precisePacket.resultId,result:{ok:true,_aionSession:'current-document',arp:encoded,tracks:[{arp:encoded},{arp:{values:{time:.4}}}]}});
+ const preciseReply=await precise;assert.equal(preciseReply.arp.values.amplitude,exactValue);assert.equal(preciseReply.tracks[0].arp.values.amplitude,exactValue);assert.equal(preciseReply.tracks[1].arp.values.time,.4,'Legacy object Arp remains supported');
+ const malformed=current.api.request({operation:'snapshot'}),bad=current.outgoing.at(-1);current.complete({promiseId:bad.resultId,result:{_aionSession:'current-document',arp:'not JSON'}});await assert.rejects(malformed,/Invalid native Arp payload/);assert.equal(current.timers.size,0,'Malformed exact payload releases its slot immediately');
  // Older WebKit paths keep correlation when randomUUID is unavailable.
  for(const crypto of [{getRandomValues:values=>{values.fill(0x1234abcd);return values;}},{}]){
   const fallback=document('fallback',crypto),first=fallback.api.request({operation:'hello'}),packet=fallback.outgoing[0],token=packet.params[0]._aionSession;assert.equal(typeof token,'string');assert(token.length>0&&token.length<=128);fallback.complete({promiseId:packet.resultId,result:{ok:true,_aionSession:token}});assert.equal((await first).ok,true);

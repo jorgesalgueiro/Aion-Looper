@@ -29,7 +29,18 @@ std::optional<juce::WebBrowserComponent::Resource> AionWebEditor::resource(const
 juce::WebBrowserComponent::Options AionWebEditor::options(AionProcessor& processor) {
     auto settings = juce::WebBrowserComponent::Options{}
         .withNativeIntegrationEnabled()
-        .withNativeFunction("aionRequest", [&processor](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion done) { done(processor.request(args)); })
+        .withNativeFunction("aionRequest", [&processor](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion done) {
+            auto result=processor.request(args);
+            // JUCE's generic completion serialization defaults to 15 digits.
+            // Keep the reply/transport envelope unchanged; tagged Arp fields
+            // travel as round-trip JSON and AionNative restores their objects.
+            // Untagged legacy direct calls keep their original representation.
+            if(result["_aionSession"].isString()){
+                const auto encode=[](juce::var& object){if(object["arp"].isObject())object.getDynamicObject()->setProperty("arp",juce::JSON::toString(object["arp"],true,17));};
+                encode(result);if(auto* tracks=result["tracks"].getArray())for(auto& track:*tracks)encode(track);
+            }
+            done(result);
+        })
         .withResourceProvider(resource)
         .withUserScript(juce::String::fromUTF8(AionUi::bridge_js, AionUi::bridge_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::loopview_js, AionUi::loopview_jsSize))

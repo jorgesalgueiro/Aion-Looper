@@ -13,6 +13,12 @@
         const entry = pending.get(message.promiseId);
         if (!entry || message.result?._aionSession !== session) return;
         const {_aionSession, ...result} = message.result;
+        try {
+            const decode=object=>{if(typeof object?.arp==='string')object.arp=JSON.parse(object.arp);};
+            decode(result);if(Array.isArray(result.tracks))for(const track of result.tracks)decode(track);
+        } catch {
+            pending.delete(message.promiseId); clearTimeout(entry.timer); entry.reject(new Error('Invalid native Arp payload'));return;
+        }
         pending.delete(message.promiseId); clearTimeout(entry.timer); entry.resolve(result);
     });
     window.AionNative = Object.freeze({

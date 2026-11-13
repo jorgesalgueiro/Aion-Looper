@@ -54,7 +54,17 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  await click('#fx-tabs-container button:nth-child(20)');await until(s=>s.midi.eqTrack===19,'selected expanded Arp tab');await inject([[176,11,0,3,21]]);
  await until(s=>s.tracks[19].arp.values.amplitude===0&&s.tracks[0].arp.values.amplitude===1.5,'Arp expression follows selected track without enabling inactive effect');
  await click('#arpDelayMix','right');await until(s=>s.midi.learnTarget===126,'Arp learn before reopen');
+ const holdSnapshot=()=>evaluate(`(()=>{const b=__JUCE__.backend,send=b.emitEvent;let packet;window.bridgeProbe={done:false};b.emitEvent=function(type,value){if(type==='__juce__invoke'&&value.params[0].operation==='snapshot')packet=value;else return send.call(this,type,value);};AionNative.request({operation:'snapshot'}).then(reply=>window.bridgeProbe={done:true,reply}).catch(error=>window.bridgeProbe={done:true,error:error.message});b.emitEvent=send;return packet;})()`);
+ const oldPacket=await holdSnapshot();
  await call('Page.reload');await wait(1000);await until(s=>s.tracks[0].arp.enabled&&s.tracks[0].arpReady&&s.midi.learnTarget===-1&&s.midi.bindings[127]!==0,'editor reopen initial sync and learn lifetime');
+ const currentPacket=await holdSnapshot();
+ await evaluate(`__JUCE__.backend.emitByBackend('__juce__complete',${JSON.stringify(JSON.stringify({promiseId:currentPacket.resultId,result:{ok:true,_aionSession:oldPacket.params[0]._aionSession,arp:'not JSON'}}))})`);await wait(30);
+ assert.equal(await evaluate('window.bridgeProbe.done'),false,'obsolete document token cannot consume a reused active ID or parse its malformed Arp');
+ await evaluate(`__JUCE__.backend.emitEvent('__juce__invoke',${JSON.stringify(currentPacket)})`);
+ for(let n=0;n<80&&!await evaluate('window.bridgeProbe.done');++n)await wait(20);
+ const decoded=await evaluate('window.bridgeProbe');assert(decoded.reply?.ok&&!decoded.error);assert.equal(typeof decoded.reply.tracks[0].arp,'object');assert(!('_aionSession' in decoded.reply));
+ const legacy=await evaluate(`new Promise(resolve=>{const b=__JUCE__.backend,handle=b.addEventListener('__juce__complete',message=>{if(message.promiseId===900001){b.removeEventListener(handle);resolve({ok:message.result.ok,arpType:typeof message.result.tracks[0].arp,tagged:'_aionSession' in message.result});}});b.emitEvent('__juce__invoke',{name:'aionRequest',params:[{operation:'snapshot'}],resultId:900001});})`);
+ assert.deepEqual(legacy,{ok:true,arpType:'object',tagged:false},'legacy untagged native completion remains an object');
  await click('#fx-tabs-container button:nth-child(1)');await until(s=>s.midi.eqTrack===0,'restore selected Arp tab');await click('#loop-0-arpDelay + span');
  await click('#arpDelayMix','right');await until(s=>s.midi.learnTarget===126,'conflicting Arp learn');await inject([[176,11,0,3,3]]);await until(s=>s.midi.learnTarget===-1&&s.midi.bindings[126]===0&&s.midi.bindings[127]!==0,'Arp duplicate conflict rejected');
  await click('#arpDelayAmplitude','right',8);await until(s=>s.midi.bindings[127]===0,'Arp Shift-right-click removes mapping');
