@@ -59,6 +59,35 @@ CC120/123 retain the existing native panic behavior and cannot be learned as EQ.
 
 The native loop compressor uses the same processor and selected-loop CC tab:
 
+Arp Delay now has development GUI/CLI access to its original controls and eight
+presets. Commands operate on the same persistent per-loop native graph:
+
+```sh
+python tools/aion.py arp 1 preset --preset sync-trip
+python tools/aion.py arp 1 on
+python tools/aion.py arp 1 set --parameter time --value 0.4
+python tools/aion.py arp 1 set --parameter stay --value 1
+python tools/aion.py arp 1 get
+python tools/aion.py arp 1 off
+```
+
+Tracks are 1..20; `toggle` is also available. Parameter names are `time`,
+`repetitions`, `mix`, `stay`, `scale`, `sync`, `amplitude`, `range`, `humanize`,
+`panSpeed`, `panDepth`. A manual edit clears the preset name. `on` prepares storage
+on the worker; CLI success waits for that request's exact Arp receipt, including
+failure/cancellation, rather than an unrelated transport acknowledgement. It never
+blindly retries an admitted command. Original double values survive native state
+round trips; legacy native sessions without an Arp bank load defaults/off.
+
+This is a working preview, not completed Arp acceptance: Arp MIDI mappings,
+automatic tempo-change propagation and the requested new-instance organic
+voicing remain pending. A control gesture captures the current Master BPM;
+the `sync` checkbox selects the existing verified native subdivision behavior.
+The chain remains user-editable: omission of A bypasses routing without erasing
+its controls, and reinsertion can place it before, between or after other effects.
+
+The compressor commands are:
+
 ```sh
 python tools/aion.py comp 1 preset --preset drums
 python tools/aion.py comp 1 on

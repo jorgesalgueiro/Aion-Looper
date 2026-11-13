@@ -16,6 +16,7 @@ bool ArpSettingsOwner::restore(const Bank& candidate,std::uint32_t request,const
 }
 void ArpSettingsOwner::serviceBank() noexcept {
  ArpBankResult result;if(!engine.popArpBank(result))return;
+ bankReceipt=result;
  if(!bank.active||result.requestId!=bank.request||result.generation!=bank.generation){attached=false;return;}
  bool committed=result.status==ArpPreparationStatus::ready;
  // Validate the entire immutable completion before changing any original value.

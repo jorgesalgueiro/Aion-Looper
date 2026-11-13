@@ -98,10 +98,10 @@ private:
             lastId=requestId;lastResult=result;
         }
         response->setProperty("result",result);
-        auto text=juce::JSON::toString(packet,true);
+        auto text=juce::JSON::toString(packet,true,17); // Preserve original double controls across the CLI boundary.
         if(static_cast<juce::int64>(text.getNumBytesAsUTF8())>maxReplyBytes){
             failure->setProperty("error","CLI reply exceeds byte limit; inspect state before retrying");
-            response->setProperty("result",failureResult);text=juce::JSON::toString(packet,true);
+            response->setProperty("result",failureResult);text=juce::JSON::toString(packet,true,17);
         }
         directory.getChildFile("response.json").replaceWithText(text);
     }

@@ -2,6 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include "core/Engine.h"
+#include "core/ArpSettingsOwner.h"
 #include "core/CallbackAudibleTime.h"
 #include "plugin/Vst3ProgramRouting.h"
 #include "plugin/LoopMeterClearDispatcher.h"
@@ -143,7 +144,15 @@ private:
     } effectsRestore{}; // Non-audio, under midiSettingsMutex; sole message result consumer.
     std::uint64_t effectsIntent=0;
     std::uint32_t lastEffectsRequest=0;
+    std::uint32_t lastOrdinaryRequest=0; // Arp preparation/bank IDs are not ordinary FIFO acknowledgements.
     bool serviceEffectsRestore();
+    aion::ArpSettingsOwner arpOwner{engine}; // Sole consumer of Arp track and bank receipts.
+    aion::ArpSettingsOwner::Bank arpSettings{}; // Accepted original intent; no Float32 reconstruction.
+    bool arpRestorePending=false;
+    void saveArps(juce::ValueTree&);
+    static bool readArps(const juce::ValueTree&,aion::ArpSettingsOwner::Bank&);
+    void arpSnapshot(juce::DynamicObject&,unsigned);
+    bool arpRequest(const juce::var&,juce::DynamicObject&);
     void serviceEqualizer();
     void equalizerCleared(unsigned track,bool all,std::uint32_t requestId);
     void equalizerSnapshot(juce::DynamicObject&,unsigned track);

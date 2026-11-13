@@ -95,7 +95,7 @@ bool AionProcessor::equalizerRequest(const juce::var& request,juce::DynamicObjec
     if(!numeric(request.getProperty("expiresAt",{}),expires)||expires<now||expires>now+5000)return fail("EQ command expired");
     const auto generation=request.getProperty("generation",{});
     if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation())||latest.generation!=engine.generation())return fail("Audio generation changed");
-    if(eqRestorePending||compressorRestorePending||chainRestorePending||eqClearing[track])return fail("Wait for EQ restore/clear acknowledgement");
+    if(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||eqClearing[track])return fail("Wait for EQ restore/clear acknowledgement");
     std::uint32_t mask=0;
     if(action=="toggle")next.enabled=!next.enabled;
     else if(action=="enable"){const auto enabled=request.getProperty("enabled",{});if(!enabled.isBool())return fail("Expected EQ boolean");next.enabled=static_cast<bool>(enabled);}
@@ -129,6 +129,6 @@ bool AionProcessor::equalizerRequest(const juce::var& request,juce::DynamicObjec
     aion::LoopCommand command{aion::LoopAction::equalizer,track,nextRequest+1,engine.generation()};
     command.equalizer=next;command.eqMask=mask;command.eqClearEpoch=latest.tracks[track].clearEpoch;
     if(!engine.enqueueLoop(command))return fail("EQ command queue is full");
-    eqSettings[track]=next;eqPending[track]=++nextRequest;
+    eqSettings[track]=next;eqPending[track]=lastOrdinaryRequest=++nextRequest;
     result.setProperty("queued",true);result.setProperty("requestId",static_cast<juce::int64>(nextRequest));result.setProperty("equalizer",settingsValue(next));return true;
 }

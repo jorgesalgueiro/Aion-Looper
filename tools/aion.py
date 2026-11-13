@@ -148,7 +148,13 @@ def main(argv=None):
     comp.add_argument('action', choices=('get', 'curve', 'on', 'off', 'toggle', 'reset', 'preset', 'set'))
     comp.add_argument('--preset', help='Original preset name, e.g. vocals')
     comp.add_argument('--values', type=strict_json, help='Parameter object, e.g. {"threshold":-24,"mix":0.5}')
-    chain = commands.add_parser('chain', help='Per-loop effect order on the running audio engine (Q/C currently ported)')
+    arp = commands.add_parser('arp', help='Per-loop Arp Delay on the running audio engine')
+    arp.add_argument('track', type=track)
+    arp.add_argument('action', choices=('get', 'on', 'off', 'toggle', 'preset', 'set'))
+    arp.add_argument('--preset', help='Original preset name, e.g. sync-trip')
+    arp.add_argument('--parameter', help='Original control name, e.g. repetitions or panDepth')
+    arp.add_argument('--value', type=strict_json, help='Numeric control value')
+    chain = commands.add_parser('chain', help='Per-loop effect order on the running audio engine (Q/C/A preview)')
     chain.add_argument('track', type=track)
     chain.add_argument('action', choices=('get', 'set', 'reset'))
     chain.add_argument('order', nargs='?', help='Original effect codes, e.g. CQ or QCATFODBVKZG')
@@ -207,11 +213,11 @@ def main(argv=None):
             request.update(action=args.action, value=args.value, expiresAt=int(time.time() * 1000) + 4000)
         else:
             request.update(waveformId=status['tracks'][args.track]['waveformId'], filename=args.filename)
-    elif args.command in ('eq', 'comp', 'chain'):
+    elif args.command in ('eq', 'comp', 'chain', 'arp'):
         status = invoke(endpoint, {'operation': 'snapshot'})
         if not status.get('ok'):
             return status
-        request = {'operation': {'eq': 'equalizer', 'comp': 'compressor', 'chain': 'signalChain'}[args.command], 'track': args.track, 'generation': status['generation'],
+        request = {'operation': {'eq': 'equalizer', 'comp': 'compressor', 'chain': 'signalChain', 'arp': 'arp'}[args.command], 'track': args.track, 'generation': status['generation'],
                    'action': args.action, 'expiresAt': int(time.time() * 1000) + 4000}
         if args.command == 'chain' and args.action == 'set':
             if args.order is None:
@@ -222,7 +228,10 @@ def main(argv=None):
         elif args.action == 'preset':
             request['preset'] = args.preset
         elif args.action == 'set':
-            request['values'] = args.values
+            if args.command == 'arp':
+                request.update(parameter=args.parameter, value=args.value)
+            else:
+                request['values'] = args.values
         elif args.action == 'width':
             request.update(band=args.band, edge=args.edge)
     elif args.command == 'rename':
@@ -239,6 +248,21 @@ def main(argv=None):
     if not isinstance(request, dict):
         raise ValueError('Native request must be a JSON object')
     reply = invoke(endpoint, request)
+    if args.command == 'arp' and reply.get('ok') and reply.get('queued'):
+        deadline = time.monotonic() + 4
+        while time.monotonic() < deadline:
+            observed = invoke(endpoint, {'operation': 'snapshot'})
+            if not observed.get('ok') or observed.get('generation') != request['generation']:
+                break
+            record = observed['tracks'][args.track]
+            if record.get('arpRequestId') != reply['requestId']:
+                break  # Only the exact Arp receipt can confirm this request.
+            if not record.get('arpPending'):
+                if record.get('arpReady'):
+                    return dict(reply, queued=False, applied=True, arp=record['arp'])
+                return dict(reply, ok=False, applied=False, error='Arp preparation/edit failed or was cancelled')
+            time.sleep(.01)
+        return dict(reply, ok=False, error='Arp outcome is unconfirmed; inspect status before retrying')
     if args.command in ('loop', 'eq', 'comp', 'chain') and reply.get('ok') and reply.get('queued'):
         deadline = time.monotonic() + 4
         while time.monotonic() < deadline:

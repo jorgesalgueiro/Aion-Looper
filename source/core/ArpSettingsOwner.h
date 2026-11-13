@@ -38,6 +38,7 @@ public:
  bool restore(const Bank&,std::uint32_t request,const LoopBank::EffectsBank* effects=nullptr) noexcept;
  bool restoring() const noexcept{return bank.active;}
  ArpPreparationStatus restoreStatus() const noexcept{return bankStatus;}
+ const ArpBankResult& restoreReceipt() const noexcept{return bankReceipt;}
  void cancel(unsigned track=LoopBank::trackCount) noexcept;
  bool bound() const noexcept{return attached&&generation==engine.generation();}
  const ArpOwnedTrack* track(unsigned id) const noexcept{return id<records.size()?&records[id]:nullptr;}
@@ -55,6 +56,7 @@ private:
   bool active=false;
  } bank{};
  ArpPreparationStatus bankStatus=ArpPreparationStatus::ready;
+ ArpBankResult bankReceipt{}; // Immutable terminal evidence for the enclosing FX owner.
  std::uint32_t generation=0;
  bool attached=false;
 };

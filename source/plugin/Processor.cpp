@@ -188,7 +188,7 @@ void AionProcessor::prepareToPlay(double rate, int) {
     aion::DeviceOutputLatency latency;
     try{latency=outputLatencyReader?outputLatencyReader():standaloneOutputLatency(*this);}catch(...){latency={};}
     engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
-    {std::lock_guard guard(midiSettingsMutex);engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);++effectsIntent;lastEffectsRequest=nextRequest;}
+    {std::lock_guard guard(midiSettingsMutex);engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);arpRestorePending=arpSettings!=aion::ArpSettingsOwner::Bank{};++effectsIntent;lastEffectsRequest=nextRequest;lastOrdinaryRequest=0;}
     deviceClockOwner=nextDeviceClockOwner;
     deviceClockEpoch=deviceClockOwner?deviceClockOwner->advance():0;
     activeDeviceClockEpoch.store(deviceClockEpoch,std::memory_order_release);
@@ -385,13 +385,14 @@ void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
     saveEqualizers(state);
     saveCompressors(state);
     saveChains(state);
+    saveArps(state);
     if (auto xml = state.createXml()) copyXmlToBinary(*xml, data);
 }
 void AionProcessor::setStateInformation(const void* data, int size) {
     if (size <= 0 || size > 1024 * 1024) return;
     if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName("AionState")) {
-        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;CompressorBank restoredCompressor;ChainBank restoredChains;
-        if(!readEqualizers(state,restoredEq)||!readCompressors(state,restoredCompressor)||!readChains(state,restoredChains))return;
+        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;CompressorBank restoredCompressor;ChainBank restoredChains;aion::ArpSettingsOwner::Bank restoredArps;
+        if(!readEqualizers(state,restoredEq)||!readCompressors(state,restoredCompressor)||!readChains(state,restoredChains)||!readArps(state,restoredArps))return;
         aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
         if(stored.isValid()){
             const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
@@ -406,7 +407,8 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             eqSettings=restoredEq;eqRestorePending=true;eqPending.fill(0);eqClearing.fill(false);
             compressorSettings=restoredCompressor;compressorRestorePending=true;compressorPending.fill(0);compressorClearing.fill(false);
             chainSettings=restoredChains;chainRestorePending=true;chainPending.fill(0);chainClearing.fill(false);
-            ++effectsIntent;engine.cancelArpBank(); // Host thread publishes cancellation only, never consumes or enqueues.
+            arpSettings=restoredArps;arpRestorePending=true;
+            ++effectsIntent;engine.cancelArpPreparation(); // Host thread publishes cancellation only, never consumes or enqueues.
             parameters.replaceState(state);
         }
         // Preset restoration changes values without automation events. Ask wrappers
@@ -545,10 +547,13 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             equalizerSnapshot(*object,static_cast<unsigned>(trackIndex));
             compressorSnapshot(*object,static_cast<unsigned>(trackIndex));
             chainSnapshot(*object,static_cast<unsigned>(trackIndex));
+            arpSnapshot(*object,static_cast<unsigned>(trackIndex));
             object->setProperty("finalizationFailed", t.finalizationFailed); object->setProperty("solo", t.solo); object->setProperty("muted", t.muted); object->setProperty("peak", t.peak);
             tracks.add(juce::var(object));
         }
         result->setProperty("tracks", juce::var(tracks));
+    } else if(operation=="arp") {
+        result->setProperty("ok",arpRequest(request,*result));
     } else if(operation=="signalChain") {
         result->setProperty("ok",chainRequest(request,*result));
     } else if(operation=="equalizer") {
@@ -603,7 +608,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         engine.cancelStutter(static_cast<unsigned>(static_cast<int>(id)));result->setProperty("ok",true);
     } else if (operation == "loop") {
         {std::lock_guard guard(midiSettingsMutex);const auto cleanup=request.getProperty("action",{}).toString();
-         if((eqRestorePending||compressorRestorePending||chainRestorePending)&&cleanup!="stopAll"&&cleanup!="clear"&&cleanup!="clearAll")return fail("Wait for pending EQ state restore");}
+         if((eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending)&&cleanup!="stopAll"&&cleanup!="clear"&&cleanup!="clearAll")return fail("Wait for pending EQ state restore");}
         const auto expiration = request.getProperty("expiresAt", {});
         if (!(expiration.isInt() || expiration.isInt64() || expiration.isDouble())) return fail("Missing command expiration");
         const double expiresAt = static_cast<double>(expiration);
@@ -630,7 +635,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if (!engine.enqueueLoop({static_cast<aion::LoopAction>(action), static_cast<std::uint32_t>(static_cast<int>(id)), requestId,
                                 static_cast<std::uint32_t>(static_cast<int>(generation)), 0, actionName=="multiply"?(inputAvailable(*this)?1.0f:0.0f):(actionName=="startDelay"||actionName=="clearMergedSource")?number:static_cast<double>(static_cast<float>(number))}))
             return fail("Audio generation changed or command queue is full");
-        nextRequest = requestId;
+        lastOrdinaryRequest = nextRequest = requestId;
         if(actionName=="clear"||actionName=="clearAll")equalizerCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")compressorCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")chainCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);

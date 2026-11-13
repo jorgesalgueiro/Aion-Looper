@@ -1,5 +1,52 @@
 # Arp Delay migration
 
+## Product original-state / GUI / CLI preview — 13 November 2026
+
+The production processor now uses `ArpSettingsOwner` as its sole Arp track/bank
+receipt consumer. `ProcessorEffectsRestore` coordinates its terminal receipt with
+the existing callback-serial fence; it no longer consumes a competing bank result.
+Versioned `LoopArps` state retains all twenty original double control arrays,
+preset identity, BPM and seed. Serialization uses round-trip decimal precision.
+All banks validate before changing APVTS/MIDI/FX intent; absent native Arp state
+means legacy defaults/off. This is not an importer for the original JS project
+format. Active banks prepare asynchronously alongside Q/C/user chains. Failed
+admission/preparation retains the confirmed originals and native graphs. Prepare
+binds only known native reset values, then restores the accepted original bank.
+
+Shared `arp` requests and `tools/aion.py arp` support get, enable/bypass/toggle,
+named preset and one original parameter edit. Exact track receipts confirm
+commands, including asynchronous enable; ordinary global acknowledgements do not.
+The original A toggle, preset list, nine ranges and SYNC/STAY controls are connected
+through `resources/native/arp.js`; preserved UI/reference files remain unchanged.
+Reordering/omitting/reinserting A retains its settings. No DSP algorithm changed.
+
+Acceptance for this integration: preserve original doubles and preset metadata,
+reject malformed/duplicate/unknown-version/partial banks atomically, load legacy
+sessions, restore active graphs across sample-rate generations, retain DEL barriers,
+keep callback new/delete at zero, exercise real external CLI and real editor
+pointer/key/reload/chain/PCM paths at 64/128, and retain Q/C/chain/MIDI regressions.
+
+Two new failing regressions were fixed: Arp preparation IDs must not be awaited
+as ordinary FIFO IDs during a later state load, and default CLI JSON formatting
+rounded original doubles. Ordinary admission now has its own ordering fence and
+CLI replies request 17 decimal places within the same byte cap. The first UI
+fixture also compared before its final ArrowRight slider edit had settled; it now
+waits for the exact final DOM value, retaining the full settings-equality assertion.
+Failed logs remain in `build/arp-product-{tests,diagnostic,regressions,ui}.log`.
+
+Windows core/reference selection passes **11/11 (73.27s)**; actual owned WebView2
+Arp pointer/key/reload/chain/continuing-PCM checks pass at **64/128**
+(`build/arp-product-ui2.log`). Final product/CLI/Linux evidence is recorded in the
+current handoff after running it. Prior unchanged original-browser sound fixtures
+remain valid for unchanged DSP, not proof of full product timing or physical IO.
+
+**Arp is not finished.** Next acceptance gaps are original MIDI control mapping
+with exact-original ownership, automatic Master BPM changes, approved organic
+new-instance voicing/seed policy, and broader OD/SUB/MULT/scheduled STOP/session
+stress checks. Current gestures capture Master BPM; do not claim automatic tempo
+tracking. Keep this preview separate from complete parity/release acceptance.
+No package or push is part of this work.
+
 ## Production inactive FX state restoration — 13 November 2026
 
 Accepted runtime `0c179a8`, cleanup correction `b71f203`. The production state-load path now uses the accepted

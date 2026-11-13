@@ -11,6 +11,30 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Arp product state / shared GUI / CLI preview — 13 November 2026
+
+Original Arp controls/presets now have production state and shared command access,
+including worker-prepared enable and the original visible A controls. One
+`ArpSettingsOwner` consumes all Arp receipts; coordinated FX restore retains its
+callback-serial fence. Versioned twenty-track native state preserves original
+doubles/BPM/seed and rejects malformed banks atomically; old native sessions load
+Arp defaults/off. Prepare restores active graphs through the worker. New tests
+retain DEL barriers and zero callback new/delete. CLI confirmation uses exact Arp
+receipts; its JSON formatting now retains double precision. The ordinary FIFO
+fence is separate from Arp preparation/bank IDs (a reproduced restore deadlock).
+
+| Reference behavior | Native status / evidence | Remaining |
+| --- | --- | --- |
+| Original controls, eight presets, sound | Accepted core DSP reused; Windows core/reference 11/11 | Full product transition/listening acceptance |
+| Original A controls, editable chain | Real WebView2 pointer/key/PCM/reload passes 64/128 | Broader OD/SUB/MULT/STOP cases |
+| Original controls/state identity | Versioned native bank + exact receipt owner, new production tests | Original JS project importer |
+| Shared command access | GUI + `tools/aion.py arp` connected | Final cross-platform evidence below |
+| Master BPM / MIDI / organic new-instance sound | Gesture BPM capture only | Automatic propagation, MIDI original-value ownership, organic audition/policy |
+
+This is a working **preview**, not finished Arp or release acceptance. See the
+new section of ARP_DELAY_MIGRATION.md and CLI.md. No dependency/parameter ID,
+reference/resource UI, package or push change. Continue Arp rather than another FX.
+
 ### Production inactive FX state restore — 13 November 2026
 
 Existing Q/C/chain state loads now use the coordinated native bank instead of a

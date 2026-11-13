@@ -132,6 +132,7 @@
             run:async c=>{
                 if(c.action==='equalizer')return sendEqualizer(c.track,c.eq);
                 if(c.action==='compressor')return sendCompressor(c.track,c.compressor);
+                if(c.action==='arp')return sendArp(c.track,c.arp);
                 if(c.action==='signalChain')return sendChain(c.track,c.order);
                 if(c.action==='exportLoop'){
                     const reply=await rpc({operation:'exportLoop',track:c.track,generation:c.generation,waveformId:c.waveformId,filename:c.filename});
@@ -186,6 +187,8 @@
             enqueue:(track,eq,key)=>scheduler.enqueue(()=>({action:'equalizer',track,eq}),{track,key:key?`${track}:${key}`:undefined})});
         const compressor=window.AionCompressorUI({rpc,current:()=>snapshot,notify,equalizer,
             enqueue:(track,compressor,key)=>scheduler.enqueue(()=>({action:'compressor',track,compressor}),{track,key:key?`${track}:${key}`:undefined})});
+        const arp=window.AionArpUI({current:()=>snapshot,equalizer,
+            enqueue:(track,arp,key)=>scheduler.enqueue(()=>({action:'arp',track,arp}),{track,key:key?`${track}:${key}`:undefined})});
         const signalChain=window.AionSignalChainUI({current:()=>snapshot,select:id=>equalizer.select(id),
             enqueue:(track,order)=>scheduler.enqueue(()=>({action:'signalChain',track,order}),{track})});
         async function sendChain(track,order){
@@ -194,6 +197,13 @@
             const reply=await rpc({operation:'signalChain',action:'set',track,order,generation,expiresAt:Date.now()+3000});
             if(!reply.ok)throw Error(reply.error||'Chain command rejected');
             await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,resolve,reject,deadline:Date.now()+4000};});
+        }
+        async function sendArp(track,settings){
+            if(!enabled())return;
+            error='';const generation=snapshot.generation;
+            const reply=await rpc({operation:'arp',track,...settings,generation,expiresAt:Date.now()+3000});
+            if(!reply.ok)throw Error(reply.error||'Arp command rejected');
+            await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,arpTrack:track,resolve,reject,deadline:Date.now()+4000};});
         }
         async function sendCompressor(track,settings){
             if(!enabled())return;
@@ -306,6 +316,7 @@
                 signalChain.bindRow(row,i);
                 equalizer.bindRow(row,i);
                 compressor.bindRow(row,i);
+                arp.bindRow(row,i);
                 const bind=(element,callback,event='click') => {element.dataset.nativeControl='true';element.title=element.getAttribute('aria-label')||element.textContent.trim();element.addEventListener(event,callback);return element;};
                 // Original header background/state text is also a short-action target.
                 // Nested controls and the waveform keep their own actions; main clicks
@@ -403,6 +414,7 @@
                 signalChain.bindRow(row,i);
                 equalizer.bindRow(row,i);
                 compressor.bindRow(row,i);
+                arp.bindRow(row,i);
                 header.addEventListener('click',()=>{if(enabled())mainAction(i);});
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const reverse=row.querySelector(`#live-loop-${i}-reverse`);
@@ -414,6 +426,7 @@
             if(!snapshot)return;
             equalizer.update();
             compressor.update();
+            arp.update();
             signalChain.update();
             const active=enabled();
             if(document.activeElement!==master)master.value=snapshot.masterGain;
@@ -536,6 +549,12 @@
                 if(!rows.length){releaseStutter(20);createRows(reply);createLiveRows(reply);}
                 if(pending) {
                     if(reply.generation!==pending.generation){pending.reject(Error('Audio configuration changed'));pending=null;}
+                    else if(pending.arpTrack!==undefined){
+                        const t=reply.tracks[pending.arpTrack];
+                        if(t.arpRequestId!==pending.id){pending.reject(Error('Arp outcome was superseded; check state before retrying'));pending=null;}
+                        else if(!t.arpPending){t.arpReady?pending.resolve():pending.reject(Error('Arp edit failed or was cancelled'));pending=null;}
+                        else if(Date.now()>pending.deadline)error='Arp is still preparing; check state before retrying.';
+                    }
                     else if(reply.lastRequestId===pending.id){reply.rejected?pending.reject(Error('Action is unavailable in the current loop state')):pending.resolve();pending=null;}
                     else if(reply.lastRequestId>pending.id){pending.reject(Error('Action outcome was superseded by another controller; check loop state before retrying'));pending=null;}
                     else if(Date.now()>pending.deadline){error='Audio is paused; the action remains queued until processing resumes.';}

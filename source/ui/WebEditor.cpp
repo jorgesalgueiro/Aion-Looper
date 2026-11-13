@@ -38,6 +38,7 @@ juce::WebBrowserComponent::Options AionWebEditor::options(AionProcessor& process
         .withUserScript(juce::String::fromUTF8(AionUi::midi_js, AionUi::midi_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::equalizer_js, AionUi::equalizer_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::compressor_js, AionUi::compressor_jsSize))
+        .withUserScript(juce::String::fromUTF8(AionUi::arp_js, AionUi::arp_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::signalchain_js, AionUi::signalchain_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::looper_js, AionUi::looper_jsSize));
    #if JUCE_WINDOWS
