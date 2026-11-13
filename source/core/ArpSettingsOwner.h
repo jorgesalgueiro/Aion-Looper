@@ -32,15 +32,28 @@ public:
  bool set(unsigned track,unsigned parameter,double value,double bpm,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool preset(unsigned track,unsigned preset,double bpm,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool enable(unsigned track,bool enabled,double bpm,std::uint32_t request,std::uint64_t frame=0) noexcept;
+ // Internal Arp-only restore: prepare all graphs, commit all original settings
+ // on the exact bank receipt. Not a legacy importer or complete FX/session restore.
+ bool restore(const Bank&,std::uint32_t request) noexcept;
+ bool restoring() const noexcept{return bank.active;}
+ ArpPreparationStatus restoreStatus() const noexcept{return bankStatus;}
  void cancel(unsigned track=LoopBank::trackCount) noexcept;
  bool bound() const noexcept{return attached&&generation==engine.generation();}
  const ArpOwnedTrack* track(unsigned id) const noexcept{return id<records.size()?&records[id]:nullptr;}
 private:
  struct Pending {ArpOwnedSettings candidate{};std::uint64_t transaction=0,epoch=0,revision=0;std::uint32_t generation=0,request=0;bool invalidated=false;};
  bool submit(unsigned,const ArpOwnedSettings&,std::uint32_t mask,bool preset,bool prepare,std::uint32_t request,std::uint64_t frame) noexcept;
+ void serviceBank() noexcept;
  Engine& engine;
  std::array<ArpOwnedTrack,LoopBank::trackCount> records{};
  std::array<Pending,LoopBank::trackCount> pending{};
+ struct PendingBank {
+  Bank candidate{};
+  LoopBank::ArpEpochs epochs{},revisions{};
+  std::uint32_t generation=0,request=0;
+  bool active=false;
+ } bank{};
+ ArpPreparationStatus bankStatus=ArpPreparationStatus::ready;
  std::uint32_t generation=0;
  bool attached=false;
 };

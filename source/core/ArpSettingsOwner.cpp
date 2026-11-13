@@ -2,7 +2,7 @@
 #include "ArpSettingsOwner.h"
 namespace aion {
 bool ArpSettingsOwner::bind(const EngineView& view,const Bank& known) noexcept {
- if(attached||!view.generation||view.generation!=engine.generation())return false;
+ if(attached||bank.active||!view.generation||view.generation!=engine.generation())return false;
  for(unsigned id=0;id<records.size();++id){ArpRenderSettings render;
   if(records[id].pending||!compileArpSettings(known[id].controls,known[id].bpm,known[id].seed,render)||render!=view.tracks[id].arp)return false;
  }
@@ -53,6 +53,7 @@ void ArpSettingsOwner::service(const EngineView& view) noexcept {
    if(r.pending){pending[id].invalidated=true;engine.cancelArpPreparation(id);}
   }
  }
+ serviceBank();
  ArpPreparationResult result;
  for(unsigned n=0;n<records.size()&&engine.popArpPreparation(result);++n){
   if(result.track>=records.size()){attached=false;continue;}

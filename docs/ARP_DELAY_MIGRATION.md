@@ -1,5 +1,44 @@
 # Arp Delay migration
 
+## Atomic original settings bank restore — 13 November 2026
+
+Internal slice, validation in progress. The unchanged reference saves both
+`loop.params` and `loop.activePresets` (`Modules/projectManager.js`); the native
+original model must preserve those double values and preset identities rather
+than infer them from rendered AudioParam targets. This change is not a legacy
+project importer and does not introduce a persisted schema.
+
+Acceptance defined before editing: stage a complete known bank, accept all twenty
+original records only after exact native graph/settings adoption, preserve the old
+bank on failure/cancellation and retain existing connected sound at 64/128.
+`ArpSettingsOwner::restore` validates every member before admission, excludes
+per-track edits while pending and uses the existing atomic Arp graph-bank path.
+The terminal `ArpBankResult` now captures all twenty epochs/revisions at completion;
+those facts remain immutable across unread results, later clears and prepare.
+No audio allocation, new queue, worker or DSP implementation is introduced.
+
+The message owner validates the **whole** successful receipt before changing any
+original record. A post-adoption clear resets only that record; the other accepted
+records preserve exact doubles/presets/BPM/seeds. A generation change unbinds the
+owner but retains accepted original precision for explicit known-state recovery.
+Busy/OOM/cancellation before adoption preserves old originals. External raw edits
+invalidate stale candidates and fail closed instead of reconstructing originals.
+
+| Contract | Evidence / remaining scope |
+| --- | --- |
+| All-or-none original bank and mixed/all-on/all-off graphs | New owner-bank contract, existing atomic storage/bank regressions |
+| Exact known original precision and preset identity | Twenty-record equality, stale views/global acknowledgements, unread completion |
+| Failure/cancellation does not change sound | Exact nonzero stereo Engine PCM against accepted raw bank path, 64/128 |
+| Clear/prepare/caller-ID reuse and bounded ownership | New lifecycle and concurrent callback tests; zero watched callback new/delete |
+| Complete product state / GUI / CLI / MIDI / BPM | Pending; Arp-only restore is not coordinated Q/C/chain/session restore; A disabled |
+
+Windows focused owner-bank contract passes **1/1 (3.37s)**. Its initial fixture
+incorrectly pumped only zero-frame callbacks while waiting for an ordinary FIFO
+edit. The fixture now pumps positive 64/128 callbacks for that edit; product
+zero-frame semantics and assertions are unchanged. Full affected cross-platform
+and sanitizer validation is in progress. Reuse prior unchanged-JS sound evidence:
+DSP/automation math, preserved assets and browser tolerances did not change.
+
 ## Original settings owner / exact edit receipts — 12 November 2026
 
 Internal slice. Acceptance was defined before editing:

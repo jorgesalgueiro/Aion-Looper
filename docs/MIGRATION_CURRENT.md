@@ -11,6 +11,24 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Atomic original Arp bank restore — 13 November 2026, validation in progress
+
+The internal settings owner now stages a complete known original Arp bank through
+the accepted Engine graph-bank transaction. It commits all original double values,
+preset metadata, BPM and seeds only after validating all twenty epochs/revisions
+in one immutable terminal receipt. OOM, busy, cancellation and queued prepare
+preserve the old original bank. A clear after successful adoption wins only on
+its own track; the other accepted originals remain intact. No Float32 inference.
+
+The focused Windows owner-bank contract passes (3.37s), including exact nonzero
+stereo PCM versus the accepted raw Engine bank path at 64/128, all-twenty enable/
+disable, closed telemetry/unread results, concurrent callback publication and
+zero watched callback new/delete. Retained/platform/sanitizer checks are underway.
+This is **Arp-only internal state ownership**, not a complete FX/session restore
+or exposed GUI/CLI feature. Product A remains disabled. Next: production owner/
+state integration and coordinated Q/C/chain/Arp restore, then shared GUI/CLI, MIDI,
+BPM and approved new-instance voicing acceptance. No package or push.
+
 ### Original Arp settings owner — 12 November 2026
 
 The internal `ArpSettingsOwner` now retains original double controls, preset,

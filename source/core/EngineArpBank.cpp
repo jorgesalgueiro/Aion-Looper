@@ -14,12 +14,16 @@ bool Engine::popArpBank(ArpBankResult& result) noexcept {
 }
 void Engine::cancelArpBank() noexcept {arpBankCancellation.fetch_add(1,std::memory_order_release);}
 void Engine::finishArpBank(ArpPreparationStatus status) noexcept {
- pendingArpBank.finished=true;pendingArpBank.status=status;
  // Exactly one admitted transaction owns the sole result slot until read.
  // No new bank or per-track preparation can be admitted in that interval.
  // Retain the terminal result if that invariant is ever violated; never spin.
- const auto& r=pendingArpBank.request;
- if(arpBankResults->push({r.requestId,r.generation,status}))pendingArpBank={};
+ if(!pendingArpBank.finished){
+  const auto& r=pendingArpBank.request;
+  auto& completion=pendingArpBank.completion;completion.requestId=r.requestId;completion.generation=r.generation;completion.status=status;
+  for(unsigned id=0;id<LoopBank::trackCount;++id){const auto view=loops.trackView(id);completion.clearEpochs[id]=view.clearEpoch;completion.settingsRevisions[id]=view.arpSettingsRevision;}
+  pendingArpBank.finished=true;pendingArpBank.status=status;
+ }
+ if(arpBankResults->push(pendingArpBank.completion))pendingArpBank={};
 }
 void Engine::cancelStaleArpBank() noexcept {
  if(!pendingArpBank.active)return;

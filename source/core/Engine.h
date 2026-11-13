@@ -67,7 +67,11 @@ struct ArpBankRequest {
     std::uint32_t requestId=0,generation=0;
     std::uint64_t cancellation=0;
 };
-struct ArpBankResult {std::uint32_t requestId=0,generation=0;ArpPreparationStatus status=ArpPreparationStatus::failed;};
+struct ArpBankResult {
+    std::uint32_t requestId=0,generation=0;
+    ArpPreparationStatus status=ArpPreparationStatus::failed;
+    LoopBank::ArpEpochs clearEpochs{},settingsRevisions{}; // Immutable terminal audio ownership.
+};
 struct PreparedArpInspection {bool active=false;ArpModValues targets{};ArpState state{};std::uint64_t frame=0;};
 struct AudioInspection {LoopView track{};std::uint64_t frame=0;float masterPeak=0;unsigned countInFlash=0;};
 struct EngineView {
@@ -241,6 +245,7 @@ private:
     struct PendingArpBank {
         ArpBankRequest request{};bool active=false,started=false,finished=false;
         ArpPreparationStatus status=ArpPreparationStatus::failed;
+        ArpBankResult completion{};
     };
     PendingArpBank pendingArpBank{}; // audio only
     bool outstandingArpBank=false; // sole message owner, retained across prepare
