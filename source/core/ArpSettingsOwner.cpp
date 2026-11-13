@@ -49,7 +49,10 @@ void ArpSettingsOwner::service(const EngineView& view) noexcept {
  // epochs/revisions backwards or overwrite a just-confirmed original value.
  if(attached&&view.generation==generation)for(unsigned id=0;id<records.size();++id){auto& r=records[id];
   if(view.tracks[id].clearEpoch>r.clearEpoch){
-   r.committed={};r.clearEpoch=view.tracks[id].clearEpoch;r.revision=view.tracks[id].arpSettingsRevision;
+   // DEL resets native Arp revision to zero. This snapshot may already include
+   // fresh MIDI after DEL; replay those exact receipts from the reset baseline,
+   // rather than skipping straight to the snapshot's final revision.
+   r.committed={};r.clearEpoch=view.tracks[id].clearEpoch;r.revision=0;
    if(r.pending){pending[id].invalidated=true;engine.cancelArpPreparation(id);}
   }
  }

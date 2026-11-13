@@ -168,6 +168,9 @@ static void midiOriginals(unsigned block){
  f.service();check(f.owner.bound(),"full journal reconciles without loss");
  {Guard guard;f.engine->process(nullptr,0,0,{&event,1});}f.service();check(f.owner.bound()&&f.owner.track(0)->revision==before+1,"journal recovery accepts fresh edit");
  f.command(LoopAction::clear);f.service();check(f.owner.bound()&&f.owner.track(0)->committed==ArpOwnedSettings{},"clear retires MIDI originals");
+ check(f.engine->enqueueLoop({LoopAction::clear,0,50001,f.engine->generation()}),"clear before same-block fresh CC");
+ event.data1=21;event.data2=63;{float* audio[]{f.l.data(),f.r.data()};Guard guard;f.engine->process(audio,2,block,{&event,1});}f.service();
+ check(f.owner.bound()&&!f.owner.track(0)->committed.controls.enabled&&f.owner.track(0)->committed.controls.values[1]==arpMidiValue(1,63),"clear then fresh same-block CC reconciles from reset revision without revival");
 }
 int main(){for(unsigned block:{64u,128u}){model(block);clearAndGeneration(block);rejectedAndFull(block);allTracks(block);pcm(block);protocol(block);knownPrecision(block);midiOriginals(block);}concurrent();
  std::cout<<"PASS original Arp owner: exact committed doubles/presets, exact stereo PCM, enable/OOM rollback, tracked acceptance/rejection, stale views/generations/clears, full queues, future cancellation and same-ID recovery, all-20 receipts, concurrent mid-callback publication, zero callback new/delete / 64/128\n";}

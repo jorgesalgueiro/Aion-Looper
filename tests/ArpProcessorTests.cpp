@@ -68,6 +68,10 @@ int main(int argc,char** argv){
  midi.addEvent(juce::MidiMessage::controllerEvent(1,11,63),31);watch=true;p->processBlock(audio,midi);watch=false;midi.clear();
  p->prepareToPlay(8000,block);settle();
  check(static_cast<double>(state["tracks"][19]["arp"]["values"]["repetitions"])==(63/127.)*10,"prepare retains unread exact MIDI intent before message telemetry service");
+ check(request(R"({"operation":"loop","action":"clear","track":19})")["ok"],"DEL before same-block fresh Arp CC");
+ midi.addEvent(juce::MidiMessage::controllerEvent(1,11,64),17);state=process();midi.clear();
+ check(!static_cast<bool>(state["tracks"][19]["arp"]["enabled"])&&static_cast<double>(state["tracks"][19]["arp"]["values"]["repetitions"])==repeats,"DEL then fresh CC retains exact new inactive controls without graph revival");
+ check(request(R"({"operation":"arp","action":"enable","track":19,"enabled":true})")["ok"],"original owner remains bound after clear/CC");settle();
  check(request(R"({"operation":"arp","action":"preset","track":19,"preset":"sync-trip"})")["ok"],"restore named preset for remaining legacy/state regressions");settle();
  p->getStateInformation(committed);
  for(const char* bad:{"nan","inf","1e1000","0.2junk","-1"}){
