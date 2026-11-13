@@ -43,9 +43,23 @@ retained-graph binding and atomic stopped reset/intent; Windows Arp/FX state
 fixture's old unborn-RTRG disabled assertion contradicted accepted 9 November
 behavior; it now retains source-readiness coverage and checks enabled admission.
 Do not revert product RTRG behavior to satisfy that obsolete expectation.
-Owner requests organic voicing in this work; its audible character question is
-pending, so no voicing/seed policy was invented. Core sanitizers do not cover JUCE
+Owner requests organic voicing in this work and selected loose timing, wider
+dynamics and natural stereo movement for new instances. Its implementation and
+compatible persisted mode/seed policy remain pending; raising Feel alone does
+not vary the existing note-onset clock. Core sanitizers do not cover JUCE
 processor code; physical IO/listening/Linux WebKit GUI remain unverified.
+
+Final lifecycle `56a98bc` Linux Arp/FX rerun **4/4 (3.77s)**; both Standalones
+build. Full main mouse and export checks pass at **64/128**. The wrapper's MERGE
+scheduled-STOP case failed once at 128 (`stopped` vs `stopping`); unchanged isolated
+128 MERGE passes. Keep `arp-product-mouse3.log` and `arp-product-merge128-rerun.log`;
+do not claim the whole wrapper passed or a proven timing root cause.
+NativeUiSmoke requires the real Standalone, not the hardware-free host. That
+attempt failed its expected holder/hotplug precondition; a real Standalone retry
+did not expose the CDP page before timeout, so actual Standalone smoke is unverified.
+Its owned app was closed and settings restored. Next: automatic Master BPM into
+the exact original owner, then Arp MIDI and approved loose voicing. Do not infer
+original MIDI control values from render floats or advance to another effect.
 
 ### Production inactive FX state restore — 13 November 2026
 

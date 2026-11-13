@@ -56,9 +56,14 @@ stress checks. Current gestures capture Master BPM; do not claim automatic tempo
 tracking. Keep this preview separate from complete parity/release acceptance.
 No package or push is part of this work.
 
-The owner chose to include organic voicing now rather than defer it. A follow-up
-asks which audible character to implement; no new voicing or random seed policy
-has been invented while that choice is pending.
+The owner chose to include organic voicing now rather than defer it, then chose
+**loose: clear timing variation, wider dynamics and natural stereo movement**.
+Existing presets and saved settings must retain their sound. No organic DSP or
+new-instance/seed policy is implemented yet. Existing Feel changes pitch/glide,
+envelope dynamics and delay-read wander, but the note-onset clock remains fixed;
+raising Feel alone would not implement the requested timing variation. Add an
+explicitly persisted compatible voicing mode and verify the original mode stays
+unchanged rather than silently changing the reference kernel/presets.
 
 The full mouse workflow found a historical assertion requiring unborn queued
 RTRG to be disabled. It contradicts accepted `bcb65c8`/`531386c` original-RTRG
@@ -68,6 +73,11 @@ Constructed-source readiness, trusted RTRG/PCM and all later assertions remain;
 no product retrigger behavior or numeric tolerance changed. The focused existing
 `-PendingRetriggerOnly` ten-scenario gate remains the direct unborn-action check.
 Keep failed `build/arp-product-mouse.log`; the full rerun is recorded separately.
+The next full run reached LIVE and found another obsolete assertion that every
+effect except reverse was disabled, predating accepted Q/C as well as this A
+preview. It now explicitly checks all four connected controls enabled and every
+remaining unported effect disabled. No PCM, transport, isolation or numeric
+assertion was removed. Keep failed `build/arp-product-mouse2.log`.
 
 Reproducible affected commands (configured caches; use the pinned CMake/CTest
 executables documented in DEVELOPMENT_WORKFLOW.md if not on PATH):
@@ -94,6 +104,34 @@ ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest 
 Logs: Windows `build/arp-product-{acceptance,core-tests,prepare-tests,ui2}.log`;
 WSL `build/arp-product-{acceptance,core,asan}.log`. Hardware-free editor PCM is
 not physical IO/listening or Linux WebKit GUI validation. Wrappers remain deferred.
+
+Final lifecycle runtime **`56a98bc`**: Linux Arp/FX restore rerun passes **4/4
+(3.77s)** after the Windows **4/4 (14.25s)**, including same-rate retained graphs
+and changed-rate reset graphs. Both final Standalones build. The full mouse main
+and export checks pass at **64 and 128** in `build/arp-product-mouse3.log`;
+MERGE passes at 64, but its 128 scheduled-STOP case failed at
+`MergeWorkflow.cjs:106` (`stopped` versus expected `stopping`). Its unchanged
+isolated `-Blocks @(128) -MergeOnly` rerun passes
+(`build/arp-product-merge128-rerun.log`). **Do not claim the full wrapper passed**:
+retain the original failure and investigate the aged-clock/deadline observation
+window before release; the timing explanation is not established by that rerun.
+No MERGE assertion, product deadline or DSP was changed.
+
+Retained `NativeUiSmoke.cjs` requires a real Standalone holder/hotplug watcher.
+An attempted run in the hardware-free host correctly failed that precondition
+(`build/arp-product-native-smoke.log`), not an Arp/hotplug product regression.
+A subsequent actual Standalone attempt never exposed its CDP page within the
+startup window, before the smoke test could run. Its owned process was closed
+and prior settings file restored by the wrapper. **Actual Standalone smoke is
+unverified**, not passed. Do not weaken those Standalone/device-playhead assertions
+to make the hardware-free host qualify.
+
+Next concrete slice: automatic Master BPM propagation through the exact original
+Arp owner and its receipt/state model, then original MIDI mapping and the approved
+loose voicing. MIDI must not write raw render targets and reconstruct originals
+from Float32 telemetry: that would violate precision and unbind the current sole
+owner. Retain bounded ownership and original preset write order. Arp remains
+under development; do not advance to a different effect or package it as complete.
 
 ## Production inactive FX state restoration — 13 November 2026
 
