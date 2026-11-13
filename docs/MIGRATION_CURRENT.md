@@ -11,7 +11,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Active Arp MIDI slider slice — 13 November 2026
+### Arp MIDI sliders / exact state / bounded routing — 13 November 2026
 
 Nine original sliders append IDs 124..132. The existing selected-loop CC learn/
 conflict/filter/cancel path now reaches native Arp at event sample offsets.
@@ -20,22 +20,45 @@ heap SPSC journal rejects before mutation on overflow. MIDI version 6 appends ni
 bindings, retaining versions 1..5. Save/stopped prepare consume already accepted
 MIDI originals, including with no editor. Sync/STAY/enable are not CC sliders.
 
-Windows core/reference/frontend **6/6 (61.27s)**: 19,152 unchanged-JS exact-value
-cases; 2,304 stereo blocks equal scheduled GUI control PCM at 64/128; full journal,
-GUI receipt ordering and zero callback new/delete. Real Arp WebView2 tests pass
-64/128, including zero learn, same-block expression, actual slider, selected track
-20, duplicate rejection, removal and reopen cancellation. Arp production rerun
-**2/2 (33.65s)**; FX restore **2/2** in the first combined run. Extra unread-MIDI
-prepare and Linux/sanitizer validation are pending for this development snapshot.
+Fixes retain DEL followed by fresh CC in the same callback (replay exact receipts
+from DEL's zero revision), unread MIDI during save/prepare, and original two-decimal
+labels. Tagged browser Arp fields use round-trip JSON to avoid JUCE's 15-digit
+completion rounding; the reply envelope, document token fence and legacy direct
+object replies remain intact. All snapshot writers share the existing non-audio
+mutex with host save/prepare readers. No audio lock or product AudioContext.
 
-Legacy Windows MIDI hit its unchanged shared external-CLI watchdog in both
-combined and isolated runs. Both unchanged 64/128 CLI workflows now run concurrently
-in isolated mailbox roots under the SAME shared 60s limit, with every command,
-assertion, shutdown check and callback allocation guard retained. No product
-deadline/tolerance is relaxed. Revalidation is pending; do not mark this slice
-accepted or start organic voicing until its relevant gates pass. See
-ARP_DELAY_MIGRATION.md for commands and detailed evidence. Reference/UI assets,
-parameter IDs and user logo remain unchanged. No package.
+Windows: unchanged-JS/control/core/frontend **6/6 (61.27s)** plus focused core
+`aion_core_tests --midi` passes: 6,144 linear-router comparisons and all retained
+MIDI PCM/WAV/hold/overflow cases. Arp ownership/DEL repair **2/2 (7.49s)**. Final
+Arp/full processor MIDI **3/3 (164.13s)**; FX restore **2/2** also passed. Actual
+Arp WebView2 passes 64/128 with MIDI/DOM/tab/conflict/removal, exact fractional
+values, reopen, injected obsolete-document completion and native legacy reply.
+The broad core gate was inadvertently started and cancelled without a result;
+it is **not** counted as passing. The existing focused MIDI mode was then used.
+
+Fixed CC routing uses a 4 KiB audio-owned lookup rebuilt once after a bounded
+31-config batch. No event is coalesced/dropped by that optimization. Matched
+Windows 20-loop Q/C/A fixture, 48kHz, 256 CC/callback: p99 **1649.9/3046.6us**
+before, **1209.9/2283.5us** after (64/128); observed wall overruns **897/260 → 2/5**.
+Baseline itself had **1/3** wall overruns; this is not a hard real-time or driver/
+round-trip guarantee. See ARP_DELAY_MIGRATION.md for scope, means and commands.
+
+CLI reply publication now retains one bounded response and retries the file write
+off audio, never the accepted action. Three injected write failures formerly lost
+the first reply; both block-size regressions now recover with exactly one preset
+execution. This does not prove the cause of every historical timeout. Both full
+64/128 external CLI workflows run concurrently under the unchanged shared 60s
+watchdog with all assertions retained (one measured combined run: 31.84s).
+
+Linux snapshot `baac71c`: focused core MIDI and **12/12 (171.92s)** pass, ASan/
+UBSan/leaks focused MIDI plus ownership **3/3 (43.56s)**, TSAN ownership **3/3
+(74.31s)** without diagnostics. Final `5b15745` Linux snapshot-lock/Arp/full MIDI
+follow-up passes **3/3 (124.37s)**; final Windows editor rerun also passes 64/128.
+Optimized Linux 256-CC fixture p99 is **1104.23/1883.24us**, with **1/0** observed
+wall overruns. Both Standalones build. No package; assets/logo/IDs preserved.
+Next after final acceptance: the approved loose new-instance organic voicing;
+preserve original presets/saved sound. Physical MIDI/listening, Linux WebKit GUI,
+driver/long-session and broader integration/release checks remain separate gates.
 
 ### Arp automatic Master timing — 13 November 2026
 

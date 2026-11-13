@@ -76,6 +76,9 @@ on the worker; CLI success waits for that request's exact Arp receipt, including
 failure/cancellation, rather than an unrelated transport acknowledgement. It never
 blindly retries an admitted command. Original double values survive native state
 round trips; legacy native sessions without an Arp bank load defaults/off.
+The native mailbox retains a bounded reply if publishing `response.json` fails
+and retries only that publication on a later message tick. It does not execute
+the accepted action again. A client timeout still requires inspecting state.
 
 Master timing changes now update active Arp graphs automatically, preserving
 their delay/STAY state. A following CLI Arp mutation waits for timing maintenance

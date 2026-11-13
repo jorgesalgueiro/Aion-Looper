@@ -40,9 +40,125 @@ The first Arp production assertion asked for the audio mapping acknowledgement
 before the message owner accepted learn. It now explicitly services that result
 then checks the next callback, retaining the stronger immediate pre-Timer save
 and first-callback DSP checks. Rerun `arp-midi-product-rerun.log`: **2/2 (33.65s)**.
-The combined legacy MIDI run hit its unchanged external-CLI watchdog; isolated
-revalidation and additional prepare/LINUX/sanitizer evidence follow when complete.
+The initial combined and isolated legacy MIDI runs hit the shared external-CLI
+watchdog. Both unchanged 64/128 workflows now run concurrently in separate mailbox
+roots under the same 60s bound, retaining every command/assertion and shutdown
+check. One measured combined run took 31.84s. Later full Windows MIDI runs pass.
 Do not infer release acceptance or organic voicing from this work.
+
+### Final integration fixes and evidence
+
+- **DEL + fresh CC:** a failing regression exposed use of the final telemetry
+  revision before replaying post-DEL MIDI. Owner reconciliation now starts from
+  DEL's zero revision and replays exact receipts. Core repair passes 2/2 (7.49s),
+  including a fresh same-callback CC and no graph revival; production 64/128
+  checks also pass. Preserve this regression.
+- **Browser precision:** a real fractional CC test exposed JUCE completion
+  rounding (`0.755905511811024` instead of `0.7559055118110236`). Tagged Arp fields
+  now travel as 17-digit JSON strings and the bridge restores their objects;
+  the reply envelope and document correlation are unchanged. Untagged direct
+  calls keep object replies. Existing object-form fixtures remain compatible.
+  Numeric labels retain the original two decimals. Bridge lifecycle tests retain
+  capacity, timeout, pagehide, stale/duplicate ID, serialization failure and token
+  checks; new cases cover precise payloads and malformed-body cleanup. Actual
+  WebView2 injects an obsolete document token at a current pending ID after reload,
+  rejects its malformed Arp, then accepts the real native response. A direct
+  untagged native call is verified separately.
+- **CC routing:** a fixed 4 KiB audio-owned channel/key table replaces the
+  per-packet full binding scan. Rebuild occurs once after the complete bounded
+  configuration batch. Note/PC lookup and all event ordering remain intact.
+  `aion_core_tests --midi` compares 6,144 channel/key cases against the retained
+  linear oracle, including omni/channel filters, CC transport/MUTE, all nine Arp
+  slots, a full 31-config batch and mode-only/selected-track changes. Its test
+  driver calls the normal deferred transport `tick`; no assertion was relaxed.
+  All retained MIDI PCM/WAV/held/learn/overflow tests pass with zero tracked
+  callback new/delete.
+- **CLI acknowledgement:** response-file replacement previously ignored failure.
+  Deterministic publication failures reproduce a lost first-preset reply in
+  `arp-cli-write-fault-before.log`. The server now retains one response (existing
+  2 MiB cap), retries publication once per message tick, and claims no newer
+  request until publication succeeds. It never reruns the accepted action.
+  Both block-size tests recover from three injected failures with exactly one
+  preset handler call. This proves the failure path/recovery, not the cause of
+  every historical timeout or actual OS sharing behavior.
+- **Host ownership:** all writes of the shared native snapshot now use the same
+  non-audio mutex as save/stopped-prepare receipt consumption. No lock was added
+  to processing; existing host timing/reentrancy/release/prepare tests pass.
+
+Windows final runtime `5b15745`: Arp/full MIDI **3/3 (164.13s)** in
+`arp-midi-snapshot-tests.log`; FX restore **2/2** also passed. Final actual editor
+`arp-midi-ui-accepted.log` passes **64/128**, including exact fractional values,
+MIDI/DOM/track/conflict/removal, arbitrary routing, lifecycle/correlation/legacy
+checks and continuing PCM. Focused core MIDI is in
+`arp-midi-lookup-midi-tests2.log`; original/reference and ownership logs above
+remain applicable. The inadvertently selected **broad** core run was cancelled
+without a result (`arp-midi-lookup-core-tests.log`); it is not counted as a pass.
+Use its existing `--midi` selector for this slice. The broad integration gate
+still needs a complete run/investigation before release.
+
+Linux `baac71c`: focused core MIDI passes; selected core/reference/frontend/bridge/
+production/CLI/full MIDI **12/12 (171.92s)** in `arp-midi-final-tests.log`.
+ASan/UBSan/leaks: focused MIDI passes, ownership **3/3 (43.56s)**; TSAN ownership
+**3/3 (74.31s)** without diagnostics. These sanitizer caches exclude JUCE processor
+code. Final Linux `5b15745` snapshot-lock/Arp/full MIDI follow-up passes **3/3
+(124.37s)** in `arp-midi-snapshot-tests.log`. Both Standalones build. Original
+assets, dependency versions, parameter/action IDs and logo remain unchanged.
+
+### Callback measurements
+
+Release, 48 kHz, twenty nonzero playing loops with Q/C/A enabled, 512 warm +
+2,048 measured callbacks per case. This is one explicit benchmark chain order;
+the product chain remains user editable. All 256 MIDI receipts are checked for
+every stressed callback and consumed off audio. No events are dropped/coalesced
+by the lookup optimization. Measurements exclude UI/device/round-trip latency;
+wall time includes scheduling and does not distinguish it from thread CPU time.
+
+| Windows case | 64 mean / p99 (us) | 128 mean / p99 (us) | Wall overruns 64 / 128 |
+| --- | --- | --- | --- |
+| No MIDI baseline | 959.34 / 1094.6 | 1947.18 / 2156 | 1 / 3 |
+| Eight CC/callback before lookup | 977.816 / 1074.3 | 1955.17 / 2242 | 1 / 7 |
+| 256 CC/callback before lookup | 1304.38 / 1649.9 | 2181.43 / 3046.6 | 897 / 260 |
+| 256 CC/callback with lookup | 1019.02 / 1209.9 | 2000.6 / 2283.5 | 2 / 5 |
+
+The final Linux optimized 256-CC run observes mean/p99 **865.345/1104.23us** at
+64 and **1644.64/1883.24us** at 128, with **1/0** wall overruns; maxima are
+**1465.7/1950.59us**. Do not compare these single OS/compiler runs as a general
+platform speedup. Its 64-frame maximum still exceeds that callback budget.
+
+Deadlines are 1333.33/2666.67us. Optimized p99 fits those budgets, but maximum
+wall observations still exceed them (1452.1/4267.3us). These are individual warmed
+runs, not a statistical platform speedup or hard real-time guarantee. Keep the
+failed stress evidence; do not hide overruns or infer physical low-latency driver
+acceptance. Logs: `arp-midi-windows-{baseline,benchmark8,benchmark}.jsonl` and
+`arp-midi-lookup-benchmark.jsonl`. Linux baseline/eight/maximum comparisons are
+`arp-midi-{baseline,benchmark8,benchmark256}.jsonl`; final optimized maximum is
+`arp-midi-final-benchmark256.jsonl`.
+
+```sh
+# Existing focused mode, on either OS/build cache:
+build/linux/aion_core_tests --midi
+build/linux/aion_arp_connected_tests benchmark
+build/linux/aion_arp_connected_tests benchmark-midi8
+build/linux/aion_arp_connected_tests benchmark-midi
+```
+
+Final Linux commands (after the safe committed-snapshot helper):
+
+```sh
+cmake --build build/linux --target aion_core_tests aion_arp_processor_tests aion_midi_processor_tests aion_effects_restore_processor_tests aion_arp_owner_tests aion_arp_owner_bank_tests aion_arp_bank_tests aion_arp_connected_tests AionLooper_Standalone --parallel 2
+build/linux/aion_core_tests --midi
+ctest --test-dir build/linux -R '^(arp_owner_contract|arp_owner_bank_contract|arp_bank_contract|js_native_arp_midi|js_native_arp_delay|native_frontend_commands|native_bridge_lifecycle|native_arp_processor_(64|128)|native_effects_restore_processor_(64|128)|native_midi_processor)$' --no-tests=error --output-on-failure
+cmake --build build/overlap-asan --target aion_core_tests aion_arp_owner_tests aion_arp_owner_bank_tests aion_arp_bank_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 build/overlap-asan/aion_core_tests --midi
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan -R '^(arp_owner_contract|arp_owner_bank_contract|arp_bank_contract)$' --no-tests=error --output-on-failure
+cmake --build build/arp-storage-tsan --target aion_arp_owner_tests aion_arp_owner_bank_tests aion_arp_bank_tests --parallel 2
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan -R '^(arp_owner_contract|arp_owner_bank_contract|arp_bank_contract)$' --no-tests=error --output-on-failure
+```
+
+Next: approved loose timing/dynamics/stereo voicing for **new** instances, while
+retaining original presets and saved sound. Physical MIDI, listening/audition,
+Linux WebKit GUI, driver/long-session and full integration/release gates remain
+unverified. No distributable was produced.
 
 ```powershell
 cmake --build build/windows-core --config Release --target aion_arp_owner_tests aion_arp_owner_bank_tests aion_arp_bank_tests aion_arp_probe --parallel 2
