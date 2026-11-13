@@ -19,15 +19,42 @@ int main(int argc,char** argv){
  auto process=[&]{audio.clear();watch=true;p->processBlock(audio,midi);watch=false;return snapshot();};
  auto state=process();
  auto request=[&](const char* text){auto v=juce::JSON::parse(text);v.getDynamicObject()->setProperty("generation",snapshot()["generation"]);v.getDynamicObject()->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis()+4000));return p->request({v});};
- unsigned stage=0;auto settle=[&]{++stage;for(unsigned n=0;n<2000;++n){state=process();bool pending=false;for(const auto& t:*state["tracks"].getArray())pending|=static_cast<bool>(t["arpPending"]);if(!pending)return;std::this_thread::sleep_for(std::chrono::milliseconds(1));}std::cerr<<"stage "<<stage<<" generation "<<state["generation"].toString()<<" track19 "<<juce::JSON::toString(state["tracks"][19],true)<<'\n';check(false,"bounded Arp preparation completion");};
+ unsigned stage=0;auto settle=[&]{++stage;for(unsigned n=0;n<2000;++n){state=process();bool pending=false;for(const auto& t:*state["tracks"].getArray())pending|=static_cast<bool>(t["arpBusy"]);if(!pending)return;std::this_thread::sleep_for(std::chrono::milliseconds(1));}std::cerr<<"stage "<<stage<<" generation "<<state["generation"].toString()<<" track19 "<<juce::JSON::toString(state["tracks"][19],true)<<'\n';check(false,"bounded Arp preparation completion");};
  juce::MemoryBlock original;p->getStateInformation(original);
  check(request(R"({"operation":"arp","action":"set","track":19,"parameter":"time","value":0.12345678901234566})")["ok"],"original double edit admission");
  juce::MemoryBlock queued;p->getStateInformation(queued);settle();juce::MemoryBlock committed;p->getStateInformation(committed);check(queued==committed,"accepted edit serializes complete original precision before and after receipt");
  check(static_cast<double>(state["tracks"][19]["arp"]["values"]["time"])==0.12345678901234566,"no Float32 reconstruction");
  check(request(R"({"operation":"arp","action":"preset","track":19,"preset":"sync-trip"})")["ok"],"preset admission");settle();
  check(state["tracks"][19]["arp"]["preset"].toString()=="sync-trip","original named preset retained");
- check(request(R"({"operation":"arp","action":"enable","track":19,"enabled":true})")["ok"],"async enable admission");settle();
+ check(request(R"({"operation":"arp","action":"enable","track":19,"enabled":true})")["ok"],"async enable admission");
+ check(request(R"({"operation":"setParameter","id":"syncBpm","value":159})")["ok"],"Master change while first enable is unacknowledged");
+ juce::MemoryBlock enablingTempo;p->getStateInformation(enablingTempo);auto enablingXml=p->getXmlFromBinary(enablingTempo.getData(),static_cast<int>(enablingTempo.getSize()));
+ check(enablingXml->getChildByName("LoopArps")->getChildElement(19)->getDoubleAttribute("bpm")==p->parameters.getRawParameterValue("syncBpm")->load(),"save includes tempo waiting behind first enable");settle();
+ check(static_cast<double>(state["tracks"][19]["arp"]["bpm"])==p->parameters.getRawParameterValue("syncBpm")->load(),"first enable cannot consume pending tempo before its graph exists");
  check(p->inspectAudioThread(19).track.arp.enabled&&static_cast<bool>(state["tracks"][19]["arpReady"]),"worker-prepared Arp activates on exact receipt");
+ const auto enableRequest=state["tracks"][19]["arpRequestId"];
+ check(request(R"({"operation":"setParameter","id":"syncBpm","value":173.25})")["ok"],"shared GUI/CLI Master BPM gesture");
+ const double bpm=p->parameters.getRawParameterValue("syncBpm")->load();
+ juce::MemoryBlock pendingTempo;p->getStateInformation(pendingTempo);auto pendingXml=p->getXmlFromBinary(pendingTempo.getData(),static_cast<int>(pendingTempo.getSize()));
+ check(pendingXml->getChildByName("LoopArps")->getChildElement(19)->getDoubleAttribute("bpm")==bpm,"immediate save includes accepted automatic BPM intent");
+ auto maintenance=snapshot();check(maintenance["tracks"][19]["arpRequestId"]==enableRequest&&!static_cast<bool>(maintenance["tracks"][19]["arpPending"])&&static_cast<bool>(maintenance["tracks"][19]["arpBusy"]),"maintenance cannot steal GUI/CLI acknowledgement");
+ settle();check(static_cast<double>(state["tracks"][19]["arp"]["bpm"])==bpm&&p->inspectAudioThread(19).track.arp.values[6]==static_cast<float>(bpm),"automatic BPM reaches exact original owner and native graph");
+ check(static_cast<double>(state["tracks"][0]["arp"]["bpm"])==120&&state["tracks"][19]["arp"]["preset"].toString()=="sync-trip","absent graph BPM and active preset identity preserved");
+ const auto revision=p->inspectAudioThread(19).track.arpSettingsRevision;
+ check(request(R"({"operation":"setParameter","id":"syncBars","value":3})")["ok"],"original timing settings also issue immediate BPM gesture");settle();
+ check(p->inspectAudioThread(19).track.arpSettingsRevision==revision+1,"equal-BPM timing gesture is not elided");
+ auto manual=request(R"({"operation":"arp","action":"set","track":19,"parameter":"humanize","value":0.63})");check(manual["ok"],"manual control before tempo");
+ check(request(R"({"operation":"setParameter","id":"syncBpm","value":95})")["ok"],"tempo retained behind manual edit");process();maintenance=snapshot();
+ check(maintenance["tracks"][19]["arpRequestId"]==manual["requestId"]&&static_cast<bool>(maintenance["tracks"][19]["arpReady"]),"accepted manual command remains confirmed during later maintenance");settle();
+ check(static_cast<double>(state["tracks"][19]["arp"]["values"]["humanize"])==.63,"tempo cannot overwrite a pending original control edit");
+ for(int value:{60,120,181}){auto v=juce::JSON::parse(R"({"operation":"setParameter","id":"syncBpm"})");v.getDynamicObject()->setProperty("value",value);check(p->request({v})["ok"],"rapid timing gesture");}settle();
+ check(static_cast<double>(state["tracks"][19]["arp"]["bpm"])==p->parameters.getRawParameterValue("syncBpm")->load(),"bounded latest timing intent settles after in-flight older gesture");
+ auto* automated=p->parameters.getParameter("syncBpm");automated->setValueNotifyingHost(automated->convertTo0to1(207.5f));settle();
+ check(static_cast<double>(state["tracks"][19]["arp"]["bpm"])==p->parameters.getRawParameterValue("syncBpm")->load(),"message service observes direct APVTS change without editor or setParameter RPC");
+ check(request(R"({"operation":"setParameter","id":"syncBpm","value":117})")["ok"],"tempo admitted before prepare");
+ p->prepareToPlay(8000,block);settle();
+ check(static_cast<double>(state["tracks"][19]["arp"]["bpm"])==p->parameters.getRawParameterValue("syncBpm")->load()&&p->inspectAudioThread(19).track.arp.enabled,"prepare retires old tempo receipt and restores accepted original intent");
+ check(request(R"({"operation":"arp","action":"preset","track":19,"preset":"sync-trip"})")["ok"],"restore named preset for remaining legacy/state regressions");settle();
  p->getStateInformation(committed);
  for(const char* bad:{"nan","inf","1e1000","0.2junk","-1"}){
   auto xml=p->getXmlFromBinary(committed.getData(),static_cast<int>(committed.getSize()));xml->getChildByName("LoopArps")->getChildElement(19)->setAttribute("time",bad);xml->getChildByName("LoopEqualizers")->getChildElement(0)->setAttribute("p1Gain",9);
@@ -42,7 +69,8 @@ int main(int argc,char** argv){
  invalid([](auto& x){x.getChildByName("LoopArps")->getChildElement(19)->setAttribute("enabled","true");});
  invalid([](auto& x){x.getChildByName("LoopArps")->getChildElement(19)->setAttribute("time",.11);}); // Named preset/control mismatch.
  auto load=[&](const juce::MemoryBlock& b){p->setStateInformation(b.getData(),static_cast<int>(b.getSize()));snapshot();settle();};
- load(original);check(!p->inspectAudioThread(19).track.arp.enabled,"all-off original bank restores");
+ check(request(R"({"operation":"setParameter","id":"syncBpm","value":89})")["ok"],"tempo admitted before newer session restore");
+ load(original);check(!p->inspectAudioThread(19).track.arp.enabled,"all-off original bank restores after older tempo maintenance");
  std::thread host([&]{p->setStateInformation(committed.getData(),static_cast<int>(committed.getSize()));});host.join();snapshot();settle();
  juce::MemoryBlock roundtrip;p->getStateInformation(roundtrip);check(roundtrip==committed,"active bank exact original/preset/BPM/seed state roundtrip");
  check(p->inspectAudioThread(19).track.arp.enabled,"active graph recreated by host-thread intent");
@@ -61,7 +89,7 @@ int main(int argc,char** argv){
   struct Pump final:juce::Timer{std::function<void()> tick;void timerCallback()override{tick();}} pump;
   pump.tick=[&]{process();if(!child.isRunning()||juce::Time::getMillisecondCounterHiRes()>=deadline)juce::MessageManager::getInstance()->stopDispatchLoop();};
   pump.startTimer(3);juce::MessageManager::getInstance()->runDispatchLoop();pump.stopTimer();
-  if(child.isRunning()){child.kill();check(false,"external Arp CLI timed out");}
+  if(child.isRunning()){child.kill();std::cerr<<child.readAllProcessOutput();check(false,"external Arp CLI timed out");}
   std::cout<<child.readAllProcessOutput();check(child.getExitCode()==0,"external Arp CLI acceptance");
  }check(root.deleteFile(),"empty fixture CLI root removed");
  check(allocations==0,"zero production callback new/delete");

@@ -68,6 +68,7 @@ AionProcessor::AionProcessor(ExportDestination destination,OutputLatencyReader l
     syncMode=parameters.getRawParameterValue("syncMode");syncBpm=parameters.getRawParameterValue("syncBpm");
     syncBars=parameters.getRawParameterValue("syncBars");syncNum=parameters.getRawParameterValue("syncNum");
     syncDen=parameters.getRawParameterValue("syncDen");countIn=parameters.getRawParameterValue("countInVisual");countInAudio=parameters.getRawParameterValue("countInAudio");
+    arpTiming=readArpTiming();
 }
 AionProcessor::~AionProcessor(){
     retainMessageOwnershipForDestruction();
@@ -413,6 +414,7 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             arpSettings=restoredArps;arpRestorePending=true;
             ++effectsIntent;engine.cancelArpPreparation(); // Host thread publishes cancellation only, never consumes or enqueues.
             parameters.replaceState(state);
+            arpTiming=readArpTiming();arpTempoSeen=++arpTempoIntent; // Restore explicit original BPMs, not an incidental APVTS notification.
         }
         // Preset restoration changes values without automation events. Ask wrappers
         // to refresh their cached parameter values after committing, outside our lock.
@@ -501,6 +503,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         const char* names[] = {"empty", "recording", "playing", "stopped", "overdubbing", "substituting", "finalizing", "multiplying", "armed", "queued", "stopping"};
         const auto& timing=latest.sync;
         result->setProperty("syncMode",static_cast<int>(timing.settings.mode));result->setProperty("syncBpm",timing.settings.bpm);
+        {std::lock_guard guard(midiSettingsMutex);result->setProperty("arpTempoSeen",juce::String(arpTempoSeen));}
         result->setProperty("syncBars",static_cast<int>(timing.settings.bars));result->setProperty("syncNum",static_cast<int>(timing.settings.numerator));
         result->setProperty("syncDen",static_cast<int>(timing.settings.denominator));result->setProperty("countInVisual",timing.settings.countIn);
         result->setProperty("countInAudio",timing.settings.countInAudio);result->setProperty("countInFlash",static_cast<int>(latest.countInFlash));
@@ -603,6 +606,10 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if(!std::isfinite(number)||number<minimum||number>maximum||(boolean&&number!=0&&number!=1)||(integral&&number!=std::floor(number)))return fail("Parameter outside range");
         auto* parameter = parameters.getParameter(id);
         parameter->beginChangeGesture(); parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(number))); parameter->endChangeGesture();
+        if(id=="syncBpm"||id=="syncMode"||id=="syncBars"||id=="syncNum"||id=="syncDen"||id=="countInVisual"||id=="countInAudio"||id=="autoPlayAfterRecord"){
+            std::lock_guard guard(midiSettingsMutex);observeArpTempo(true);serviceArpTempo(true);
+            result->setProperty("arpTempoIntent",juce::String(arpTempoIntent));
+        }
         result->setProperty("ok", true);
     } else if (operation == "releaseStutter") {
         const auto id=request.getProperty("track",{}),generation=request.getProperty("generation",{});

@@ -34,6 +34,8 @@ int main(){
   }else if(operation=="graphprepare"){
    double rate;std::uint32_t seed;aion::ArpModValues values{};if(!(std::cin>>rate>>seed))return 2;for(auto& v:values)if(!(std::cin>>v))return 2;
    std::cout<<(graph.prepare(rate,values,seed)?"ok":"rejected")<<'\n';
+  }else if(operation=="graphbpm"){
+   float value;if(!(std::cin>>value))return 2;std::cout<<(graph.setBpmImmediate(value)?"ok":"rejected")<<'\n';
   }else if(operation=="graphtarget"){
    unsigned p;float value;if(!(std::cin>>p>>value))return 2;std::cout<<(graph.setTarget(p,value)?"ok":"rejected")<<'\n';
   }else if(operation=="graphpreset"){

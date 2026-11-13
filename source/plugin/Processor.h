@@ -149,6 +149,13 @@ private:
     aion::ArpSettingsOwner arpOwner{engine}; // Sole consumer of Arp track and bank receipts.
     aion::ArpSettingsOwner::Bank arpSettings{}; // Accepted original intent; no Float32 reconstruction.
     bool arpRestorePending=false;
+    using ArpTiming=std::array<float,8>;
+    ArpTiming arpTiming{}; // Message/state owner only; APVTS values themselves are atomic.
+    std::uint64_t arpTempoIntent=0,arpTempoSeen=0;
+    struct ArpTempo {std::uint64_t intent=0;std::uint32_t request=0,generation=0;bool active=false;} arpTempo{};
+    ArpTiming readArpTiming() const noexcept;
+    void observeArpTempo(bool gesture=false);
+    void serviceArpTempo(bool submit);
     void saveArps(juce::ValueTree&);
     static bool readArps(const juce::ValueTree&,aion::ArpSettingsOwner::Bank&);
     void arpSnapshot(juce::DynamicObject&,unsigned);

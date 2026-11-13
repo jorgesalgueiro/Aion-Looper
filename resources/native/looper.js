@@ -183,12 +183,13 @@
             : ['queued','stopping'].includes(t.state)?'stop'
             : t.state === 'playing' ? (mode === 'normal' ? 'stop' : mode) : 'finish';
         const notify = message => {error=String(message); status.textContent=error;};
+        let timingRequests=0,arpTempoFence=0n;
         const equalizer=window.AionEqualizerUI({rpc,current:()=>snapshot,notify,
             enqueue:(track,eq,key)=>scheduler.enqueue(()=>({action:'equalizer',track,eq}),{track,key:key?`${track}:${key}`:undefined})});
         const compressor=window.AionCompressorUI({rpc,current:()=>snapshot,notify,equalizer,
             enqueue:(track,compressor,key)=>scheduler.enqueue(()=>({action:'compressor',track,compressor}),{track,key:key?`${track}:${key}`:undefined})});
         const arp=window.AionArpUI({current:()=>snapshot,equalizer,
-            enqueue:(track,arp,key)=>scheduler.enqueue(()=>({action:'arp',track,arp}),{track,key:key?`${track}:${key}`:undefined})});
+            enqueue:(track,arp,key)=>scheduler.enqueue(()=>timingRequests||BigInt(snapshot.arpTempoSeen??'0')<arpTempoFence||snapshot.tracks[track].arpBusy?window.AionCommandQueue.wait:({action:'arp',track,arp}),{track,key:key?`${track}:${key}`:undefined})});
         const signalChain=window.AionSignalChainUI({current:()=>snapshot,select:id=>equalizer.select(id),
             enqueue:(track,order)=>scheduler.enqueue(()=>({action:'signalChain',track,order}),{track})});
         async function sendChain(track,order){
@@ -221,8 +222,12 @@
             await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,resolve,reject,deadline:Date.now()+4000};});
         }
         async function setParameter(id, value) {
-            try {const reply=await rpc({operation:'setParameter',id,value});if(!reply.ok)throw Error(reply.error);}
+            const timing=['syncBpm','syncMode','syncBars','syncNum','syncDen','countInVisual','countInAudio','autoPlayAfterRecord'].includes(id);
+            if(timing)++timingRequests;
+            try {const reply=await rpc({operation:'setParameter',id,value});if(!reply.ok)throw Error(reply.error);
+                if(timing&&reply.arpTempoIntent!==undefined){const fence=BigInt(reply.arpTempoIntent);if(fence>arpTempoFence)arpTempoFence=fence;}}
             catch(e) {notify(e.message);}
+            finally {if(timing)--timingRequests;}
         }
         async function sendCommand(action, track, value=0) {
             if (!enabled()) return;

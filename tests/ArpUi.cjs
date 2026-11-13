@@ -20,18 +20,29 @@ const assert=require('node:assert/strict');const wait=ms=>new Promise(r=>setTime
  await click('#loop-action-0');await until(s=>s.tracks[0].state==='recording','record');await wait(300);await click('#loop-action-0');await until(s=>s.tracks[0].state==='stopped','capture');
  await click('#loop-action-0');await until(s=>s.tracks[0].state==='playing'&&s.outputPeak>.01,'nonzero playback');
  await click('#loop-0-arpDelay');await until(s=>s.tracks[0].arp.enabled&&s.tracks[0].arpReady,'async checkbox enable');
+ const timingTake=await snapshot();
+ await evaluate(`document.getElementById('bpmInput').scrollIntoView({block:'center',behavior:'instant'});document.getElementById('bpmInput').focus()`);
+ await call('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',windowsVirtualKeyCode:65,modifiers:2});
+ await call('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',windowsVirtualKeyCode:65,modifiers:2});
+ await call('Input.insertText',{text:'173.25'});await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+ const timed=await until(s=>Math.abs(s.syncBpm-173.25)<.001&&!s.tracks[0].arpBusy&&s.tracks[0].arp.bpm===s.syncBpm,'trusted Master BPM updates native Arp without touching Arp controls');
+ assert.equal(timed.tracks[0].waveformId,timingTake.tracks[0].waveformId);assert.equal(timed.tracks[0].state,'playing');
  await click('#loop-0-arpDelay + span');assert(await evaluate(`document.querySelector('#native-arp-title').textContent.includes('Loop 1')`));
  await evaluate(`document.querySelector('#sel_arpDelay').value='sync-trip';document.querySelector('#sel_arpDelay').dispatchEvent(new Event('change',{bubbles:true}))`);
  await until(s=>s.tracks[0].arp.preset==='sync-trip'&&s.tracks[0].arpReady,'original preset');
  await click('#arpDelayStay');await until(s=>s.tracks[0].arp.values.stay===1&&s.tracks[0].arpReady,'STAY click');
  await click('#arpDelayHumanize');await call('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
  const desired=await evaluate(`Number(document.querySelector('#arpDelayHumanize').value)`);
- let s=await until(s=>s.tracks[0].arp.values.humanize===desired&&!s.tracks[0].arp.preset&&s.tracks[0].arpReady,'last manual slider value clears preset');const before=s.tracks[0].arp;
+ let s=await until(s=>s.tracks[0].arp.values.humanize===desired&&!s.tracks[0].arp.preset&&s.tracks[0].arpReady,'last manual slider value clears preset');
+ // Same JavaScript turn: force the reply/snapshot race after the trusted inputs
+ // above. The shared queue must wait for timing intent, not lose the Arp edit.
+ await evaluate(`(()=>{const bpm=document.getElementById('bpmInput'),feel=document.getElementById('arpDelayHumanize');bpm.value='145';bpm.dispatchEvent(new Event('change',{bubbles:true}));feel.value='.77';feel.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+ s=await until(s=>Math.abs(s.syncBpm-145)<.001&&s.tracks[0].arp.bpm===s.syncBpm&&s.tracks[0].arp.values.humanize===.77&&!s.tracks[0].arpBusy,'same-turn Master BPM then Arp edit retains both intents');const before=s.tracks[0].arp;
  // User routing, not a fixed Q/C/A chain. Removing A retains its settings.
  let reply=await rpc({operation:'signalChain',action:'set',track:0,order:'CQ',generation:s.generation,expiresAt:Date.now()+3000});assert(reply.ok);await until(s=>s.tracks[0].signalChain==='CQ','A omitted');assert.deepEqual((await snapshot()).tracks[0].arp,before);
  s=await snapshot();reply=await rpc({operation:'signalChain',action:'set',track:0,order:'ACQ',generation:s.generation,expiresAt:Date.now()+3000});assert(reply.ok);await until(s=>s.tracks[0].signalChain==='ACQ'&&s.outputPeak>.001,'A reinserted with continuing PCM');
  await call('Page.reload');await wait(1000);await until(s=>s.tracks[0].arp.enabled&&s.tracks[0].arpReady,'editor reopen initial sync');
  assert(await evaluate(`document.querySelector('#loop-0-arpDelay').checked`));
  await click('#loop-0-arpDelay');await until(s=>!s.tracks[0].arp.enabled&&s.tracks[0].arpReady,'bypass exact receipt');
- assert.deepEqual(errors,[]);console.log('PASS Arp actual WebView2: record/play PCM, enable/preset/STAY/slider, arbitrary chain omission/reinsert, reload, bypass / '+process.argv[2]);socket.close();
+ assert.deepEqual(errors,[]);console.log('PASS Arp actual WebView2: record/play PCM, trusted Master BPM, enable/preset/STAY/slider, arbitrary chain omission/reinsert, reload, bypass / '+process.argv[2]);socket.close();
 })().catch(e=>{console.error(e);socket?.close();process.exitCode=1;});

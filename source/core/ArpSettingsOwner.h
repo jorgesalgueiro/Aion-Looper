@@ -36,7 +36,9 @@ public:
  // commit original Arp settings on the exact receipt. Product state binding and
  // the legacy importer are separate; this method never parses session files.
  bool restore(const Bank&,std::uint32_t request,const LoopBank::EffectsBank* effects=nullptr) noexcept;
+ bool tempo(double bpm,std::uint32_t request) noexcept; // Immediate BPM on enabled graphs only; preserves originals/presets.
  bool restoring() const noexcept{return bank.active;}
+ bool tempoPending() const noexcept{return bank.active&&bank.tempoOnly;}
  ArpPreparationStatus restoreStatus() const noexcept{return bankStatus;}
  const ArpBankResult& restoreReceipt() const noexcept{return bankReceipt;}
  void cancel(unsigned track=LoopBank::trackCount) noexcept;
@@ -53,7 +55,7 @@ private:
   Bank candidate{};
   LoopBank::ArpEpochs epochs{},revisions{};
   std::uint32_t generation=0,request=0;
-  bool active=false;
+  bool active=false,tempoOnly=false;
  } bank{};
  ArpPreparationStatus bankStatus=ArpPreparationStatus::ready;
  ArpBankResult bankReceipt{}; // Immutable terminal evidence for the enclosing FX owner.

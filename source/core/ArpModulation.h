@@ -25,6 +25,7 @@ class ArpModulation {
 public:
  bool prepare(double rate,const ArpModValues& =arpModDefaults(),std::uint64_t firstFrame=0) noexcept;
  bool setTarget(std::size_t parameter,float value) noexcept;
+ bool setBpmImmediate(float value) noexcept; // Original updateSync setValueAtTime, not the knob's 50ms target.
  bool setTargets(const ArpModValues&) noexcept;
  void reset(std::uint64_t firstFrame=0) noexcept;
  bool next(ArpControlFrame&) noexcept;
@@ -41,6 +42,7 @@ private:
  std::array<std::uint64_t,12> changedAt{};
  std::array<bool,12> deferred{};
  std::array<bool,12> settled{}; // Exact constant lane; each new gesture invalidates it.
+ bool immediateBpm=false;
  std::array<float,4> steps{};
  ArpValues latched{};
  double sampleRate=48000,phase=0;

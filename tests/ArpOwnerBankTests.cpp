@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <new>
+#include <limits>
 #include <thread>
 namespace {
 thread_local bool watch=false;thread_local unsigned allocations=0;
@@ -177,6 +178,33 @@ static void pcm(unsigned block){
  b.engine->prepareEqBank(nextFx.equalizers);b.engine->prepareCompressorBank(nextFx.compressors);b.engine->prepareChainBank(nextFx.chains);
  for(unsigned n=0;n<128;++n)energy+=compare();check(a.originals()==next,"successful coordinated sound and original model agree");checkEffects(a,nextFx);
 }
+static void tempo(unsigned block){
+ Fixture f(block);const auto original=settings(5000);f.install(original,71);
+ // Populate real graph clocks before a zero-frame atomic tempo gesture.
+ for(unsigned n=0;n<3;++n){f.l.fill(.1f);f.r.fill(-.07f);f.pump(false);}f.service();
+ std::array<PreparedArpInspection,20> before;for(unsigned id=0;id<20;++id)before[id]=f.engine->inspectPreparedArpAudioThread(id);
+ failWorker=true;check(f.owner.tempo(173.123456789,72)&&f.owner.tempoPending(),"atomic original tempo admission");
+ for(unsigned id=0;id<20;++id)check(f.owner.track(id)->requestId==71,"tempo maintenance preserves user's exact acknowledgement");
+ f.pump();f.service();check(!f.owner.restoring()&&f.owner.restoreStatus()==ArpPreparationStatus::ready,"tempo completes in one callback without worker");
+ check(failWorker.load(),"tempo needs no allocation on any owner");failWorker=false;
+ auto expected=original;for(auto& item:expected)if(item.controls.enabled)item.bpm=173.123456789;
+ check(f.originals()==expected&&f.owner.bound(),"tempo preserves inactive BPM, exact controls, preset and seed metadata");
+ for(unsigned id=0;id<20;++id){const auto after=f.engine->inspectPreparedArpAudioThread(id);
+  check(after.active==before[id].active&&after.frame==before[id].frame&&after.state==before[id].state,"tempo preserves delay/STAY/modulation clocks and graph history");
+  if(after.active){auto targets=before[id].targets;targets[6]=static_cast<float>(173.123456789);check(after.targets==targets,"only BPM automation changes");}
+ }
+ check(!f.owner.tempo(std::numeric_limits<double>::quiet_NaN(),73),"invalid tempo admission is atomic");
+ check(f.owner.tempo(999,73),"nominal upper clamp tempo admission");f.owner.cancel();f.pump();f.service();
+ check(f.originals()==expected&&f.owner.restoreStatus()==ArpPreparationStatus::cancelled,"cancelled tempo preserves the complete prior original bank");
+ check(f.owner.track(0)->requestId==71&&f.owner.track(0)->status==ArpPreparationStatus::ready,"cancelled maintenance cannot reject an already accepted user action");
+ check(f.owner.tempo(999,74),"fresh tempo after cancellation");f.pump();f.service();check(f.owner.track(0)->committed.bpm==999&&f.engine->inspectAudioThread().track.arp.values[6]==300,"stored BPM remains exact while nominal DSP clamps");
+ check(f.owner.tempo(10,75),"lower tempo after upper");f.pump();f.service();check(f.owner.track(0)->committed.bpm==10&&f.engine->inspectAudioThread().track.arp.values[6]==30,"lower nominal clamp");
+ // A raw request cannot exploit the tempo path to mutate a different control.
+ ArpBankRequest forged;forged.generation=f.engine->generation();forged.requestId=76;forged.tempoOnly=true;
+ for(unsigned id=0;id<20;++id){const auto info=f.engine->inspectAudioThread(id).track;forged.settings[id]=info.arp;forged.clearEpochs[id]=info.clearEpoch;forged.settingsRevisions[id]=info.arpSettingsRevision;}
+ forged.settings[0].values[6]=120;forged.settings[19].values[2]=.123f;check(f.engine->enqueueArpBank(forged),"raw tempo descriptor validation deferred to audio ownership");f.pump();ArpBankResult result;check(f.engine->popArpBank(result)&&result.status==ArpPreparationStatus::stale,"whole forged tempo bank rejected before first mutation");
+ check(f.engine->inspectAudioThread().track.arp.values[6]==30,"forged tail record cannot partially mutate first graph");
+}
 static void concurrent(){
  Fixture f(64);std::atomic<bool> run{true},inside{false};
  std::thread audio([&]{std::array<float,4096> l{},r{};float* channels[]{l.data(),r.data()};while(run.load(std::memory_order_acquire)){inside.store(true,std::memory_order_release);{Guard guard;f.engine->process(channels,2,4096);}inside.store(false,std::memory_order_release);}});
@@ -190,5 +218,5 @@ static void concurrent(){
  }
  run.store(false,std::memory_order_release);audio.join();check(during,"bank publication during actual callback");
 }
-int main(){for(unsigned block:{64u,128u}){ownership(block);cancellation(block);lifecycle(block);coordinated(block);pcm(block);callbackCost(block);}concurrent();
+int main(){for(unsigned block:{64u,128u}){ownership(block);cancellation(block);lifecycle(block);coordinated(block);pcm(block);callbackCost(block);tempo(block);}concurrent();
  std::cout<<"PASS original Arp bank owner: atomic precision/presets/seeds, exact terminal revisions, OOM/cancel/clear/prepare rollback, unread results, same-ID recovery, exact nonzero stereo PCM / 64/128 / zero callback new/delete\n";}

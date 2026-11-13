@@ -92,6 +92,7 @@ public:
     enum class ArpBankStatus {none,pending,ready,failed,cancelled};
     struct ArpBankResult {std::uint32_t request=0;ArpBankStatus status=ArpBankStatus::none;};
     bool requestArpBank(const ArpBank&,const ArpEpochs& clearEpochs,const ArpEpochs& revisions,std::uint32_t request,const EffectsBank* effects=nullptr) noexcept;
+    bool applyArpTempoBank(const ArpBank&,const ArpEpochs&,const ArpEpochs&,std::uint32_t request) noexcept;
     void cancelArpBank() noexcept;
     ArpBankResult arpBankResult() const noexcept {return bankArpResult;}
     ArpDelayStorage::View arpStorageView(unsigned id) const noexcept {return arpStorage->view(id);}

@@ -66,9 +66,10 @@ bool ArpModulation::prepare(double rate,const ArpModValues& values,std::uint64_t
 }
 void ArpModulation::reset(std::uint64_t firstFrame) noexcept {
  frame=firstFrame;phase=0;ramps={};deferred.fill(false);settled.fill(false);changedAt.fill(frame);oscillatorLanes={};frequencyAutomated=false;oscillatorFresh=true;
- last=start=target;std::copy_n(target.begin(),latched.size(),latched.begin());first=true;
+ last=start=target;std::copy_n(target.begin(),latched.size(),latched.begin());first=true;immediateBpm=false;
 }
 void ArpModulation::retarget(std::size_t p,float value) noexcept {
+ if(p==6)immediateBpm=false;
  settled[p]=false; // Equal-value gestures still retain their original boundary math.
  oldBoundary[p]=last[p]+(target[p]-last[p])*steps[0];
  deferred[p]=(double(frame)/sampleRate)*sampleRate>double(frame);
@@ -85,7 +86,13 @@ bool ArpModulation::setTargets(const ArpModValues& values) noexcept {
  for(std::size_t p=0;p<values.size();++p)if(values[p]!=target[p])retarget(p,values[p]);
  return true;
 }
+bool ArpModulation::setBpmImmediate(float value) noexcept {
+ if(!prepared||frame==UINT64_MAX||!std::isfinite(value)||value<30||value>300)return false;
+ oldBoundary[6]=audioRate(6);target[6]=value;changedAt[6]=frame;
+ deferred[6]=(double(frame)/sampleRate)*sampleRate>double(frame);immediateBpm=true;return true;
+}
 float ArpModulation::audioRate(std::size_t p) noexcept {
+ if(p==6&&immediateBpm)return frame==changedAt[p]&&deferred[p]?oldBoundary[p]:target[p];
  // Once the original timeline reaches the exact target, its recurrence is
  // constant. Keep the last rendered Float32; do not
  // approximate convergence or skip any new/repeated automation gesture.

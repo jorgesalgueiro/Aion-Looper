@@ -11,6 +11,7 @@ public:
  bool prepare(double rate,const ArpModValues& =arpModDefaults(),std::uint32_t seed=123456789,std::uint64_t firstFrame=0) noexcept;
  bool reset(std::uint32_t seed=123456789,std::uint64_t firstFrame=0) noexcept;
  bool setTarget(std::size_t parameter,float value) noexcept{return prepared&&modulation.setTarget(parameter,value);}
+ bool setBpmImmediate(float value) noexcept{return prepared&&modulation.setBpmImmediate(value);}
  bool setTargets(const ArpModValues& values) noexcept{return prepared&&modulation.setTargets(values);}
  bool process(const float* left,const float* right,unsigned channels,float* outLeft,float* outRight,std::size_t frames) noexcept;
  const ArpModValues& targets() const noexcept{return modulation.targets();}

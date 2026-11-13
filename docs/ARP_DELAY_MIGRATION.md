@@ -1,5 +1,51 @@
 # Arp Delay migration
 
+## Automatic Master BPM — 13 November 2026
+
+The preserved `Modules/scales.js updateSync` helper writes active Arp BPM with
+`setValueAtTime`, independently of knob/preset target smoothing. Native timing
+maintenance now reproduces that immediate DSP lane change, including interrupted
+ramps, same-timestamp step/target writes, worklet parameter latching and the
+30–300 render clamp while retaining original stored BPM. Other timing controls
+also issue the original equal-BPM write. Inactive graphs retain stored BPM.
+
+The existing bank queue carries a tempo-only transaction: validate every graph,
+epoch/revision and unchanged non-BPM setting before writing any track. There is
+no worker allocation/rebuild or delay/STAY/LFO reset. The original owner consumes
+the receipt without replacing the previous user command acknowledgement. Shared
+GUI timing replies expose a decimal intent fence; Arp queue resolvers wait for
+its confirmation. CLI polls busy state before admission, aborting if generation
+or clear ownership changes; it never retries an accepted action. Save captures
+dirty intent; session restore suppresses incidental timing notifications so
+explicit saved original BPMs remain authoritative. Existing message service
+observes direct APVTS changes; its 25ms polling is not sample-accurate automation.
+
+Windows commands (Release; use the configured CMake/CTest toolchain):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_arp_owner_bank_tests aion_arp_owner_tests aion_arp_bank_tests aion_arp_probe aion_arp_connected_tests --parallel 2
+ctest --test-dir build/windows-core -C Release -R '^(arp_owner_bank_contract|arp_owner_contract|arp_bank_contract|arp_connected_contract|js_native_arp_delay|original_arp_settings_contract|original_arp_preset_order)$' --no-tests=error --output-on-failure
+cmake --build build/windows --config Release --target aion_arp_processor_tests aion_effects_restore_processor_tests aion_mouse_host AionLooper_Standalone --parallel 2
+ctest --test-dir build/windows -C Release -R '^(native_arp_processor_(64|128)|native_effects_restore_processor_(64|128))$' --no-tests=error --output-on-failure
+ctest --test-dir build/windows-core -C Release -R '^(native_frontend_commands|cli_finalization_admission)$' --no-tests=error --output-on-failure
+./tools/TestArpUi.ps1
+./tools/TestArpDelayWebAudio.ps1 -Tempo
+```
+
+Evidence: `arp-tempo-core-final.log` 7/7; `arp-tempo-product-final.log` 4/4;
+`arp-tempo-lifecycle-tests.log` stronger Arp 2/2; `arp-tempo-frontend-final.log`
+2/2; `arp-tempo-ui-final.log` actual 64/128 editor passes. Initial production
+128 CLI timed out twice at its unchanged 30s deadline; final bounded diagnostics
+and rebuilt final runs pass both sizes. No proven timeout root cause is claimed.
+Browser helper startup failed once (`arp-tempo-browser-overlap.log`); a short
+isolated owned profile ran the same oracle successfully, writing
+`arp-tempo-overlap-fixtures.json`. Final Windows replay `arp-tempo-oracle-final.log`
+passes 15 comparisons / 983,040 stereo frames, maximum absolute error 1.3318e-7,
+unchanged peak <=1e-6 and relative RMS <=1e-5 limits. The oracle executes and hashes
+the unchanged original helper/factory/worklet/automation, including Sync/STAY and
+same-timestamp operations. Linux replay uses this generated test fixture, not
+modified reference code. Hardware/listening and Linux WebKit remain separate.
+
 ## Product original-state / GUI / CLI preview — 13 November 2026
 
 The production processor now uses `ArpSettingsOwner` as its sole Arp track/bank

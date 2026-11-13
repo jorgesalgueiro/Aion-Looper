@@ -18,7 +18,9 @@ juce::String exact(double value){
 void AionProcessor::saveArps(juce::ValueTree& state){
  std::lock_guard guard(midiSettingsMutex);
  juce::ValueTree bank("LoopArps");bank.setProperty("version",1,nullptr);
- for(unsigned id=0;id<arpSettings.size();++id){const auto& original=arpSettings[id];
+ const auto timing=readArpTiming();const bool pendingTempo=timing!=arpTiming||arpTempoIntent!=arpTempoSeen;
+ for(unsigned id=0;id<arpSettings.size();++id){auto original=arpSettings[id];
+  if(pendingTempo&&original.controls.enabled)original.bpm=timing[0]; // Include not-yet-admitted automatic intent in immediate save.
   juce::ValueTree row("Arp");row.setProperty("track",static_cast<int>(id),nullptr);
   row.setProperty("enabled",original.controls.enabled,nullptr);row.setProperty("preset",static_cast<int>(original.controls.preset),nullptr);
   row.setProperty("bpm",exact(original.bpm),nullptr);row.setProperty("seed",juce::String(static_cast<juce::int64>(original.seed)),nullptr);

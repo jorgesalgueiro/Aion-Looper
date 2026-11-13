@@ -77,9 +77,11 @@ failure/cancellation, rather than an unrelated transport acknowledgement. It nev
 blindly retries an admitted command. Original double values survive native state
 round trips; legacy native sessions without an Arp bank load defaults/off.
 
-This is a working preview, not completed Arp acceptance: Arp MIDI mappings,
-automatic tempo-change propagation and the requested new-instance organic
-voicing remain pending. A control gesture captures the current Master BPM;
+Master timing changes now update active Arp graphs automatically, preserving
+their delay/STAY state. A following CLI Arp mutation waits for timing maintenance
+before admission and aborts if track ownership changes while waiting.
+This is a working preview, not completed Arp acceptance: Arp MIDI mappings and
+the requested new-instance organic voicing remain pending. A control gesture captures the current Master BPM;
 the `sync` checkbox selects the existing verified native subdivision behavior.
 The chain remains user-editable: omission of A bypasses routing without erasing
 its controls, and reinsertion can place it before, between or after other effects.

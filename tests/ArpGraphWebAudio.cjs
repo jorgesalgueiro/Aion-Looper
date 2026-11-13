@@ -8,8 +8,12 @@ const smooth=source.match(/    static smoothSetParam\(audioParam, val, now, tc =
 function method(start,end){const a=source.indexOf(start),b=source.indexOf(end,a+start.length);assert(a>=0&&b>a,start);return source.slice(a,b).trim();}
 const presetMethods=[method('    static update(effectType, param, value) {','    static smoothSetParam('),method('    static updateLoopNode(','    static renderEffectsPanel('),method('    static applyGenericPreset(effectName, presetName) {','    /**')].join('\n');
 const presetHash=crypto.createHash('sha256').update(presetMethods).digest('hex');
+const scalesSource=fs.readFileSync(path.join(root,'resources/ui/Modules/scales.js'),'utf8');
+const tempoStart=scalesSource.indexOf('        const updateTimeBasedFX ='),tempoEnd=scalesSource.indexOf('\n        state.loops.forEach',tempoStart);
+assert(tempoStart>=0&&tempoEnd>tempoStart);const tempoMethod=scalesSource.slice(tempoStart,tempoEnd).trim();
+const tempoHash=crypto.createHash('sha256').update(tempoMethod).digest('hex');
 const args=process.argv.slice(2),option=name=>{const n=args.indexOf(name);return n<0?null:args[n+1];};
-for(let i=0;i<args.length;++i){if(args[i]==='--presets')continue;assert(['--probe','--fixtures','--save'].includes(args[i]),'Unknown graph oracle argument: '+args[i]);assert(args[++i],'Missing graph oracle option value');}
+for(let i=0;i<args.length;++i){if(args[i]==='--presets'||args[i]==='--tempo')continue;assert(['--probe','--fixtures','--save'].includes(args[i]),'Unknown graph oracle argument: '+args[i]);assert(args[++i],'Missing graph oracle option value');}
 const probe=option('--probe')||path.join(root,'build/windows-core/Release/aion_arp_probe.exe'),hash=crypto.createHash('sha256').update(original+'\n'+factory+'\n'+smooth).digest('hex');
 async function render(evaluate,rate,preset,channels,events,label){
  const initial=[...values(preset),preset.panSpeed??0,preset.panDepth??.8];initial[6]=137;
@@ -23,6 +27,7 @@ async function render(evaluate,rate,preset,channels,events,label){
   try{
    await ctx.audioWorklet.addModule(url);class Graph {${factory}} class Original {${smooth}\n${presetMethods}}
    const AudioEngine={get currentTime(){return ctx.currentTime;}};
+   ${tempoMethod}
    const graph=new Graph();graph.loop={params:{}};const buffer=ctx.createBuffer(channels,count,rate),input=[];
    for(let ch=0;ch<channels;++ch){const a=buffer.getChannelData(ch);for(let i=0;i<count;++i)a[i]=i>=count-4096?0:.15*Math.sin(i*(ch?.073:.117))+.05*Math.cos(i*(ch?.021:.037));input.push(Array.from(a));}
    const src=ctx.createBufferSource();src.buffer=buffer;const fx=graph._createArpDelay(src);assertFactory();function assertFactory(){if(fx.nodes.length!==4)throw Error('Original factory must create worklet/panner/oscillator/gain');}
@@ -37,7 +42,8 @@ async function render(evaluate,rate,preset,channels,events,label){
     if(typeof p==='string'){
      state.bpm=v;const begin=applied.length;Original.applyGenericPreset('arpDelay',p);const writes=applied.slice(begin);if(writes.length!==22||graph.loop.activePresets.arpDelay!==p)throw Error('Original preset did not apply all writes');
      const target=Array(12);for(const [,index,value]of writes)target[index]=Math.fround(value);if(target.some(v=>!Number.isFinite(v)))throw Error('Incomplete preset targets');presetGroups.push([Math.round(now*rate),target]);
-    }else Original.smoothSetParam(params[p],v,now);await ctx.resume();}
+    }else if(p===-1||p===-2){state.bpm=p===-2?v[0]:v;updateTimeBasedFX({arpDelay:fx.nodes},graph.loop.params);applied.push([Math.round(now*rate),-1,state.bpm]);if(p===-2)Original.smoothSetParam(params[6],v[1],now);}
+    else Original.smoothSetParam(params[p],v,now);await ctx.resume();}
    const output=await rendering;
    for(let n=0;n<100&&trace.length<count/128;++n)await new Promise(r=>setTimeout(r,10));
    if(trace.length!==count/128)throw Error('Incomplete test-only worklet parameter observation');
@@ -50,7 +56,7 @@ function compare(test,block){
  const count=test.pcm[0].length;
  function part(end){if(end===frame)return;commands.push(`graphrender ${end-frame} ${test.channels} ${block} `+Array.from({length:end-frame},(_,i)=>test.input.map(ch=>ch[frame+i]).join(' ')).join(' '));expected.push([frame,end]);frame=end;}
  if(test.presetGroups?.length){for(const [at,targets]of test.presetGroups){part(at);commands.push(`graphpreset ${targets.join(' ')}`);expected.push(null);}}
- else for(const [at,p,value]of test.events){part(at);commands.push(`graphtarget ${p} ${Math.fround(value)}`);expected.push(null);}part(count);
+ else for(const [at,p,value]of test.events){part(at);commands.push(p===-1?`graphbpm ${Math.fround(Math.max(30,Math.min(300,value)))}`:`graphtarget ${p} ${Math.fround(value)}`);expected.push(null);}part(count);
  const run=spawnSync(probe,[],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:40*1024*1024});assert.equal(run.status,0,run.stderr);
  const lines=run.stdout.trim().split(/\r?\n/);assert.equal(lines.length,expected.length);let peak=0,energy=0,errorEnergy=0,location=[];
  for(let line=0;line<lines.length;++line){const segment=expected[line];if(!segment){assert.equal(lines[line],'ok');continue;}
@@ -64,10 +70,14 @@ function compare(test,block){
 (async()=>{
  try{
   let data;const fixture=option('--fixtures');
-  if(fixture){data=JSON.parse(fs.readFileSync(fixture));assert.equal(data.version,1);assert.equal(data.sourceHash,hash,'Unchanged original factory/worklet/automation must match');if(data.presetMethodsHash)assert.equal(data.presetMethodsHash,presetHash,'Unchanged original preset/update methods must match');}
+  if(fixture){data=JSON.parse(fs.readFileSync(fixture));assert.equal(data.version,1);assert.equal(data.sourceHash,hash,'Unchanged original factory/worklet/automation must match');if(data.presetMethodsHash)assert.equal(data.presetMethodsHash,presetHash,'Unchanged original preset/update methods must match');if(data.tempoMethodHash)assert.equal(data.tempoMethodHash,tempoHash,'Unchanged original Master BPM helper must match');}
   else{
    const {evaluate,browser}=await connect();data={version:1,sourceHash:hash,browser,tests:[]};
-   if(args.includes('--presets')){
+   if(args.includes('--tempo')){
+    data.tempoMethodHash=tempoHash;
+    const changes=[[4096,6,220],[4224,-1,73.123456789],[4352,6,180],[4480,-1,180],[8192,-1,999],[12288,-1,10],[16384,-1,137.123456789],[16512,6,200],[16640,-1,95],[20480,5,0],[24576,-1,173],[28672,5,1],[32768,-2,[173,95]],[36864,3,1],[40960,-1,89],[45056,3,0]];
+    for(const rate of [8000,22050,44100,48000,96000])data.tests.push(await render(evaluate,rate,{...hostDefaults,time:.37,sync:1,panSpeed:1.3,humanize:.7},2,changes,'original updateSync immediate BPM / target interruption'));
+   }else if(args.includes('--presets')){
     data.presetMethodsHash=presetHash;
     const changes=Object.keys(presets).map((name,i)=>[4096+i*6144,name,i%2?137.123456789:173.123456789]);
     changes.push([57344,'chromatic-descent',173.123456789],[57472,'chromatic-descent',173.123456789]);

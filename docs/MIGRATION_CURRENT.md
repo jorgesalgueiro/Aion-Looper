@@ -11,6 +11,33 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Arp automatic Master timing — 13 November 2026
+
+Master timing gestures now propagate BPM to existing active Arp graphs, using
+the unchanged `scales.js updateSync` immediate BPM write rather than the knob's
+50ms target smoothing. A bounded twenty-track transaction preserves delay/STAY/
+LFO state, presets, seeds, inactive BPMs and user command receipts. GUI/CLI share
+this path; rapid Arp edits wait for timing maintenance. Immediate save includes
+accepted timing intent, including a first enable still preparing. Prepare and
+newer session restore retire older maintenance without resurrecting old state.
+
+Windows: core/reference **7/7 (55.84s)**, frontend/CLI admission **2/2 (6.83s)**,
+Arp/FX production **4/4 (15.08s)**; stronger pending-enable/prepare/restore Arp
+production rerun **2/2 (14.66s)**. Actual WebView2 controls/PCM/reload and same-turn
+BPM/Arp edit pass **64/128**. Browser oracle: **15 comparisons, 983,040 stereo
+frames**, five rates 8–96kHz, blocks 64/128/37, peak **1.3318e-7** (unchanged
+1e-6 limit). See ARP_DELAY_MIGRATION.md for commands and logs. Standalone builds.
+Linux/sanitizer completion for this snapshot is pending below.
+
+External APVTS timing changes are observed by the existing message service
+(25ms Timer); this is not sample-accurate host automation. GUI/CLI submit timing
+intent synchronously; admitted banks commit atomically at callback start. Busy
+unadmitted timing gestures coalesce to latest intent. No product AudioContext,
+callback allocation or worker graph rebuild is added. Original assets unchanged.
+Next after this acceptance: Arp MIDI original-value ownership, then the approved
+loose new-instance voicing. Arp remains a preview; prior device/Linux-WebKit and
+intermittent MERGE validation limits remain as recorded below. No package.
+
 ### Arp product state / shared GUI / CLI preview — 13 November 2026
 
 Original Arp controls/presets now have production state and shared command access,

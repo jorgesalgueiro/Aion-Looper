@@ -322,7 +322,7 @@ include(cmake/Vst3Programs.cmake)
 include(cmake/StandaloneClock.cmake)
 include(cmake/DeviceDelivery.cmake)
 
-target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/plugin/ProcessorEqualizer.cpp source/plugin/ProcessorCompressor.cpp source/plugin/ProcessorSignalChain.cpp source/plugin/ProcessorEffectsRestore.cpp source/plugin/ProcessorArpState.cpp source/plugin/ProcessorArp.cpp source/ui/WebEditor.cpp)
+target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/plugin/ProcessorEqualizer.cpp source/plugin/ProcessorCompressor.cpp source/plugin/ProcessorSignalChain.cpp source/plugin/ProcessorEffectsRestore.cpp source/plugin/ProcessorArpState.cpp source/plugin/ProcessorArp.cpp source/plugin/ProcessorArpTempo.cpp source/ui/WebEditor.cpp)
 target_include_directories(AionLooper PRIVATE source)
 target_compile_definitions(AionLooper PUBLIC
     JUCE_WEB_BROWSER=1 JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1

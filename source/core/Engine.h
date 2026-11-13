@@ -68,6 +68,7 @@ struct ArpBankRequest {
     std::uint64_t cancellation=0;
     LoopBank::EffectsBank effects{};
     bool restoreEffects=false; // Internal coordinated Q/C/chain/A restore; default preserves Arp-only callers.
+    bool tempoOnly=false; // Immediate existing-graph BPM gesture; no allocation or graph replacement.
 };
 struct ArpBankResult {
     std::uint32_t requestId=0,generation=0;

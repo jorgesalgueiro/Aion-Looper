@@ -13,9 +13,11 @@ bool numeric(const juce::var& v,double& out){if(!(v.isInt()||v.isInt64()||v.isDo
 }
 void AionProcessor::arpSnapshot(juce::DynamicObject& object,unsigned track){
  std::lock_guard guard(midiSettingsMutex);object.setProperty("arp",value(arpSettings[track]));
- const auto* record=arpOwner.track(track);object.setProperty("arpPending",arpRestorePending||record->pending);
+ const auto* record=arpOwner.track(track);const bool pending=record->pending&&!arpOwner.tempoPending();
+ object.setProperty("arpBusy",arpRestorePending||record->pending);
+ object.setProperty("arpPending",arpRestorePending||pending);
  object.setProperty("arpRequestId",static_cast<juce::int64>(record->requestId));
- object.setProperty("arpReady",arpOwner.bound()&&!arpRestorePending&&!record->pending&&record->status==aion::ArpPreparationStatus::ready);
+ object.setProperty("arpReady",arpOwner.bound()&&!arpRestorePending&&!pending&&record->status==aion::ArpPreparationStatus::ready);
 }
 bool AionProcessor::arpRequest(const juce::var& request,juce::DynamicObject& result){
  const auto fail=[&](const char* why){result.setProperty("error",why);return false;};std::lock_guard guard(midiSettingsMutex);

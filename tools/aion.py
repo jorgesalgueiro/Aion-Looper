@@ -217,6 +217,18 @@ def main(argv=None):
         status = invoke(endpoint, {'operation': 'snapshot'})
         if not status.get('ok'):
             return status
+        if args.command == 'arp' and args.action != 'get':
+            generation, epoch = status['generation'], status['tracks'][args.track]['clearEpoch']
+            deadline = time.monotonic() + 3
+            while status['tracks'][args.track].get('arpBusy'):
+                if time.monotonic() >= deadline:
+                    return {'ok': False, 'applied': False, 'error': 'Arp is still busy; command was not submitted'}
+                time.sleep(.01)
+                status = invoke(endpoint, {'operation': 'snapshot'})
+                if not status.get('ok'):
+                    return status
+                if status.get('generation') != generation or status['tracks'][args.track]['clearEpoch'] != epoch:
+                    return {'ok': False, 'applied': False, 'error': 'Arp ownership changed before command admission'}
         request = {'operation': {'eq': 'equalizer', 'comp': 'compressor', 'chain': 'signalChain', 'arp': 'arp'}[args.command], 'track': args.track, 'generation': status['generation'],
                    'action': args.action, 'expiresAt': int(time.time() * 1000) + 4000}
         if args.command == 'chain' and args.action == 'set':

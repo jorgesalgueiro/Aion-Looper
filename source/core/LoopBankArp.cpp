@@ -7,6 +7,22 @@ bool LoopBank::validEffectsBank(const EffectsBank& bank) noexcept {
  for(unsigned id=0;id<trackCount;++id)if(!validEqSettings(bank.equalizers[id])||!validCompressorSettings(bank.compressors[id])||!validSignalChain(bank.chains[id]))return false;
  return true;
 }
+bool LoopBank::applyArpTempoBank(const ArpBank& settings,const ArpEpochs& epochs,const ArpEpochs& revisions,std::uint32_t request) noexcept {
+ if(!request||pendingArpBank.active)return false;
+ for(unsigned id=0;id<trackCount;++id){const auto& old=tracks[id].info;const auto& next=settings[id];
+  if(pendingArpSettings[id].active||epochs[id]!=tracks[id].clearEpoch||revisions[id]!=old.arpSettingsRevision||revisions[id]==UINT64_MAX||!validArpRenderSettings(next))return false;
+  if(next.enabled!=old.arp.enabled||next.seed!=old.arp.seed)return false;
+  for(unsigned p=0;p<12;++p)if((p!=6||!old.arp.enabled)&&next.values[p]!=old.arp.values[p])return false;
+  if(old.arp.enabled){auto* graph=arpStorage->graph(id);if(!graph||graph->position()==UINT64_MAX)return false;}
+ }
+ // All graphs/lanes are validated before the first write. These fixed twenty
+ // setters cannot fail now; keep STAY, tails, oscillator and storage ownership.
+ for(unsigned id=0;id<trackCount;++id){auto& info=tracks[id].info;
+  if(info.arp.enabled)(void)arpStorage->graph(id)->setBpmImmediate(settings[id].values[6]);
+  info.arp=settings[id];info.arpRequest=request;++info.arpSettingsRevision;
+ }
+ return true;
+}
 bool LoopBank::requestArpBank(const ArpBank& settings,const ArpEpochs& epochs,const ArpEpochs& revisions,std::uint32_t request,const EffectsBank* effects) noexcept {
  if(!request||pendingArpBank.active)return false;
  if(effects&&!validEffectsBank(*effects))return false;

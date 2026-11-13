@@ -66,6 +66,7 @@ void AionProcessor::serviceEqualizer(){
     }
     serviceCompressor();
     serviceChains();
+    serviceArpTempo(true);
 }
 void AionProcessor::equalizerCleared(unsigned track,bool all,std::uint32_t requestId){
     std::lock_guard guard(midiSettingsMutex);

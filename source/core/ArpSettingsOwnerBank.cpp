@@ -1,6 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "ArpSettingsOwner.h"
 namespace aion {
+bool ArpSettingsOwner::tempo(double bpm,std::uint32_t request) noexcept {
+ if(!bound()||bank.active||!request)return false;
+ ArpRenderSettings validated;if(!compileArpSettings(ArpSettings{},bpm,0,validated))return false;
+ ArpBankRequest command;command.requestId=request;command.generation=generation;command.tempoOnly=true;Bank candidate;
+ for(unsigned id=0;id<records.size();++id){const auto& r=records[id];candidate[id]=r.committed;
+  if(candidate[id].controls.enabled)candidate[id].bpm=bpm;
+  if(r.pending||r.revision==UINT64_MAX||!compileArpSettings(candidate[id].controls,candidate[id].bpm,candidate[id].seed,command.settings[id]))return false;
+  command.clearEpochs[id]=r.clearEpoch;command.settingsRevisions[id]=r.revision;
+ }
+ if(!engine.enqueueArpBank(command))return false;
+ bank={candidate,command.clearEpochs,command.settingsRevisions,generation,request,true,true};
+ for(auto& r:records)r.pending=true; // Maintenance never replaces a user's exact command acknowledgement.
+ return true;
+}
 bool ArpSettingsOwner::restore(const Bank& candidate,std::uint32_t request,const LoopBank::EffectsBank* effects) noexcept {
  if(!bound()||bank.active||!request)return false;
  ArpBankRequest command;command.requestId=request;command.generation=generation;
@@ -28,7 +42,8 @@ void ArpSettingsOwner::serviceBank() noexcept {
  for(unsigned id=0;id<records.size();++id){auto& r=records[id];
   const bool cleared=r.clearEpoch>bank.epochs[id];
   if(committed&&!cleared){r.committed=bank.candidate[id];r.clearEpoch=result.clearEpochs[id];r.revision=result.settingsRevisions[id];}
-  r.status=cleared?ArpPreparationStatus::cancelled:bankStatus;r.pending=false;pending[id]={};
+  if(!bank.tempoOnly)r.status=cleared?ArpPreparationStatus::cancelled:bankStatus;
+  r.pending=false;pending[id]={};
  }
  bank={};
 }
