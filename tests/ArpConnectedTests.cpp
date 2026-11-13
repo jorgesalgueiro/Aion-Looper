@@ -207,5 +207,6 @@ static void benchmark(unsigned midiCount=0){
 int main(int argc,char** argv){
  if(argc==2&&std::string_view(argv[1])=="benchmark"){benchmark();return 0;}
  if(argc==2&&std::string_view(argv[1])=="benchmark-midi"){benchmark(256);return 0;}
+ if(argc==2&&std::string_view(argv[1])=="benchmark-midi8"){benchmark(8);return 0;}
  for(unsigned block:{64u,128u}){transactions(block);for(double rate:{8000.,48000.,96000.})connected(block,rate);}
 }
