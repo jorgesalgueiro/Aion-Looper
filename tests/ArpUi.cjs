@@ -48,6 +48,9 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  await inject([[176,11,0,3,17],[191,11,127,3,18]]);
  await until(s=>s.midi.bindings[127]===(2|(11<<2))&&s.tracks[0].arp.values.amplitude===1.5,'Arp zero learn followed by immediate same-block expression');await wait(150);
  assert.equal(await evaluate(`Number(document.querySelector('#arpDelayAmplitude').value)`),1.5,'actual focused Arp slider follows learned hardware');
+ await inject([[176,11,64,3,17]]);await until(s=>s.tracks[0].arp.values.amplitude===(64/127)*1.5,'fractional MIDI value stays exact');await wait(150);
+ assert.equal(await evaluate(`document.querySelector('#arpDelayAmplitudeVal').textContent`),'0.76','original two-decimal value label does not overflow on fractional MIDI');
+ await inject([[176,11,127,3,17]]);await until(s=>s.tracks[0].arp.values.amplitude===1.5,'restore expression endpoint');
  await click('#fx-tabs-container button:nth-child(20)');await until(s=>s.midi.eqTrack===19,'selected expanded Arp tab');await inject([[176,11,0,3,21]]);
  await until(s=>s.tracks[19].arp.values.amplitude===0&&s.tracks[0].arp.values.amplitude===1.5,'Arp expression follows selected track without enabling inactive effect');
  await click('#arpDelayMix','right');await until(s=>s.midi.learnTarget===126,'Arp learn before reopen');
