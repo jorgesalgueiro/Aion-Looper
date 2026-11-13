@@ -149,7 +149,7 @@ static void lifecycle(unsigned block){
  check(f.owner.restoreStatus()==ArpPreparationStatus::cancelled&&f.originals()==Bank{}&&!f.owner.bound(),"external revision cancels bank without partial original reconstruction");
 }
 static void pcm(unsigned block){
- Fixture a(block),b(block);const auto old=settings(800);const auto oldFx=effects(1),nextFx=effects(5);
+ Fixture a(block),b(block);const auto old=settings(800);const auto oldFx=effects(1);auto nextFx=effects(5);nextFx.chains[0]=normalizedSignalChain("CAQ");
  check(a.owner.restore(old,40,&oldFx),"audible coordinated bank");a.done();checkEffects(a,oldFx);
  b.engine->prepareEqBank(oldFx.equalizers);b.engine->prepareCompressorBank(oldFx.compressors);b.engine->prepareChainBank(oldFx.chains);
  ArpBankRequest direct;direct.requestId=40;direct.generation=b.engine->generation();
@@ -166,6 +166,16 @@ static void pcm(unsigned block){
  for(unsigned n=0;n<64;++n)energy+=compare();
  check(a.owner.restore(settings(1000),42,&nextFx),"audible queued cancellation");a.owner.cancel();a.done();checkEffects(a,oldFx);
  for(unsigned n=0;n<64;++n)energy+=compare();check(energy>1&&a.originals()==old,"nonzero PCM equality after failed/cancelled bank");
+ // Stop the synthetic callback clock while both independent workers prepare.
+ // The raw reference commits A then uses the existing stopped-owner FX setters
+ // at that same audio frame; neither renderer advances between those operations.
+ const auto next=settings(1100);check(a.owner.restore(next,43,&nextFx),"audible coordinated replacement");a.done();
+ direct.requestId=43;
+ for(unsigned id=0;id<20;++id){check(compileArpSettings(next[id].controls,next[id].bpm,next[id].seed,direct.settings[id]),"reference replacement compilation");const auto info=b.engine->inspectAudioThread(id).track;direct.clearEpochs[id]=info.clearEpoch;direct.settingsRevisions[id]=info.arpSettingsRevision;}
+ check(b.engine->enqueueArpBank(direct),"raw reference replacement admission");
+ wait([&]{b.pump();return b.engine->popArpBank(result);},"raw reference replacement completion");check(result.status==ArpPreparationStatus::ready,"raw replacement ready");
+ b.engine->prepareEqBank(nextFx.equalizers);b.engine->prepareCompressorBank(nextFx.compressors);b.engine->prepareChainBank(nextFx.chains);
+ for(unsigned n=0;n<128;++n)energy+=compare();check(a.originals()==next,"successful coordinated sound and original model agree");checkEffects(a,nextFx);
 }
 static void concurrent(){
  Fixture f(64);std::atomic<bool> run{true},inside{false};
