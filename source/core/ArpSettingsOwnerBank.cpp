@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "ArpSettingsOwner.h"
 namespace aion {
-bool ArpSettingsOwner::restore(const Bank& candidate,std::uint32_t request) noexcept {
+bool ArpSettingsOwner::restore(const Bank& candidate,std::uint32_t request,const LoopBank::EffectsBank* effects) noexcept {
  if(!bound()||bank.active||!request)return false;
  ArpBankRequest command;command.requestId=request;command.generation=generation;
+ if(effects){command.effects=*effects;command.restoreEffects=true;}
  for(unsigned id=0;id<records.size();++id){const auto& r=records[id];
   if(r.pending||r.revision==UINT64_MAX||!compileArpSettings(candidate[id].controls,candidate[id].bpm,candidate[id].seed,command.settings[id]))return false;
   command.clearEpochs[id]=r.clearEpoch;command.settingsRevisions[id]=r.revision;

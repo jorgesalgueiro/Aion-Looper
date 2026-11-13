@@ -66,6 +66,8 @@ struct ArpBankRequest {
     LoopBank::ArpEpochs clearEpochs{},settingsRevisions{};
     std::uint32_t requestId=0,generation=0;
     std::uint64_t cancellation=0;
+    LoopBank::EffectsBank effects{};
+    bool restoreEffects=false; // Internal coordinated Q/C/chain/A restore; default preserves Arp-only callers.
 };
 struct ArpBankResult {
     std::uint32_t requestId=0,generation=0;

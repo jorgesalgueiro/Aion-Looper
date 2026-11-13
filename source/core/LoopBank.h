@@ -82,9 +82,16 @@ public:
                 std::uint64_t clearEpoch,std::uint64_t settingsRevision,bool preset=false) noexcept;
     using ArpBank=ArpDelayStorage::Bank;
     using ArpEpochs=std::array<std::uint64_t,trackCount>;
+    struct EffectsBank {
+        std::array<EqSettings,trackCount> equalizers{};
+        std::array<CompressorSettings,trackCount> compressors{};
+        std::array<SignalChain,trackCount> chains{};
+        bool operator==(const EffectsBank&) const noexcept=default;
+    };
+    static bool validEffectsBank(const EffectsBank&) noexcept;
     enum class ArpBankStatus {none,pending,ready,failed,cancelled};
     struct ArpBankResult {std::uint32_t request=0;ArpBankStatus status=ArpBankStatus::none;};
-    bool requestArpBank(const ArpBank&,const ArpEpochs& clearEpochs,const ArpEpochs& revisions,std::uint32_t request) noexcept;
+    bool requestArpBank(const ArpBank&,const ArpEpochs& clearEpochs,const ArpEpochs& revisions,std::uint32_t request,const EffectsBank* effects=nullptr) noexcept;
     void cancelArpBank() noexcept;
     ArpBankResult arpBankResult() const noexcept {return bankArpResult;}
     ArpDelayStorage::View arpStorageView(unsigned id) const noexcept {return arpStorage->view(id);}
@@ -351,12 +358,13 @@ private:
         bool active=false;
     };
     std::array<PendingArpSettings,trackCount> pendingArpSettings{}; // audio only
-    struct PendingArpBank {ArpBank settings{};ArpEpochs epochs{},revisions{};std::uint32_t request=0;bool active=false;};
+    struct PendingArpBank {ArpBank settings{};ArpEpochs epochs{},revisions{};std::uint32_t request=0;bool active=false;EffectsBank effects{};bool restoreEffects=false;};
     PendingArpBank pendingArpBank{}; // audio only; no graph ownership crosses queues
     ArpBankResult bankArpResult{};
     Stereo tickArp(unsigned,Stereo,bool sourceActive) noexcept;
     void pollArps() noexcept;
     void resetArps(std::uint64_t firstFrame) noexcept;
+    void cancelEffectsRestore() noexcept {if(pendingArpBank.active&&pendingArpBank.restoreEffects)cancelArpBank();}
     Clip* result = nullptr;
     bool resultChanged = true; // Worker publishes with result through jobState.
     SpscQueue<Clip*,512> retired; // Current/held/history/job leases plus at most 128 overlap /127 scheduled reverse leases.

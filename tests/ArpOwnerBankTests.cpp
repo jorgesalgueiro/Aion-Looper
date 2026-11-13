@@ -9,13 +9,13 @@
 #include <thread>
 namespace {
 thread_local bool watch=false;thread_local unsigned allocations=0;
-std::atomic<bool> failWorker{false},pauseWorker{false},entered{false},releaseWorker{false};
+std::atomic<bool> failWorker{false},pauseWorker{false},entered{false},releaseWorker{false},leftPause{false};
 void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
 struct Guard{Guard(){check(!watch,"nested audio guard");allocations=0;watch=true;}~Guard(){watch=false;check(!allocations,"bank owner callback new/delete");}};
 template<class F>void wait(F ready,const char* why){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(15);while(!ready()){check(std::chrono::steady_clock::now()<end,why);std::this_thread::sleep_for(std::chrono::milliseconds(1));}}
 }
 void* operator new(std::size_t n){if(watch)++allocations;if(failWorker.exchange(false))throw std::bad_alloc();
- if(pauseWorker.exchange(false)){entered.store(true,std::memory_order_release);while(!releaseWorker.load(std::memory_order_acquire))std::this_thread::yield();}
+ if(pauseWorker.exchange(false)){entered.store(true,std::memory_order_release);while(!releaseWorker.load(std::memory_order_acquire))std::this_thread::yield();leftPause.store(true,std::memory_order_release);}
  if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
 void operator delete(void* p)noexcept{if(watch&&p)++allocations;std::free(p);}
 void* operator new[](std::size_t n){return ::operator new(n);}void operator delete[](void* p)noexcept{::operator delete(p);}
@@ -25,6 +25,12 @@ using Bank=ArpSettingsOwner::Bank;
 static Bank settings(unsigned seed,bool enabled=true){Bank bank;
  for(unsigned id=0;id<20;++id){auto& s=bank[id];check(applyArpPreset(s.controls,id%8+1),"original bank preset");s.controls.enabled=enabled&&(id==0||id==7||id==19);s.bpm=137.123456789+id;s.seed=seed+id;
   if(id%2){check(setArpControl(s.controls,0,.0123456789+id*.0001),"bank decimal original control");}}
+ return bank;
+}
+static LoopBank::EffectsBank effects(unsigned variation){LoopBank::EffectsBank bank;
+ for(unsigned id=0;id<20;++id){bank.equalizers[id].enabled=id%3==0;bank.equalizers[id].values[4]=static_cast<float>(variation+id%4);
+  bank.compressors[id].enabled=id%2==0;bank.compressors[id].values[0]=-30+static_cast<float>(variation);
+  bank.chains[id]=normalizedSignalChain(id%3==0?"ACQ":id%3==1?"QAC":"CQ");}
  return bank;
 }
 struct Fixture{
@@ -42,6 +48,50 @@ struct Fixture{
  void install(const Bank& bank,unsigned request){check(owner.restore(bank,request),"original bank restore admission");done();check(owner.restoreStatus()==ArpPreparationStatus::ready&&originals()==bank&&owner.bound(),"entire original bank accepted");}
  void command(LoopAction action,unsigned id=0){check(engine->enqueueLoop({action,id,99999,engine->generation()}),"ordinary fixture command");pump(false,true);}
 };
+static void checkEffects(Fixture& f,const LoopBank::EffectsBank& expected){
+ for(unsigned id=0;id<20;++id){const auto info=f.engine->inspectAudioThread(id).track;
+  check(info.equalizer==expected.equalizers[id]&&info.compressor==expected.compressors[id]&&info.signalChain==expected.chains[id],"coordinated FX bank metadata / user order and omission");}
+}
+static void coordinated(unsigned block){
+ Fixture f(block);const auto old=settings(3000),next=settings(4000);auto oldFx=effects(1),nextFx=effects(5);
+ check(f.owner.restore(old,300,&oldFx),"initial coordinated owner bank");f.done();checkEffects(f,oldFx);check(f.originals()==old,"coordinated originals");
+ auto invalid=nextFx;invalid.equalizers[19].values[0]=NAN;check(!f.owner.restore(next,301,&invalid),"last EQ rejects whole coordinated bank");
+ invalid=nextFx;invalid.compressors[19].values[0]=NAN;check(!f.owner.restore(next,301,&invalid),"last compressor rejects whole coordinated bank");
+ invalid=nextFx;invalid.chains[19].size=0;check(!f.owner.restore(next,301,&invalid)&&!f.owner.restoring(),"last chain rejects whole coordinated bank");checkEffects(f,oldFx);
+ for(unsigned kind=0;kind<3;++kind){
+  entered=false;leftPause=false;releaseWorker=false;pauseWorker=true;check(f.owner.restore(next,302+kind,&nextFx),"paused coordinated bank");f.pump();
+  wait([&]{return entered.load(std::memory_order_acquire);},"coordinated worker pause");checkEffects(f,oldFx);
+  const auto before=oldFx;
+  LoopCommand c{kind==0?LoopAction::equalizer:kind==1?LoopAction::compressor:LoopAction::signalChain,0,900+kind,f.engine->generation()};
+  if(kind==0){oldFx.equalizers[0].values[4]=9;c.equalizer=oldFx.equalizers[0];}
+  else if(kind==1){oldFx.compressors[0].values[0]=-24;c.compressor=oldFx.compressors[0];}
+  else {oldFx.chains[0]=normalizedSignalChain("CAQ");c.signalChain=oldFx.chains[0];}
+  auto rejected=c;rejected.eqClearEpoch=rejected.compressorClearEpoch=rejected.chainClearEpoch=1;
+  check(f.engine->enqueueLoop(rejected),"stale FX command fixture");f.pump(false);f.service();
+  check(f.owner.restoring()&&f.originals()==old,"rejected FX gesture cannot cancel staged restore");checkEffects(f,before);
+  check(f.engine->enqueueLoop(c),"newer accepted Q/C/chain gesture");f.pump(false);f.done();
+  check(f.owner.restoreStatus()==ArpPreparationStatus::cancelled&&f.originals()==old,"newer FX edit cancels entire staged bank");checkEffects(f,oldFx);
+  releaseWorker.store(true,std::memory_order_release);
+  wait([&]{return leftPause.load(std::memory_order_acquire);},"previous worker left pause before next barrier");
+ }
+ check(f.owner.restore(next,310,&nextFx),"successful coordinated replacement");
+ wait([&]{f.pump();const bool ready=f.engine->inspectAudioThread(19).track.arpRequest==310;checkEffects(f,ready?nextFx:oldFx);
+  for(unsigned id=0;id<20;++id){const auto info=f.engine->inspectAudioThread(id).track;
+   check((info.arpRequest==310)==ready,"no partial A commit");if(ready)check(info.eqRequest==310&&info.compressorRequest==310&&info.chainRequest==310,"Q/C/chain commit with A before snapshot/render");}
+  f.service();return !f.owner.restoring();},"coordinated replacement receipt");
+ check(f.owner.restoreStatus()==ArpPreparationStatus::ready&&f.originals()==next,"coordinated original settings accepted");checkEffects(f,nextFx);
+}
+static void callbackCost(unsigned block){
+ auto engine=std::make_unique<Engine>();engine->prepare(48000,32768);ArpSettingsOwner owner(*engine);EngineView view;
+ {Guard guard;engine->process(nullptr,0,0);}check(engine->popView(view)&&owner.bind(view),"48k callback cost bind");
+ auto bank=settings(5000);auto fx=effects(1);for(unsigned id=0;id<20;++id){fx.equalizers[id].enabled=true;fx.compressors[id].enabled=true;}
+ check(owner.restore(bank,1000,&fx),"48k full FX callback cost admission");std::array<float,128> l{},r{};float* channels[]{l.data(),r.data()};double adoptionUs=0;
+ wait([&]{const auto before=std::chrono::steady_clock::now();{Guard guard;engine->process(channels,2,static_cast<int>(block));}const auto after=std::chrono::steady_clock::now();
+  if(engine->inspectAudioThread(19).track.arpRequest==1000)adoptionUs=std::chrono::duration<double,std::micro>(after-before).count();
+  while(engine->popView(view)){}owner.service(view);return !owner.restoring();},"48k callback cost completion");
+ check(owner.restoreStatus()==ArpPreparationStatus::ready&&adoptionUs>0,"measured successful full FX adoption");
+ std::cout<<"FX bank adoption callback sample: rate=48000 block="<<block<<" elapsed_us="<<adoptionUs<<" block_budget_us="<<(block/48000.0*1e6)<<" (wall-clock observation; not round-trip latency or a deadline guarantee)\n";
+}
 static void ownership(unsigned block){
  Fixture f(block);auto old=f.originals(),next=settings(200),off=settings(300,false);
  auto bad=next;bad[19].bpm=NAN;check(!f.owner.restore(bad,1)&&!f.owner.restore(next,0)&&f.originals()==old&&!f.owner.restoring(),"last-member validation rejects whole original bank");
@@ -99,7 +149,9 @@ static void lifecycle(unsigned block){
  check(f.owner.restoreStatus()==ArpPreparationStatus::cancelled&&f.originals()==Bank{}&&!f.owner.bound(),"external revision cancels bank without partial original reconstruction");
 }
 static void pcm(unsigned block){
- Fixture a(block),b(block);const auto old=settings(800);a.install(old,40);
+ Fixture a(block),b(block);const auto old=settings(800);const auto oldFx=effects(1),nextFx=effects(5);
+ check(a.owner.restore(old,40,&oldFx),"audible coordinated bank");a.done();checkEffects(a,oldFx);
+ b.engine->prepareEqBank(oldFx.equalizers);b.engine->prepareCompressorBank(oldFx.compressors);b.engine->prepareChainBank(oldFx.chains);
  ArpBankRequest direct;direct.requestId=40;direct.generation=b.engine->generation();
  for(unsigned id=0;id<20;++id){check(compileArpSettings(old[id].controls,old[id].bpm,old[id].seed,direct.settings[id]),"raw reference compilation");const auto info=b.latest.tracks[id];direct.clearEpochs[id]=info.clearEpoch;direct.settingsRevisions[id]=info.arpSettingsRevision;}
  check(b.engine->enqueueArpBank(direct),"accepted raw Engine bank reference");ArpBankResult result;
@@ -110,9 +162,9 @@ static void pcm(unsigned block){
  auto compare=[&]{for(auto* f:{&a,&b}){f->l.fill(0);f->r.fill(0);f->pump(false);}double energy=0;
   for(unsigned i=0;i<block;++i){check(a.l[i]==b.l[i]&&a.r[i]==b.r[i],"failed/cancelled original bank preserves exact connected stereo PCM");energy+=std::abs(a.l[i])+std::abs(a.r[i]);}return energy;};
  double energy=0;for(unsigned n=0;n<64;++n)energy+=compare();
- failWorker=true;check(a.owner.restore(settings(900),41),"audible bank OOM");a.done();check(a.owner.restoreStatus()==ArpPreparationStatus::failed&&a.originals()==old,"audible original bank rollback");
+ failWorker=true;check(a.owner.restore(settings(900),41,&nextFx),"audible bank OOM");a.done();check(a.owner.restoreStatus()==ArpPreparationStatus::failed&&a.originals()==old,"audible original bank rollback");checkEffects(a,oldFx);
  for(unsigned n=0;n<64;++n)energy+=compare();
- check(a.owner.restore(settings(1000),42),"audible queued cancellation");a.owner.cancel();a.done();
+ check(a.owner.restore(settings(1000),42,&nextFx),"audible queued cancellation");a.owner.cancel();a.done();checkEffects(a,oldFx);
  for(unsigned n=0;n<64;++n)energy+=compare();check(energy>1&&a.originals()==old,"nonzero PCM equality after failed/cancelled bank");
 }
 static void concurrent(){
@@ -128,5 +180,5 @@ static void concurrent(){
  }
  run.store(false,std::memory_order_release);audio.join();check(during,"bank publication during actual callback");
 }
-int main(){for(unsigned block:{64u,128u}){ownership(block);cancellation(block);lifecycle(block);pcm(block);}concurrent();
+int main(){for(unsigned block:{64u,128u}){ownership(block);cancellation(block);lifecycle(block);coordinated(block);pcm(block);callbackCost(block);}concurrent();
  std::cout<<"PASS original Arp bank owner: atomic precision/presets/seeds, exact terminal revisions, OOM/cancel/clear/prepare rollback, unread results, same-ID recovery, exact nonzero stereo PCM / 64/128 / zero callback new/delete\n";}

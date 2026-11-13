@@ -11,6 +11,24 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Coordinated native FX bank — 13 November 2026, validation in progress
+
+The accepted staged Arp transaction can now optionally carry all twenty EQ,
+compressor and user-chain settings. Those controls stay unchanged until every
+Arp graph is ready, then commit with A before the callback renders/publishes a
+snapshot. OOM/cancellation preserves the old complete FX bank. A newer accepted
+Q/C/chain edit cancels the pending full restore; a rejected edit does not.
+Arp-only requests retain their original behavior and preserve independent FX.
+
+The expanded Windows owner-bank contract passes (3.71s), including full-bank
+validation, worker-paused edit races, exact stereo PCM versus the accepted raw
+bank/stopped-FX setup, 64/128 and zero watched callback new/delete. One test worker
+barrier needed an acknowledgement before reuse; no acceptance assertion changed.
+Broader Windows/Linux and sanitizer validation is underway. This is an internal
+coordinated audio transaction, not yet product state/GUI/CLI integration. A remains
+disabled. Next: connect production state intent/serialization and shared commands
+to this transaction, retaining old state on failed admission/preparation. No package/push.
+
 ### Atomic original Arp bank restore — 13 November 2026
 
 The internal settings owner now stages a complete known original Arp bank through

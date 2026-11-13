@@ -1,5 +1,42 @@
 # Arp Delay migration
 
+## Coordinated Q/C/chain/Arp transaction — 13 November 2026
+
+Internal candidate, validation in progress. Acceptance defined before editing:
+stage all ported FX together; no Q/C/chain mutation before Arp allocation succeeds;
+preserve the complete old sound/state on failure or cancellation; protect newer
+control gestures and preserve arbitrary user order/omission. The original default
+`QCATFODBVKZG` is not a fixed Q/C/A path.
+
+`ArpBankRequest` optionally carries a validated `LoopBank::EffectsBank` with twenty
+EQ, compressor and chain settings. Existing Arp-only callers default to preserving
+those controls. The existing graph-bank worker/storage handles preparation; no
+new queue, thread or DSP is introduced. At successful adoption the full validated
+Q/C/chain bank applies through the existing bounded full-mask setters before any
+render/snapshot. Own-commit cancellation is suppressed only during that bounded
+commit. Successful external setters cancel a pending coordinated restore after
+validation, including equal-value gestures; rejected stale/invalid edits do not.
+
+The original Arp settings owner accepts the optional coordinated bank and retains
+its existing exact receipt/rollback protocol. This is **not** a product serializer,
+legacy importer, GUI/CLI command or complete session restore. A stays disabled.
+
+Expanded `arp_owner_bank_contract` passes Windows **1/1 (3.71s)**. It verifies
+invalid last EQ/C/chain records, all-or-none callback metadata, paused worker races
+against all three setters, rejected-gesture protection, current user order/omission,
+and exact nonzero stereo PCM after OOM/cancellation versus the accepted raw Arp
+bank plus stopped Q/C/chain setup at 64/128. Existing Arp-only coverage remains.
+The first test run stalled while reusing a released worker barrier; the fixture
+now waits for the worker to acknowledge leaving it before starting another pause.
+All assertions and product behavior were retained. Initial log: `build/fx-bank-test-windows.log`.
+
+Two informational 48 kHz adoption callback observations (20 enabled Q/C settings,
+three A graphs, empty loop playback) were **723.6 us / 64** and **1261.1 us / 128**,
+against block durations 1333.33/2666.67 us. Wall-clock samples include scheduling;
+they are neither total round-trip latency nor worst-case/deadline/driver evidence.
+Broader cross-platform/sanitizer validation is pending; no unchanged-JS DSP math,
+preserved assets, state schemas, parameter IDs or tolerances changed.
+
 ## Atomic original settings bank restore — 13 November 2026
 
 Accepted internal slice. The unchanged reference saves both

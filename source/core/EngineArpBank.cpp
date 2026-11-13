@@ -3,6 +3,7 @@
 namespace aion {
 bool Engine::enqueueArpBank(ArpBankRequest request) noexcept {
  if(outstandingArpBank||!request.requestId||!request.generation||request.generation!=generation())return false;
+ if(request.restoreEffects&&!LoopBank::validEffectsBank(request.effects))return false;
  for(unsigned id=0;id<LoopBank::trackCount;++id)if(outstandingArp[id]||!validArpRenderSettings(request.settings[id]))return false;
  request.cancellation=arpBankCancellation.load(std::memory_order_acquire);
  if(!arpBankRequests->push(request))return false;
@@ -48,7 +49,7 @@ void Engine::serviceArpBank() noexcept {
  for(unsigned id=0;id<LoopBank::trackCount;++id){const auto info=loops.trackView(id);
   if(r.clearEpochs[id]!=info.clearEpoch||r.settingsRevisions[id]!=info.arpSettingsRevision||r.settingsRevisions[id]==UINT64_MAX){finishArpBank(ArpPreparationStatus::stale);return;}
  }
- if(!loops.requestArpBank(r.settings,r.clearEpochs,r.settingsRevisions,r.requestId)){finishArpBank(ArpPreparationStatus::busy);return;}
+ if(!loops.requestArpBank(r.settings,r.clearEpochs,r.settingsRevisions,r.requestId,r.restoreEffects?&r.effects:nullptr)){finishArpBank(ArpPreparationStatus::busy);return;}
  pendingArpBank.started=true;
 }
 void Engine::cancelQueuedArpBank() noexcept {

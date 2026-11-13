@@ -3,12 +3,19 @@
 #include "ArpSettings.h"
 #include <limits>
 namespace aion {
-bool LoopBank::requestArpBank(const ArpBank& settings,const ArpEpochs& epochs,const ArpEpochs& revisions,std::uint32_t request) noexcept {
+bool LoopBank::validEffectsBank(const EffectsBank& bank) noexcept {
+ for(unsigned id=0;id<trackCount;++id)if(!validEqSettings(bank.equalizers[id])||!validCompressorSettings(bank.compressors[id])||!validSignalChain(bank.chains[id]))return false;
+ return true;
+}
+bool LoopBank::requestArpBank(const ArpBank& settings,const ArpEpochs& epochs,const ArpEpochs& revisions,std::uint32_t request,const EffectsBank* effects) noexcept {
  if(!request||pendingArpBank.active)return false;
+ if(effects&&!validEffectsBank(*effects))return false;
  for(unsigned id=0;id<trackCount;++id)if(pendingArpSettings[id].active||epochs[id]!=tracks[id].clearEpoch||
     revisions[id]!=tracks[id].info.arpSettingsRevision||revisions[id]==UINT64_MAX)return false;
  if(!arpStorage->requestBank(settings))return false;
- pendingArpBank={settings,epochs,revisions,request,true};bankArpResult={request,ArpBankStatus::pending};return true;
+ pendingArpBank={settings,epochs,revisions,request,true};
+ if(effects){pendingArpBank.effects=*effects;pendingArpBank.restoreEffects=true;}
+ bankArpResult={request,ArpBankStatus::pending};return true;
 }
 void LoopBank::cancelArpBank() noexcept {
  if(!pendingArpBank.active)return;
@@ -37,6 +44,17 @@ void LoopBank::pollArps() noexcept {
  if(pendingArpBank.active&&(completion.bankInstalled||completion.bankFailed)){
   if(completion.bankInstalled)for(unsigned id=0;id<trackCount;++id){
    auto& info=tracks[id].info;info.arp=pendingArpBank.settings[id];info.arpRequest=pendingArpBank.request;++info.arpSettingsRevision;
+  }
+  if(completion.bankInstalled&&pendingArpBank.restoreEffects){
+   // Every setting was validated before graph reservation. All masks are full,
+   // epochs are checked above, and these bounded setters allocate no storage.
+   // Disable only the external-edit cancellation guard during this own commit.
+   pendingArpBank.restoreEffects=false;
+   for(unsigned id=0;id<trackCount;++id){const auto& fx=pendingArpBank.effects;
+    (void)setEqualizer(id,fx.equalizers[id],eqAllParameters,pendingArpBank.request,tracks[id].clearEpoch);
+    (void)setCompressor(id,fx.compressors[id],compressorAllParameters,pendingArpBank.request,tracks[id].clearEpoch);
+    (void)setSignalChain(id,fx.chains[id],pendingArpBank.request,tracks[id].clearEpoch);
+   }
   }
   bankArpResult={pendingArpBank.request,completion.bankInstalled?ArpBankStatus::ready:ArpBankStatus::failed};pendingArpBank={};
  }

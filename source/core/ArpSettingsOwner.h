@@ -32,9 +32,10 @@ public:
  bool set(unsigned track,unsigned parameter,double value,double bpm,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool preset(unsigned track,unsigned preset,double bpm,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool enable(unsigned track,bool enabled,double bpm,std::uint32_t request,std::uint64_t frame=0) noexcept;
- // Internal Arp-only restore: prepare all graphs, commit all original settings
- // on the exact bank receipt. Not a legacy importer or complete FX/session restore.
- bool restore(const Bank&,std::uint32_t request) noexcept;
+ // Internal restore: prepare all Arp graphs, optionally stage Q/C/user chains,
+ // commit original Arp settings on the exact receipt. Product state binding and
+ // the legacy importer are separate; this method never parses session files.
+ bool restore(const Bank&,std::uint32_t request,const LoopBank::EffectsBank* effects=nullptr) noexcept;
  bool restoring() const noexcept{return bank.active;}
  ArpPreparationStatus restoreStatus() const noexcept{return bankStatus;}
  void cancel(unsigned track=LoopBank::trackCount) noexcept;

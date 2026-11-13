@@ -951,6 +951,7 @@ void LoopBank::resetEqualizers() noexcept {
 }
 bool LoopBank::setSignalChain(std::uint32_t id,const SignalChain& settings,std::uint32_t request,std::uint64_t epoch,bool checkEpoch) noexcept {
     if(id>=trackCount||!validSignalChain(settings)||(checkEpoch&&epoch!=tracks[id].clearEpoch))return false;
+    cancelEffectsRestore();
     auto& t=tracks[id];const auto previous=t.info.signalChain;
     // Reorder retains included filters. Reinserting an omitted effect starts a
     // new instance with current controls, like the original rebuilt graph.
@@ -963,6 +964,7 @@ bool LoopBank::setCompressor(std::uint32_t id,const CompressorSettings& settings
     if(id>=trackCount||!validCompressorSettings(settings)||(mask&~compressorAllParameters)||(checkEpoch&&epoch!=tracks[id].clearEpoch))return false;
     auto& t=tracks[id];auto& comp=(*compressors)[id];
     for(unsigned p=0;p<7;++p)if(!(mask&(1u<<p))&&settings.values[p]!=t.info.compressor.values[p])return false;
+    cancelEffectsRestore();
     if(!comp.prepared||(!t.info.compressor.enabled&&settings.enabled)){
         (void)comp.filter.prepare(rate,settings.values,frame);comp.prepared=true;
     }else if(settings.enabled){
@@ -984,6 +986,7 @@ bool LoopBank::setEqualizer(std::uint32_t id,const EqSettings& settings,std::uin
     auto& t=tracks[id];auto& eq=(*equalizers)[id];
     const bool toggle=t.info.equalizer.enabled!=settings.enabled;
     for(unsigned i=0;i<24;++i)if(!(mask&(1u<<i))&&settings.values[i]!=t.info.equalizer.values[i])return false;
+    cancelEffectsRestore();
     const bool active=hasPlaybackSource(t)||hasPreparedQueuedSource(t,true)||t.tailRemaining||retainedCounts[id];
     if(!eq.prepared){(void)eq.filter.prepare(rate,settings.values,frame);eq.prepared=true;}
     if(toggle){
