@@ -41,6 +41,18 @@ DEL/live-state checks pass at 64/128. Standalone builds. MIDI, Linux and core
 sanitizer validation are pending. Prior unchanged-JS DSP evidence is reused; this
 changes transaction timing/ownership, not filter or worklet math. No package/push.
 
+The final cleanup audit reproduced an existing broad gate rejecting STOP ALL while
+an FX restore was pending (`build/fx-production-cleanup-before-windows.log`). The
+gate now permits existing STOP ALL/DEL/DEL ALL through ordinary generation, expiry
+and value validation. The expanded production test verifies those actions are
+admitted during restore and that per-track/all-track clears win without revived
+FX. Windows focused cleanup tests pass **2/2 (0.91s)**. Baseline Windows MIDI
+passes **1/1 (135.18s)**; Linux native/CLI/MIDI passes **9/9 (125.87s)**, core
+**4/4 (4.14s)**; core ASan/UBSan/leaks **3/3 (28.55s)** and TSAN **3/3 (45.25s)**
+pass without sanitizer diagnostics. Linux focused cleanup and final Windows UI
+checks remain pending; no unchanged passing suites need repeating for that
+request-gate-only correction.
+
 ## Coordinated Q/C/chain/Arp transaction — 13 November 2026
 
 Accepted internal runtime `8efbcaa`, final PCM regression `80f0a48`. Acceptance defined before editing:

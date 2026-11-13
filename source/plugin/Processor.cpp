@@ -602,7 +602,8 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation()))return fail("Audio generation changed");
         engine.cancelStutter(static_cast<unsigned>(static_cast<int>(id)));result->setProperty("ok",true);
     } else if (operation == "loop") {
-        {std::lock_guard guard(midiSettingsMutex);if(eqRestorePending||compressorRestorePending||chainRestorePending)return fail("Wait for pending EQ state restore");}
+        {std::lock_guard guard(midiSettingsMutex);const auto cleanup=request.getProperty("action",{}).toString();
+         if((eqRestorePending||compressorRestorePending||chainRestorePending)&&cleanup!="stopAll"&&cleanup!="clear"&&cleanup!="clearAll")return fail("Wait for pending EQ state restore");}
         const auto expiration = request.getProperty("expiresAt", {});
         if (!(expiration.isInt() || expiration.isInt64() || expiration.isDouble())) return fail("Missing command expiration");
         const double expiresAt = static_cast<double>(expiration);

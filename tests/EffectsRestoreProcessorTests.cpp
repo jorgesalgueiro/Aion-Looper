@@ -48,6 +48,12 @@ int main(int argc,char** argv){
  // Repeated loads with no ordinary command in between must not wait forever
  // for a global acknowledgement of an ID owned only by the bank protocol.
  load(b);snapshot();process();snapshot();matches(8,-24,"QC");load(a);snapshot();process();snapshot();matches(3,-30,"CQ");
+ auto cleanup=[&](const char* action){auto v=juce::JSON::parse(R"({"operation":"loop","track":0})");auto* o=v.getDynamicObject();o->setProperty("action",action);o->setProperty("generation",generation);o->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis()+4000));return p->request({v});};
+ load(c);snapshot();check(cleanup("stopAll")["ok"],"STOP ALL bypasses pending FX restore");process();snapshot();matches(-3,-12,"CQA");
+ load(b);snapshot();check(cleanup("clear")["ok"],"DEL bypasses pending FX restore");process();snapshot();
+ check(p->inspectAudioThread(0).track.equalizer==aion::EqSettings{}&&p->inspectAudioThread(19).track.equalizer.values[4]==8,"DEL wins its own track after restore");
+ load(a);snapshot();check(cleanup("clearAll")["ok"],"DEL ALL bypasses pending FX restore");process();snapshot();
+ for(unsigned id=0;id<20;++id){const auto info=p->inspectAudioThread(id).track;check(info.equalizer==aion::EqSettings{}&&info.compressor==aion::CompressorSettings{}&&info.signalChain==aion::SignalChain{},"DEL ALL cannot revive restored FX");}
  // Zero-frame callbacks have distinct serials despite identical sample clocks.
  load(c);snapshot();process(true);snapshot();matches(-3,-12,"CQA");
  // prepare applies accepted pending state on its stopped owner. An obsolete
