@@ -43,7 +43,7 @@ void MidiController::cancel(Dispatch& d,int track) noexcept {
 void MidiController::prepare(Dispatch& d) noexcept {cancel(d);presses={};settings.learnTarget=-1;learnCaptured=false;mode=0;sustain=false;++modeRevision;}
 void MidiController::overflow(Dispatch& d) noexcept {++overflows;cancel(d);}
 void MidiController::begin(Dispatch& d) noexcept {
-    MidiSettings next;
+    MidiSettings next;bool ccChanged=false;
     for(unsigned n=0;n<31&&configs.pop(next);++n){
         // Mixer learning must preserve held takes, deadlines and deferred actions.
         const bool transportChanged=!std::equal(next.bindings.begin(),next.bindings.begin()+MidiSettings::volumeBase,settings.bindings.begin());
@@ -57,8 +57,18 @@ void MidiController::begin(Dispatch& d) noexcept {
             }
         }
         if(next.modeOverride>=0){mode=next.modeOverride;++modeRevision;}
-        settings=next;settings.modeOverride=-1;
+        ccChanged|=next.bindings!=settings.bindings;settings=next;settings.modeOverride=-1;
         if(settings.learnGeneration!=d.generation)settings.learnTarget=-1;
+    }
+    if(ccChanged){
+        // At most one fixed rebuild after the complete bounded config batch.
+        // Events retain their sample order; CC routing no longer scans every
+        // unrelated Note/PC/effect binding for each packet in a dense burst.
+        ccTargets.fill(-1);
+        for(unsigned target=0;target<settings.bindings.size();++target){const auto b=settings.bindings[target];if((b&3)!=2)continue;
+            const unsigned number=(b>>2)&127,channel=b>>9;
+            for(unsigned ch=1;ch<=16;++ch)if(!channel||channel==ch)ccTargets[(ch-1)*128+number]=static_cast<std::int16_t>(target);
+        }
     }
 }
 void MidiController::push(Task task,Dispatch& d) noexcept {
@@ -142,13 +152,13 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
         if(!learnCaptured&&learned.push({settings.learnTarget,midiBinding(kind,e.data1),settings.learnToken,d.generation,learnCancellation.load(std::memory_order_relaxed)}))learnCaptured=true;
         return;
     }
-    const int continuousTarget=kind==2?targetFor(settings,e):-1;
+    const int continuousTarget=kind==2?ccTargets[(channel-1)*128+e.data1]:-1;
     if(MidiSettings::continuous(continuousTarget)){
         continuous(continuousTarget,e.data2,d);return;
     }
     if(up){if(!learnRelease){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);}return;}
     if(!down)return;
-    const int target=targetFor(settings,e);
+    const int target=kind==2?continuousTarget:targetFor(settings,e);
     if(target<0)return;
     // Resolve current ownership before consulting a former loop press. A held
     // key can have been reassigned to a global mode since its last NoteOn.

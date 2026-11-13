@@ -22,6 +22,29 @@ struct Fixture {
 };
 }
 void midiTests(){
+ {
+  auto bank=std::make_unique<LoopBank>();bank->prepare(32768,240,8000);auto controller=std::make_unique<MidiController>();
+  struct Probe {int target=-1;unsigned track=0;} probe;
+  MidiController::Dispatch dispatch{*bank,0,8000,1,&probe,
+   [](void* p,LoopAction action,std::uint32_t track,double){auto& v=*static_cast<Probe*>(p);check(action==LoopAction::volume||action==LoopAction::mute||action==LoopAction::record,"cached CC expected original mixer/transport action");v.target=static_cast<int>((action==LoopAction::volume?MidiSettings::volumeBase:action==LoopAction::mute?MidiSettings::muteBase:0)+track);return true;},
+   [](void* p,unsigned track,unsigned slider,unsigned){auto& v=*static_cast<Probe*>(p);v.target=static_cast<int>(MidiSettings::arpBase+slider);v.track=track;return true;}};
+  MidiSettings settings;settings.enabled=true;settings.eqTrack=3;
+  for(unsigned ch=1;ch<=16;++ch)settings.bindings[MidiSettings::volumeBase+ch-1]=midiBinding(2,20,ch);
+  for(unsigned p=0;p<9;++p)settings.bindings[MidiSettings::arpBase+p]=midiBinding(2,80+p);
+  settings.bindings[0]=midiBinding(2,41);settings.bindings[MidiSettings::muteBase]=midiBinding(2,40);
+  const auto compare=[&]{for(unsigned ch=1;ch<=16;++ch)for(unsigned cc=0;cc<128;++cc){
+   const MidiEvent event{0,static_cast<std::uint8_t>(175+ch),static_cast<std::uint8_t>(cc),64,3};probe.target=-1;
+   watch=true;controller->event(event,dispatch);controller->tick(dispatch);watch=false;
+   check(probe.target==MidiController::targetFor(settings,event),"cached CC routing equals retained linear oracle for every channel/key");
+   if(probe.target>=static_cast<int>(MidiSettings::arpBase))check(probe.track==settings.eqTrack,"cached routing retains selected Arp track");++dispatch.frame;
+   if(probe.target>=0&&!MidiSettings::continuous(probe.target)){auto release=event;release.data2=0;watch=true;controller->event(release,dispatch);watch=false;}
+  }};
+  check(controller->configure(settings),"initial cached CC configuration");watch=true;controller->begin(dispatch);watch=false;compare();
+  for(unsigned n=0;n<31;++n){for(unsigned ch=1;ch<=16;++ch)settings.bindings[MidiSettings::volumeBase+ch-1]=midiBinding(2,20+n%2,ch);check(controller->configure(settings),"full cache configuration batch");}
+  watch=true;controller->begin(dispatch);watch=false;compare();
+  settings.eqTrack=19;settings.modeOverride=1;check(controller->configure(settings),"routing-independent mode/selected-track update");watch=true;controller->begin(dispatch);watch=false;compare();
+  std::cout<<"PASS: fixed CC lookup equals original linear routing for 6144 channel/key cases, omni/channel filters, full 31-config batch, mode-only/track changes and zero callback new/delete\n";
+ }
  using namespace aion;using A=LoopAction;using S=LoopState;
  // Learning a mixer MUTE must preserve a different owned SUS recording.
  for(const unsigned block:{64u,128u}){

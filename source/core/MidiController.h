@@ -56,6 +56,7 @@ private:
     SpscQueue<MidiLearnResult,8> learned;
     std::atomic<std::uint32_t> learnCancellation{0}; // Audio publishes; message owner validates captured results.
     MidiSettings settings;
+    std::array<std::int16_t,16*128> ccTargets=[] {std::array<std::int16_t,16*128> table{};table.fill(-1);return table;}();
     std::array<MidiObservation,8> recent{};
     std::uint32_t observed=0;
     std::array<Press,64> presses{};
