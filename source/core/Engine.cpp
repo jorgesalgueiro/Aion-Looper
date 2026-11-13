@@ -123,6 +123,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     const bool hasHostTime=transport.hostValid&&transport.hasHostTimeNs&&transport.callbackFrame==callbackBegin;
     const CallbackClockStamp thisCallback{serial,callbackBegin,callbackBegin+static_cast<unsigned>(frames),hasHostTime?transport.hostTimeNs:0,preparedRate,generation(),hasHostTime,nonRealtime,
         outputLatency.available?static_cast<std::uint32_t>(outputLatency.samples):0,outputLatency.available,validatedProcessorClock(processorEntry),validatedDeviceCallback(deviceEntry,frames)};
+    activeCallbackSerial=serial;
     loops.setMeterCallbackClock(thisCallback);
     float peak = 0.0f, inputPeak = 0.0f, masterPeak=0.0f;
     if(nonRealtime)loops.completeOfflineEdits();
@@ -266,6 +267,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     }
     (void) views->push({tracks, frame, preparedRate, generation(), lastRequestId, loops.available(), inputPeak, peak, rejected, loops.exhausted(), audioReset, loops.nextUndo(), loops.nextRedo(), loops.syncView(), metronome.flash(frame), masterPeak, countIn.flash(frame),midi->view(),transport,callbackClock});
     loops.setMeterCallbackClock({}); // A direct action outside this callback has no captured correlation.
+    activeCallbackSerial=0;
 }
 bool Engine::enqueueExport(ExportRequest request) noexcept {
     if(exportOutstanding||request.generation!=generation()||!request.generation||request.track>=LoopBank::trackCount||!request.waveformId)return false;

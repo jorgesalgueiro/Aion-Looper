@@ -237,6 +237,16 @@ static void disabledPanic(unsigned block){
   std::this_thread::sleep_for(std::chrono::milliseconds(1));
  }
 }
+static void inactiveImmediate(unsigned block){
+ Fixture f(block);auto r=f.request(400,false);r.restoreEffects=true;r.effects.equalizers[19].enabled=true;r.effects.chains[19]=normalizedSignalChain("CQ");
+ check(f.engine->enqueueArpBank(r),"inactive full restore admission");f.pump();ArpBankResult out;
+ check(f.engine->popArpBank(out)&&out.status==ArpPreparationStatus::ready&&out.callbackSerial==f.engine->inspectCallbackClockAudioThread().serial&&out.callbackSerial,"inactive full bank completes in its first zero-frame callback");
+ check(f.engine->inspectAudioThread(19).track.equalizer==r.effects.equalizers[19]&&f.engine->inspectAudioThread(19).track.signalChain==r.effects.chains[19],"inactive first-callback FX commit");
+ r.requestId=401;r.settingsRevisions=out.settingsRevisions;check(f.engine->enqueueArpBank(r),"unread callback serial fixture");f.pump();const auto serial=f.engine->inspectCallbackClockAudioThread().serial;f.pump();
+ check(f.engine->popArpBank(out)&&out.callbackSerial==serial&&out.callbackSerial<f.engine->inspectCallbackClockAudioThread().serial,"unread terminal callback serial stays immutable");
+ r.requestId=402;r.settingsRevisions=out.settingsRevisions;check(f.engine->enqueueArpBank(r),"stopped cancellation serial fixture");f.engine->prepare(8000,32768);
+ check(f.engine->popArpBank(out)&&out.status==ArpPreparationStatus::cancelled&&out.callbackSerial==0,"stopped prepare never invents a producing callback");
+}
 static void concurrent(){
  auto engine=std::make_unique<Engine>();engine->prepare(8000,8192);const auto generation=engine->generation();
  std::atomic<bool> run{true};std::thread audio([&]{while(run.load(std::memory_order_acquire)){{AudioScope guard;engine->process(nullptr,0,0);}std::this_thread::yield();}});
@@ -251,7 +261,7 @@ static void concurrent(){
  run.store(false,std::memory_order_release);audio.join();ArpBankResult result;check(!engine->popArpBank(result),"concurrent bank has no duplicate result");
 }
 int main(){
- for(unsigned block:{64u,128u}){storage(block);protocol(block);for(unsigned barrier=0;barrier<6;++barrier)paused(block,barrier);connected(block);prepareLifetime(block,false);prepareLifetime(block,true);disabledPanic(block);}
+ for(unsigned block:{64u,128u}){storage(block);protocol(block);for(unsigned barrier=0;barrier<6;++barrier)paused(block,barrier);connected(block);prepareLifetime(block,false);prepareLifetime(block,true);disabledPanic(block);inactiveImmediate(block);}
  variableBlocks(32000);variableBlocks(48000);concurrent();
  std::cout<<"PASS atomic Arp bank: all-20/mixed/off adoption, last-slot OOM/exhaustion/reset-clock rollback, exact old graph and connected stereo PCM, queue/receipt bounds, generation/epoch/revision cancellation, DEL/panic/armed-CANCEL/live-edit barriers, concurrent ownership and zero audio new/delete at 64/128\n";
 }

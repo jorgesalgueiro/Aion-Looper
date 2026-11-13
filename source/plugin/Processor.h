@@ -135,6 +135,15 @@ private:
     bool eqRestorePending=false;
     std::array<std::uint32_t,aion::LoopBank::trackCount> eqPending{};
     std::array<bool,aion::LoopBank::trackCount> eqClearing{};
+    struct EffectsRestore {
+        aion::ArpBankResult terminal{};
+        std::uint64_t intent=0;
+        std::uint32_t request=0,generation=0;
+        bool active=false,completed=false;
+    } effectsRestore{}; // Non-audio, under midiSettingsMutex; sole message result consumer.
+    std::uint64_t effectsIntent=0;
+    std::uint32_t lastEffectsRequest=0;
+    bool serviceEffectsRestore();
     void serviceEqualizer();
     void equalizerCleared(unsigned track,bool all,std::uint32_t requestId);
     void equalizerSnapshot(juce::DynamicObject&,unsigned track);

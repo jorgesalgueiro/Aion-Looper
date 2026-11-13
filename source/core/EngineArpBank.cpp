@@ -21,6 +21,7 @@ void Engine::finishArpBank(ArpPreparationStatus status) noexcept {
  if(!pendingArpBank.finished){
   const auto& r=pendingArpBank.request;
   auto& completion=pendingArpBank.completion;completion.requestId=r.requestId;completion.generation=r.generation;completion.status=status;
+  completion.callbackSerial=activeCallbackSerial;
   for(unsigned id=0;id<LoopBank::trackCount;++id){const auto view=loops.trackView(id);completion.clearEpochs[id]=view.clearEpoch;completion.settingsRevisions[id]=view.arpSettingsRevision;}
   pendingArpBank.finished=true;pendingArpBank.status=status;
  }
@@ -51,6 +52,10 @@ void Engine::serviceArpBank() noexcept {
  }
  if(!loops.requestArpBank(r.settings,r.clearEpochs,r.settingsRevisions,r.requestId,r.restoreEffects?&r.effects:nullptr)){finishArpBank(ArpPreparationStatus::busy);return;}
  pendingArpBank.started=true;
+ // An all-off bank requires no worker allocation and may already have adopted
+ // inside requestArpBank. Publish that exact result before this callback ends.
+ const auto completed=loops.arpBankResult();
+ if(completed.request==r.requestId&&completed.status==LoopBank::ArpBankStatus::ready)finishArpBank(ArpPreparationStatus::ready);
 }
 void Engine::cancelQueuedArpBank() noexcept {
  ArpBankRequest request;

@@ -55,15 +55,7 @@ bool AionProcessor::readEqualizers(const juce::ValueTree& state,EqBank& bank){
 }
 void AionProcessor::serviceEqualizer(){
     std::lock_guard guard(midiSettingsMutex);
-    if(eqRestorePending||compressorRestorePending||chainRestorePending){
-        if(!meterPrepared()||nextRequest>UINT32_MAX-aion::LoopBank::trackCount*3-1)return;
-        const auto first=nextRequest+1;
-        if(!engine.enqueueEffectsBank(eqSettings,compressorSettings,chainSettings,first))return; // All banks or neither; retry next message pass.
-        for(unsigned i=0;i<eqSettings.size();++i){eqPending[i]=first+i;eqClearing[i]=false;}
-        for(unsigned i=0;i<compressorSettings.size();++i){compressorPending[i]=first+aion::LoopBank::trackCount+i;compressorClearing[i]=false;}
-        for(unsigned i=0;i<chainSettings.size();++i){chainPending[i]=first+aion::LoopBank::trackCount*2+i;chainClearing[i]=false;}
-        nextRequest+=aion::LoopBank::trackCount*3;eqRestorePending=compressorRestorePending=chainRestorePending=false;
-    }
+    if(!serviceEffectsRestore())return;
     if(latest.generation!=engine.generation())return;
     for(unsigned i=0;i<eqSettings.size();++i){
         if(eqPending[i]){

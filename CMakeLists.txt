@@ -322,7 +322,7 @@ include(cmake/Vst3Programs.cmake)
 include(cmake/StandaloneClock.cmake)
 include(cmake/DeviceDelivery.cmake)
 
-target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/plugin/ProcessorEqualizer.cpp source/plugin/ProcessorCompressor.cpp source/plugin/ProcessorSignalChain.cpp source/ui/WebEditor.cpp)
+target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/plugin/ProcessorEqualizer.cpp source/plugin/ProcessorCompressor.cpp source/plugin/ProcessorSignalChain.cpp source/plugin/ProcessorEffectsRestore.cpp source/ui/WebEditor.cpp)
 target_include_directories(AionLooper PRIVATE source)
 target_compile_definitions(AionLooper PUBLIC
     JUCE_WEB_BROWSER=1 JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
@@ -359,6 +359,10 @@ if(BUILD_TESTING AND (WIN32 OR linux_desktop))
     target_compile_definitions(aion_signal_chain_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
         AION_CLI_PYTHON="${Python3_EXECUTABLE}" AION_CHAIN_CLI_TEST="${CMAKE_CURRENT_SOURCE_DIR}/tests/SignalChainCliTests.py")
     target_link_libraries(aion_signal_chain_processor_tests PRIVATE AionLooper)
+    add_executable(aion_effects_restore_processor_tests EXCLUDE_FROM_ALL tests/EffectsRestoreProcessorTests.cpp)
+    target_include_directories(aion_effects_restore_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
+    target_compile_definitions(aion_effects_restore_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
+    target_link_libraries(aion_effects_restore_processor_tests PRIVATE AionLooper)
     add_executable(aion_compressor_processor_tests EXCLUDE_FROM_ALL tests/CompressorProcessorTests.cpp)
     target_include_directories(aion_compressor_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
     target_compile_definitions(aion_compressor_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
@@ -379,6 +383,9 @@ if(BUILD_TESTING AND (WIN32 OR linux_desktop))
     option(AION_TEST_NATIVE_PROCESSOR "Register the optional production processor CTest" OFF)
     if(AION_TEST_NATIVE_PROCESSOR)
         foreach(eq_block IN ITEMS 64 128)
+            add_test(NAME native_effects_restore_processor_${eq_block} COMMAND aion_effects_restore_processor_tests ${eq_block})
+            set_tests_properties(native_effects_restore_processor_${eq_block} PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
+                FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected" LABELS "native;processor;state")
             add_test(NAME native_signal_chain_processor_${eq_block} COMMAND aion_signal_chain_processor_tests ${eq_block})
             set_tests_properties(native_signal_chain_processor_${eq_block} PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
                 FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected" LABELS "native;processor;chain")

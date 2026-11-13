@@ -1,5 +1,46 @@
 # Arp Delay migration
 
+## Production inactive FX state restoration — 13 November 2026
+
+Candidate under validation. The production state-load path now uses the accepted
+coordinated bank for Q/C/user chains while A remains inactive. It carries raw A
+targets unchanged and deliberately refuses active A; original Arp serialization,
+owner/GUI/CLI/MIDI and BPM/voicing integration remain separate acceptance. No
+saved-state format, stable ID, preserved asset or product A control was changed.
+
+Acceptance defined before editing: retain existing state/legacy/CLI behavior,
+ordinary-command ordering, immediate inactive loads, save-before-audio intent,
+rapid newer host loads, zero-frame/saturated telemetry, prepare and editor-closed
+progress; verify zero callback new/delete and actual relevant GUI interactions.
+
+`ProcessorEffectsRestore.cpp` is the sole message consumer/producer of the FX bank
+protocol in the current product (do not add a competing Arp-owner receipt consumer).
+Validated host state setters retain accepted pending intent under the existing
+non-audio mutex and publish atomic FX cancellation, never FX queue commands.
+The message service waits for older ordinary FIFO IDs to settle; that numeric
+fence proves ordering only, never settings success. Bank IDs are excluded from
+that ordinary fence. Completion is exact by request/generation, then fenced by
+the terminal producing callback serial before copying coherent native FX state.
+An obsolete completion cannot overwrite a newer accepted host intent. Failure/
+cancellation reconciles actual native FX instead of falsely confirming intent.
+
+The existing message Timer consumes at most eight telemetry records per restoring
+pass, including with no editor. Host prepare applies accepted pending Q/C/chain
+intent on its stopped owner as before, marking old results obsolete. All-off
+graph banks need no worker allocation and now adopt before the first callback
+renders; complete receipts from stopped prepare use serial zero, not an invented
+callback. Core regressions retain immutable serials and zero-frame correlation.
+
+Windows production tests pass **8/8 (46.87s)**, including retained EQ/compressor/
+chain state, legacy and external shared CLI coverage at 64/128. The new dedicated
+test covers off-message host restore, older queued edits, latest-wins before and
+after unread adoption, saturated telemetry, immediate saved intent, repeated bank
+IDs, zero-frame clocks, prepare and real Timer-only editor-closed servicing. Core
+contracts pass **4/4 (32.00s)**; actual `TestSignalChainUi.ps1` pointer/PCM/reload/
+DEL/live-state checks pass at 64/128. Standalone builds. MIDI, Linux and core
+sanitizer validation are pending. Prior unchanged-JS DSP evidence is reused; this
+changes transaction timing/ownership, not filter or worklet math. No package/push.
+
 ## Coordinated Q/C/chain/Arp transaction — 13 November 2026
 
 Accepted internal runtime `8efbcaa`, final PCM regression `80f0a48`. Acceptance defined before editing:

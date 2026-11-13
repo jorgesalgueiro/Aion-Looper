@@ -188,7 +188,7 @@ void AionProcessor::prepareToPlay(double rate, int) {
     aion::DeviceOutputLatency latency;
     try{latency=outputLatencyReader?outputLatencyReader():standaloneOutputLatency(*this);}catch(...){latency={};}
     engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
-    {std::lock_guard guard(midiSettingsMutex);engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);}
+    {std::lock_guard guard(midiSettingsMutex);engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);++effectsIntent;lastEffectsRequest=nextRequest;}
     deviceClockOwner=nextDeviceClockOwner;
     deviceClockEpoch=deviceClockOwner?deviceClockOwner->advance():0;
     activeDeviceClockEpoch.store(deviceClockEpoch,std::memory_order_release);
@@ -406,6 +406,7 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             eqSettings=restoredEq;eqRestorePending=true;eqPending.fill(0);eqClearing.fill(false);
             compressorSettings=restoredCompressor;compressorRestorePending=true;compressorPending.fill(0);compressorClearing.fill(false);
             chainSettings=restoredChains;chainRestorePending=true;chainPending.fill(0);chainClearing.fill(false);
+            ++effectsIntent;engine.cancelArpBank(); // Host thread publishes cancellation only, never consumes or enqueues.
             parameters.replaceState(state);
         }
         // Preset restoration changes values without automation events. Ask wrappers

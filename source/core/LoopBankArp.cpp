@@ -15,7 +15,10 @@ bool LoopBank::requestArpBank(const ArpBank& settings,const ArpEpochs& epochs,co
  if(!arpStorage->requestBank(settings))return false;
  pendingArpBank={settings,epochs,revisions,request,true};
  if(effects){pendingArpBank.effects=*effects;pendingArpBank.restoreEffects=true;}
- bankArpResult={request,ArpBankStatus::pending};return true;
+ bankArpResult={request,ArpBankStatus::pending};
+ bool allOff=true;for(const auto& setting:settings)allOff&=!setting.enabled;
+ if(allOff)pollArps(); // No allocations/worker wait; preserve one-callback inactive state loads.
+ return true;
 }
 void LoopBank::cancelArpBank() noexcept {
  if(!pendingArpBank.active)return;

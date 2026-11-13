@@ -11,6 +11,26 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Production inactive FX state restore — 13 November 2026, validation in progress
+
+Existing Q/C/chain state loads now use the coordinated native bank instead of a
+60-command batch. The message owner waits for older ordinary FIFO actions to
+settle, then owns one exact bank receipt. Callback serial fencing rejects older
+snapshots even at an unchanged zero-frame clock. Host threads publish validated
+intent/cancellation only for this FX path; rapid newer loads supersede old intent
+without old results overwriting it. The existing Timer drains bounded telemetry
+while restoring, so closed editors do not strand later loads. Stopped prepare
+retains existing pending-state behavior and invalidates obsolete completions.
+
+Product A remains disabled: only inactive A render settings are carried unchanged,
+without reconstructing original controls or adding an Arp saved-state schema.
+All-off graph banks now commit in their first callback with no worker allocation,
+preserving the existing one-callback inactive-load workflow. Windows production
+state/legacy/shared CLI checks pass **8/8 (46.87s)**, core ownership **4/4 (32.00s)**,
+and actual WebView2 chain interaction/PCM checks pass at **64/128**. MIDI and Linux/
+sanitizer checks are pending. No package/push. Next after acceptance: versioned
+original Arp state/owner binding, then shared GUI/CLI/MIDI/BPM/voicing acceptance.
+
 ### Coordinated native FX bank — 13 November 2026
 
 The accepted staged Arp transaction can now optionally carry all twenty EQ,

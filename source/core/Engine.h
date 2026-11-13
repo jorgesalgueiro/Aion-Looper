@@ -73,6 +73,7 @@ struct ArpBankResult {
     std::uint32_t requestId=0,generation=0;
     ArpPreparationStatus status=ArpPreparationStatus::failed;
     LoopBank::ArpEpochs clearEpochs{},settingsRevisions{}; // Immutable terminal audio ownership.
+    std::uint64_t callbackSerial=0; // Zero for stopped prepare cancellation, otherwise exact producing callback.
 };
 struct PreparedArpInspection {bool active=false;ArpModValues targets{};ArpState state{};std::uint64_t frame=0;};
 struct AudioInspection {LoopView track{};std::uint64_t frame=0;float masterPeak=0;unsigned countInFlash=0;};
@@ -211,6 +212,7 @@ public:
     CallbackClockStamp inspectCallbackClockAudioThread() const noexcept {return callbackClock;}
 private:
     CallbackClockStamp callbackClock{}; // Last completed callback; audio owner only.
+    std::uint64_t activeCallbackSerial=0; // Current processing scope, zero outside process.
     DeviceOutputLatency outputLatency{}; // Validated and replaced at prepare only.
     std::unique_ptr<MidiController> midi=std::make_unique<MidiController>();
     std::atomic<std::uint32_t> midiCancellation{0};
