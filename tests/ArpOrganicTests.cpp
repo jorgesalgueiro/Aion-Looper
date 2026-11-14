@@ -80,6 +80,14 @@ static void streaming(){
     check(std::abs(static_cast<std::int64_t>(frame)-static_cast<std::int64_t>(notes)*delay)<=20,"actual onset remains near steady grid");expected+=state.interval;}
    check(frame<20000,"onset trace progresses");
   }
+  values[0]=4;check(kernel.prepare(8000,values,42,0,ArpVoicing::loose),"long-delay jump prepare");
+  for(unsigned frame=0;frame<32000;++frame){AudioScope audio;check(kernel.processCausal(&input,&input,2,&l,&r,1),"long-delay first onset");}
+  check(kernel.organicState().notes==1,"long-delay note acquired");
+  values[0]=.01f;
+  {AudioScope audio;check(kernel.setValues(values),"jump from four seconds to minimum delay");}
+  check(kernel.organicState().interval==delay&&kernel.organicState().offset==0,"actual kernel discards long-delay offset");
+  for(unsigned frame=0;frame<delay;++frame){AudioScope audio;check(kernel.processCausal(&input,&input,2,&l,&r,1),"short-delay onset after jump");}
+  check(kernel.organicState().notes==2,"tempo jump cannot strand the next note");
  }
  for(double rate:{8000.,22050.,32000.,44100.,48000.,96000.,192000.}){
   auto values=arpModDefaults();values[0]=.017f;values[2]=.8f;values[9]=.8f;
