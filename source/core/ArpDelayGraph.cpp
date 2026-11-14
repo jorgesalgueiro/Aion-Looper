@@ -3,12 +3,12 @@
 #include <algorithm>
 #include <limits>
 namespace aion {
-bool ArpDelayGraph::prepare(double rate,const ArpModValues& values,std::uint32_t seed,std::uint64_t firstFrame) noexcept {
+bool ArpDelayGraph::prepare(double rate,const ArpModValues& values,std::uint32_t seed,std::uint64_t firstFrame,ArpVoicing voicing) noexcept {
  // Prepare fixed modulation first, then allocate the delay. A failed allocation
  // leaves BOTH the old delay and automation/phase untouched. No graph copying.
  ArpModulation candidate;if(!candidate.prepare(rate,values,firstFrame))return false;
  ArpValues worklet{};std::copy_n(values.begin(),worklet.size(),worklet.begin());
- if(!delay.prepare(rate,worklet,seed,static_cast<unsigned>(firstFrame%128)))return false;
+ if(!delay.prepare(rate,worklet,seed,static_cast<unsigned>(firstFrame%128),voicing))return false;
  modulation=candidate;prepared=true;freshWorklet=true;return true;
 }
 bool ArpDelayGraph::reset(std::uint32_t seed,std::uint64_t firstFrame) noexcept {

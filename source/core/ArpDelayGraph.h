@@ -8,7 +8,7 @@ namespace aion {
 class ArpDelayGraph {
 public:
  static constexpr std::size_t maxProcessFrames=4096;
- bool prepare(double rate,const ArpModValues& =arpModDefaults(),std::uint32_t seed=123456789,std::uint64_t firstFrame=0) noexcept;
+ bool prepare(double rate,const ArpModValues& =arpModDefaults(),std::uint32_t seed=123456789,std::uint64_t firstFrame=0,ArpVoicing voicing=ArpVoicing::original) noexcept;
  bool reset(std::uint32_t seed=123456789,std::uint64_t firstFrame=0) noexcept;
  bool setTarget(std::size_t parameter,float value) noexcept{return prepared&&modulation.setTarget(parameter,value);}
  bool setBpmImmediate(float value) noexcept{return prepared&&modulation.setBpmImmediate(value);}
@@ -16,6 +16,7 @@ public:
  bool process(const float* left,const float* right,unsigned channels,float* outLeft,float* outRight,std::size_t frames) noexcept;
  const ArpModValues& targets() const noexcept{return modulation.targets();}
  ArpState state() const noexcept{return delay.state();}
+ ArpOrganicState organicState() const noexcept{return delay.organicState();}
  std::uint64_t position() const noexcept{return modulation.position();}
  unsigned latencyFrames() const noexcept{return 0;}
 private:

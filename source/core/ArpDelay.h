@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string_view>
 #include <vector>
+#include "ArpOrganicMotion.h"
 
 namespace aion {
 // Original worklet parameter order (host repetitions map to feedback / 11.1).
@@ -40,7 +41,7 @@ public:
  ArpDelay(ArpDelay&&)=delete;
  ArpDelay& operator=(ArpDelay&&)=delete;
  // Create/destroy this owner off audio; reset invalidates its ring in constant work.
- bool prepare(double rate,const ArpValues& =arpDefaults(),std::uint32_t seed=123456789,unsigned quantumOffset=0) noexcept;
+ bool prepare(double rate,const ArpValues& =arpDefaults(),std::uint32_t seed=123456789,unsigned quantumOffset=0,ArpVoicing voicing=ArpVoicing::original) noexcept;
  bool setValues(const ArpValues&) noexcept;
  bool reset(std::uint32_t seed=123456789,unsigned quantumOffset=0) noexcept;
  bool process(const float* left,const float* right,unsigned channels,
@@ -54,6 +55,7 @@ public:
  unsigned quantumPosition() const noexcept{return streamOffset;}
  const ArpValues& values() const noexcept{return controls;}
  ArpState state() const noexcept{return status;}
+ ArpOrganicState organicState() const noexcept{return organic.state();}
  std::size_t capacity() const noexcept{return ring.size();}
 private:
  struct Frame {float left=0,right=0;std::uint32_t generation=0;};
@@ -77,5 +79,7 @@ private:
  unsigned envelopeAttack=0;std::uint32_t generation=0,randomState=0;
  unsigned streamOffset=0;double streamPeak=0;
  bool streamActive=false,directStarted=false,streamStarted=false;
+ ArpVoicing voicing=ArpVoicing::original;
+ ArpOrganicMotion organic;
 };
 }

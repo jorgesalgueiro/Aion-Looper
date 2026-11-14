@@ -27,13 +27,13 @@ bool validArpValues(const ArpValues& values) noexcept {
  for(std::size_t p=0;p<values.size();++p)if(!std::isfinite(values[p])||values[p]<arpParameters[p].minimum||values[p]>arpParameters[p].maximum)return false;
  return true;
 }
-bool ArpDelay::prepare(double rate,const ArpValues& values,std::uint32_t seed,unsigned quantumOffset) noexcept {
- if(!std::isfinite(rate)||rate<8000||rate>384000||!validArpValues(values)||quantumOffset>=128)return false;
+bool ArpDelay::prepare(double rate,const ArpValues& values,std::uint32_t seed,unsigned quantumOffset,ArpVoicing mode) noexcept {
+ if(!std::isfinite(rate)||rate<8000||rate>384000||!validArpValues(values)||quantumOffset>=128||!validArpVoicing(mode))return false;
  try {
   std::vector<Frame> storage(static_cast<std::size_t>(std::floor(rate*4)));
   ring=std::move(storage);
  }catch(const std::bad_alloc&){return false;}
- sampleRate=rate;controls=values;generation=0;
+ sampleRate=rate;controls=values;generation=0;voicing=mode;
  configure();
  for(unsigned i=0;i<hann.size();++i)hann[i]=static_cast<float>(.5*(1-std::cos(2*std::numbers::pi*(i/1023.0))));
  return reset(seed,quantumOffset);
@@ -47,6 +47,7 @@ bool ArpDelay::reset(std::uint32_t seed,unsigned quantumOffset) noexcept {
  if(ring.empty()||generation==std::numeric_limits<std::uint32_t>::max()||quantumOffset>=128)return false;
  ++generation;status={};randomState=seed;rotations={};lowpass={};highpassInput={};highpassOutput={};
  wander=wanderTarget=envelopeTarget=0;envelopeAttack=0;
+ organic.reset(seed,config.delay,sampleRate);
  streamOffset=quantumOffset;streamPeak=0;streamActive=true;directStarted=streamStarted=false;return true;
 }
 void ArpDelay::Rotation::rotate(double cosine,double sine,bool normalize) noexcept {
@@ -102,6 +103,7 @@ void ArpDelay::configure() noexcept {
   delayTime=nearest*(60/bpm);
  }
  const auto delay=static_cast<unsigned>(std::max(32.0,std::floor(delayTime*sampleRate)));config.delay=delay;
+ if(voicing==ArpVoicing::loose)organic.retime(delay);
  const double factor=44100/sampleRate,driftSpeed=.0001*factor;
  config.speed={driftSpeed,driftSpeed*1.61803398875,.0007*factor,.0005*factor};
  for(unsigned i=0;i<4;++i)config.cosine[i]=1-config.speed[i]*config.speed[i]*.5;
@@ -122,7 +124,7 @@ double ArpDelay::render(const float* left,const float* right,unsigned channels,f
  for(std::size_t i=0;i<frames;++i){
   for(unsigned q=0;q<4;++q)rotations[q].rotate(cosine[q],speed[q],offset+i==0||(normalizeFirst&&i==0));
   wander+=(wanderTarget-wander)*wanderCoefficient;
-  if(++status.clock>=delay){
+  if(++status.clock>=(voicing==ArpVoicing::loose?organic.state().interval:delay)){
    status.clock=0;const auto& scale=scales[scaleIndex];const int length=static_cast<int>(lengths[scaleIndex]);
    if(!stay){
     int limit=length;
@@ -140,9 +142,11 @@ double ArpDelay::render(const float* left,const float* right,unsigned channels,f
    status.grainTarget=(1-std::pow(2,(status.semitone+detune)/12))/4096;
    const double accent=status.sequenceIndex%2==0?1:1-.10*humanize;
    envelopeTarget=accent*(1-humanize*.16*random());envelopeAttack=attack;
+   if(voicing==ArpVoicing::loose){organic.note(delay,humanize);envelopeTarget*=organic.state().gain;}
    wanderTarget=(random()-.5)*humanize*2.5;
   }
   const double pan=rotations[3].s;
+  const double organicPan=voicing==ArpVoicing::loose?organic.nextPan():0;
   status.grainRate+=(status.grainTarget-status.grainRate)*glide;
   if(envelopeAttack){status.envelope+=(envelopeTarget-status.envelope)*attackCoefficient;--envelopeAttack;}
   else status.envelope*=decay;
@@ -165,7 +169,8 @@ double ArpDelay::render(const float* left,const float* right,unsigned channels,f
    const double a=read(ch,r1),b=read(ch,r2);
    const double grain1=a+(read(ch,(r1+1)%ring.size())-a)*(pos1-r1);
    const double grain2=b+(read(ch,(r2+1)%ring.size())-b)*(pos2-r2);
-   const double wet=(grain1*window+grain2*otherWindow)*amplitude*stepGain;
+   const double wet=(grain1*window+grain2*otherWindow)*amplitude*stepGain*
+       (voicing==ArpVoicing::loose?std::sqrt(1+(ch?organicPan:-organicPan)):1);
    const double wx=wet*.9,wx2=wx*wx;
    const double feedbackSignal=wx*(27+wx2)/(.9*(27+9*wx2));
    const double highpass=.995*(highpassOutput[ch]+feedbackSignal-highpassInput[ch]);
