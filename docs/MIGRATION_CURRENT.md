@@ -11,6 +11,42 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Organic Arp DSP preview — 14 November 2026
+
+Optional `loose` preparation now adds bounded, grid-anchored note timing,
+per-note envelope dynamics and smoothed stereo balance through the existing
+Arp kernel/streaming graph. Separate fixed-state randomness preserves original
+RNG behavior. Feel zero on a fresh graph gives exact original PCM. Product
+defaults, native sessions/presets, GUI/CLI and preserved assets remain unchanged;
+this is **DSP groundwork, not finished new-instance product integration**.
+
+Windows focused organic/original kernel/stream/reference checks pass **4/4,
+30.11s**; Linux **4/4, 30.69s**. New tests cover 100,000 anchored intervals,
+actual kernel onsets, exact block 1/37/64/128 PCM/state at seven rates 8–192kHz,
+live tempo/STAY/Feel/feedback changes, seed/reset, mono/stereo/tails/in-place,
+idle and invalid-mode preservation, with zero observed callback new/delete.
+An added actual four-second-to-minimum-delay regression also passes on both OSes
+and under Linux sanitizers.
+Linux ASan/UBSan/leaks organic+streaming **2/2, 19.13s** without diagnostics.
+
+Saved unchanged-browser fixtures replay against the new Windows probe: **93
+comparisons, 6,094,848 stereo frames**, maximum error **2.3842e-7**, retaining
+the existing 1e-6 limit. These are fixture replays, not a fresh browser/GUI run.
+Audition WAVs (dry/original/loose, same seed/input/controls, Feel 0.35) render
+12 seconds at 48kHz without clipping. Windows warmed 20-Arp-only benchmark:
+original/loose p99 **537.2/550.2us** at 64 and **1032.3/1011.4us** at 128;
+no observed wall deadline overruns in 1,024 measured callbacks per case. Single
+runs do not establish a speedup, full-application deadline or driver latency.
+Linux loose p99 **484.308/958.910us**, also no observed wall overruns in that
+same limited fixture. Final Windows/Linux Standalone development builds pass.
+
+Next: versioned original/loose mode and seed ownership, fresh-instance/legacy/
+preset classification, shared GUI/CLI access and actual product-state/UI
+acceptance. Do not turn this preview on globally or infer mode from Float32
+controls. See `ARP_ORGANIC_VOICING.md` for policy, commands, evidence and limits.
+Listening preference, physical devices, Linux WebKit and broader integration
+remain unverified. No package or wrapper build.
+
 ### Arp MIDI sliders / exact state / bounded routing — 13 November 2026
 
 Nine original sliders append IDs 124..132. The existing selected-loop CC learn/

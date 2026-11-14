@@ -75,3 +75,61 @@ reload, MIDI edits, arbitrary user chains and editor reopening. Do not infer a
 mode from Float32 controls, or silently retune original presets. Real UI and both
 Standalone builds are required at that integration checkpoint. Physical audio,
 Linux WebKit interaction and subjective listening remain separate checks.
+
+## Executed evidence
+
+Snapshot `969b933`, unchanged DSP in `8faab5e` (stronger delay-jump regression):
+
+- Windows focused CTest selection above: **4/4, 30.11s**, log
+  `build/arp-organic-windows-tests.log`. Additional real-kernel four-second to
+  minimum-delay onset regression passes via the rebuilt test executable.
+- Linux same four checks: **4/4, 30.69s**, native mirror log
+  `build/arp-organic-linux-tests.log`.
+- Linux existing ASan/UBSan/leak cache, organic + original streaming tests:
+  **2/2, 19.13s**, `build/arp-organic-asan-tests.log`, no diagnostics. The first
+  build could not find the newly added target; `cmake -S . -B
+  build/overlap-asan` regenerated that existing cache before the passing run.
+- The stronger `8faab5e` onset regression subsequently passes normally on Linux
+  and under ASan/UBSan/leaks via the rebuilt `aion_arp_organic_tests` executable.
+  Windows and Linux `cmake --build --preset windows-dev/linux-dev --parallel 2`
+  Standalone builds both pass. No wrapper/package or actual GUI run was needed
+  for this DSP-only opt-in path; GUI/state integration is still pending.
+- Saved browser graph/preset/tempo fixture replay: **93 comparisons, 6,094,848
+  stereo frames**, maximum error **2.3841858e-7**, unchanged 1e-6 limit.
+  `build/arp-organic-original-browser-replay.log`. No fresh browser/GUI run.
+
+Fixture replay commands (append output to the same log if desired):
+
+```powershell
+node tests/ArpGraphWebAudio.cjs --fixtures build/arp-graph-browser-fixtures.json
+node tests/ArpGraphWebAudio.cjs --presets --fixtures build/arp-preset-browser-fixtures.json
+node tests/ArpGraphWebAudio.cjs --tempo --fixtures build/arp-tempo-browser-fixtures.json
+```
+
+Windows warmed wall-time benchmark, microseconds, 20 Arp graphs alone:
+
+| Block | Mode | Mean | p99 | Maximum | Deadline overruns |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 64 | original | 422.655 | 537.2 | 619.1 | 0 |
+| 64 | loose | 421.734 | 550.2 | 646.1 | 0 |
+| 128 | original | 858.890 | 1032.3 | 1124.7 | 0 |
+| 128 | loose | 847.840 | 1011.4 | 1080.9 | 0 |
+
+Log: `build/arp-organic-windows-benchmark.jsonl`. Each case has 1,024 measured
+callbacks; 48kHz deadlines are 1333.33/2666.67us. These sequential single runs do
+not show a statistically established performance difference or full-engine load.
+PCM16 listening renders have 576,000 stereo frames each, original/loose peak
+0.231323/0.191254, zero clipped samples; no loudness normalization or limiter was
+applied. Their sound still needs subjective audition.
+
+Linux same warmed fixture (`build/arp-organic-linux-benchmark.jsonl`):
+
+| Block | Mode | Mean | p99 | Maximum | Deadline overruns |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 64 | original | 421.901 | 570.120 | 988.449 | 0 |
+| 64 | loose | 414.738 | 484.308 | 561.721 | 0 |
+| 128 | original | 785.802 | 939.861 | 1013.24 | 0 |
+| 128 | loose | 805.619 | 958.910 | 1024.66 | 0 |
+
+The same single-run/scheduling/full-application limitations apply on Linux;
+cross-OS numbers do not establish a platform speedup.
