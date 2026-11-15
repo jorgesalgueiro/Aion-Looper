@@ -1,4 +1,55 @@
-# Organic Arp DSP preview — 14 November 2026
+# Organic Arp voicing
+
+## Product integration — 15 November 2026
+
+The native Arp module now has an **Original / Loose** voicing selector, with the
+same command/state implementation available to the running-app CLI. Fresh
+effects select Loose on their first successful enable. Bypass/re-enable,
+playback/history restarts, MIDI slider edits and ordinary save/reload retain the
+selected mode and seed. DEL creates a fresh effect; the following first enable
+selects Loose again. Original presets explicitly select Original; choosing a
+voicing explicitly clears the named preset identity but retains its controls.
+
+Seeds for fresh effects are deterministic per track:
+`123456789 ^ (0x9e3779b9 * (zeroBasedTrack + 1))`, with unsigned 32-bit wrap.
+Different tracks receive different seeds; clearing a track repeats its initial
+identity. This is not entropy-based seed selection. Persisted seeds, including
+original ones, are never replaced merely on bypass, restart or load.
+
+`LoopArps` version **2** persists explicit `voicing`, `fresh` and the existing
+exact controls/BPM/seed. Version 1 and absent banks load Original with
+`fresh=false`, including state loaded before prepare. Invalid/missing mode,
+invalid fresh/enabled/preset combinations and future versions reject atomically.
+No parameter/action IDs, MIDI binding slots, original presets or capacity change.
+
+Live mode changes keep the graph/ring, STAY sequence, envelope and reference RNG
+ownership. Returning to Original releases stereo motion over the existing 80ms
+smoothing rather than jumping to centre; the tiny tail snaps to zero to avoid
+denormals. Onset policy changes at the live gesture, without lookahead. Ordinary
+control and preset smoothing remains unchanged. Fresh classification by itself
+does not schedule an unnecessary startup audio restore; an explicitly loaded
+legacy bank still restores its original classification.
+
+```sh
+python tools/aion.py arp 1 get
+python tools/aion.py arp 1 voice --voicing loose
+python tools/aion.py arp 1 voice --voicing original
+```
+
+These use the existing private Standalone mailbox and exact Arp receipts. GUI
+and CLI do not create another audio engine. The selector is not a new continuous
+CC target; the existing nine Arp MIDI sliders retain IDs 124..132.
+
+Windows and Linux development Standalones build. Focused core/worker/owner and
+production state/CLI checks pass at 64/128; actual WebView2 selector, nonzero PCM,
+presets, arbitrary chain reordering, MIDI and reload pass separately at 64 and
+128. Exact prepared/restored/live stereo comparisons and a separately prepared
+Loose graph oracle protect actual worker rendering, not just metadata.
+Detailed commands/results and remaining validation are in MIGRATION_CURRENT.md.
+This is a working preview; subjective listening, physical devices, Linux WebKit,
+broader long-session and release checks remain separate.
+
+## Historical DSP checkpoint — 14 November 2026
 
 The owner selected loose timing, wider dynamics and natural stereo movement for
 **new** instances, preserving original presets and saved sound. This checkpoint

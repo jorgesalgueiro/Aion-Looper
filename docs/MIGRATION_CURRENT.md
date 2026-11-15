@@ -11,6 +11,107 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Organic Arp product integration — 15 November 2026
+
+Fresh effects now use Loose on their first successful enable. Existing native
+version-1/absent Arp banks retain Original, including load-before-prepare.
+Version 2 persists mode/fresh classification and the existing exact seed and
+controls. Original presets select Original; explicit mode choice clears preset
+identity but keeps its values. Bypass, MIDI, restarts and save/reload preserve
+mode/seed. DEL creates a fresh effect. Per-track deterministic seeds and exact
+semantics/CLI examples are documented in ARP_ORGANIC_VOICING.md.
+
+One bounded descriptor carries mode through worker preparation and bank restore;
+live changes preserve delay/STAY/envelope/reference RNG and settle stereo to
+centre smoothly. No new callback allocation, lock, I/O or DSP engine. Existing
+IDs, original assets/logo, runtime track capacity and wrapper policy unchanged.
+The native selector and `arp TRACK voice --voicing original|loose` share the
+existing processor/owner command, validation and exact acknowledgements.
+
+Windows core/connected/owner/bank/original-JS **5/5 (42.47s)**, then final
+pan-settling/core-owner/original-JS **3/3 (36.15s)**. A stronger independent
+worker-mode oracle subsequently passes both block sizes in the owner executable,
+alongside exact nonzero stereo prepared/restored/live comparisons. Production
+Arp state/CLI + full existing MIDI processor **3/3 (219.53s)**. Frontend checks
+pass. Windows Standalone and hardware-free UI host build.
+The final added load-before-prepare legacy regression is also rerun on Windows:
+production Arp **2/2 (21.59s)**, `arp-voicing-cold-restore-tests.log`.
+
+Actual WebView2 passes in isolated **64** and **128** runs: fresh Loose enable,
+trusted keyboard mode selection, original preset selection, nonzero playback,
+seed/clip preservation, STAY/controls/tempo, arbitrary A omission/reinsertion,
+MIDI DOM learn/conflict/removal and reload. Earlier attempts timed out or reached
+an empty about:blank before bootstrap during concurrent testing; their cause is
+not established. Added startup diagnostics retain the same bounds/assertions;
+no forced navigation, timing relaxation or product DSP change masks them.
+
+Two reproduced issues were fixed: fresh metadata initially scheduled an
+unnecessary startup restore, blocking first enable; prepare now separates that
+metadata while retaining explicit legacy restore intent. A new owner fixture
+incorrectly expected ordinary commands to dispatch at zero frames; it now waits
+for the exact receipt in a real callback and checks the graph clock continues.
+The old future-schema rejection moves from version 2 to 3, retaining rejection
+and adding malformed-mode/fresh and actual version-1 rollback coverage.
+
+Linux committed runtime snapshot `73273e9`: Standalone builds; selected organic/
+connected/owner/bank/original-JS + production Arp/CLI tests **7/7 (43.64s)**.
+Snapshot `5ad710b` adds the independent worker oracle and stronger real-editor
+startup diagnostics: Linux follow-up owner oracle passes; ASan/UBSan/leaks
+organic + owner + bank **3/3 (39.69s)** without diagnostics. Sanitizers cover
+core ownership, not the JUCE processor. Final saved browser graph-fixture replay
+passes **63 comparisons / 4,128,768 stereo frames**, max **2.3842e-7** against
+the unchanged 1e-6 limit (`arp-voicing-original-browser-replay.log`); this reuses
+previously captured original browser output, not a fresh browser sound capture.
+Final Linux TSAN organic/owner/bank **3/3 (60.78s)** without diagnostics
+(`arp-voicing-tsan-tests.log`, existing cache and `setarch x86_64 -R`).
+No package or wrapper build. Current Arp is a working preview, not full release
+acceptance. Physical/listening, Linux WebKit GUI, broader long-session, original
+JS project import and remaining unported FX stay open. Next is the remaining
+Arp lifecycle/integration audit, prioritizing the intermittent blank startup
+before declaring completion or moving to another reference effect.
+
+Narrow startup follow-up: the pinned JUCE WebView defaults to unloading on hide;
+its Windows implementation navigates to about:blank and attempts goBack when
+shown. The test host deliberately hides/shows at startup. This is a relevant
+mechanism, **not established causation** for these failures. Do not blindly add
+keep-page-loaded: retaining a hidden document must also retain blur/held-input,
+STUT, export and MIDI-learn cancellation safety. Reproduce with visibility and
+navigation evidence, then verify any fix against those lifecycle gates.
+
+Commands/logs for this slice (existing configured caches; no dependency change):
+
+```powershell
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_arp_processor_tests aion_mouse_host aion_midi_processor_tests --parallel 2
+ctest --test-dir build/windows -C Release -R '^(native_arp_processor_(64|128)|native_midi_processor)$' --output-on-failure --no-tests=error
+cmake --build build/windows-core --config Release --target aion_arp_organic_tests aion_arp_connected_tests aion_arp_owner_tests aion_arp_owner_bank_tests aion_arp_probe --parallel 2
+ctest --test-dir build/windows-core -C Release -R '^(arp_organic_dsp_contract|arp_connected_contract|arp_owner_contract|arp_owner_bank_contract|js_native_arp_delay)$' --output-on-failure --no-tests=error
+tools/TestArpUi.ps1 -Blocks 64
+tools/TestArpUi.ps1 -Blocks 128
+node tests/FrontendTests.cjs
+node tests/ArpGraphWebAudio.cjs --fixtures build/arp-graph-browser-fixtures.json
+```
+
+Windows logs: `arp-voicing-core-final-tests.log`,
+`arp-voicing-final-kernel-tests.log`, `arp-voicing-worker-oracle.log`,
+`arp-voicing-midi-product-tests.log`, `arp-voicing-ui-isolated.log`,
+`arp-voicing-ui128-isolated.log`, `arp-voicing-final-frontend.log` under `build/`.
+Keep `arp-voicing-ui-tests.log`, `arp-voicing-ui-keyboard-tests.log` and
+`arp-voicing-ui-startup-diagnostic.log` as failed-attempt evidence. Run editor
+checks separately from stress/broad suites; their earlier startup failure is
+not attributed conclusively to concurrent load.
+
+```sh
+cmake --build build/linux --target AionLooper_Standalone aion_arp_processor_tests aion_arp_organic_tests aion_arp_connected_tests aion_arp_owner_tests aion_arp_owner_bank_tests aion_arp_probe --parallel 2
+ctest --test-dir build/linux -R '^(arp_organic_dsp_contract|arp_connected_contract|arp_owner_contract|arp_owner_bank_contract|js_native_arp_delay|native_arp_processor_(64|128))$' --output-on-failure --no-tests=error
+cmake --build build/overlap-asan --target aion_arp_organic_tests aion_arp_owner_tests aion_arp_owner_bank_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/overlap-asan -R '^(arp_organic_dsp_contract|arp_owner_contract|arp_owner_bank_contract)$' --output-on-failure --no-tests=error
+cmake --build build/arp-storage-tsan --target aion_arp_organic_tests aion_arp_owner_tests aion_arp_owner_bank_tests --parallel 2
+TSAN_OPTIONS=halt_on_error=1 setarch x86_64 -R ctest --test-dir build/arp-storage-tsan -R '^(arp_organic_dsp_contract|arp_owner_contract|arp_owner_bank_contract)$' --output-on-failure --no-tests=error
+```
+
+Linux native `build/` logs: `arp-voicing-linux-tests.log`,
+`arp-voicing-worker-oracle.log`, `arp-voicing-asan-tests.log`.
+
 ### Organic Arp DSP preview — 14 November 2026
 
 Optional `loose` preparation now adds bounded, grid-anchored note timing,

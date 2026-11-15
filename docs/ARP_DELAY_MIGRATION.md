@@ -1,5 +1,15 @@
 # Arp Delay migration
 
+## Current voicing integration — 15 November 2026
+
+Organic voicing now reaches the production worker, exact settings owner,
+version-2 persistence, native selector and shared CLI. Fresh first enables use
+Loose; legacy banks and original presets preserve Original. See
+[ARP_ORGANIC_VOICING.md](ARP_ORGANIC_VOICING.md) for policy and commands and
+[MIGRATION_CURRENT.md](MIGRATION_CURRENT.md) for executed Windows/Linux/UI/
+sanitizer evidence and the unresolved intermittent blank-startup gate. Earlier
+entries below remain historical; they do not describe the current mode support.
+
 ## Nine original MIDI sliders — 13 November 2026
 
 Arp appends continuous MIDI targets **124..132**, preserving all previous IDs:
