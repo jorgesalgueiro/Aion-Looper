@@ -194,9 +194,14 @@ static void organic(unsigned block){
  Fixture f(block,true);check(f.owner.track(0)->committed.fresh,"fresh policy metadata");
  const auto old=f.owner.track(0)->committed;failAllocation=true;check(f.owner.enable(0,true,120,1001),"organic OOM enable");f.done(0,true);
  check(f.owner.track(0)->committed==old,"failed first enable preserves fresh classification and seed");
- for(unsigned id:{0u,19u}){check(f.owner.enable(id,true,120,1002+id),"new organic enable");f.done(id);
+ for(unsigned id:{0u,19u}){check(f.owner.enable(id,true,120,1002+id),"new organic enable");f.done(id,true);
   const auto& s=f.owner.track(id)->committed;check(!s.fresh&&s.controls.voicing==ArpVoicing::loose&&f.engine->inspectAudioThread(id).track.arp.voicing==ArpVoicing::loose,"exact owner and installed graph mode");}
  const auto seed=f.owner.track(0)->committed.seed;check(seed!=f.owner.track(19)->committed.seed,"per-track deterministic seeds differ");
+ ArpDelayGraph oracle;const auto settings=f.engine->inspectAudioThread(0).track.arp;
+ check(oracle.prepare(8000,settings.values,settings.seed,f.engine->inspectPreparedArpAudioThread(0).frame,ArpVoicing::loose),"independent loose streaming oracle");
+ std::array<float,128> ol{},orr{};
+ for(unsigned n=0;n<8192/block;++n){f.pump();Guard audio;check(oracle.process(nullptr,nullptr,0,ol.data(),orr.data(),block),"loose worker oracle render");}
+ check(f.engine->inspectPreparedArpAudioThread(0).state==oracle.state(),"worker actually prepares loose timing/RNG rather than only publishing loose metadata");
  check(f.owner.set(0,0,.01,120,1040),"organic live delay");f.done(0);
  for(unsigned i=0;i<30;++i)f.pump();const auto before=f.engine->inspectPreparedArpAudioThread(0);
  check(f.owner.voice(0,ArpVoicing::original,1041),"live original voice");f.done(0);

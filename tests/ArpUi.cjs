@@ -16,7 +16,8 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  let injected=0;const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${process.argv[2]}`);
  const inject=async messages=>{const id=++injected,tmp=path.join(directory,'midi-input.tmp');fs.writeFileSync(tmp,JSON.stringify({id,messages}));fs.renameSync(tmp,path.join(directory,'midi-input.json'));for(let n=0;n<150;++n){try{if(Number(fs.readFileSync(path.join(directory,'midi-ack'),'utf8'))===id)return;}catch{}await wait(20);}assert.fail('Arp synthetic MidiBuffer injection timeout');};
  await call('Runtime.enable');
- for(let n=0;n<100;++n){if(await evaluate(`!!document.querySelector('#native-arp-enabled')&&typeof AionNative?.request==='function'`))break;await wait(100);}
+ let ready=false;for(let n=0;n<100;++n){if(await evaluate(`!!document.querySelector('#native-arp-enabled')&&typeof window.AionNative?.request==='function'`)){ready=true;break;}await wait(100);}
+ assert(ready,JSON.stringify({page:await evaluate(`({url:location.href,ready:document.readyState,html:document.documentElement.outerHTML.slice(0,3000),scripts:[...document.scripts].map(s=>s.src)})`),errors}));
  await until(s=>s.audioReady&&s.inputAvailable,'audio active');
  for(const [id,value] of [['masterGain',1],['inputMonitor',0],['syncMode',0],['autoPlayAfterRecord',0],['metronomeVolume',0]])assert((await rpc({operation:'setParameter',id,value})).ok);
  await click('#loop-action-0');await until(s=>s.tracks[0].state==='recording','record');await wait(300);await click('#loop-action-0');await until(s=>s.tracks[0].state==='stopped','capture');
