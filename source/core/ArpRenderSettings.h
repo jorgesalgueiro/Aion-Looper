@@ -12,8 +12,9 @@ struct ArpRenderSettings {
  ArpModValues values=arpFactoryTargets();
  std::uint32_t seed=123456789; // Explicit DSP identity, not a product random policy.
  bool enabled=false;
+ ArpVoicing voicing=ArpVoicing::original;
  bool operator==(const ArpRenderSettings&) const noexcept = default;
 };
-inline bool validArpRenderSettings(const ArpRenderSettings& settings) noexcept {return validArpModValues(settings.values);}
+inline bool validArpRenderSettings(const ArpRenderSettings& settings) noexcept {return validArpModValues(settings.values)&&validArpVoicing(settings.voicing);}
 inline constexpr std::uint32_t arpAllParameters=(1u<<12)-1;
 }

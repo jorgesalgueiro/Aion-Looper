@@ -36,7 +36,8 @@ public:
   state_.offset=next;state_.gain=1+feel*((.35+.90*velocity)-1);
   state_.targetPan=(2*stereo-1)*.85*feel;++state_.notes;
  }
- double nextPan() noexcept {state_.pan+=(state_.targetPan-state_.pan)*smoothing;return state_.pan;}
+ double nextPan() noexcept {state_.pan+=(state_.targetPan-state_.pan)*smoothing;if(state_.targetPan==0&&std::abs(state_.pan)<1e-12)state_.pan=0;return state_.pan;}
+ void releasePan() noexcept {state_.targetPan=0;}
  const ArpOrganicState& state() const noexcept{return state_;}
 private:
  double random() noexcept {randomState=randomState*1664525u+1013904223u;return randomState/4294967296.;}

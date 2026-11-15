@@ -6,6 +6,8 @@ juce::String name(std::string_view s){return juce::String::fromUTF8(s.data(),sta
 juce::var value(const aion::ArpOwnedSettings& original){
  auto* object=new juce::DynamicObject;object->setProperty("enabled",original.controls.enabled);
  object->setProperty("preset",original.controls.preset?name(aion::arpPresetNames[original.controls.preset-1]):juce::String());
+ object->setProperty("voicing",original.fresh||original.controls.voicing==aion::ArpVoicing::loose?"loose":"original");
+ object->setProperty("fresh",original.fresh);object->setProperty("seed",static_cast<juce::int64>(original.seed));
  auto* values=new juce::DynamicObject;for(unsigned p=0;p<aion::arpControls.size();++p)values->setProperty(name(aion::arpControls[p].name),original.controls.values[p]);
  object->setProperty("values",juce::var(values));object->setProperty("bpm",original.bpm);return juce::var(object);
 }
@@ -42,6 +44,10 @@ bool AionProcessor::arpRequest(const juce::var& request,juce::DynamicObject& res
   for(;p<aion::arpPresetNames.size()&&preset.toString()!=name(aion::arpPresetNames[p]);++p){}
   if(p==aion::arpPresetNames.size())return fail("Unknown Arp preset");
   (void)aion::applyArpPreset(candidate.controls,p+1);candidate.bpm=bpm;accepted=arpOwner.preset(track,p+1,bpm,requestId);
+ }else if(action=="voice"){
+  const auto mode=request.getProperty("voicing",{});
+  if(!mode.isString()||(mode.toString()!="original"&&mode.toString()!="loose"))return fail("Expected original or loose voicing");
+  accepted=arpOwner.voice(track,mode.toString()=="loose"?aion::ArpVoicing::loose:aion::ArpVoicing::original,requestId);
  }else if(action=="set"){
   const auto parameter=request.getProperty("parameter",{});unsigned p=0;double number=0;
   if(!parameter.isString()||!numeric(request.getProperty("value",{}),number))return fail("Expected Arp parameter/value");
@@ -50,6 +56,6 @@ bool AionProcessor::arpRequest(const juce::var& request,juce::DynamicObject& res
   candidate.bpm=bpm;accepted=arpOwner.set(track,p,number,bpm,requestId);
  }else return fail("Unknown Arp action");
  if(!accepted)return fail("Arp command queue is full or unavailable");
- arpSettings[track]=candidate;nextRequest=requestId;
+ arpSettings[track]=*arpOwner.intent(track);nextRequest=requestId;
  result.setProperty("queued",true);result.setProperty("requestId",static_cast<juce::int64>(requestId));arpSnapshot(result,track);return true;
 }

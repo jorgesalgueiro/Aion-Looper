@@ -150,7 +150,8 @@ def main(argv=None):
     comp.add_argument('--values', type=strict_json, help='Parameter object, e.g. {"threshold":-24,"mix":0.5}')
     arp = commands.add_parser('arp', help='Per-loop Arp Delay on the running audio engine')
     arp.add_argument('track', type=track)
-    arp.add_argument('action', choices=('get', 'on', 'off', 'toggle', 'preset', 'set'))
+    arp.add_argument('action', choices=('get', 'on', 'off', 'toggle', 'preset', 'set', 'voice'))
+    arp.add_argument('--voicing', choices=('original', 'loose'), help='Original or organic loose voicing')
     arp.add_argument('--preset', help='Original preset name, e.g. sync-trip')
     arp.add_argument('--parameter', help='Original control name, e.g. repetitions or panDepth')
     arp.add_argument('--value', type=strict_json, help='Numeric control value')
@@ -237,6 +238,8 @@ def main(argv=None):
             request['order'] = args.order
         elif args.action in ('on', 'off'):
             request.update(action='enable', enabled=args.action == 'on')
+        elif args.action == 'voice' and args.command == 'arp':
+            request.update(voicing=args.voicing)
         elif args.action == 'preset':
             request['preset'] = args.preset
         elif args.action == 'set':

@@ -24,6 +24,7 @@ struct ArpSettings {
  ArpControlValues values=arpControlDefaults();
  bool enabled=false;
  std::uint8_t preset=0; // Zero is Custom/reference defaults; original names map to 1..8.
+ ArpVoicing voicing=ArpVoicing::original;
  bool operator==(const ArpSettings&) const noexcept = default;
 };
 inline constexpr std::uint32_t arpAllControls=(1u<<11)-1;

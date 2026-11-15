@@ -146,8 +146,8 @@ private:
     std::uint32_t lastEffectsRequest=0;
     std::uint32_t lastOrdinaryRequest=0; // Arp preparation/bank IDs are not ordinary FIFO acknowledgements.
     bool serviceEffectsRestore();
-    aion::ArpSettingsOwner arpOwner{engine}; // Sole consumer of Arp track and bank receipts.
-    aion::ArpSettingsOwner::Bank arpSettings{}; // Accepted original intent; no Float32 reconstruction.
+    aion::ArpSettingsOwner arpOwner{engine,true}; // Sole consumer; fresh product instances select loose once.
+    aion::ArpSettingsOwner::Bank arpSettings=[]{aion::ArpSettingsOwner::Bank b{};for(auto& s:b)s.fresh=true;return b;}(); // Exact accepted intent.
     bool arpRestorePending=false;
     using ArpTiming=std::array<float,8>;
     ArpTiming arpTiming{}; // Message/state owner only; APVTS values themselves are atomic.

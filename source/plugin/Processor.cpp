@@ -194,7 +194,12 @@ void AionProcessor::prepareToPlay(double rate, int) {
      arpOwner.service(latest);
      if(arpOwner.bound()&&!arpRestorePending&&!effectsRestore.active)for(unsigned id=0;id<arpSettings.size();++id)if(!arpOwner.track(id)->pending)arpSettings[id]=arpOwner.track(id)->committed;
      engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
-     engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);arpRestorePending=arpSettings!=aion::ArpSettingsOwner::Bank{};++effectsIntent;lastEffectsRequest=nextRequest;lastOrdinaryRequest=0;}
+     engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);
+     auto renderIntent=arpSettings;for(auto& s:renderIntent)s.fresh=false;
+     // Fresh classification alone needs no audio bank at first prepare. Keep a
+     // previously accepted restore even for all-default legacy banks: their
+     // explicit fresh=false must not be replaced by new-instance policy.
+     arpRestorePending=arpRestorePending||renderIntent!=aion::ArpSettingsOwner::Bank{};++effectsIntent;lastEffectsRequest=nextRequest;lastOrdinaryRequest=0;}
     deviceClockOwner=nextDeviceClockOwner;
     deviceClockEpoch=deviceClockOwner?deviceClockOwner->advance():0;
     activeDeviceClockEpoch.store(deviceClockEpoch,std::memory_order_release);

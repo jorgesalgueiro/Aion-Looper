@@ -8,7 +8,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  let serial=0;const replies=new Map(),errors=[];
  socket.addEventListener('message',e=>{const r=JSON.parse(e.data);if(r.method==='Runtime.exceptionThrown')errors.push(r.params.exceptionDetails);replies.get(r.id)?.(r);});
  const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++serial,timer=setTimeout(()=>{replies.delete(id);reject(Error(method+' timeout'));},12000);replies.set(id,r=>{clearTimeout(timer);replies.delete(id);r.error?reject(Error(JSON.stringify(r.error))):resolve(r.result);});socket.send(JSON.stringify({id,method,params}));});
- const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
+ const evaluate=async expression=>{let r;try{r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});}catch(error){throw Error(error.message+' evaluating '+expression.slice(0,180));}assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
  const rpc=request=>evaluate(`AionNative.request(${JSON.stringify(request)})`),snapshot=()=>rpc({operation:'snapshot'});
  const until=async(predicate,label)=>{let s;for(let n=0;n<160;++n){s=await snapshot();if(predicate(s))return s;await wait(50);}assert.fail(label+': '+JSON.stringify({arp:s?.tracks[0]?.arp,pending:s?.tracks[0]?.arpPending,errors}));};
  const rect=async selector=>{await evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'})`);await wait(150);return evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,disabled:e.disabled,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};})()`);};
@@ -21,7 +21,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  for(const [id,value] of [['masterGain',1],['inputMonitor',0],['syncMode',0],['autoPlayAfterRecord',0],['metronomeVolume',0]])assert((await rpc({operation:'setParameter',id,value})).ok);
  await click('#loop-action-0');await until(s=>s.tracks[0].state==='recording','record');await wait(300);await click('#loop-action-0');await until(s=>s.tracks[0].state==='stopped','capture');
  await click('#loop-action-0');await until(s=>s.tracks[0].state==='playing'&&s.outputPeak>.01,'nonzero playback');
- await click('#loop-0-arpDelay');await until(s=>s.tracks[0].arp.enabled&&s.tracks[0].arpReady,'async checkbox enable');
+ await click('#loop-0-arpDelay');await until(s=>s.tracks[0].arp.enabled&&s.tracks[0].arpReady&&s.tracks[0].arp.voicing==='loose'&&!s.tracks[0].arp.fresh,'async fresh loose checkbox enable');
  const timingTake=await snapshot();
  await evaluate(`document.getElementById('bpmInput').scrollIntoView({block:'center',behavior:'instant'});document.getElementById('bpmInput').focus()`);
  await call('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',windowsVirtualKeyCode:65,modifiers:2});
@@ -30,8 +30,14 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  const timed=await until(s=>Math.abs(s.syncBpm-173.25)<.001&&!s.tracks[0].arpBusy&&s.tracks[0].arp.bpm===s.syncBpm,'trusted Master BPM updates native Arp without touching Arp controls');
  assert.equal(timed.tracks[0].waveformId,timingTake.tracks[0].waveformId);assert.equal(timed.tracks[0].state,'playing');
  await click('#loop-0-arpDelay + span');assert(await evaluate(`document.querySelector('#native-arp-title').textContent.includes('Loop 1')`));
+ assert.equal(await evaluate(`document.querySelector('#native-arp-voicing').value`),'loose');
+ await evaluate(`document.querySelector('#native-arp-voicing').focus()`);await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Home',code:'Home',windowsVirtualKeyCode:36});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Home',code:'Home',windowsVirtualKeyCode:36});await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+ const originalVoice=await until(s=>s.tracks[0].arp.voicing==='original'&&s.tracks[0].arpReady&&s.outputPeak>.001,'actual keyboard selector changes voicing during nonzero playback');
+ assert.equal(originalVoice.tracks[0].waveformId,timingTake.tracks[0].waveformId);assert.equal(originalVoice.tracks[0].arp.seed,timingTake.tracks[0].arp.seed);
  await evaluate(`document.querySelector('#sel_arpDelay').value='sync-trip';document.querySelector('#sel_arpDelay').dispatchEvent(new Event('change',{bubbles:true}))`);
- await until(s=>s.tracks[0].arp.preset==='sync-trip'&&s.tracks[0].arpReady,'original preset');
+ await until(s=>s.tracks[0].arp.preset==='sync-trip'&&s.tracks[0].arp.voicing==='original'&&s.tracks[0].arpReady,'original preset');
+ await evaluate(`document.querySelector('#native-arp-voicing').focus()`);await call('Input.dispatchKeyEvent',{type:'keyDown',key:'End',code:'End',windowsVirtualKeyCode:35});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'End',code:'End',windowsVirtualKeyCode:35});await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+ await until(s=>s.tracks[0].arp.voicing==='loose'&&!s.tracks[0].arp.preset&&s.tracks[0].arpReady&&s.outputPeak>.001,'trusted organic selector retains playback and clears original preset identity');
  await click('#arpDelayStay');await until(s=>s.tracks[0].arp.values.stay===1&&s.tracks[0].arpReady,'STAY click');
  await click('#arpDelayHumanize');await call('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
  const desired=await evaluate(`Number(document.querySelector('#arpDelayHumanize').value)`);

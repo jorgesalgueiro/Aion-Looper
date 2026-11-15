@@ -11,7 +11,7 @@ bool LoopBank::applyArpTempoBank(const ArpBank& settings,const ArpEpochs& epochs
  if(!request||pendingArpBank.active)return false;
  for(unsigned id=0;id<trackCount;++id){const auto& old=tracks[id].info;const auto& next=settings[id];
   if(pendingArpSettings[id].active||epochs[id]!=tracks[id].clearEpoch||revisions[id]!=old.arpSettingsRevision||revisions[id]==UINT64_MAX||!validArpRenderSettings(next))return false;
-  if(next.enabled!=old.arp.enabled||next.seed!=old.arp.seed)return false;
+  if(next.enabled!=old.arp.enabled||next.seed!=old.arp.seed||next.voicing!=old.arp.voicing)return false;
   for(unsigned p=0;p<12;++p)if((p!=6||!old.arp.enabled)&&next.values[p]!=old.arp.values[p])return false;
   if(old.arp.enabled){auto* graph=arpStorage->graph(id);if(!graph||graph->position()==UINT64_MAX)return false;}
  }
@@ -41,14 +41,14 @@ void LoopBank::cancelArpBank() noexcept {
  arpStorage->cancelBank();bankArpResult={pendingArpBank.request,ArpBankStatus::cancelled};pendingArpBank={};
 }
 bool LoopBank::requestArpStorage(unsigned id,const ArpModValues& values,std::uint32_t seed,std::uint64_t epoch,
-                                bool activate,std::uint64_t revision,std::uint32_t request) noexcept {
+                                bool activate,std::uint64_t revision,std::uint32_t request,ArpVoicing voicing) noexcept {
  if(id>=trackCount||epoch!=tracks[id].clearEpoch)return false;
  const auto& info=tracks[id].info;
  if(activate){
   if(!request||revision!=info.arpSettingsRevision||revision==UINT64_MAX)return false;
  }else if(info.arp.enabled)return false; // Raw diagnostics cannot replace a live owner.
- if(!arpStorage->request(id,values,seed))return false;
- pendingArpSettings[id]=activate?PendingArpSettings{{values,seed,true},revision,epoch,request,true}:PendingArpSettings{};
+ if(!arpStorage->request(id,values,seed,voicing))return false;
+ pendingArpSettings[id]=activate?PendingArpSettings{{values,seed,true,voicing},revision,epoch,request,true}:PendingArpSettings{};
  return true;
 }
 void LoopBank::pollArps() noexcept {
@@ -101,6 +101,7 @@ bool LoopBank::setArp(unsigned id,const ArpRenderSettings& settings,std::uint32_
   // Validate before touching any lane. Each selected bit remains a gesture,
   // including an equal-value retarget; never restart unselected automation.
   if(graph->position()==UINT64_MAX)return false;
+  if(!graph->setVoicing(settings.voicing))return false;
   if(preset){for(const auto& write:arpPresetWrites(settings))(void)graph->setTarget(write.parameter,write.value);}
   else for(unsigned p=0;p<12;++p)if(mask&(1u<<p))(void)graph->setTarget(p,settings.values[p]);
  }else{

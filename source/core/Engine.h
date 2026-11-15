@@ -56,6 +56,7 @@ struct ArpPreparationRequest {
     bool edit=false,enabled=false,preset=false;
     std::uint32_t mask=arpAllParameters;
     std::uint64_t transaction=0;
+    ArpVoicing voicing=ArpVoicing::original;
 };
 enum class ArpPreparationStatus : std::uint8_t {ready,cancelled,stale,busy,failed};
 struct ArpPreparationResult {

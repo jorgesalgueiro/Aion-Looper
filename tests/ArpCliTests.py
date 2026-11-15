@@ -26,6 +26,10 @@ else:
     raise AssertionError('External Master BPM did not reach active Arp')
 assert abs(current['syncBpm'] - 173.25) < .001
 assert cli('arp', '20', 'get')['arp']['preset'] == 'sync-trip'
+assert cli('arp', '20', 'get')['arp']['voicing'] == 'original'
+assert cli('arp', '20', 'voice', '--voicing', 'loose')['applied']
+assert cli('arp', '20', 'get')['arp']['voicing'] == 'loose'
+assert cli('arp', '20', 'voice', '--voicing', 'original')['applied']
 assert cli('arp', '20', 'get')['arp']['enabled']
 assert not cli('arp', '1', 'get')['arp']['enabled']
 assert cli('midi', 'eqTrack', '--data', '{"track":19}')['ok']

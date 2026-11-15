@@ -21,6 +21,17 @@ int main(int argc,char** argv){
  auto request=[&](const char* text){auto v=juce::JSON::parse(text);v.getDynamicObject()->setProperty("generation",snapshot()["generation"]);v.getDynamicObject()->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis()+4000));return p->request({v});};
  unsigned stage=0;auto settle=[&]{++stage;for(unsigned n=0;n<2000;++n){state=process();bool pending=false;for(const auto& t:*state["tracks"].getArray())pending|=static_cast<bool>(t["arpBusy"]);if(!pending)return;std::this_thread::sleep_for(std::chrono::milliseconds(1));}std::cerr<<"stage "<<stage<<" generation "<<state["generation"].toString()<<" track19 "<<juce::JSON::toString(state["tracks"][19],true)<<'\n';check(false,"bounded Arp preparation completion");};
  juce::MemoryBlock original;p->getStateInformation(original);
+ check(state["tracks"][0]["arp"]["voicing"].toString()=="loose"&&static_cast<bool>(state["tracks"][0]["arp"]["fresh"]),"new product advertises upcoming loose first instance");
+ const auto freshEnable=request(R"({"operation":"arp","action":"enable","track":0,"enabled":true})");if(!freshEnable["ok"])std::cerr<<juce::JSON::toString(freshEnable,true)<<'\n';check(freshEnable["ok"],"fresh organic product enable");settle();
+ const auto organicSeed=p->inspectAudioThread(0).track.arp.seed;
+ check(p->inspectAudioThread(0).track.arp.voicing==aion::ArpVoicing::loose&&!static_cast<bool>(state["tracks"][0]["arp"]["fresh"]),"fresh mode reaches production graph");
+ check(request(R"({"operation":"arp","action":"voice","track":0,"voicing":"original"})")["ok"],"shared explicit original voice");settle();
+ check(p->inspectAudioThread(0).track.arp.voicing==aion::ArpVoicing::original&&p->inspectAudioThread(0).track.arp.seed==organicSeed,"live mode preserves seed");
+ check(!request(R"({"operation":"arp","action":"voice","track":0,"voicing":"unknown"})")["ok"],"invalid product voice rejected");
+ check(request(R"({"operation":"arp","action":"voice","track":0,"voicing":"loose"})")["ok"],"shared loose voice");settle();
+ juce::MemoryBlock organicSaved;p->getStateInformation(organicSaved);p->setStateInformation(organicSaved.getData(),static_cast<int>(organicSaved.getSize()));settle();
+ check(p->inspectAudioThread(0).track.arp.voicing==aion::ArpVoicing::loose&&p->inspectAudioThread(0).track.arp.seed==organicSeed,"version2 mode and seed round trip");
+ check(request(R"({"operation":"arp","action":"enable","track":0,"enabled":false})")["ok"],"bypass organic fixture");settle();
  check(request(R"({"operation":"arp","action":"set","track":19,"parameter":"time","value":0.12345678901234566})")["ok"],"original double edit admission");
  juce::MemoryBlock queued;p->getStateInformation(queued);settle();juce::MemoryBlock committed;p->getStateInformation(committed);check(queued==committed,"accepted edit serializes complete original precision before and after receipt");
  check(static_cast<double>(state["tracks"][19]["arp"]["values"]["time"])==0.12345678901234566,"no Float32 reconstruction");
@@ -54,6 +65,7 @@ int main(int argc,char** argv){
  check(request(R"({"operation":"setParameter","id":"syncBpm","value":117})")["ok"],"tempo admitted before prepare");
  p->prepareToPlay(8000,block);settle();
  check(static_cast<double>(state["tracks"][19]["arp"]["bpm"])==p->parameters.getRawParameterValue("syncBpm")->load()&&p->inspectAudioThread(19).track.arp.enabled,"prepare retires old tempo receipt and restores accepted original intent");
+ check(request(R"({"operation":"arp","action":"voice","track":19,"voicing":"loose"})")["ok"],"organic voice before continuous MIDI");settle();
  check(request(R"({"operation":"midiConfig","action":"enable","enabled":true})")["ok"],"Arp MIDI enable");
  check(request(R"({"operation":"midiConfig","action":"eqTrack","track":19})")["ok"],"Arp MIDI selected track");
  check(request(R"({"operation":"midiConfig","action":"learn","target":125})")["ok"],"Arp repetitions CC learn");process();
@@ -62,6 +74,7 @@ int main(int argc,char** argv){
  juce::MemoryBlock midiSaved;p->getStateInformation(midiSaved);auto midiXml=p->getXmlFromBinary(midiSaved.getData(),static_cast<int>(midiSaved.getSize()));
  const double repeats=(64/127.)*10;
  check(midiXml->getChildByName("LoopArps")->getChildElement(19)->getDoubleAttribute("repetitions")==repeats,"immediate save consumes exact MIDI originals before Timer/snapshot");
+ check(midiXml->getChildByName("LoopArps")->getChildElement(19)->getStringAttribute("voicing")=="loose"&&p->inspectAudioThread(19).track.arp.voicing==aion::ArpVoicing::loose,"MIDI and immediate save preserve organic mode");
  state=snapshot(); // Message owner accepts captured learn; the next callback acknowledges its configuration.
  state=process();check(static_cast<int>(state["midi"]["bindings"][125])==aion::midiBinding(2,11)&&static_cast<double>(state["tracks"][19]["arp"]["values"]["repetitions"])==repeats,"learn zero consumed; following same-block CC applies exact original value without editor");
  check(p->inspectAudioThread(19).track.arp.values[1]==static_cast<float>(repeats/11.1),"MIDI repetitions divide in double before render Float32");
@@ -79,7 +92,9 @@ int main(int argc,char** argv){
   juce::MemoryBlock malformed,after;p->copyXmlToBinary(*xml,malformed);p->setStateInformation(malformed.getData(),static_cast<int>(malformed.getSize()));p->getStateInformation(after);check(after==committed,"malformed Arp rejects whole session including other FX");
  }
  auto invalid=[&](auto mutate){auto xml=p->getXmlFromBinary(committed.getData(),static_cast<int>(committed.getSize()));mutate(*xml);juce::MemoryBlock bad,after;p->copyXmlToBinary(*xml,bad);p->setStateInformation(bad.getData(),static_cast<int>(bad.getSize()));p->getStateInformation(after);check(after==committed,"invalid Arp schema preserves complete prior session");};
- invalid([](auto& x){x.getChildByName("LoopArps")->setAttribute("version",2);});
+ invalid([](auto& x){x.getChildByName("LoopArps")->setAttribute("version",3);}); // Future schema remains rejected; version 2 now has explicit voicing.
+ invalid([](auto& x){x.getChildByName("LoopArps")->getChildElement(19)->setAttribute("voicing","unknown");});
+ invalid([](auto& x){x.getChildByName("LoopArps")->getChildElement(19)->setAttribute("fresh",1);});
  invalid([](auto& x){x.addChildElement(new juce::XmlElement(*x.getChildByName("LoopArps")));});
  invalid([](auto& x){x.getChildByName("LoopArps")->getChildElement(19)->setAttribute("track",0);});
  invalid([](auto& x){x.getChildByName("LoopArps")->getChildElement(19)->removeAttribute("mix");});
@@ -97,6 +112,16 @@ int main(int argc,char** argv){
  // Missing versioned bank is a legacy session, not an instruction to retain a
  // newer Arp from the current session. All old state schemas remain valid.
  auto legacy=p->getXmlFromBinary(original.getData(),static_cast<int>(original.getSize()));legacy->removeChildElement(legacy->getChildByName("LoopArps"),true);juce::MemoryBlock bytes;p->copyXmlToBinary(*legacy,bytes);load(bytes);check(!p->inspectAudioThread(19).track.arp.enabled,"legacy session defaults off");
+ {
+  auto cold=std::make_unique<AionProcessor>();cold->setStateInformation(bytes.getData(),static_cast<int>(bytes.getSize()));cold->setPlayConfigDetails(2,2,8000,block);cold->prepareToPlay(8000,block);
+  juce::var coldState;
+  for(unsigned n=0;n<32;++n){audio.clear();watch=true;cold->processBlock(audio,midi);watch=false;coldState=cold->request({juce::JSON::parse(R"({"operation":"snapshot"})")});}
+  check(!static_cast<bool>(coldState["tracks"][0]["arp"]["fresh"])&&coldState["tracks"][0]["arp"]["voicing"].toString()=="original","legacy loaded before prepare retains explicit original classification");
+ }
+ check(request(R"({"operation":"arp","action":"enable","track":0,"enabled":true})")["ok"],"absent-bank legacy enable");settle();check(p->inspectAudioThread(0).track.arp.voicing==aion::ArpVoicing::original,"absent bank cannot silently adopt new organic sound");
+ auto v1=p->getXmlFromBinary(committed.getData(),static_cast<int>(committed.getSize()));auto* v1Bank=v1->getChildByName("LoopArps");v1Bank->setAttribute("version",1);
+ for(auto* row=v1Bank->getFirstChildElement();row;row=row->getNextElement()){row->removeAttribute("voicing");row->removeAttribute("fresh");}p->copyXmlToBinary(*v1,bytes);load(bytes);
+ check(p->inspectAudioThread(19).track.arp.voicing==aion::ArpVoicing::original&&!static_cast<bool>(state["tracks"][0]["arp"]["fresh"]),"version1 bank always retains original voice");
  check(!request(R"({"operation":"arp","action":"set","track":19,"parameter":"time","value":3})")["ok"],"manual widget range remains distinct from stored preset range");
  check(request(R"({"operation":"loop","action":"clear","track":19})")["ok"],"DEL admission");
  check(!request(R"({"operation":"arp","action":"toggle","track":19})")["ok"],"Arp cannot cross an unacknowledged DEL barrier");settle();

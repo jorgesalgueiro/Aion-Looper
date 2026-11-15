@@ -4,7 +4,7 @@
 namespace aion {
 bool Engine::enqueueArpPreparation(ArpPreparationRequest request) noexcept {
     if(request.edit||request.transaction||request.track>=LoopBank::trackCount||!request.requestId||!request.generation
-       ||request.generation!=generation()||outstandingArpBank||outstandingArp[request.track]||!validArpModValues(request.values))return false;
+       ||request.generation!=generation()||outstandingArpBank||outstandingArp[request.track]||!validArpModValues(request.values)||!validArpVoicing(request.voicing))return false;
     request.cancellation=arpCancellations[request.track].load(std::memory_order_acquire);
     if(!arpRequests->push(request))return false;
     outstandingArp[request.track]=true;return true;
@@ -68,7 +68,7 @@ void Engine::serviceArpPreparations() noexcept {
         else if(request.activate&&request.settingsRevision!=loops.trackView(request.track).arpSettingsRevision)
             finishArpPreparation(request.track,ArpPreparationStatus::stale);
         else if(request.edit)pending.started=true;
-        else if(!loops.requestArpStorage(request.track,request.values,request.seed,request.clearEpoch,request.activate,request.settingsRevision,request.requestId))
+        else if(!loops.requestArpStorage(request.track,request.values,request.seed,request.clearEpoch,request.activate,request.settingsRevision,request.requestId,request.voicing))
             finishArpPreparation(request.track,ArpPreparationStatus::busy);
         else {pending.started=true;pending.installation=loops.arpStorageView(request.track).installation;}
     }

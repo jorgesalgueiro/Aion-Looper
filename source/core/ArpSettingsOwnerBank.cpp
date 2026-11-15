@@ -20,6 +20,7 @@ bool ArpSettingsOwner::restore(const Bank& candidate,std::uint32_t request,const
  ArpBankRequest command;command.requestId=request;command.generation=generation;
  if(effects){command.effects=*effects;command.restoreEffects=true;}
  for(unsigned id=0;id<records.size();++id){const auto& r=records[id];
+  if(candidate[id].fresh&&(candidate[id].controls.enabled||candidate[id].controls.preset||candidate[id].controls.voicing!=ArpVoicing::original))return false;
   if(r.pending||r.revision==UINT64_MAX||!compileArpSettings(candidate[id].controls,candidate[id].bpm,candidate[id].seed,command.settings[id]))return false;
   command.clearEpochs[id]=r.clearEpoch;command.settingsRevisions[id]=r.revision;
  }

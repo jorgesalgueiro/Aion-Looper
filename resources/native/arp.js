@@ -10,7 +10,12 @@
   module.innerHTML='<div class="module-header" style="color:#e0f"><span id="native-arp-title">ARP DELAY (A)</span><label><input type="checkbox" id="native-arp-enabled"> Arpd</label></div><div class="module-content"><div class="preset-row effect-preset-row"><label>Preset:</label><select class="effect-preset-select" id="sel_arpDelay" aria-label="Arp Delay Preset"><option value="">-- Select --</option></select></div><div style="margin:5px 0"><label><input type="checkbox" id="arpDelaySync"> Sync to Tempo</label></div><div id="native-arp-controls"></div></div>';
   document.getElementById('fx-controls-container').append(module);
   const preset=module.querySelector('select'),enabled=module.querySelector('#native-arp-enabled');
+  const voiceRow=document.createElement('div');voiceRow.className='preset-row effect-preset-row';
+  const voiceLabel=document.createElement('label');voiceLabel.textContent='Voicing:';voiceLabel.htmlFor='native-arp-voicing';
+  const voice=document.createElement('select');voice.id='native-arp-voicing';voice.className='effect-preset-select';voice.setAttribute('aria-label','Arp Delay Voicing');
+  voice.add(new Option('Original','original'));voice.add(new Option('Loose','loose'));voiceRow.append(voiceLabel,voice);module.querySelector('.preset-row').after(voiceRow);
   const send=(action,data={},key)=>enqueue(equalizer.selectedTrack(),{action,...data},key);
+  voice.addEventListener('change',()=>send('voice',{voicing:voice.value}));
   for(const p of presets)preset.add(new Option(p,p));
   preset.addEventListener('change',()=>{if(preset.value)send('preset',{preset:preset.value});});enabled.addEventListener('change',()=>send('toggle'));
   const flag=(name,id)=>{const input=module.querySelector('#'+id);input.addEventListener('change',()=>send('set',{parameter:name,value:input.checked?1:0}));return input;};
@@ -36,7 +41,7 @@
     const label=input.nextElementSibling;if(label)label.addEventListener('click',e=>{e.stopPropagation();equalizer.select(id);reveal();});toggles.push({input,track:id});
    },
    update(){const s=current(),track=equalizer.selectedTrack(),settings=s?.tracks[track]?.arp;if(!alive||!settings)return;
-    module.querySelector('#native-arp-title').textContent=`Loop ${track+1} — ARP DELAY (A)`;enabled.checked=settings.enabled;preset.value=settings.preset;sync.checked=!!settings.values.sync;stay.checked=!!settings.values.stay;
+    module.querySelector('#native-arp-title').textContent=`Loop ${track+1} — ARP DELAY (A)`;enabled.checked=settings.enabled;preset.value=settings.preset;voice.value=settings.voicing||'original';sync.checked=!!settings.values.sync;stay.checked=!!settings.values.stay;
     for(const c of controls){const index=window.AionMidiArpParameters.indexOf(c.name);c.edit.update(settings.values[c.name],!!s.midi?.bindings[124+index]);c.value.textContent=c.name==='scale'?scales[Math.floor(settings.values.scale)]:settings.values[c.name].toFixed(2);}
     for(const t of toggles){t.input.checked=!!s.tracks[t.track].arp?.enabled;t.input.disabled=!s.audioReady;}
    }

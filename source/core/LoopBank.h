@@ -76,7 +76,7 @@ public:
     // Internal storage/render admission. Product A and its GUI/CLI/state/MIDI
     // remain disabled until product-level connected acceptance.
     bool requestArpStorage(unsigned id,const ArpModValues&,std::uint32_t seed,std::uint64_t clearEpoch,
-                           bool activate=false,std::uint64_t settingsRevision=0,std::uint32_t request=0) noexcept;
+                           bool activate=false,std::uint64_t settingsRevision=0,std::uint32_t request=0,ArpVoicing=ArpVoicing::original) noexcept;
     void cancelArpStorage(unsigned id) noexcept {if(id<trackCount){cancelArpBank();arpStorage->cancel(id);pendingArpSettings[id]={};}}
     bool setArp(unsigned id,const ArpRenderSettings&,std::uint32_t mask,std::uint32_t request,
                 std::uint64_t clearEpoch,std::uint64_t settingsRevision,bool preset=false) noexcept;

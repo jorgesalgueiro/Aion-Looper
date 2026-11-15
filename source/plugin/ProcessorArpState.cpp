@@ -19,12 +19,13 @@ void AionProcessor::saveArps(juce::ValueTree& state){
  std::lock_guard guard(midiSettingsMutex);
  arpOwner.service(latest); // Serialized non-audio owner: save must include already accepted MIDI even before the Timer.
  if(arpOwner.bound()&&!arpRestorePending&&!effectsRestore.active)for(unsigned id=0;id<arpSettings.size();++id)if(!arpOwner.track(id)->pending)arpSettings[id]=arpOwner.track(id)->committed;
- juce::ValueTree bank("LoopArps");bank.setProperty("version",1,nullptr);
+ juce::ValueTree bank("LoopArps");bank.setProperty("version",2,nullptr);
  const auto timing=readArpTiming();const bool pendingTempo=timing!=arpTiming||arpTempoIntent!=arpTempoSeen;
  for(unsigned id=0;id<arpSettings.size();++id){auto original=arpSettings[id];
   if(pendingTempo&&original.controls.enabled)original.bpm=timing[0]; // Include not-yet-admitted automatic intent in immediate save.
   juce::ValueTree row("Arp");row.setProperty("track",static_cast<int>(id),nullptr);
   row.setProperty("enabled",original.controls.enabled,nullptr);row.setProperty("preset",static_cast<int>(original.controls.preset),nullptr);
+  row.setProperty("voicing",original.controls.voicing==aion::ArpVoicing::loose?"loose":"original",nullptr);row.setProperty("fresh",original.fresh,nullptr);
   row.setProperty("bpm",exact(original.bpm),nullptr);row.setProperty("seed",juce::String(static_cast<juce::int64>(original.seed)),nullptr);
   for(unsigned p=0;p<aion::arpControls.size();++p)row.setProperty(key(aion::arpControls[p].name),exact(original.controls.values[p]),nullptr);
   bank.appendChild(row,nullptr);
@@ -35,13 +36,20 @@ bool AionProcessor::readArps(const juce::ValueTree& state,aion::ArpSettingsOwner
  aion::ArpSettingsOwner::Bank candidate{};const auto bank=state.getChildWithName("LoopArps");
  if(!bank.isValid()){output=candidate;return true;} // Existing native sessions retain original defaults/off.
  unsigned count=0;for(const auto& child:state)if(child.hasType("LoopArps"))++count;
- if(count!=1||bank.getProperty("version").toString()!="1"||bank.getNumChildren()!=static_cast<int>(candidate.size()))return false;
+ const auto version=bank.getProperty("version").toString();
+ if(count!=1||(version!="1"&&version!="2")||bank.getNumChildren()!=static_cast<int>(candidate.size()))return false;
  std::array<bool,aion::LoopBank::trackCount> seen{};
  for(const auto& row:bank){unsigned id=0,preset=0;
   if(!row.hasType("Arp")||!number(row.getProperty("track"),id)||id>=candidate.size()||seen[id])return false;
   seen[id]=true;auto& original=candidate[id];const auto enabled=row.getProperty("enabled").toString();
   if((enabled!="0"&&enabled!="1")||!number(row.getProperty("preset"),preset)||preset>aion::arpPresetNames.size())return false;
   original.controls.enabled=enabled=="1";original.controls.preset=static_cast<std::uint8_t>(preset);
+  if(version=="2"){
+   const auto mode=row.getProperty("voicing").toString(),fresh=row.getProperty("fresh").toString();
+   if((mode!="original"&&mode!="loose")||(fresh!="0"&&fresh!="1"))return false;
+   original.controls.voicing=mode=="loose"?aion::ArpVoicing::loose:aion::ArpVoicing::original;original.fresh=fresh=="1";
+   if(original.fresh&&(original.controls.enabled||original.controls.preset||original.controls.voicing!=aion::ArpVoicing::original))return false;
+  }
   if(!number(row.getProperty("bpm"),original.bpm)||!number(row.getProperty("seed"),original.seed))return false;
   for(unsigned p=0;p<aion::arpControls.size();++p)if(!number(row.getProperty(key(aion::arpControls[p].name)),original.controls.values[p]))return false;
   aion::ArpRenderSettings render;if(!aion::compileArpSettings(original.controls,original.bpm,original.seed,render))return false;

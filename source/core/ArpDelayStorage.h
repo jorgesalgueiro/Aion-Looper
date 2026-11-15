@@ -25,7 +25,7 @@ public:
  void releaseStopped() noexcept;
  // Audio only. At most one pending request per track. Rejection is atomic;
  // callers must cancel explicitly before replacing a pending request.
- bool request(unsigned track,const ArpModValues&,std::uint32_t seed) noexcept;
+ bool request(unsigned track,const ArpModValues&,std::uint32_t seed,ArpVoicing=ArpVoicing::original) noexcept;
  // One all-or-nothing bank, mutually exclusive with individual preparations.
  // Admission reserves all needed slots before publishing any worker work.
  bool requestBank(const Bank&) noexcept;
@@ -49,6 +49,7 @@ private:
   unsigned track=0;
   bool bankMember=false; // immutable between queued publication and retirement
   std::uint32_t seed=0;
+  ArpVoicing voicing=ArpVoicing::original;
   ArpModValues values{};
   std::optional<ArpDelayGraph> graph; // constructed/destroyed ONLY off audio
  };

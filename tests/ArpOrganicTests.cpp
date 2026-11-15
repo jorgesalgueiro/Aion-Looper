@@ -71,6 +71,16 @@ static std::vector<float> render(ArpDelayGraph& graph,unsigned block,unsigned fr
 static void streaming(){
  {
   ArpDelay kernel;auto values=arpDefaults();values[0]=.01f;values[9]=1;
+  check(kernel.prepare(8000,values,42,0,ArpVoicing::loose),"mode transition prepare");float in=.1f,l=0,r=0;
+  for(unsigned i=0;i<2000;++i){AudioScope audio;check(kernel.processCausal(&in,&in,2,&l,&r,1),"acquire stereo motion");}
+  const auto before=kernel.state();const auto pan=kernel.organicState().pan;
+  {AudioScope audio;check(kernel.setVoicing(ArpVoicing::original),"live original setter");}
+  check(kernel.state()==before&&kernel.organicState().pan==pan&&kernel.organicState().targetPan==0,"mode switch preserves delay/envelope/RNG and releases pan smoothly");
+  for(unsigned i=0;i<32000;++i){AudioScope audio;check(kernel.processCausal(&in,&in,2,&l,&r,1),"stereo settles");}
+  check(kernel.organicState().pan==0,"original mode settles exactly without denormal pan tail");
+ }
+ {
+  ArpDelay kernel;auto values=arpDefaults();values[0]=.01f;values[9]=1;
   check(kernel.prepare(8000,values,42,0,ArpVoicing::loose),"onset trace prepare");
   const unsigned delay=static_cast<unsigned>(std::floor(double(values[0])*8000));unsigned expected=delay,notes=0;float input=.1f,l=0,r=0;
   for(unsigned frame=1;notes<200;++frame){

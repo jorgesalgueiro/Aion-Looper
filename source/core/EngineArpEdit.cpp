@@ -20,7 +20,7 @@ bool Engine::enqueueArpEdit(LoopCommand command,std::uint64_t& transaction) noex
  if(!arpRequests->canPush()||!loopCommands->canPush())return false;
  command.arpTransaction=nextArpTransaction+1;
  ArpPreparationRequest request;request.track=command.track;request.requestId=command.requestId;request.generation=command.generation;
- request.seed=command.arp.seed;request.values=command.arp.values;request.clearEpoch=command.arpClearEpoch;request.settingsRevision=command.arpSettingsRevision;
+ request.seed=command.arp.seed;request.values=command.arp.values;request.clearEpoch=command.arpClearEpoch;request.settingsRevision=command.arpSettingsRevision;request.voicing=command.arp.voicing;
  request.activate=true;request.edit=true;request.enabled=command.arp.enabled;request.preset=command.arpPreset;request.mask=command.arpMask;
  request.transaction=command.arpTransaction;request.cancellation=arpCancellations[command.track].load(std::memory_order_acquire);
  // The message owner is the only producer of BOTH queues. After both capacity

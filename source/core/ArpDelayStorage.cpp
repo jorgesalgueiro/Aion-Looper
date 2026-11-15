@@ -13,10 +13,10 @@ void ArpDelayStorage::releaseStopped() noexcept {
  active.fill(nullptr);pending.fill(nullptr);bankSlots.fill(nullptr);bankActive=false;failed.fill(false);installations.fill(0);
  outstanding=workerCursor=0;rate=0;
 }
-bool ArpDelayStorage::request(unsigned track,const ArpModValues& values,std::uint32_t seed) noexcept {
- if(track>=trackCount||!rate||bankActive||pending[track]||!validArpModValues(values))return false;
+bool ArpDelayStorage::request(unsigned track,const ArpModValues& values,std::uint32_t seed,ArpVoicing voicing) noexcept {
+ if(track>=trackCount||!rate||bankActive||pending[track]||!validArpModValues(values)||!validArpVoicing(voicing))return false;
  for(auto& slot:*slots)if(slot.phase.load(std::memory_order_acquire)==Phase::free){
-  slot.track=track;slot.seed=seed;slot.values=values;slot.bankMember=false;
+  slot.track=track;slot.seed=seed;slot.values=values;slot.bankMember=false;slot.voicing=voicing;
   slot.cancelled.store(false,std::memory_order_relaxed);
   pending[track]=&slot;failed[track]=false;++outstanding;
   slot.phase.store(Phase::queued,std::memory_order_release);return true;
@@ -72,7 +72,7 @@ void ArpDelayStorage::serviceWorker() noexcept {
   slot.phase.store(Phase::preparing,std::memory_order_relaxed);
   bool ready=false;
   if(!slot.cancelled.load(std::memory_order_acquire)){
-   slot.graph.emplace();ready=slot.graph->prepare(rate,slot.values,slot.seed);
+   slot.graph.emplace();ready=slot.graph->prepare(rate,slot.values,slot.seed,0,slot.voicing);
   }
   // Cancellation during allocation is allowed; audio rejects the result by
   // exact slot identity. Neither owner touches a graph held by the other.

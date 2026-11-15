@@ -22,7 +22,7 @@ using namespace aion;
 struct Fixture {
  std::unique_ptr<Engine> engine=std::make_unique<Engine>();ArpSettingsOwner owner{*engine};unsigned block;
  std::array<float,128> l{},r{};EngineView latest{},initial{};
- explicit Fixture(unsigned frames):block(frames){engine->prepare(8000,32768);engine->setMonitoring(false);engine->setAutoPlay(true);engine->setTarget(1);pump(true);drain();initial=latest;check(owner.bind(latest),"bind known original defaults");}
+ explicit Fixture(unsigned frames,bool loose=false):owner(*engine,loose),block(frames){engine->prepare(8000,32768);engine->setMonitoring(false);engine->setAutoPlay(true);engine->setTarget(1);pump(true);drain();initial=latest;ArpSettingsOwner::Bank known{};for(auto& s:known)s.fresh=loose;check(owner.bind(latest,known),"bind known original defaults");}
  void pump(bool zero=false,bool offline=false){float* audio[]{l.data(),r.data()};Guard guard;engine->process(zero?nullptr:audio,zero?0:2,zero?0:static_cast<int>(block),{},offline);}
  void drain(){while(engine->popView(latest)){};}
  void service(){drain();owner.service(latest);}
@@ -172,5 +172,46 @@ static void midiOriginals(unsigned block){
  event.data1=21;event.data2=63;{float* audio[]{f.l.data(),f.r.data()};Guard guard;f.engine->process(audio,2,block,{&event,1});}f.service();
  check(f.owner.bound()&&!f.owner.track(0)->committed.controls.enabled&&f.owner.track(0)->committed.controls.values[1]==arpMidiValue(1,63),"clear then fresh same-block CC reconciles from reset revision without revival");
 }
-int main(){for(unsigned block:{64u,128u}){model(block);clearAndGeneration(block);rejectedAndFull(block);allTracks(block);pcm(block);protocol(block);knownPrecision(block);midiOriginals(block);}concurrent();
+static void organicPcm(unsigned block){
+ Fixture actual(block,true),reference(block);
+ for(auto* f:{&actual,&reference})f->command(LoopAction::record);
+ for(unsigned n=0;n<2048/block;++n)for(auto* f:{&actual,&reference}){for(unsigned i=0;i<block;++i){f->l[i]=static_cast<float>(.15*std::sin((n*block+i)*.117));f->r[i]=static_cast<float>(.12*std::cos((n*block+i)*.037));}f->pump();}
+ for(auto* f:{&actual,&reference}){f->command(LoopAction::finish);f->service();}
+ check(actual.owner.enable(0,true,137,2001),"organic PCM product enable");actual.done(0,true);
+ auto bank=actual.originals();check(reference.owner.restore(bank,2002),"explicit loose reference bank");
+ wait([&]{reference.pump(true);reference.service();return !reference.owner.restoring();},"loose PCM restore ready");
+ check(actual.engine->clock()==reference.engine->clock(),"paired source/graph clocks");double energy=0;
+ for(auto mode:{ArpVoicing::loose,ArpVoicing::original,ArpVoicing::loose}){
+  const auto at=actual.engine->clock()+13;check(actual.owner.voice(0,mode,2003,at),"tracked sample-offset mode");
+  const auto info=reference.engine->inspectAudioThread().track;LoopCommand c{LoopAction::arpDelay,0,2003,reference.engine->generation(),at};c.arp=info.arp;c.arp.voicing=mode;c.arpMask=0;c.arpClearEpoch=info.clearEpoch;c.arpSettingsRevision=info.arpSettingsRevision;
+  check(reference.engine->enqueueLoop(c),"direct sample-offset reference mode");
+  for(unsigned n=0;n<4096/block;++n){for(auto* f:{&actual,&reference}){f->l.fill(0);f->r.fill(0);f->pump();}actual.service();
+   for(unsigned i=0;i<block;++i){check(actual.l[i]==reference.l[i]&&actual.r[i]==reference.r[i],"exact nonzero stereo PCM for prepared/restored/live organic modes");energy+=std::abs(actual.l[i])+std::abs(actual.r[i]);}}
+ }
+ check(energy>1&&actual.owner.bound(),"audible organic PCM and live owner remain synchronized");
+}
+static void organic(unsigned block){
+ Fixture f(block,true);check(f.owner.track(0)->committed.fresh,"fresh policy metadata");
+ const auto old=f.owner.track(0)->committed;failAllocation=true;check(f.owner.enable(0,true,120,1001),"organic OOM enable");f.done(0,true);
+ check(f.owner.track(0)->committed==old,"failed first enable preserves fresh classification and seed");
+ for(unsigned id:{0u,19u}){check(f.owner.enable(id,true,120,1002+id),"new organic enable");f.done(id);
+  const auto& s=f.owner.track(id)->committed;check(!s.fresh&&s.controls.voicing==ArpVoicing::loose&&f.engine->inspectAudioThread(id).track.arp.voicing==ArpVoicing::loose,"exact owner and installed graph mode");}
+ const auto seed=f.owner.track(0)->committed.seed;check(seed!=f.owner.track(19)->committed.seed,"per-track deterministic seeds differ");
+ check(f.owner.set(0,0,.01,120,1040),"organic live delay");f.done(0);
+ for(unsigned i=0;i<30;++i)f.pump();const auto before=f.engine->inspectPreparedArpAudioThread(0);
+ check(f.owner.voice(0,ArpVoicing::original,1041),"live original voice");f.done(0);
+ const auto after=f.engine->inspectPreparedArpAudioThread(0);check(after.frame==before.frame+block&&after.active,"mode gesture preserves active graph clock instead of restarting it");
+ check(f.owner.track(0)->committed.seed==seed&&f.owner.track(0)->committed.controls.voicing==ArpVoicing::original,"voice commit preserves seed");
+ check(!f.owner.voice(0,static_cast<ArpVoicing>(255),1042),"invalid voice atomic");
+ check(f.owner.voice(0,ArpVoicing::loose,1043),"return loose");f.done(0);
+ check(f.owner.preset(0,1,120,1044),"original preset after organic");f.done(0);
+ check(f.owner.track(0)->committed.controls.voicing==ArpVoicing::original&&f.owner.track(0)->committed.controls.preset==1,"original preset restores original voicing");
+ check(f.owner.enable(0,false,120,1045),"bypass original");f.done(0);check(f.owner.enable(0,true,120,1046),"re-enable chosen original");f.done(0);
+ check(f.owner.track(0)->committed.controls.voicing==ArpVoicing::original&&f.owner.track(0)->committed.seed==seed,"bypass cannot reapply fresh policy");
+ auto saved=f.originals();check(f.owner.restore(saved,1047),"voice bank restore");wait([&]{f.pump();f.service();return !f.owner.restoring();},"organic restore receipt");
+ check(f.originals()==saved&&f.engine->inspectAudioThread(19).track.arp.voicing==ArpVoicing::loose,"all-bank restore retains mixed modes and seeds");
+ f.command(LoopAction::clear);f.service();check(f.owner.track(0)->committed.fresh,"DEL creates a fresh effect");
+ check(f.owner.enable(0,true,120,1048),"fresh after DEL");f.done(0);check(f.owner.track(0)->committed.controls.voicing==ArpVoicing::loose&&f.owner.track(0)->committed.seed==seed,"DEL restarts stable per-track organic identity");
+}
+int main(){for(unsigned block:{64u,128u}){organic(block);organicPcm(block);model(block);clearAndGeneration(block);rejectedAndFull(block);allTracks(block);pcm(block);protocol(block);knownPrecision(block);midiOriginals(block);}concurrent();
  std::cout<<"PASS original Arp owner: exact committed doubles/presets, exact stereo PCM, enable/OOM rollback, tracked acceptance/rejection, stale views/generations/clears, full queues, future cancellation and same-ID recovery, all-20 receipts, concurrent mid-callback publication, zero callback new/delete / 64/128\n";}

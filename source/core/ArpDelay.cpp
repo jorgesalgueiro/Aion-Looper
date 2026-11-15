@@ -50,6 +50,15 @@ bool ArpDelay::reset(std::uint32_t seed,unsigned quantumOffset) noexcept {
  organic.reset(seed,config.delay,sampleRate);
  streamOffset=quantumOffset;streamPeak=0;streamActive=true;directStarted=streamStarted=false;return true;
 }
+bool ArpDelay::setVoicing(ArpVoicing mode) noexcept {
+ if(ring.empty()||!validArpVoicing(mode))return false;
+ if(mode==voicing)return true;
+ // Keep delay/STAY/envelope/pitch/RNG ownership. Settle stereo to centre when
+ // returning to original rather than dropping the existing balance in one sample.
+ if(mode==ArpVoicing::loose)organic.retime(config.delay);
+ else organic.releasePan();
+ voicing=mode;return true;
+}
 void ArpDelay::Rotation::rotate(double cosine,double sine,bool normalize) noexcept {
  const double next=c*cosine-s*sine;s=s*cosine+c*sine;c=next;
  if(normalize){const double a=c*c+s*s;if(a>0){const double n=2/(1+a);c*=n;s*=n;}}
@@ -146,7 +155,7 @@ double ArpDelay::render(const float* left,const float* right,unsigned channels,f
    wanderTarget=(random()-.5)*humanize*2.5;
   }
   const double pan=rotations[3].s;
-  const double organicPan=voicing==ArpVoicing::loose?organic.nextPan():0;
+  const double organicPan=voicing==ArpVoicing::loose||organic.state().pan!=0?organic.nextPan():0;
   status.grainRate+=(status.grainTarget-status.grainRate)*glide;
   if(envelopeAttack){status.envelope+=(envelopeTarget-status.envelope)*attackCoefficient;--envelopeAttack;}
   else status.envelope*=decay;
@@ -170,7 +179,7 @@ double ArpDelay::render(const float* left,const float* right,unsigned channels,f
    const double grain1=a+(read(ch,(r1+1)%ring.size())-a)*(pos1-r1);
    const double grain2=b+(read(ch,(r2+1)%ring.size())-b)*(pos2-r2);
    const double wet=(grain1*window+grain2*otherWindow)*amplitude*stepGain*
-       (voicing==ArpVoicing::loose?std::sqrt(1+(ch?organicPan:-organicPan)):1);
+       (organicPan!=0?std::sqrt(1+(ch?organicPan:-organicPan)):1);
    const double wx=wet*.9,wx2=wx*wx;
    const double feedbackSignal=wx*(27+wx2)/(.9*(27+9*wx2));
    const double highpass=.995*(highpassOutput[ch]+feedbackSignal-highpassInput[ch]);

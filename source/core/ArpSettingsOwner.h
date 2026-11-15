@@ -6,6 +6,7 @@ struct ArpOwnedSettings {
  ArpSettings controls{};
  double bpm=120;
  std::uint32_t seed=123456789; // Explicit known-session identity, not a product random policy.
+ bool fresh=false; // Product-only first-enable policy; legacy/core fixtures stay explicit.
  bool operator==(const ArpOwnedSettings&) const noexcept=default;
 };
 struct ArpOwnedTrack {
@@ -24,7 +25,7 @@ struct ArpOwnedTrack {
 class ArpSettingsOwner {
 public:
  using Bank=std::array<ArpOwnedSettings,LoopBank::trackCount>;
- explicit ArpSettingsOwner(Engine& backend) noexcept:engine(backend){}
+ explicit ArpSettingsOwner(Engine& backend,bool looseNewInstances=false) noexcept:engine(backend),organicNewInstances(looseNewInstances){for(auto& r:records)r.committed.fresh=looseNewInstances;}
  // Bind ONLY known original values, never infer doubles/preset names from raw
  // Float32 render targets. Reject the complete bind on mismatch or pending work.
  bool bind(const EngineView&,const Bank& known=Bank{}) noexcept;
@@ -32,6 +33,8 @@ public:
  bool set(unsigned track,unsigned parameter,double value,double bpm,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool preset(unsigned track,unsigned preset,double bpm,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool enable(unsigned track,bool enabled,double bpm,std::uint32_t request,std::uint64_t frame=0) noexcept;
+ bool voice(unsigned track,ArpVoicing,std::uint32_t request,std::uint64_t frame=0) noexcept;
+ const ArpOwnedSettings* intent(unsigned id) const noexcept {return id<records.size()?(bank.active?&bank.candidate[id]:records[id].pending?&pending[id].candidate:&records[id].committed):nullptr;}
  // Internal restore: prepare all Arp graphs, optionally stage Q/C/user chains,
  // commit original Arp settings on the exact receipt. Product state binding and
  // the legacy importer are separate; this method never parses session files.
@@ -61,5 +64,6 @@ private:
  ArpBankResult bankReceipt{}; // Immutable terminal evidence for the enclosing FX owner.
  std::uint32_t generation=0;
  bool attached=false;
+ bool organicNewInstances=false;
 };
 }

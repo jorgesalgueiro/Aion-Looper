@@ -15,7 +15,7 @@ bool ArpSettingsOwner::submit(unsigned id,const ArpOwnedSettings& candidate,std:
  const auto& old=records[id];std::uint64_t transaction=0;
  if(prepare){
   ArpPreparationRequest command;command.track=id;command.requestId=request;command.generation=generation;command.values=render.values;command.seed=render.seed;
-  command.activate=true;command.clearEpoch=old.clearEpoch;command.settingsRevision=old.revision;
+  command.activate=true;command.clearEpoch=old.clearEpoch;command.settingsRevision=old.revision;command.voicing=render.voicing;
   if(frame||!engine.enqueueArpPreparation(command))return false; // Preparation adopts at its ready callback, never a fabricated future deadline.
  }else{
   LoopCommand command{LoopAction::arpDelay,id,request,generation,frame};command.arp=render;command.arpMask=mask;command.arpPreset=preset;
@@ -33,13 +33,22 @@ bool ArpSettingsOwner::set(unsigned id,unsigned parameter,double value,double bp
 bool ArpSettingsOwner::preset(unsigned id,unsigned preset,double bpm,std::uint32_t request,std::uint64_t frame) noexcept {
  if(id>=records.size())return false;
  auto next=records[id].committed;if(!applyArpPreset(next.controls,preset))return false;
+ next.fresh=false;
  next.bpm=bpm;return submit(id,next,arpAllParameters,true,false,request,frame);
 }
 bool ArpSettingsOwner::enable(unsigned id,bool enabled,double bpm,std::uint32_t request,std::uint64_t frame) noexcept {
  if(id>=records.size())return false;
  auto next=records[id].committed;const bool prepare=enabled&&!next.controls.enabled;
- next.controls.enabled=enabled;if(prepare)next.bpm=bpm;
+ next.controls.enabled=enabled;if(prepare){next.bpm=bpm;
+  if(next.fresh&&organicNewInstances){next.controls.voicing=ArpVoicing::loose;next.seed=123456789u^(0x9e3779b9u*(id+1));}
+  next.fresh=false;
+ }
  return submit(id,next,0,false,prepare,request,frame);
+}
+bool ArpSettingsOwner::voice(unsigned id,ArpVoicing mode,std::uint32_t request,std::uint64_t frame) noexcept {
+ if(id>=records.size()||!validArpVoicing(mode))return false;
+ auto next=records[id].committed;next.controls.voicing=mode;next.controls.preset=0;next.fresh=false;
+ return submit(id,next,0,false,false,request,frame);
 }
 void ArpSettingsOwner::cancel(unsigned id) noexcept {engine.cancelArpPreparation(id);}
 void ArpSettingsOwner::service(const EngineView& view) noexcept {
@@ -52,7 +61,7 @@ void ArpSettingsOwner::service(const EngineView& view) noexcept {
    // DEL resets native Arp revision to zero. This snapshot may already include
    // fresh MIDI after DEL; replay those exact receipts from the reset baseline,
    // rather than skipping straight to the snapshot's final revision.
-   r.committed={};r.clearEpoch=view.tracks[id].clearEpoch;r.revision=0;
+   r.committed={};r.committed.fresh=organicNewInstances;r.clearEpoch=view.tracks[id].clearEpoch;r.revision=0;
    if(r.pending){pending[id].invalidated=true;engine.cancelArpPreparation(id);}
   }
  }

@@ -16,7 +16,7 @@ bool ArpDelayStorage::requestBank(const Bank& settings) noexcept {
  unsigned cursor=0;
  for(unsigned id=0;id<trackCount;++id){
   if(!settings[id].enabled){bankSlots[id]=nullptr;continue;}
-  auto& slot=*reserved[cursor++];slot.track=id;slot.seed=settings[id].seed;slot.values=settings[id].values;slot.bankMember=true;
+  auto& slot=*reserved[cursor++];slot.track=id;slot.seed=settings[id].seed;slot.values=settings[id].values;slot.bankMember=true;slot.voicing=settings[id].voicing;
   slot.cancelled.store(false,std::memory_order_relaxed);bankSlots[id]=&slot;++outstanding;
   slot.phase.store(Phase::queued,std::memory_order_release);
  }

@@ -19,13 +19,13 @@ bool validControl(unsigned p,double value,bool widget) noexcept {
 }
 }
 bool validArpSettings(const ArpSettings& settings) noexcept {
- if(settings.preset>presets.size())return false;
+ if(settings.preset>presets.size()||!validArpVoicing(settings.voicing)||(settings.preset&&settings.voicing!=ArpVoicing::original))return false;
  for(unsigned p=0;p<settings.values.size();++p)if(!validControl(p,settings.values[p],false))return false;
  return !settings.preset||settings.values==presets[settings.preset-1];
 }
 bool applyArpPreset(ArpSettings& settings,unsigned id) noexcept {
  if(!id||id>presets.size())return false;
- settings.values=presets[id-1];settings.preset=static_cast<std::uint8_t>(id);return true;
+ settings.values=presets[id-1];settings.preset=static_cast<std::uint8_t>(id);settings.voicing=ArpVoicing::original;return true;
 }
 bool setArpControl(ArpSettings& settings,unsigned p,double value) noexcept {
  if(!validArpSettings(settings)||!validControl(p,value,true))return false;
@@ -33,7 +33,7 @@ bool setArpControl(ArpSettings& settings,unsigned p,double value) noexcept {
 }
 bool compileArpSettings(const ArpSettings& settings,double bpm,std::uint32_t seed,ArpRenderSettings& output) noexcept {
  if(!validArpSettings(settings)||!std::isfinite(bpm)||std::abs(bpm)>std::numeric_limits<float>::max())return false;
- ArpRenderSettings candidate;candidate.enabled=settings.enabled;candidate.seed=seed;
+ ArpRenderSettings candidate;candidate.enabled=settings.enabled;candidate.seed=seed;candidate.voicing=settings.voicing;
  for(unsigned p=0;p<settings.values.size();++p){
   const auto value=settings.values[p];
   // The factory uses truthiness for these two flags, including stored -0.

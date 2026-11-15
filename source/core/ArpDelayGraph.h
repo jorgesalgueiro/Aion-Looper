@@ -13,6 +13,7 @@ public:
  bool setTarget(std::size_t parameter,float value) noexcept{return prepared&&modulation.setTarget(parameter,value);}
  bool setBpmImmediate(float value) noexcept{return prepared&&modulation.setBpmImmediate(value);}
  bool setTargets(const ArpModValues& values) noexcept{return prepared&&modulation.setTargets(values);}
+ bool setVoicing(ArpVoicing mode) noexcept{return prepared&&delay.setVoicing(mode);}
  bool process(const float* left,const float* right,unsigned channels,float* outLeft,float* outRight,std::size_t frames) noexcept;
  const ArpModValues& targets() const noexcept{return modulation.targets();}
  ArpState state() const noexcept{return delay.state();}

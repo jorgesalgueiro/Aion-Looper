@@ -43,6 +43,7 @@ public:
  // Create/destroy this owner off audio; reset invalidates its ring in constant work.
  bool prepare(double rate,const ArpValues& =arpDefaults(),std::uint32_t seed=123456789,unsigned quantumOffset=0,ArpVoicing voicing=ArpVoicing::original) noexcept;
  bool setValues(const ArpValues&) noexcept;
+ bool setVoicing(ArpVoicing) noexcept;
  bool reset(std::uint32_t seed=123456789,unsigned quantumOffset=0) noexcept;
  bool process(const float* left,const float* right,unsigned channels,
               float* outLeft,float* outRight,std::size_t frames) noexcept;
