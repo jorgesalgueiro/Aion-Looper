@@ -11,6 +11,67 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### MERGE phase preconditions / natural grid — 16 November 2026
+
+Full 64-sample replay at `26ead2d` passes core mouse, export and MERGE
+(`merge-context64-diagnostic.log`). The constructed-source assertion was observed
+at frame **16764096**, just **2112 frames / 44ms** before its original deadline
+16766208. GO advanced request 218 to 219 only. This exposes inadequate timing
+headroom in the fixture; the earlier failing run had no deadline capture, so its
+exact cause remains unproven. No native defect was reproduced in this replay.
+
+The strict queued-source/destination cases now wait out the last tenth of their
+existing 128-second grid. Scheduled-STOP cases, which export PCM before GO, wait
+for the first half. Waits are bounded at 150 seconds and log admission phase/frame.
+Clock settings and every existing queued/stopping/deadline/identity/history/WAV
+assertion stay intact. A separate real-pointer case uses a two-second grid to
+observe queued -> natural playing, then GO/decline: source stays playing with the
+same identity, destination stays stopped, both exports equal the source stereo
+WAV byte-for-byte. It does not permit playing in the strict pre-grid cases.
+
+Expanded MERGE passes **64/128 samples** (`merge-phase-acceptance.log`), including
+forward/reversed pending source/destination/both, confirmation/history, panic and
+active capture. Actual phase waits cross .558458 -> .000406 and .518 -> .002469
+without changing the clock. Preserve failed
+`merge-grid-acceptance.log` (new audible case inherited MASTER=0; explicitly fixed)
+and `merge-grid-acceptance-fixed.log` (later STOP case expired during exports).
+The latter also lacked a deadline capture; subsequent runs log both frames.
+
+Fresh Windows/Linux core builds pass **32 queued-source + 88 scheduled-STOP
+cases each**, all with Engine 64/128, paired/exact PCM, history, cancellation/OOM
+and zero callback new/delete (`merge-boundary-{windows,linux}-{source,stop}.log`).
+Linux uses the clean independent `5efac6b` mirror: its C++ source is unchanged
+relative to this Windows test-only edit, so no uncommitted files were copied.
+The five selected unchanged-JS/reference comparisons pass on Windows **5/5
+(156.29s)** and Linux **5/5 (258.09s)**, with `--no-tests=error`.
+The final Linux log was confirmed after approval-reviewed commands became
+available again; its earlier read was blocked by the review service usage limit,
+not an unsafe-action finding. The independent Linux mirror remains clean.
+
+Next: the remaining actual MIDI UI integration audit. Keep the native near-grid paired-PCM coverage; phase preconditions are
+not a substitute for audio boundary tests. No product/DSP/assets/IDs changed;
+no package/push or new physical-device/Linux WebKit validation.
+
+Reproduction (existing configured caches; Windows uses the bundled CMake/CTest
+under `.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin`):
+
+```powershell
+tools/TestMouseWorkflow.ps1 -Blocks 64 -SkipMidi
+tools/TestMouseWorkflow.ps1 -MergeOnly
+cmake --build build/windows-core --config Release --target aion_core_tests aion_start_probe --parallel 2
+build/windows-core/Release/aion_core_tests.exe --queued-merge-source
+build/windows-core/Release/aion_core_tests.exe --stopping-merge
+ctest --test-dir build/windows-core -C Release -R '^(js_native_merge_queued_source|original_merge_queued_destination|js_native_merge_queued_destination|js_native_merge_stopping_source|js_native_merge_stopping_destination)$' --output-on-failure --no-tests=error
+```
+
+```sh
+cd /home/jorge/projects/Aion-Looper
+cmake --build build/linux --target aion_core_tests aion_start_probe --parallel 2
+./build/linux/aion_core_tests --queued-merge-source
+./build/linux/aion_core_tests --stopping-merge
+ctest --test-dir build/linux -R '^(js_native_merge_queued_source|original_merge_queued_destination|js_native_merge_queued_destination|js_native_merge_stopping_source|js_native_merge_stopping_destination)$' --output-on-failure --no-tests=error
+```
+
 ### Windows editor visibility repair — 16 November 2026
 
 Reproduced the blank editor with a controlled native window hide/show: a loaded
@@ -122,7 +183,7 @@ are frame 16450560 before original deadline 16770560 (unconstructed), and
 16953728 before 22914560 (constructed); each GO advances one request only.
 This passing replay does not explain or erase the earlier 64-sample failure.
 
-**Open integration gate / next concrete step:** repeat the full 64-sample context
+**Historical next step (follow-up above):** repeat the full 64-sample context
 with the new MERGE diagnostics (`tools/TestMouseWorkflow.ps1 -Blocks 64 -SkipMidi`).
 Compare queued/observed frames to the original deadline and actual pointer/
 request evidence. If it crossed the deadline, establish the queued-case phase

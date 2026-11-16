@@ -12,6 +12,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
  const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
  const rpc=request=>evaluate(`AionNative.request(${JSON.stringify(request)})`),snapshot=()=>rpc({operation:'snapshot'});
  const wait=async(predicate,label)=>{let s;for(let n=0;n<180;++n){s=await snapshot();if(predicate(s))return s;await delay(40);}assert.fail(label+': '+JSON.stringify({tracks:s.tracks.slice(0,3).map(({wavePeaks,...t})=>t),input:await evaluate('window.mergeInputEvidence')}));};
+ const preGrid=async(label,limit=.9)=>{const end=Date.now()+150000;let s,initial;while(Date.now()<end){s=await snapshot();initial??=s.gridPosition;if(s.gridLength===128&&s.gridPosition<limit){console.log('MERGE phase admission',JSON.stringify({label,initial,phase:s.gridPosition,frame:s.frame,remainingSeconds:(1-s.gridPosition)*s.gridLength}));return s;}await delay(40);}assert.fail(label+': '+JSON.stringify({frame:s.frame,phase:s.gridPosition,gridLength:s.gridLength}));};
  const click=async selector=>{const r=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(e.disabled)throw Error('Disabled: '+${JSON.stringify(selector)});e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);const down=call('Input.dispatchMouseEvent',{type:'mousePressed',...r,button:'left',clickCount:1});await delay(20);const up=call('Input.dispatchMouseEvent',{type:'mouseReleased',...r,button:'left',clickCount:1});await Promise.all([down,up]);};
  const save=async(id,label)=>{let s=await snapshot();const filename=`Merge_${label}_${Date.now()}.wav`;assert((await rpc({operation:'exportLoop',track:id,generation:s.generation,waveformId:s.tracks[id].waveformId,filename})).ok);await wait(s=>s.exportStatus==='Choose a WAV destination','export ready');fs.writeFileSync(path.join(directory,filename+'.choose'),'');s=await wait(s=>!s.exportBusy,'export complete');assert.equal(s.exportStatus,'WAV saved');return fs.readFileSync(path.join(directory,filename));};
  await call('Runtime.enable');await call('Page.enable');await call('Emulation.setFocusEmulationEnabled',{enabled:true});
@@ -37,6 +38,9 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
   await wait(s=>s.tracks[0].state==='stopped'&&s.tracks[1].state==='stopped','stop before queued destination');
   const beforeBytes=await save(0,'QueuedDestBefore'+graph);
   for(const [id,value] of [['syncBars',64],['syncBpm',120],['syncMode',1],['masterGain',1]])assert((await rpc({operation:'setParameter',id,value})).ok);
+  // These assertions describe a pending source, not a merge racing its natural
+  // grid opening. Keep the existing 128-second clock; wait out its final tenth.
+  await preGrid('Queued destination MERGE has pre-grid headroom');
   assert((await rpc({operation:'loop',action:'reverse',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:graph?1:0})).ok);
   await click('#loop-action-0');await wait(s=>s.tracks[0].state==='queued','destination queued');
   if(graph){fs.writeFileSync(path.join(directory,'early-source-start'),'1');await wait(s=>s.tracks[0].queuedSourceReady,'queued destination reversed source constructed');}
@@ -68,12 +72,13 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
   await wait(s=>s.tracks[0].state==='stopped','queued source starts stopped');
   const expected=await save(0,'QueuedSource'+graph);
   for(const [id,value] of [['syncBars',64],['syncBpm',120],['syncMode',1]])assert((await rpc({operation:'setParameter',id,value})).ok);
+  await preGrid('Queued source MERGE has pre-grid headroom');
   if(graph)assert((await rpc({operation:'loop',action:'reverse',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:1})).ok);
   await click('#loop-action-0');await wait(s=>s.tracks[0].state==='queued','source waits on original grid');
   if(graph){fs.writeFileSync(path.join(directory,'early-source-start'),'1');await wait(s=>s.tracks[0].queuedSourceReady,'constructed reversed queued source');}
   const queued=await snapshot(),count=dialogs.length;acceptSourceClear=false;
   await go(4,0);s=await wait(s=>s.tracks[4].mergeSerial&&dialogs.length===count+1,'queued source clone and decline');
-  console.log('Queued MERGE source deadline evidence',JSON.stringify({graph,queuedFrame:queued.frame,deadline:queued.tracks[0].scheduledFrame,observedFrame:s.frame,state:s.tracks[0].state,gridLength:s.gridLength,gridPosition:s.gridPosition,bars:s.syncBars,bpm:s.syncBpm,queuedRequest:queued.lastRequestId,observedRequest:s.lastRequestId,...(s.tracks[0].state!=='queued'?{input:await evaluate('window.mergeInputEvidence')}: {})}));
+  console.log('Queued MERGE source deadline evidence',JSON.stringify({graph,queuedFrame:queued.frame,queuedState:queued.tracks[0].state,deadline:queued.tracks[0].scheduledFrame,observedFrame:s.frame,state:s.tracks[0].state,gridLength:s.gridLength,gridPosition:s.gridPosition,bars:s.syncBars,bpm:s.syncBpm,queuedRequest:queued.lastRequestId,observedRequest:s.lastRequestId,...(s.tracks[0].state!=='queued'?{input:await evaluate('window.mergeInputEvidence')}: {})}));
   assert.equal(s.tracks[0].state,'queued');assert.equal(s.tracks[0].scheduledFrame,queued.tracks[0].scheduledFrame);
   assert.equal(s.tracks[0].waveformId,queued.tracks[0].waveformId);assert.equal(s.tracks[0].queuedSourceReady,graph);
   assert.deepEqual(await save(4,'QueuedClone'+graph),expected,'Queued source clones exact stored stereo WAV');
@@ -85,6 +90,27 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
   await wait(s=>s.tracks[4].state==='empty'&&s.tracks[5].state==='empty','queued clone cleanup');
   assert((await rpc({operation:'setParameter',id:'syncMode',value:0})).ok);
  }
+ // A source whose original grid has passed must play naturally, even if a
+ // later MERGE starts from a previously observed queued state. Keep this
+ // separate from the strict pre-grid cases above; never accept playing there.
+ const crossingBytes=await save(2,'CrossingSource');
+ for(const [id,value] of [['masterGain',1],['syncBars',1],['syncBpm',120],['syncMode',1]])assert((await rpc({operation:'setParameter',id,value})).ok);
+ await wait(s=>s.gridLength===2&&s.gridPosition>.03&&s.gridPosition<.15,'Early natural source grid');
+ await click('#loop-action-2');const crossingQueued=await wait(s=>s.tracks[2].state==='queued','Natural source queues');
+ const crossingPlaying=await wait(s=>s.tracks[2].state==='playing'&&s.outputPeak>.02,'Original source grid opens naturally');
+ assert(crossingPlaying.frame>=crossingQueued.tracks[2].scheduledFrame,'Source cannot open before its original grid');
+ assert.equal(crossingPlaying.tracks[2].waveformId,crossingQueued.tracks[2].waveformId);
+ const crossingCount=dialogs.length;acceptSourceClear=false;await go(4,2);
+ s=await wait(s=>s.tracks[4].mergeSerial&&dialogs.length===crossingCount+1,'Post-grid source clone and decline');
+ assert.equal(s.tracks[2].state,'playing');assert.equal(s.tracks[2].waveformId,crossingQueued.tracks[2].waveformId);
+ assert.equal(s.tracks[4].state,'stopped');
+ assert.deepEqual(await save(4,'CrossedGridClone'),crossingBytes,'Natural grid transition preserves exact cloned stereo WAV');
+ assert.deepEqual(await save(2,'CrossedGridSource'),crossingBytes,'Natural grid transition and MERGE preserve source stereo WAV');
+ assert((await rpc({operation:'loop',action:'stopImmediate',track:2,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);
+ assert((await rpc({operation:'loop',action:'clear',track:4,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);
+ await wait(s=>s.tracks[2].state==='stopped'&&s.tracks[4].state==='empty','Natural grid case cleanup');
+ for(const [id,value] of [['masterGain',0],['syncMode',0]])assert((await rpc({operation:'setParameter',id,value})).ok);
+ console.log('PASS: queued source opens at original grid; subsequent GO preserves playing source/identity and exact stereo WAV');
  acceptSourceClear=false;const restoreCount=dialogs.length;await go(0,2);await wait(s=>s.tracks[0].state==='stopped'&&s.tracks[0].mergeSerial&&dialogs.length===restoreCount+1,'restore panic destination');
  // Scheduled-stop source/destination/both keep original GO/confirmation and
  // committed PCM semantics while the existing audio stop deadline remains live.
@@ -97,6 +123,9 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
   if(kind!=='source')assert((await rpc({operation:'loop',action:'play',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);
   await wait(s=>(kind==='destination'||s.tracks[2].state==='playing')&&(kind==='source'||s.tracks[0].state==='playing'),'scheduled MERGE playback');
   for(const [id,value] of [['syncBars',64],['syncBpm',120],['syncMode',1]])assert((await rpc({operation:'setParameter',id,value})).ok);
+  // WAV/confirmation/history checks take several roundtrips. They require STOP
+  // to remain pending; a naturally completed deadline is a separate state.
+  await preGrid('Scheduled MERGE '+kind+'/'+reverse+' retains pending STOP',.5);
   // Native command acceptance precedes frontend telemetry. Wait for the actual
   // rendered STOP control, not merely a direct native snapshot, before pressing.
   const stopPointer=async track=>{let rendered=false;for(let n=0;n<180;++n){rendered=await evaluate(`document.getElementById('loop-action-${track}').textContent==='STOP'&&[...document.querySelectorAll('input[name=syncMode]')][1].checked&&Number(document.getElementById('numBars').value)===64&&Number(document.getElementById('bpmInput').value)===120`);if(rendered)break;await delay(40);}assert(rendered,'Scheduled STOP is rendered before pointer input');await click(`#loop-action-${track}`);};
@@ -104,6 +133,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
   if(kind!=='source'){await stopPointer(0);await wait(s=>s.tracks[0].state==='stopping','destination scheduled STOP pointer');}
   const prior=await snapshot(),priorBytes=await save(0,'ScheduledBefore'+kind+reverse),sourceBytes=await save(2,'ScheduledSource'+kind+reverse),count=dialogs.length;
   acceptSourceClear=false;await go(0,2);s=await wait(s=>s.tracks[0].mergeSerial&&dialogs.length===count+1,'scheduled MERGE actual GO');
+  console.log('Scheduled MERGE deadline evidence',JSON.stringify({kind,reverse,priorFrame:prior.frame,observedFrame:s.frame,tracks:[0,2].map(id=>({id,before:prior.tracks[id].state,after:s.tracks[id].state,deadline:prior.tracks[id].scheduledFrame}))}));
   for(const track of [0,2]){assert.equal(s.tracks[track].state,prior.tracks[track].state);assert.equal(s.tracks[track].scheduledFrame,prior.tracks[track].scheduledFrame);assert.equal(s.tracks[track].phaseApplyFrame,prior.tracks[track].phaseApplyFrame,'MERGE preserves accepted phase deadline');assert.equal(s.tracks[track].reverse,prior.tracks[track].reverse);if(track===2)assert.equal(s.tracks[track].waveformId,prior.tracks[track].waveformId,'MERGE preserves stopping source identity');}
   assert.equal(s.tracks[0].length,prior.tracks[0].length);assert.equal(s.tracks[0].undoCount,Math.min(5,prior.tracks[0].undoCount+1));
   const mergedBytes=await save(0,'ScheduledMerged'+kind+reverse);assert.deepEqual(await save(2,'ScheduledUnchanged'+kind+reverse),sourceBytes);
