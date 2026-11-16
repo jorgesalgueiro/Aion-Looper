@@ -47,12 +47,81 @@ let socket;
     };
     const mode=async value=>{await click(`label:has(input[name=syncMode][value=${value}])`);await wait(s=>s.syncMode===['off','static','dynamic'].indexOf(value),'sync mode '+value);};
     const exactlyOne=async (gesture,label,paired=false)=>{const before=await snapshot();await gesture();const after=await wait(s=>s.lastRequestId>before.lastRequestId,label);assert.equal(after.lastRequestId,before.lastRequestId+1,label);assert(!after.rejected,label+' rejected');if(!paired){await delay(160);assert.equal((await snapshot()).lastRequestId,after.lastRequestId,label+' duplicated');}return after;};
+    const timely=async(predicate,label,read=snapshot)=>{const end=Date.now()+7000;let s;while(Date.now()<end){s=await read();if(predicate(s))return s;await delay(5);}assert.fail(label+': '+JSON.stringify({frame:s.frame,state:s.tracks[0].state,deadline:s.tracks[0].scheduledFrame,ready:s.tracks[0].queuedSourceReady}));};
+    const pendingStopDisplay=async()=>{
+        const before=await timely(s=>s.gridPosition>0.03&&s.gridPosition<0.2,'Early pending-stop display phase');
+        await click('#loop-action-0');
+        const pendingStop=await timely(s=>s.tracks[0].state==='stopping'&&s.symbol==='[.]'&&s.label==='STOPPING','Actual queued STOP and rendered pending symbol',()=>evaluate(`(async()=>{const s=await AionNative.request({operation:'snapshot'});return {...s,symbol:document.getElementById('loop-state-symbol-0').textContent,label:document.getElementById('loop-state-text-0').textContent};})()`));
+        assert.equal(pendingStop.lastRequestId,before.lastRequestId+1,'Queue static stop sends exactly one command');assert(!pendingStop.rejected);
+        assert.equal(pendingStop.tracks[0].waveformId,before.tracks[0].waveformId);
+        assert(pendingStop.outputPeak>0.02,'Queued stop still produces captured PCM: '+JSON.stringify({frame:pendingStop.frame,deadline:pendingStop.tracks[0].scheduledFrame,peak:pendingStop.outputPeak}));
+        await click('#loop-action-0');const stopped=await timely(s=>s.tracks[0].state==='stopped','Immediate second STOP');
+        assert.equal(stopped.lastRequestId,pendingStop.lastRequestId+1);assert(!stopped.rejected);
+        await delay(160);assert.equal((await snapshot()).lastRequestId,stopped.lastRequestId,'STOP gestures never duplicate');
+        await wait(s=>s.tracks[0].state==='stopped','Stopped display settles');
+        assert.equal(await evaluate(`document.getElementById('loop-state-symbol-0').textContent`),'[S]','Only completed STOP shows stopped');
+        assert.equal(await evaluate(`document.getElementById('loop-extra-info-0').textContent`),' (2.0s)','Original duration spacing');
+        assert.equal(stopped.tracks[0].length,before.tracks[0].length);assert.equal(stopped.tracks[0].undoCount,before.tracks[0].undoCount);
+        console.log('PASS: real queued STOP [.] / completed STOP [S], original duration text, nonzero PCM and clip/history retained');
+    };
+    const earlySpeed=async()=>{
+        // This is a two-second real audio deadline. Do not spend it in the
+        // generic helpers' post-observation/duplicate-check sleeps. Check the
+        // same request counts after dispatch, retaining the queued PCM checks.
+        await exactlyOne(()=>click('#native-stop-all'),'Stop static playback');await state('stopped');
+        const phase=await timely(s=>s.gridPosition>0.03&&s.gridPosition<0.15,'Early speed grid phase');
+        await click('#loop-action-0');
+        const queued=await timely(s=>s.tracks[0].state==='queued','Queue source for early speed');
+        assert.equal(queued.lastRequestId,phase.lastRequestId+1);assert(!queued.rejected);
+        require('node:fs').writeFileSync(require('node:path').join(pcmDirectory,'early-source-start'),'1');
+        const speedSource=await timely(s=>s.tracks[0].state==='queued'&&s.tracks[0].queuedSourceReady,'Actual early speed source admission');
+        await evaluate(`(()=>{const e=document.getElementById('loop-speed-slider-0');e.scrollIntoView({block:'center',behavior:'instant'});e.focus();})()`);
+        await Promise.all([call('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Home',code:'Home',windowsVirtualKeyCode:36,nativeVirtualKeyCode:36}),call('Input.dispatchKeyEvent',{type:'keyUp',key:'Home',code:'Home',windowsVirtualKeyCode:36,nativeVirtualKeyCode:36})]);
+        const speedEdited=await timely(s=>s.tracks[0].playbackRate===.25,'Early speed quarter-rate accepted');
+        assert.equal(speedEdited.lastRequestId,queued.lastRequestId+1,'Early speed trusted range key sends one shared command');assert(!speedEdited.rejected);
+        console.log('Early speed deadline evidence',JSON.stringify({queuedFrame:speedSource.frame,deadline:speedSource.tracks[0].scheduledFrame,observedFrame:speedEdited.frame,state:speedEdited.tracks[0].state,rate:speedEdited.tracks[0].playbackRate}));
+        assert.equal(speedEdited.tracks[0].state,'queued');assert.equal(speedEdited.outputPeak,0);
+        for(const field of ['length','waveformId','undoCount','redoCount','scheduledFrame'])assert.equal(speedEdited.tracks[0][field],speedSource.tracks[0][field],'Early speed preserves '+field);
+        await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Edited future source produces PCM at original grid');
+        assert.equal((await snapshot()).lastRequestId,speedEdited.lastRequestId,'Queue and speed gestures never duplicate');
+        await exactlyOne(()=>click('#loop-0 button[title="1x"]'),'Restore original speed button');await wait(s=>s.tracks[0].playbackRate===1,'Early speed reset');
+        await exactlyOne(()=>click('#native-stop-all'),'Stop early speed source');await state('stopped');
+        console.log('PASS: early-source trusted speed key, unchanged source/clip/deadline, pre-grid silence and audible retained grid at '+process.argv[2]);
+    };
+    const earlyRetrigger=async()=>{
+        const phase=await timely(s=>s.gridPosition>0.03&&s.gridPosition<0.15,'Early RTRG grid phase');
+        await click('#loop-action-0');const queued=await timely(s=>s.tracks[0].state==='queued','Queue source for early RTRG');
+        assert.equal(queued.lastRequestId,phase.lastRequestId+1);assert(!queued.rejected);
+        // Accepted 9 November unborn-source RTRG starts a fresh immediate graph.
+        // Keep readiness coverage; that state no longer disables the original button.
+        assert(!queued.tracks[0].queuedSourceReady,'Queued source is still unconstructed before explicit callback');
+        assert(await evaluate(`!document.querySelector('#loop-0 button[title="RTRG"]').disabled`),'Original RTRG admits an unborn queued source');
+        require('node:fs').writeFileSync(require('node:path').join(pcmDirectory,'early-source-start'),'1');
+        const ready=await timely(s=>s.tracks[0].state==='queued'&&s.tracks[0].queuedSourceReady,'Actual graph callback exposes RTRG readiness');
+        assert(await evaluate(`!document.querySelector('#loop-0 button[title="RTRG"]').disabled`),'Validated queued source enables original RTRG button');
+        await click('#loop-0 button[title="RTRG"]');
+        const earlyRtrg=await timely(s=>s.tracks[0].state==='playing'&&!s.tracks[0].phaseApplyFrame&&!s.tracks[0].scheduledFrame,'Early 5ms RTRG replaces future source');
+        assert.equal(earlyRtrg.lastRequestId,queued.lastRequestId+1,'Early RTRG pointer sends one shared command');
+        console.log('Early RTRG deadline evidence',JSON.stringify({queuedFrame:queued.frame,readyFrame:ready.frame,deadline:ready.tracks[0].scheduledFrame,observedFrame:earlyRtrg.frame,peak:earlyRtrg.outputPeak}));
+        assert.equal(earlyRtrg.outputPeak,0,'Replacement remains silent before original grid');assert(!earlyRtrg.rejected);
+        await wait(s=>s.outputPeak>0.02,'Early RTRG source opens at retained grid');
+        assert.equal((await snapshot()).lastRequestId,earlyRtrg.lastRequestId,'Queue and RTRG gestures never duplicate');
+        await exactlyOne(()=>click('#native-stop-all'),'Stop early RTRG');await state('stopped');
+        console.log('PASS: real early-source RTRG readiness, trusted pointer command, silent pre-grid replacement and audible retained grid at '+process.argv[2]);
+    };
     await call('Runtime.enable');await call('Page.enable');
     await call('Emulation.setFocusEmulationEnabled',{enabled:true});
     await call('Page.bringToFront'); // Activate the owned WebView before compositor-routed wheel input.
     for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
     await wait(s=>s.audioReady&&s.inputAvailable&&s.inputPeak>0.1,'Synthetic native input active');
     await evaluate(`window.mouseErrors=[];window.addEventListener('error',e=>window.mouseErrors.push(e.message));document.documentElement.style.scrollBehavior='auto'`);
+    if(process.argv.includes('--early-speed-only')){
+        for(const [id,value] of [['masterGain',1],['inputMonitor',0],['autoPlayAfterRecord',1],['metronomeVolume',0],['countInAudio',0],['countInVisual',0]])assert((await evaluate(`AionNative.request(${JSON.stringify({operation:'setParameter',id,value})})`)).ok);
+        await parameter('#bpmInput',120);await parameter('#numBars',1);await parameter('#timeSigNum',4);await mode('static');
+        await click('#loop-action-0');await state('recording');const captured=await state('playing');assert.equal(captured.tracks[0].length,96000,'Original two-second STATIC source');
+        await wait(s=>s.outputPeak>.02,'Original static PCM');await pendingStopDisplay();await earlySpeed();await earlyRetrigger();
+        assert.deepEqual(await evaluate('window.mouseErrors'),[]);assert.deepEqual(runtimeErrors,[]);ws.close();return;
+    }
     if(process.argv.includes('--pending-rtrg-only')){
         const fs=require('node:fs'),path=require('node:path');
         await evaluate(`(()=>{const e=document.getElementById('native-master');e.value=1;e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(s=>s.masterGain===1,'RTRG audible master');await mode('off');
@@ -830,55 +899,9 @@ let socket;
     await wait(s=>s.outputPeak>0.02,'Static PCM playback');
     // A queued stop is still playing audio; show the original pending symbol,
     // then the stopped symbol only after an immediate second STOP.
-    await wait(s=>s.gridPosition>0.03&&s.gridPosition<0.2,'Early pending-stop display phase');
-    const statusBefore=await snapshot();
-    await exactlyOne(()=>click('#loop-action-0'),'Queue static stop');
-    const pendingStop=await state('stopping');
-    assert.equal(await evaluate(`document.getElementById('loop-state-symbol-0').textContent`),'[.]','Original pending STOP symbol differs from stopped');
-    assert.equal(await evaluate(`document.getElementById('loop-state-text-0').textContent`),'STOPPING');
-    assert.equal(pendingStop.tracks[0].waveformId,statusBefore.tracks[0].waveformId);
-    // The observation above already pins the queued-stop callback. Later CDP/
-    // DOM acknowledgements can cross its real bar deadline; requiring sound
-    // after that deadline would contradict the expected automatic silence.
-    // Keep the same PCM threshold, now tied to the actual stopping state/frame.
-    assert(pendingStop.outputPeak>0.02,'Queued stop still produces captured PCM: '+JSON.stringify({frame:pendingStop.frame,deadline:pendingStop.tracks[0].scheduledFrame,peak:pendingStop.outputPeak}));
-    await exactlyOne(()=>click('#loop-action-0'),'Immediate second STOP');
-    const statusStopped=await state('stopped');
-    assert.equal(await evaluate(`document.getElementById('loop-state-symbol-0').textContent`),'[S]','Only completed STOP shows stopped');
-    assert.equal(await evaluate(`document.getElementById('loop-extra-info-0').textContent`),' (2.0s)','Original duration spacing');
-    assert.equal(statusStopped.tracks[0].length,statusBefore.tracks[0].length);
-    assert.equal(statusStopped.tracks[0].undoCount,statusBefore.tracks[0].undoCount);
-    console.log('PASS: real queued STOP [.] / completed STOP [S], original duration text, nonzero PCM and clip/history retained');
-    await exactlyOne(()=>click('#native-stop-all'),'Stop static playback');await state('stopped');
-    await wait(s=>s.gridPosition>0.03&&s.gridPosition<0.15,'Early speed grid phase');
-    await exactlyOne(()=>click('#loop-action-0'),'Queue source for early speed');await state('queued');
-    require('node:fs').writeFileSync(require('node:path').join(pcmDirectory,'early-source-start'),'1');
-    const speedSource=await wait(s=>s.tracks[0].state==='queued'&&s.tracks[0].queuedSourceReady,'Actual early speed source admission');
-    await evaluate(`(()=>{const e=document.getElementById('loop-speed-slider-0');e.scrollIntoView({block:'center',behavior:'instant'});e.focus();})()`);
-    await exactlyOne(async()=>{await call('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Home',code:'Home',windowsVirtualKeyCode:36,nativeVirtualKeyCode:36});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Home',code:'Home',windowsVirtualKeyCode:36,nativeVirtualKeyCode:36});},'Early speed trusted range key sends one shared command');
-    const speedEdited=await wait(s=>s.tracks[0].playbackRate===.25,'Early speed quarter-rate accepted');
-    if(speedEdited.tracks[0].state!=='queued')console.error('Early speed deadline evidence',JSON.stringify({queuedFrame:speedSource.frame,deadline:speedSource.tracks[0].scheduledFrame,observedFrame:speedEdited.frame,state:speedEdited.tracks[0].state,rate:speedEdited.tracks[0].playbackRate}));
-    assert.equal(speedEdited.tracks[0].state,'queued');assert.equal(speedEdited.outputPeak,0);
-    for(const field of ['length','waveformId','undoCount','redoCount','scheduledFrame'])assert.equal(speedEdited.tracks[0][field],speedSource.tracks[0][field],'Early speed preserves '+field);
-    await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Edited future source produces PCM at original grid');
-    await exactlyOne(()=>click('#loop-0 button[title="1x"]'),'Restore original speed button');await wait(s=>s.tracks[0].playbackRate===1,'Early speed reset');
-    await exactlyOne(()=>click('#native-stop-all'),'Stop early speed source');await state('stopped');
-    console.log('PASS: early-source trusted speed key, unchanged source/clip/deadline, pre-grid silence and audible retained grid at '+process.argv[2]);
-    await wait(s=>s.gridPosition>0.03&&s.gridPosition<0.15,'Early RTRG grid phase');
-    await exactlyOne(()=>click('#loop-action-0'),'Queue source for early RTRG');await state('queued');
-    // Accepted 9 November unborn-source RTRG starts a fresh immediate graph.
-    // Keep readiness coverage; that state no longer disables the original button.
-    assert(!(await snapshot()).tracks[0].queuedSourceReady,'Queued source is still unconstructed before explicit callback');
-    assert(await evaluate(`!document.querySelector('#loop-0 button[title="RTRG"]').disabled`),'Original RTRG admits an unborn queued source');
-    require('node:fs').writeFileSync(require('node:path').join(pcmDirectory,'early-source-start'),'1');
-    await wait(s=>s.tracks[0].state==='queued'&&s.tracks[0].queuedSourceReady,'Actual graph callback exposes RTRG readiness');
-    assert(await evaluate(`!document.querySelector('#loop-0 button[title="RTRG"]').disabled`),'Validated queued source enables original RTRG button');
-    await exactlyOne(()=>click('#loop-0 button[title="RTRG"]'),'Early RTRG pointer sends one shared command');
-    const earlyRtrg=await wait(s=>s.tracks[0].state==='playing'&&!s.tracks[0].phaseApplyFrame&&!s.tracks[0].scheduledFrame,'Early 5ms RTRG replaces future source');
-    assert.equal(earlyRtrg.outputPeak,0,'Replacement remains silent before original grid');assert(!earlyRtrg.rejected);
-    await wait(s=>s.outputPeak>0.02,'Early RTRG source opens at retained grid');
-    await exactlyOne(()=>click('#native-stop-all'),'Stop early RTRG');await state('stopped');
-    console.log('PASS: real early-source RTRG readiness, trusted pointer command, silent pre-grid replacement and audible retained grid at '+process.argv[2]);
+    await pendingStopDisplay();
+    await earlySpeed();
+    await earlyRetrigger();
     await wait(s=>s.gridPosition>0.03&&s.gridPosition<0.2,'Early queued-play grid phase');
     await exactlyOne(()=>click('#loop-action-0'),'Queue static play');await state('queued');
     await exactlyOne(()=>click('#loop-state-text-0'),'Header cancels queued play');await state('stopped');

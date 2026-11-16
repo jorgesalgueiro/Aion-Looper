@@ -16,6 +16,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
  const save=async(id,label)=>{let s=await snapshot();const filename=`Merge_${label}_${Date.now()}.wav`;assert((await rpc({operation:'exportLoop',track:id,generation:s.generation,waveformId:s.tracks[id].waveformId,filename})).ok);await wait(s=>s.exportStatus==='Choose a WAV destination','export ready');fs.writeFileSync(path.join(directory,filename+'.choose'),'');s=await wait(s=>!s.exportBusy,'export complete');assert.equal(s.exportStatus,'WAV saved');return fs.readFileSync(path.join(directory,filename));};
  await call('Runtime.enable');await call('Page.enable');await call('Emulation.setFocusEmulationEnabled',{enabled:true});
  for(let n=0;n<100;++n){if(await evaluate(`typeof window.AionNative?.request==='function'&&document.querySelectorAll('#loopContainer > div').length===20`))break;await delay(100);}
+ await evaluate(`(()=>{window.mergeInputEvidence=[];document.addEventListener('pointerdown',e=>{const b=e.target.closest('button');window.mergeInputEvidence.push({pointer:e.target.id,text:e.target.textContent,title:b?.title});if(window.mergeInputEvidence.length>64)window.mergeInputEvidence.shift();},true);})()`);
  let s=await wait(s=>s.audioReady,'ready');
  for(const [id,value] of [['syncMode',0],['metronomeEnabled',0],['masterGain',0],['autoPlayAfterRecord',1]])assert((await rpc({operation:'setParameter',id,value})).ok);
  assert((await rpc({operation:'loop',action:'clearAll',track:0,generation:s.generation,expiresAt:Date.now()+3000,value:0})).ok);await wait(s=>s.tracks.every(t=>t.state==='empty'),'clear');await delay(200);
@@ -72,6 +73,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
   if(graph){fs.writeFileSync(path.join(directory,'early-source-start'),'1');await wait(s=>s.tracks[0].queuedSourceReady,'constructed reversed queued source');}
   const queued=await snapshot(),count=dialogs.length;acceptSourceClear=false;
   await go(4,0);s=await wait(s=>s.tracks[4].mergeSerial&&dialogs.length===count+1,'queued source clone and decline');
+  console.log('Queued MERGE source deadline evidence',JSON.stringify({graph,queuedFrame:queued.frame,deadline:queued.tracks[0].scheduledFrame,observedFrame:s.frame,state:s.tracks[0].state,gridLength:s.gridLength,gridPosition:s.gridPosition,bars:s.syncBars,bpm:s.syncBpm,queuedRequest:queued.lastRequestId,observedRequest:s.lastRequestId,...(s.tracks[0].state!=='queued'?{input:await evaluate('window.mergeInputEvidence')}: {})}));
   assert.equal(s.tracks[0].state,'queued');assert.equal(s.tracks[0].scheduledFrame,queued.tracks[0].scheduledFrame);
   assert.equal(s.tracks[0].waveformId,queued.tracks[0].waveformId);assert.equal(s.tracks[0].queuedSourceReady,graph);
   assert.deepEqual(await save(4,'QueuedClone'+graph),expected,'Queued source clones exact stored stereo WAV');
@@ -84,7 +86,6 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));let socket;
   assert((await rpc({operation:'setParameter',id:'syncMode',value:0})).ok);
  }
  acceptSourceClear=false;const restoreCount=dialogs.length;await go(0,2);await wait(s=>s.tracks[0].state==='stopped'&&s.tracks[0].mergeSerial&&dialogs.length===restoreCount+1,'restore panic destination');
- await evaluate(`(()=>{window.mergeInputEvidence=[];document.addEventListener('pointerdown',e=>{window.mergeInputEvidence.push({pointer:e.target.id,text:e.target.textContent});if(window.mergeInputEvidence.length>64)window.mergeInputEvidence.shift();},true);})()`);
  // Scheduled-stop source/destination/both keep original GO/confirmation and
  // committed PCM semantics while the existing audio stop deadline remains live.
  for(const kind of ['source','destination','both'])for(const reverse of [false,true]){

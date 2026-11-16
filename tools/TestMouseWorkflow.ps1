@@ -1,4 +1,4 @@
-param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi, [switch] $QueuedNormOnly, [switch] $StoppingNormOnly, [switch] $StoppingHistoryOnly, [switch] $StoppingMultiplyOnly, [switch] $QueuedStopMultiplyOnly, [switch] $PendingRetriggerOnly, [switch] $QueuedStopHistoryOnly, [switch] $QueuedHistoryOnly, [switch] $QueuedMultiplyOnly, [switch] $PostbirthMultiplyOnly, [switch] $FinalizingControlsOnly)
+param([int[]] $Blocks = @(64, 128), [switch] $ExportOnly, [switch] $MergeOnly, [switch] $MidiOnly, [switch] $SkipMidi, [switch] $QueuedNormOnly, [switch] $StoppingNormOnly, [switch] $StoppingHistoryOnly, [switch] $StoppingMultiplyOnly, [switch] $QueuedStopMultiplyOnly, [switch] $PendingRetriggerOnly, [switch] $QueuedStopHistoryOnly, [switch] $QueuedHistoryOnly, [switch] $QueuedMultiplyOnly, [switch] $PostbirthMultiplyOnly, [switch] $FinalizingControlsOnly, [switch] $EarlySpeedOnly)
 $ErrorActionPreference = 'Stop'
 if ($SkipMidi -and $MidiOnly) { throw 'SkipMidi cannot be combined with MidiOnly.' }
 $repo = Split-Path -Parent $PSScriptRoot
@@ -19,6 +19,11 @@ foreach ($block in $Blocks) {
         $preview = Start-Process -FilePath $hostPath -ArgumentList "$block" -WindowStyle Hidden -PassThru
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $savedArguments
         $env:WEBVIEW2_USER_DATA_FOLDER = $savedProfile
+        if($EarlySpeedOnly){
+            & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block --early-speed-only
+            if($LASTEXITCODE -ne 0){throw "Early speed workflow failed at $block samples"}
+            continue
+        }
         if ($FinalizingControlsOnly) {
             & node (Join-Path $repo 'tests/MouseWorkflow.cjs') $block --finalizing-controls-only
             if ($LASTEXITCODE -ne 0) { throw "Finalizing control workflow failed at $block samples" }

@@ -64,16 +64,77 @@ exact stored stereo WAV, replacement/late callbacks, errors/recovery, overwrite,
 DEL and unchanged transport; startup cleanup packet count remains zero. The
 helper's generic "mouse workflow" footer does not mean the full mouse suite passed.
 
-**Open integration gate / next slice:** the full `-SkipMidi` mouse run subsequently
-fails at early speed: `speedEdited.tracks[0].state` is playing, expected queued
-(`tests/MouseWorkflow.cjs`, early-source speed block). The assertion and pre-grid
-silence/deadline/identity checks remain unchanged. A fail-only frame/deadline log
-is added for the next run; it has not yet produced evidence. A crossed deadline
-is a hypothesis, not established cause. Isolate this real source/keyboard sequence
-and inspect command observation relative to the audio deadline. Do not slow the
-master clock, loosen tolerances or drop queued/silence assertions to obtain a pass.
-The full suite did not reach its 128-block run or remaining merge/MIDI workflows.
+**Early queued-speed integration follow-up — 16 November:** the prior full run
+failed with playing instead of queued. An isolated replay of the unchanged case
+also missed source admission before sending the speed key. The general helpers
+wait 100ms after each matching snapshot, plus 160ms and another snapshot for each
+duplicate check; those observations consume the original two-second grid window.
+The shared early-speed case now dispatches and observes without those artificial
+post-match waits, checking the same individual request increments and delayed
+duplicate suppression after the deadline-sensitive steps. Master tempo, clip
+duration, queued/silence assertions, source identity/history/deadline checks and
+the trusted Home key remain unchanged. No product DSP or UI code changed.
+
+`tools/TestMouseWorkflow.ps1 -EarlySpeedOnly` passes **64/128** with actual
+processor/editor PCM. Observed quarter-speed edit / original scheduled frame:
+**741824 / 768000 (64)** and **647552 / 672000 (128)**, both queued and silent.
+Both subsequently play nonzero PCM and reset speed through the original button.
+The focused option and broad workflow call the same test body. Windows frontend
+and bridge scripts pass. Logs: `early-speed-timely-retry.log`,
+`early-speed-frontend.log`, `early-speed-bridge.log`. Initial sandbox launch failed
+to expose CDP and left its owned test host; only that verified PID was terminated
+before the successful permitted run. That attempt is not audio-test evidence.
+
+The first broad replay (`early-speed-full-workflow.log`) then missed the transient
+STOPPING state in a separate snapshot after the STOP helper completed. The shared
+pending-stop case now observes native state/PCM and actual `[.]`/`STOPPING` DOM
+together, sends the second STOP immediately, and checks duplication afterward.
+The focused unchanged RTRG case also reproduced late observation of an already
+constructed source. It now observes queued/unborn and ready-source states without
+the same artificial waits; both original button-enabled assertions remain.
+
+The expanded `-EarlySpeedOnly` option runs the shared STOP/display, speed and
+RTRG cases, **all passing at 64/128** (`static-deadlines-focused.log`). RTRG
+observed frame / original grid: **1133248 / 1152000 (64)** and
+**1138176 / 1152000 (128)**, with exact zero pre-grid PCM, later nonzero playback
+and unchanged one-command-per-gesture checks. No threshold, grid, product
+parameter, DSP or preserved asset was changed. Initial focused failure retained
+in `static-deadlines-rtrg-baseline.log`.
+
+The broad replays pass the complete **64/128 core mouse workflow and export**
+(`static-deadlines-full-workflow.log`, `static-deadlines-full128.log`): all three deadline cases, held/deferred
+STOP, STUT/blur/reload, Start/Q/nudge, exact Multiply WAV/Undo/Redo, count-in,
+DEL ALL confirmation/cancellation, keypad/lost-release recovery and LIVE strips.
+The 64-sample run then fails the source-side queued MERGE assertion (playing versus queued,
+`MergeWorkflow.cjs`). No source/audio-deadline evidence was captured for that
+failure; do not assume a crossed deadline or a native defect. Added narrow
+queued/observed-frame/deadline/configuration diagnostics without changing the
+MERGE assertion or PCM tests. Isolated `-MergeOnly` passes the complete **64/128**
+cases (`merge-queued-deadline-baseline.log`), including both unconstructed/
+constructed source variants, which remain queued before frame 6144000, exact
+saved stereo PCM, confirmation, Undo/Redo, panic and active-capture guards.
+Pointer-target collection now starts before these variants (same bounded
+64-event diagnostic) so a recurrence records the actual GO target as well.
+
+Full **`-Blocks 128 -SkipMidi` passes** (`static-deadlines-full128.log`), including
+the complete core loop, export and MERGE workflows. Its queued-source observations
+are frame 16450560 before original deadline 16770560 (unconstructed), and
+16953728 before 22914560 (constructed); each GO advances one request only.
+This passing replay does not explain or erase the earlier 64-sample failure.
+
+**Open integration gate / next concrete step:** repeat the full 64-sample context
+with the new MERGE diagnostics (`tools/TestMouseWorkflow.ps1 -Blocks 64 -SkipMidi`).
+Compare queued/observed frames to the original deadline and actual pointer/
+request evidence. If it crossed the deadline, establish the queued-case phase
+precondition without changing the clock or assertions; otherwise inspect native
+source ownership. Then complete the remaining actual MIDI UI integration audit.
 Do not advance to a new effect or claim full Arp/release acceptance yet.
+
+This follow-up changes Windows test fixtures and notes only, using the existing
+production processor/editor binary; no native rebuild, Linux audio rerun,
+dependency/version change, package or push. Prior Linux evidence remains scoped
+as documented above. No physical-device, new OS-picker or release claim follows
+from the synthetic-host checks. Node syntax and `git diff --check` pass.
 
 Commands and evidence (all logs under Windows `build/`, or Linux native `build/`):
 
@@ -83,6 +144,10 @@ tools/TestEditorVisibility.ps1
 tools/TestEditorVisibility.ps1 -HeldStopOnly
 tools/TestArpUi.ps1
 tools/TestMouseWorkflow.ps1 -ExportOnly -SkipMidi
+tools/TestMouseWorkflow.ps1 -EarlySpeedOnly
+tools/TestMouseWorkflow.ps1 -SkipMidi
+tools/TestMouseWorkflow.ps1 -MergeOnly
+tools/TestMouseWorkflow.ps1 -Blocks 128 -SkipMidi
 node tests/FrontendTests.cjs
 node tests/BridgeTests.cjs
 # Remaining failing integration gate, not counted as passing:
