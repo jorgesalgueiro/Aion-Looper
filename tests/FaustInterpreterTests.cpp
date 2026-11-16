@@ -14,8 +14,21 @@
 namespace {
 thread_local bool watching=false;
 std::atomic<unsigned> allocations{0},deallocations{0};
+std::atomic<unsigned> heapCalls{0};
 void require(bool ok,const char* message){if(!ok){std::cerr<<message<<'\n';std::exit(1);}}
 }
+#if AION_FAUST_WRAP_ALLOCATOR
+extern "C" {
+void* __real_malloc(std::size_t);
+void* __real_calloc(std::size_t,std::size_t);
+void* __real_realloc(void*,std::size_t);
+void __real_free(void*);
+void* __wrap_malloc(std::size_t n){if(watching)++heapCalls;return __real_malloc(n);}
+void* __wrap_calloc(std::size_t n,std::size_t size){if(watching)++heapCalls;return __real_calloc(n,size);}
+void* __wrap_realloc(void* p,std::size_t n){if(watching)++heapCalls;return __real_realloc(p,n);}
+void __wrap_free(void* p){if(watching)++heapCalls;__real_free(p);}
+}
+#endif
 void* operator new(std::size_t n){if(watching)++allocations;if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
 void operator delete(void* p) noexcept{if(watching)++deallocations;std::free(p);}
 void* operator new[](std::size_t n){return ::operator new(n);}
@@ -90,13 +103,33 @@ int main(int argc,char** argv){
     worker.join();require(success,"Worker compilation");
     auto synth=compile("process=0.25,-0.5;",96000);
     watching=true;require(synth->process(nullptr,out,128)&&ol[0]==.25f&&orr[0]==-.5f,"Zero-input generator");watching=false;
+    // Exercise a real standard-library nonlinear implementation, not only
+    // arithmetic kernels. This is an embedding probe, not sound-quality approval.
+    const std::string nonlinear="import(\"stdfaust.lib\"); process=aa.tanh1,aa.tanh1;";
+    auto nl=compile(nonlinear),nlOther=compile(nonlinear);
+    for(unsigned i=0;i<4096;++i){l[i]=static_cast<float>(1.5*std::sin(i*.17));r[i]=static_cast<float>(.25+std::cos(i*.27));}
+    watching=true;
+    for(unsigned p=0;p<4096;p+=64){const float* ii[]{l.data()+p,r.data()+p};float* oo[]{ol.data()+p,orr.data()+p};require(nl->process(ii,oo,64),"Imported ADAA 64 processing");}
+    for(unsigned p=0;p<4096;p+=128){const float* ii[]{l.data()+p,r.data()+p};float* oo[]{bl.data()+p,br.data()+p};require(nlOther->process(ii,oo,128),"Imported ADAA 128 processing");}
+    require(ol==bl&&orr==br,"Imported nonlinear subdivision identity");watching=false;
+    for(int rate:{8000,22050,32000,44100,48000,96000,192000}){
+        auto rateDSP=compile(gain,rate);
+        watching=true;require(rateDSP->process(in,out,64)&&rateDSP->process(in,out,128),"Prepared sample-rate range");watching=false;
+    }
     for(auto block:{64u,128u}){
+      for(auto* processor:{b.get(),nl.get()}){
         constexpr unsigned iterations=3000;double worst=0,total=0;
         for(unsigned i=0;i<iterations;++i){watching=true;const auto start=std::chrono::steady_clock::now();
-            const bool ok=b->process(in,other,block);const auto end=std::chrono::steady_clock::now();watching=false;
+            const bool ok=processor->process(in,other,block);const auto end=std::chrono::steady_clock::now();watching=false;
             require(ok,"Benchmark callback");const double us=std::chrono::duration<double,std::micro>(end-start).count();total+=us;worst=std::max(worst,us);}
-        std::cout<<"Stereo gain "<<block<<" frames: mean "<<total/iterations<<" us, worst "<<worst<<" us; 48k deadline "<<block/48.0<<" ms\n";
+        std::cout<<(processor==b.get()?"Stereo gain ":"Stereo ADAA probe ")<<block<<" frames: mean "<<total/iterations<<" us, worst "<<worst<<" us; 48k deadline "<<block/48.0<<" ms\n";
+      }
     }
     require(allocations==0&&deallocations==0,"Callback new/delete detected");
-    std::cout<<"Faust interpreter contract PASS; callback new="<<allocations<<" delete="<<deallocations<<" (not a malloc/lock instrumentation claim)\n";
+    require(heapCalls==0,"Callback wrapped heap call detected");
+    std::cout<<"Faust interpreter contract PASS; callback new="<<allocations<<" delete="<<deallocations;
+#if AION_FAUST_WRAP_ALLOCATOR
+    std::cout<<" wrapped malloc/calloc/realloc/free="<<heapCalls;
+#endif
+    std::cout<<" (not lock or shared-library internal-allocation instrumentation)\n";
 }
