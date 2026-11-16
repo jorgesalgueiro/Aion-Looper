@@ -14,7 +14,7 @@ if(NOT runtime STREQUAL "2.88.0;silent-compute;trace-disabled;defined-vm-instruc
 endif()
 add_library(aion_faust_dependency STATIC IMPORTED)
 set_target_properties(aion_faust_dependency PROPERTIES IMPORTED_LOCATION "${AION_FAUST_LIBRARY}")
-add_library(aion_faust STATIC source/faust/FaustInterpreter.cpp)
+add_library(aion_faust STATIC source/faust/FaustInterpreter.cpp source/faust/FaustCBridge.cpp)
 target_include_directories(aion_faust PUBLIC source)
 target_include_directories(aion_faust SYSTEM PRIVATE "${AION_FAUST_SOURCE_DIR}/architecture")
 target_link_libraries(aion_faust PRIVATE aion_faust_dependency Threads::Threads ${CMAKE_DL_LIBS})

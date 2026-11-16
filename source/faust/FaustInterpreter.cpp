@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "FaustInterpreter.h"
+#include "InterpreterInstance.h"
+#include "FaustCBridge.h"
 #include <faust/dsp/interpreter-dsp.h>
 #include <faust/gui/PathBuilder.h>
 #include <faust/gui/UI.h>
+#include <faust/gui/CInterface.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -41,16 +44,35 @@ struct ControlCollector final:UI,PathBuilder {
     void addHorizontalBargraph(const char*,float*,float,float) override{}
     void addVerticalBargraph(const char*,float*,float,float) override{}
     void addSoundfile(const char*,const char*,Soundfile**) override{invalid=true;}
+    // Use the real C callback ABI. Upstream's UI* convenience overload casts
+    // unrelated UI/UIFloat classes by vtable layout, which UBSan rejects.
+    UIGlue glue(){
+        UIGlue g{};g.uiInterface=this;
+        g.openTabBox=[](void* p,const char* s){static_cast<ControlCollector*>(p)->openTabBox(s);};
+        g.openHorizontalBox=[](void* p,const char* s){static_cast<ControlCollector*>(p)->openHorizontalBox(s);};
+        g.openVerticalBox=[](void* p,const char* s){static_cast<ControlCollector*>(p)->openVerticalBox(s);};
+        g.closeBox=[](void* p){static_cast<ControlCollector*>(p)->closeBox();};
+        g.addButton=[](void* p,const char* s,float* z){static_cast<ControlCollector*>(p)->addButton(s,z);};
+        g.addCheckButton=[](void* p,const char* s,float* z){static_cast<ControlCollector*>(p)->addCheckButton(s,z);};
+        g.addVerticalSlider=[](void* p,const char* s,float* z,float v,float l,float h,float step){static_cast<ControlCollector*>(p)->addVerticalSlider(s,z,v,l,h,step);};
+        g.addHorizontalSlider=[](void* p,const char* s,float* z,float v,float l,float h,float step){static_cast<ControlCollector*>(p)->addHorizontalSlider(s,z,v,l,h,step);};
+        g.addNumEntry=[](void* p,const char* s,float* z,float v,float l,float h,float step){static_cast<ControlCollector*>(p)->addNumEntry(s,z,v,l,h,step);};
+        g.addHorizontalBargraph=[](void* p,const char* s,float* z,float l,float h){static_cast<ControlCollector*>(p)->addHorizontalBargraph(s,z,l,h);};
+        g.addVerticalBargraph=[](void* p,const char* s,float* z,float l,float h){static_cast<ControlCollector*>(p)->addVerticalBargraph(s,z,l,h);};
+        g.addSoundfile=[](void* p,const char* s,const char* url,Soundfile** z){static_cast<ControlCollector*>(p)->addSoundfile(s,url,z);};
+        g.declare=[](void*,float*,const char*,const char*){};
+        return g;
+    }
 };
 }
 struct FaustInterpreter::Impl {
     interpreter_dsp_factory* factory=nullptr;
-    interpreter_dsp* dsp=nullptr;
+    detail::InterpreterInstance dsp;
     ControlCollector ui;
     unsigned inCount=0,outCount=0;
     std::array<std::array<float,maxFrames>,2> in{},out{};
     std::atomic<bool> failed{false};
-    ~Impl(){std::lock_guard lock(compilerMutex());delete dsp;if(factory)deleteInterpreterDSPFactory(factory);}
+    ~Impl(){std::lock_guard lock(compilerMutex());dsp.reset();if(factory)deleteInterpreterDSPFactory(factory);}
 };
 static_assert(std::atomic<bool>::is_always_lock_free);
 FaustInterpreter::FaustInterpreter(std::unique_ptr<Impl> p) noexcept:impl(std::move(p)){}
@@ -67,12 +89,13 @@ std::unique_ptr<FaustInterpreter> FaustInterpreter::compile(std::string_view sou
         const char* args[]{"-single","-scal","-I",libraries.c_str()};
         candidate->factory=createInterpreterDSPFactoryFromString("AionEffect",std::string(source),libraries.empty()?2:4,args,error);
         if(!candidate->factory){if(error.size()>2048)error.resize(2048);return {};}
-        candidate->dsp=candidate->factory->createDSPInstance();
+        candidate->dsp=detail::createInterpreterInstance(candidate->factory);
         if(!candidate->dsp){error="Faust instance creation failed";return {};}
         const int ni=candidate->dsp->getNumInputs(),no=candidate->dsp->getNumOutputs();
         if(ni<0||ni>2||no<1||no>2){error="Faust requires 0..2 inputs and 1..2 outputs";return {};}
         candidate->inCount=static_cast<unsigned>(ni);candidate->outCount=static_cast<unsigned>(no);
-        candidate->dsp->buildUserInterface(&candidate->ui);
+        auto glue=candidate->ui.glue();
+        detail::buildInterpreterUi(candidate->dsp.get(),&glue);
         if(candidate->ui.invalid||candidate->ui.depth){error="Unsupported Faust controls or soundfile widget";return {};}
         candidate->dsp->init(rate);
         return std::unique_ptr<FaustInterpreter>(new FaustInterpreter(std::move(candidate)));

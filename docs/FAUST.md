@@ -28,7 +28,11 @@ Nonfinite inputs become zero. Nonfinite outputs silence the whole block and latc
 a fault until an explicit off-audio clear. Invalid buffer/control arguments leave
 DSP state untouched. The pinned dependency adaptation removes compute exception
 diagnostic allocation/file output, disables environment-selected tracing and
-removes an unused signed cycle counter. An upstream exception may still allocate
+removes an unused signed cycle counter. A further pinned VM adaptation replaces
+pointer-punned 32-bit scalar bitcasts with representation copies, value-initializes
+the iterator return stacks in both dispatch implementations, and explicitly
+rejects unsupported non-single bitcasts. The runtime marker requires this patch.
+An upstream exception may still allocate
 while being constructed; this is not a claim that arbitrary invalid Faust DSP is
 real-time safe. Tests instrument C++ new/delete; Linux additionally wraps direct
 malloc/calloc/realloc/free references in linked objects. This does not instrument
@@ -66,8 +70,8 @@ cmake -S . -B build/faust-tests -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DAION_FAUST_SOURCE_DIR="$cache/faust-2.88.0" \
   -DAION_FAUST_BUILD_DIR="$PWD/build/faust-dependency" \
   -DAION_FAUST_LIBRARY="$PWD/build/faust-dependency/lib/Release/libfaust.a"
-cmake --build build/faust-tests --target aion_faust_tests --parallel 2
-ctest --test-dir build/faust-tests -R '^faust_interpreter_contract$' --output-on-failure
+cmake --build build/faust-tests --target aion_faust_tests aion_faust_instruction_tests --parallel 2
+ctest --test-dir build/faust-tests -R '^faust_(instruction|interpreter)_contract$' --output-on-failure
 ```
 
 Windows development verification, from the checkout in PowerShell:
@@ -83,8 +87,8 @@ cmake -S . -B build/faust-tests -G 'Visual Studio 17 2022' -A x64 `
   "-DAION_FAUST_SOURCE_DIR=$cache/faust-2.88.0" `
   "-DAION_FAUST_BUILD_DIR=$PWD/build/faust-dependency" `
   "-DAION_FAUST_LIBRARY=$PWD/build/faust-dependency/lib/Release/libfaust.lib"
-cmake --build build/faust-tests --config Release --target aion_faust_tests --parallel 2
-ctest --test-dir build/faust-tests -C Release -R '^faust_interpreter_contract$' --output-on-failure
+cmake --build build/faust-tests --config Release --target aion_faust_tests aion_faust_instruction_tests --parallel 2
+ctest --test-dir build/faust-tests -C Release -R '^faust_(instruction|interpreter)_contract$' --output-on-failure
 ```
 
 Use the same toolchain/runtime/configuration for dependency and consumer. With
@@ -94,6 +98,29 @@ to both configure commands and use its bundled cmake/ctest if absent from PATH.
 Do not link a Debug consumer to this Release dependency. Build the dependency to
 completion before linking the consumer; neither normal builds nor packages fetch
 Faust implicitly.
+
+For dependency-wide Linux sanitizer verification, use separate caches:
+
+```bash
+cmake -S cmake/faust -B build/faust-dependency-sanitized -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug -DAION_FAUST_SANITIZERS=ON \
+  -DAION_FAUST_SOURCE_DIR="$PWD/build/faust-source/faust-2.88.0"
+cmake --build build/faust-dependency-sanitized --parallel 2
+cmake -S . -B build/faust-sanitized-tests -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DAION_BUILD_PLUGIN=OFF -DAION_ENABLE_FAUST_INTERPRETER=ON \
+  -DAION_FAUST_SANITIZERS=ON \
+  -DAION_FAUST_SOURCE_DIR="$PWD/build/faust-source/faust-2.88.0" \
+  -DAION_FAUST_BUILD_DIR="$PWD/build/faust-dependency-sanitized" \
+  -DAION_FAUST_LIBRARY="$PWD/build/faust-dependency-sanitized/lib/Debug/libfaust.a"
+cmake --build build/faust-sanitized-tests --target aion_faust_tests aion_faust_instruction_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+  ctest --test-dir build/faust-sanitized-tests \
+  -R '^faust_(instruction|interpreter)_contract$' --output-on-failure
+```
+
+Both the dependency and host/test targets must be instrumented. This is a focused
+runtime/ownership gate, not blanket approval of arbitrary Faust programs. Keep
+the normal C++ new/delete and Linux direct-heap-call guards as separate evidence.
 
 ## Licensing and delivery limits
 

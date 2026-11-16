@@ -28,3 +28,21 @@ if(patched EQUAL -1)
     string(REPLACE "        memset(address_stack, 0, sizeof(InstructionIT) * 64);" "        // Iterator objects above are value-initialized, never byte-cleared." code "${code}")
     file(WRITE "${vm}" "${code}")
 endif()
+
+# Constant waveform preparation is also OFF audio. Converting vector elements
+# preserves numeric values without treating a vector<float> as vector<double>.
+set(visitor "${AION_FAUST_SOURCE_DIR}/compiler/generator/interpreter/interpreter_instructions.hh")
+file(READ "${visitor}" code)
+string(REPLACE "\r\n" "\n" code "${code}")
+string(FIND "${code}" "AION_FAUST_TYPED_WAVEFORM" patched)
+if(patched EQUAL -1)
+    string(SHA256 hash "${code}")
+    if(NOT hash STREQUAL "86f12047aceecd3bebfb6ffe9995122c5e78bf498cd5d16f16d526e5b7431c35")
+        message(FATAL_ERROR "Faust waveform visitor differs from pinned archive; refusing to overwrite")
+    endif()
+    string(REPLACE "reinterpret_cast<const std::vector<REAL>&>(float_array->fNumTable)"
+        "std::vector<REAL>(float_array->fNumTable.begin(), float_array->fNumTable.end()) /* AION_FAUST_TYPED_WAVEFORM */" code "${code}")
+    string(REPLACE "reinterpret_cast<const std::vector<REAL>&>(double_array->fNumTable)"
+        "std::vector<REAL>(double_array->fNumTable.begin(), double_array->fNumTable.end())" code "${code}")
+    file(WRITE "${visitor}" "${code}")
+endif()

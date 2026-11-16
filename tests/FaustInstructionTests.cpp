@@ -2,6 +2,7 @@
 // Low-level pinned-bytecode regression for the embedding adaptation. This does
 // not add a product bytecode loader or authorize arbitrary/unvalidated programs.
 #include <faust/dsp/interpreter-dsp.h>
+#include "faust/InterpreterInstance.h"
 #include <fbc_opcode.hh>
 #include <array>
 #include <bit>
@@ -38,7 +39,7 @@ int main(){
     replaceOpcode(code,FBCInstruction::kCastInt,FBCInstruction::kBitcastInt);
     replaceOpcode(code,FBCInstruction::kCastReal,FBCInstruction::kBitcastReal);
     Factory bits(readInterpreterDSPFactoryFromBitcode(code,error));check(!!bits,"Bitcast fixture load");
-    std::unique_ptr<interpreter_dsp> dsp(bits->createDSPInstance());check(!!dsp,"Bitcast instance");dsp->init(48000);
+    auto dsp=aion::detail::createInterpreterInstance(bits.get());check(!!dsp,"Bitcast instance");dsp->init(48000);
     std::array<float,128> input{},output{};float* in[]{input.data()},*out[]{output.data()};
     // Deliberately include signed zeros, denormals, infinities and NaN payloads:
     // representation copying must not perform floating arithmetic or conversions.
@@ -54,7 +55,8 @@ int main(){
     check(writeInterpreterDSPFactoryToBitcode(ftz.get()).find("kBitcastInt")!=std::string::npos,"FTZ2 uses bitcast instruction");
     auto noFtz=compile("process=+~*(0.5);",false);
     for(unsigned block:{64u,128u}){
-        std::unique_ptr<interpreter_dsp> f(ftz->createDSPInstance()),g(noFtz->createDSPInstance());
+        auto f=aion::detail::createInterpreterInstance(ftz.get());
+        auto g=aion::detail::createInterpreterInstance(noFtz.get());
         f->init(48000);g->init(48000);std::array<float,128> control{};float* normal[]{control.data()};
         for(unsigned pos=0;pos<256;pos+=block){
             input.fill(0);if(!pos)input[0]=1;

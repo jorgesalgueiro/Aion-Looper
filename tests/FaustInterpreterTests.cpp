@@ -103,6 +103,16 @@ int main(int argc,char** argv){
     worker.join();require(success,"Worker compilation");
     auto synth=compile("process=0.25,-0.5;",96000);
     watching=true;require(synth->process(nullptr,out,128)&&ol[0]==.25f&&orr[0]==-.5f,"Zero-input generator");watching=false;
+    for(const auto& tableSource:{"process=int(_) : rdtable(waveform{0.25,-0.5,1.0,0.0});", "process=int(_) : rdtable(waveform{1,2,-3,0});"}){
+        auto table=compile(tableSource);
+        // Determine the explicitly written table rather than infer storage type.
+        const bool fractional=std::string_view(tableSource).find("0.25")!=std::string_view::npos;
+        const auto expected=fractional?std::array<float,4>{.25f,-.5f,1,0}:std::array<float,4>{1,2,-3,0};
+        for(unsigned i=0;i<128;++i)l[i]=static_cast<float>(i%4);
+        watching=true;require(table->process(in,out,128),"Prepared constant waveform");
+        for(unsigned i=0;i<128;++i)require(ol[i]==expected[i%4],"Exact constant waveform samples");
+        watching=false;
+    }
     // Exercise a real standard-library nonlinear implementation, not only
     // arithmetic kernels. This is an embedding probe, not sound-quality approval.
     const std::string nonlinear="import(\"stdfaust.lib\"); process=aa.tanh1,aa.tanh1;";

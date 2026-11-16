@@ -31,6 +31,23 @@ non-FTZ subnormal-tail control. No public bytecode loader or new musical model i
 added. Windows Release **2/2 passes in 1.11s** (`faust-instructions-*` logs).
 Linux and dependency-wide sanitizer checks are next. Product T remains pending.
 
+Linux optimized instruction/backend gates subsequently pass **2/2 in 0.19s**.
+The first dependency-wide ASan/UBSan run **fails both tests**: the upstream
+`interpreter_dsp::operator delete` reads its ended object's factory field, and the
+UI convenience API treats the collector as an unrelated `UIFloat`. Keep
+`build/faust-sanitized-host-tests.log` as the initial failure evidence. Repairs:
+capture the allocator before destruction, explicitly destroy then free the
+instance, and use the official C UI callback ABI through a separate translation
+unit (the upstream C/C++ headers conflict). Factory lifetime/mutex ordering is
+retained. No sanitizer suppression or weakened assertion is used.
+
+The private compiler's waveform preparation now copies typed vector elements
+instead of type-punning whole vector objects; exact integer/fractional waveform
+samples are included in the backend contract. Windows final ownership/waveform
+checks pass **2/2 in 1.22s** (`faust-ownership-host-{build,tests}.log`). Rebuild the
+Linux normal and fully instrumented dependency and rerun the same gates before
+marking these repairs accepted. No product GUI/CLI/effect promotion yet.
+
 The owner authorized a Faust interpreter for native effect implementations.
 `source/faust/FaustInterpreter` is an opt-in, prepared portable VM backend using
 pinned Faust 2.88.0; see [FAUST.md](FAUST.md) for exact build commands, hash,
