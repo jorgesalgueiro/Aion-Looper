@@ -13,6 +13,24 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ### Active owner request: optional Faust backend — 16 November 2026
 
+**Follow-up slice: defined VM instruction execution.** Acceptance is exact
+single-precision bit-representation round trips (signed zero, subnormals,
+infinity/NaN payloads), original recursive FTZ2 normal/subnormal semantics at
+64/128, both switch/computed-goto implementations, retained backend/heap gates,
+and an instrumented dependency run before promoting a product effect.
+`PatchVmInstructions.cmake` changes the two scalar VM dispatch implementations:
+copy representations with memcpy and value-initialize iterator stacks. The VM
+has a 32-bit integer stack; unsupported non-single bitcasts now fail explicitly
+instead of reading eight bytes from a four-byte object. The public wrapper still
+forces single precision. The dependency marker requires rebuilding this patch.
+
+`FaustInstructionTests.cpp` deliberately replaces only compiler-generated scalar
+cast opcodes in a structurally valid pinned FBC fixture, then checks exact bits.
+It separately compiles the real recursive FTZ2 path (not a mock) and retains a
+non-FTZ subnormal-tail control. No public bytecode loader or new musical model is
+added. Windows Release **2/2 passes in 1.11s** (`faust-instructions-*` logs).
+Linux and dependency-wide sanitizer checks are next. Product T remains pending.
+
 The owner authorized a Faust interpreter for native effect implementations.
 `source/faust/FaustInterpreter` is an opt-in, prepared portable VM backend using
 pinned Faust 2.88.0; see [FAUST.md](FAUST.md) for exact build commands, hash,
