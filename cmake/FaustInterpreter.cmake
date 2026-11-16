@@ -1,0 +1,30 @@
+# Separate dependency build keeps libfaust's compiler flags/cache isolated from
+# JUCE and aion_core. See docs/FAUST.md for verified source/build commands.
+set(AION_FAUST_SOURCE_DIR "" CACHE PATH "Verified Faust 2.88.0 source directory")
+set(AION_FAUST_BUILD_DIR "" CACHE PATH "Aion cmake/faust dependency build directory")
+set(AION_FAUST_LIBRARY "" CACHE FILEPATH "Matching patched static libfaust")
+if(NOT EXISTS "${AION_FAUST_SOURCE_DIR}/architecture/faust/dsp/interpreter-dsp.h"
+    OR NOT EXISTS "${AION_FAUST_LIBRARY}"
+    OR NOT EXISTS "${AION_FAUST_BUILD_DIR}/aion-faust-runtime.txt")
+    message(FATAL_ERROR "Prepare/build pinned Faust with cmake/faust first; see docs/FAUST.md")
+endif()
+file(READ "${AION_FAUST_BUILD_DIR}/aion-faust-runtime.txt" runtime)
+if(NOT runtime STREQUAL "2.88.0;silent-compute;trace-disabled\n")
+    message(FATAL_ERROR "Unsupported Faust embedding build")
+endif()
+add_library(aion_faust_dependency STATIC IMPORTED)
+set_target_properties(aion_faust_dependency PROPERTIES IMPORTED_LOCATION "${AION_FAUST_LIBRARY}")
+add_library(aion_faust STATIC source/faust/FaustInterpreter.cpp)
+target_include_directories(aion_faust PUBLIC source)
+target_include_directories(aion_faust SYSTEM PRIVATE "${AION_FAUST_SOURCE_DIR}/architecture")
+target_link_libraries(aion_faust PRIVATE aion_faust_dependency Threads::Threads ${CMAKE_DL_LIBS})
+if(WIN32)
+    target_link_libraries(aion_faust PRIVATE ws2_32)
+endif()
+if(BUILD_TESTING)
+    add_executable(aion_faust_tests tests/FaustInterpreterTests.cpp)
+    target_link_libraries(aion_faust_tests PRIVATE aion_faust)
+    add_test(NAME faust_interpreter_contract COMMAND aion_faust_tests "${AION_FAUST_SOURCE_DIR}/libraries")
+    # The adapted library must remain silent even under inherited diagnostics.
+    set_tests_properties(faust_interpreter_contract PROPERTIES ENVIRONMENT "FAUST_INTERP_TRACE=7;FAUST_INTERP_OUTPUT=1")
+endif()

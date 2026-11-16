@@ -11,6 +11,64 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Active owner request: optional Faust backend — 16 November 2026
+
+The owner authorized a Faust interpreter for native effect implementations.
+`source/faust/FaustInterpreter` is an opt-in, prepared portable VM backend using
+pinned Faust 2.88.0; see [FAUST.md](FAUST.md) for exact build commands, hash,
+licensing, real-time scope and remaining admission/ownership work. No LLVM/JIT
+or product routing is added. Default builds, existing Q/C/A and preserved UI are
+unchanged. This is an internal backend slice, not completed T/GUI/CLI integration.
+
+First Windows Release contract passes: actual compilation/import, independent
+instances/factory lifetime, exact gain/delay/feedback, 64/128/irregular/in-place,
+invalid-source/control rejection, finite-input sanitation, numerical-fault
+silence/recovery and concurrent off-audio compilation. Instrumented processing
+observes zero C++ new/delete, including first callbacks. Recheck the final patch
+build with environment-selected tracing disabled, then verify Linux. Retain
+`build/faust-{dependency,host}-{configure,build,tests}.log` as applicable.
+
+The preceding original-wave-shaper FIR candidate passes its native streaming
+contract, but **fails** the retained actual-browser legacy comparison: worst
+peak error 2.63378024e-6 against the unchanged 1e-6 limit (high-drive ramps).
+Do not promote/relabel it as identical. Its fixed wet delay is 192 base samples.
+See `build/distortion-waveshaper-{unit,browser,all-errors}.log`; the owner's later
+quality-first goal below supersedes bit matching for remaining effects, not the
+honest failure record. No T sound/control has been exposed to users.
+
+Next after backend acceptance: choose and measure a licensed organic nonlinear
+model, then integrate T through persistent arbitrary-order DSP, original controls/
+presets and shared GUI/CLI/state with explicit quality and lifecycle acceptance.
+
+### Owner update: quality-first remaining effects — 16 November 2026
+
+The owner explicitly requested the best available implementations for remaining
+effects, with an organic/natural result, and is not seeking a particular original
+sound. For newly ported remaining effects, prioritize researched, maintained DSP
+approaches and measured quality over JS audio identity. Preserve interface,
+controls, parameter/preset/session compatibility, editable order and shared
+GUI/CLI ownership. Already accepted Q/C/A behavior is not being rewritten here.
+The persistent/live lifecycle approval below still applies.
+
+Keep original results/fixtures as comparisons and retained evidence. Do not
+loosen old tolerances or relabel a failed legacy comparison as passing. The
+original T curve compiler remains verified, but matching the browser's exact
+Float32 resampling arithmetic is no longer the goal for the improved T sound.
+Promotion needs explicit aliasing/frequency/DC/stability, smoothing, latency/CPU,
+64/128/variable-block, ownership/cancellation and UI/CLI/state checks, plus honest
+listening/audition limits. "Best" is a design goal, not a claim proved by tests.
+
+### Owner-approved remaining-effects lifecycle — 16 November 2026
+
+The owner selected persistent processors and live controls for **T and the
+remaining loop effects**, extending Q/C/A's policy. Preserve effect memory across
+ordinary PLAY/RTRG/history restarts; apply edits during OD/SUB/MULT/scheduled STOP
+with suitable smoothing/crossfades. Explicit destructive/reset actions must clear
+owned effect state so old tails cannot reappear. Chain order stays user-editable.
+Restart transitions intentionally differ from original JS; steady-state sound,
+controls, presets and IDs still require reference acceptance. Do not ask this
+same lifecycle question again for each remaining effect.
+
 ### MIDI integration gate / T preparation contract — 16 November 2026
 
 `tools/TestMouseWorkflow.ps1 -MidiOnly` passes the complete actual UI/MidiBuffer
@@ -57,10 +115,8 @@ partial-parameter import/factory fallbacks are not defined by this complete
 settings representation; retain the original importer as a separate pending gate.
 
 Next: implement/compare the original full distortion audio path before exposing
-T. The owner has been asked whether remaining effects should use persistent/live
-processing like Q/C/A or original resets/deferred updates; the answer is pending.
-Do not assume that behavior choice from these preparation tests. This completed
-slice is independent of that choice. Configure only because CMake gained targets:
+T, using the approved persistent/live policy above. This preparation slice is
+independent of graph lifetime. Configure only because CMake gained targets:
 
 ```powershell
 cmake -S . -B build/windows-core

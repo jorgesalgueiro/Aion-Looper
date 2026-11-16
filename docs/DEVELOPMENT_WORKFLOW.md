@@ -4,7 +4,25 @@ Owner-approved policy, updated 30 October 2026 (current aion_prompt.txt). Preser
 acceptance evidence; reduce redundant build/validation work rather than weaken
 sound, timing, state compatibility or real-time safety.
 
+Owner approval, 16 November: remaining loop effects use persistent per-track
+processors and live controls, including OD/SUB/MULT/scheduled STOP. Ordinary
+PLAY/RTRG/history restarts retain effect memory; destructive/reset actions clear
+it. Chain order remains editable. This intentionally changes restart transitions
+from JS, not steady-state sound, preset values or session identifiers.
+
+Later owner update, 16 November: for the remaining unported effects, organic/
+natural sound and researched DSP quality take precedence over original JS sound
+identity. Keep controls/UI/compatibility and retained legacy comparisons; never
+claim an old failing comparison passed. Define measurable quality acceptance
+before implementing/promoting each new model. This does not authorize unrelated
+rewrites of already accepted Q/C/A processing.
+
 ## Active format matrix
+
+Optional Faust effect-backend development is isolated from normal builds. See
+[FAUST.md](FAUST.md) for the pinned archive/hash, off-audio preparation contract,
+Windows/Linux commands and licensing limitations. Do not enable it routinely or
+claim the internal backend constitutes a connected product effect.
 
 | Platform | Active | Deferred |
 | --- | --- | --- |
