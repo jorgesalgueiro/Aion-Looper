@@ -11,6 +11,52 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### MIDI integration gate / T preparation contract — 16 November 2026
+
+`tools/TestMouseWorkflow.ps1 -MidiOnly` passes the complete actual UI/MidiBuffer
+audit at **64/128** (`midi-integration-audit.log`): malformed panic, Space focus/
+repeat, Stop/CC120/123, SUS/OD/SUB, Note/CC/PC MUTE/action/header learning,
+continuous CC editing/focus/drag, timeout/Escape/clear/save/reload and native bridge
+send/reload recovery, with nonzero/silent PCM and clip/history checks. No product
+fix was needed. These synthetic packets do not establish physical-device support.
+Merge follow-up is committed locally as `c5d0eb4`; no push/package.
+
+Next effect is **T / Distortion**. The first internal preparation slice adds
+`DistortionSettings` with exact-double controls, six original presets, atomic
+invalid-input rejection and the fixed 4097-float original curve builder.
+Untouched defaults (Amount 40, Tone 4000) deliberately differ from the named
+"default" preset (35, 5000). Equal manual edits clear the preset label; enable
+survives preset/manual edits. Steps describe widgets, not quantization of values.
+Curve preparation is OFF audio and requires exclusive output ownership.
+
+Windows new targets build; **2/2 tests pass (5.05s)**. The unchanged original
+factory, generic preset handler, registry and `makeDistortionCurve` are executed
+by `DistortionSettingsReference.cjs`: **1273 curves / 5215481 samples, max 0 ULP
+and absolute error 0**, against the predeclared 2-Float32-ULP limit. This includes
+all integer Amount/cent-step Shape sweeps, fractional values, all six presets and
+128 range positions per control; exact positive zero is separately required.
+The initial oracle failure was a missing AudioGraph class binding in the harness;
+the original method bodies/tolerance were unchanged when fixing that binding.
+Keep `distortion-settings-tests.log` and `distortion-settings-fixed-tests.log`.
+
+**T remains disabled/unported in the product.** This is preparation, NOT a full
+effect or sound-parity claim: WaveShaper interpolation/4x resampling, low-pass
+tone, gain/dry-wet automation, graph lifetime, arbitrary chain position, shared
+GUI/CLI/MIDI and versioned state/bank ownership still need integration. No
+product command, APVTS/action/session ID or UI asset was changed. Original
+partial-parameter import/factory fallbacks are not defined by this complete
+settings representation; retain the original importer as a separate pending gate.
+
+Next: commit this coherent snapshot, sync with SetupWslWorkspace.sh, run both new
+contracts on Linux; then implement/compare the original full distortion audio
+path before exposing T. Configure only because CMake gained these new targets:
+
+```powershell
+cmake -S . -B build/windows-core
+cmake --build build/windows-core --config Release --target aion_distortion_settings_tests --parallel 2
+ctest --test-dir build/windows-core -C Release -R '^(distortion_settings_contract|original_distortion_settings_contract)$' --output-on-failure --no-tests=error
+```
+
 ### MERGE phase preconditions / natural grid — 16 November 2026
 
 Full 64-sample replay at `26ead2d` passes core mouse, export and MERGE
