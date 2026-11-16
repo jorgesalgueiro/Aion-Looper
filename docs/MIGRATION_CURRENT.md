@@ -47,9 +47,10 @@ Illustrative warmed stereo ADAA-probe means at 64/128 frames: Windows **19.67 /
 38.54 us**, Linux WSL **12.49 / 24.02 us**. Observed maxima were **85.9 / 154.5 us**
 and **90.29 / 92.14 us** respectively (3000 callbacks per case). These are separate
 backend runs, not a cross-OS speedup, full-chain capacity or hardware-latency claim.
-Faust's GCC build emits upstream warnings, including unused double-interpreter
-bitcast array-bounds/aliasing and iterator initialization. This wrapper forces
-single precision; arbitrary patch/instruction safety is NOT established. Audit
+Faust's GCC build emits upstream warnings, including double-interpreter bitcast
+array-bounds, float/double aliasing and iterator initialization. This wrapper
+forces single precision, which does not resolve the aliasing warnings;
+arbitrary patch/instruction safety is NOT established. Audit
 any selected effect/intrinsics and run applicable sanitizers before promotion.
 Runtime patch admission, bounded swapping/retirement, production integration,
 state/GUI/CLI/MIDI controls and effect quality/listening remain pending.
