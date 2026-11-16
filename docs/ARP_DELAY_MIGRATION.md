@@ -12,7 +12,7 @@ version-2 persistence, native selector and shared CLI. Fresh first enables use
 Loose; legacy banks and original presets preserve Original. See
 [ARP_ORGANIC_VOICING.md](ARP_ORGANIC_VOICING.md) for policy and commands and
 [MIGRATION_CURRENT.md](MIGRATION_CURRENT.md) for executed Windows/Linux/UI/
-sanitizer evidence and the unresolved intermittent blank-startup gate. Earlier
+sanitizer evidence and the remaining integration gates. Earlier
 entries below remain historical; they do not describe the current mode support.
 
 ## Nine original MIDI sliders — 13 November 2026
