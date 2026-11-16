@@ -39,6 +39,15 @@ The initial oracle failure was a missing AudioGraph class binding in the harness
 the original method bodies/tolerance were unchanged when fixing that binding.
 Keep `distortion-settings-tests.log` and `distortion-settings-fixed-tests.log`.
 
+Snapshot **`5facd26`** is committed locally and synced through
+`tools/SetupWslWorkspace.sh` to the clean independent Linux mirror. Linux builds
+only `aion_distortion_settings_tests` and passes **2/2 (4.03s)**; its 1273 curves /
+5215481 samples also have **max 0 ULP / absolute error 0**. Logs in Linux native
+`build/`: `distortion-settings-linux-{configure,build,tests}.log`; Windows sync
+log: `build/distortion-settings-wsl-sync.log`. No dependency or platform-format
+changes were needed. The first Linux metrics read used unavailable `rg`; a
+subsequent `grep` read confirmed the measurements and clean checkout.
+
 **T remains disabled/unported in the product.** This is preparation, NOT a full
 effect or sound-parity claim: WaveShaper interpolation/4x resampling, low-pass
 tone, gain/dry-wet automation, graph lifetime, arbitrary chain position, shared
@@ -47,14 +56,24 @@ product command, APVTS/action/session ID or UI asset was changed. Original
 partial-parameter import/factory fallbacks are not defined by this complete
 settings representation; retain the original importer as a separate pending gate.
 
-Next: commit this coherent snapshot, sync with SetupWslWorkspace.sh, run both new
-contracts on Linux; then implement/compare the original full distortion audio
-path before exposing T. Configure only because CMake gained these new targets:
+Next: implement/compare the original full distortion audio path before exposing
+T. The owner has been asked whether remaining effects should use persistent/live
+processing like Q/C/A or original resets/deferred updates; the answer is pending.
+Do not assume that behavior choice from these preparation tests. This completed
+slice is independent of that choice. Configure only because CMake gained targets:
 
 ```powershell
 cmake -S . -B build/windows-core
 cmake --build build/windows-core --config Release --target aion_distortion_settings_tests --parallel 2
 ctest --test-dir build/windows-core -C Release -R '^(distortion_settings_contract|original_distortion_settings_contract)$' --output-on-failure --no-tests=error
+```
+
+```sh
+# After committed-snapshot sync; no Windows caches copied.
+cd /home/jorge/projects/Aion-Looper
+cmake -S . -B build/linux
+cmake --build build/linux --target aion_distortion_settings_tests --parallel 2
+ctest --test-dir build/linux -R '^(distortion_settings_contract|original_distortion_settings_contract)$' --output-on-failure --no-tests=error
 ```
 
 ### MERGE phase preconditions / natural grid — 16 November 2026
