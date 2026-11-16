@@ -11,6 +11,104 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Windows editor visibility repair — 16 November 2026
+
+Reproduced the blank editor with a controlled native window hide/show: a loaded
+root remained at about:blank after the first zero-ms cycle. CDP history showed
+root + blank, current index 1, no script exceptions. The pinned Windows JUCE
+backend attempts goBack on show before blank navigation necessarily commits.
+
+Windows Browser now owns that unloading policy: hide explicitly navigates to
+blank and immediately cancels native STUT/export/learn; show waits for blank
+completion before explicitly restoring the remembered allowed document. JUCE's
+history-based unload is disabled, **not** document unloading. The initial trial
+that immediately restored could cancel blank navigation before unload; the final
+implementation waits for completion and tests a fresh document on every cycle.
+Intentional blank documents remain blank, without mixer bootstrap. Linux and
+Apple behavior is unchanged behind JUCE_WINDOWS. No DSP/parameter/asset change.
+
+Runtime snapshot `e0d371c`: Windows Standalone and owned mouse host build. New
+`TestEditorVisibility.ps1` passes **13 native cycles each at 64/128**, requested
+hide durations 0/1/10/100ms. It verifies actual document unload, continuing
+nonzero PCM/unchanged clip, held STUT release, lost-keyup STOP cancellation beyond
+four seconds, MIDI learn cancellation, stale valid export destination rejection,
+intentional blank preservation and native audio evidence belonging to this host.
+Actual Arp UI regressions pass both blocks using normal startup (not the fixture
+steady-start option). Windows frontend/bridge scripts pass. Linux Standalone
+builds and frontend/bridge CTest passes **2/2 (10.53s)**. An initial mistyped CTest
+selection found no tests; only the corrected registered names count as evidence.
+No physical device, OS dialog, Linux WebKit, Apple or wrapper pass is claimed.
+
+Broader mouse diagnostics exposed two fixture assumptions, repaired without
+changing product behavior, thresholds or post-press timing:
+
+- The deferred four-second STOP case could start while the actual controller
+  still displayed FINISH and captured recording-origin, despite a newer native
+  RPC reporting auto-play. The isolated preceding DEL/re-record reproduction
+  records initialState=recording/canDelete=false and correctly keeps PCM. The
+  positive test now waits for visible STOP and asserts captured playing-origin/
+  canDelete=true. Original 2800/1400ms waits, 1200ms delete check and no-resurrection
+  assertion remain. Focused replay passes 64/128; FINISH-origin protections and
+  existing negative/boundary regressions remain intact.
+- The queued-stop audio check queried again after its scheduled stop completed.
+  It now asserts the unchanged >0.02 PCM threshold on the already captured
+  stopping snapshot, tying state/frame/audio together rather than requiring sound
+  after the deadline. The full run passes that case and its symbols/history checks.
+
+Export regression initially supplied a picker immediately after CDP reload ACK,
+which merely schedules navigation. It now waits for main-document commit while
+script execution remains disabled, then supplies the obsolete destination.
+The original 600ms file-suppression assertion stays, with neither unload RPC nor
+new-page bootstrap available. Complete ExportWorkflow passes **64/128**, including
+exact stored stereo WAV, replacement/late callbacks, errors/recovery, overwrite,
+DEL and unchanged transport; startup cleanup packet count remains zero. The
+helper's generic "mouse workflow" footer does not mean the full mouse suite passed.
+
+**Open integration gate / next slice:** the full `-SkipMidi` mouse run subsequently
+fails at early speed: `speedEdited.tracks[0].state` is playing, expected queued
+(`tests/MouseWorkflow.cjs`, early-source speed block). The assertion and pre-grid
+silence/deadline/identity checks remain unchanged. A fail-only frame/deadline log
+is added for the next run; it has not yet produced evidence. A crossed deadline
+is a hypothesis, not established cause. Isolate this real source/keyboard sequence
+and inspect command observation relative to the audio deadline. Do not slow the
+master clock, loosen tolerances or drop queued/silence assertions to obtain a pass.
+The full suite did not reach its 128-block run or remaining merge/MIDI workflows.
+Do not advance to a new effect or claim full Arp/release acceptance yet.
+
+Commands and evidence (all logs under Windows `build/`, or Linux native `build/`):
+
+```powershell
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_mouse_host --parallel 2
+tools/TestEditorVisibility.ps1
+tools/TestEditorVisibility.ps1 -HeldStopOnly
+tools/TestArpUi.ps1
+tools/TestMouseWorkflow.ps1 -ExportOnly -SkipMidi
+node tests/FrontendTests.cjs
+node tests/BridgeTests.cjs
+# Remaining failing integration gate, not counted as passing:
+tools/TestMouseWorkflow.ps1 -SkipMidi
+```
+
+Passing logs: `editor-visibility-final.log`,
+`editor-visibility-held-rendered-stop.log`, `editor-visibility-arp-regression.log`,
+`editor-visibility-export-navigation.log`, `editor-visibility-frontend.log`,
+`editor-visibility-bridge.log`. Keep failed `editor-visibility-baseline.log`,
+`editor-visibility-held-origin2.log`, `editor-visibility-mouse-regression.log`,
+`editor-visibility-mouse-diagnostic.log`, `editor-visibility-mouse-rendered-stop.log`,
+`editor-visibility-mouse-callback-audio.log`, `editor-visibility-export-regression.log`.
+The final visibility run includes the stronger host-identity evidence assertion.
+
+```sh
+cmake --build --preset linux-dev --parallel 2
+ctest --test-dir build/linux -R '^(native_frontend_commands|native_bridge_lifecycle)$' --output-on-failure --no-tests=error
+```
+
+Linux logs: `editor-visibility-linux-build.log`,
+`editor-visibility-linux-frontend.log`. No package, version/dependency bump or
+preserved UI/reference/logo edits. The optional visibility mailbox and steady-start
+flag live only in the EXCLUDE_FROM_ALL synthetic test host, with safe delayed-show
+ownership; they are not production RPCs or CLI features.
+
 ### Organic Arp product integration — 15 November 2026
 
 Fresh effects now use Loose on their first successful enable. Existing native

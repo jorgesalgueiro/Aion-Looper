@@ -1,4 +1,4 @@
-param([int[]]$Blocks=@(64,128))
+param([int[]]$Blocks=@(64,128),[switch]$HeldStopOnly)
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 if((Get-NetTCPConnection -LocalPort 9235 -State Listen -ErrorAction SilentlyContinue) -or (Get-Process -Name aion_mouse_host -ErrorAction SilentlyContinue)){throw 'Previous test host/port is in use.'}
@@ -10,7 +10,8 @@ foreach($block in $Blocks){
   $env:AION_MOUSE_TEST_RUN=[guid]::NewGuid().ToString('N');$env:WEBVIEW2_USER_DATA_FOLDER=Join-Path $repo "build/visibility-profile-$block-$($env:AION_MOUSE_TEST_RUN)"
   $preview=Start-Process -FilePath (Join-Path $repo 'build/windows/Release/aion_mouse_host.exe') -ArgumentList "$block --steady-start" -WindowStyle Hidden -PassThru
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments;$env:WEBVIEW2_USER_DATA_FOLDER=$savedProfile
-  & 'C:/Program Files/nodejs/node.exe' (Join-Path $repo 'tests/EditorVisibilityUi.cjs') $block
+  if($HeldStopOnly){& 'C:/Program Files/nodejs/node.exe' (Join-Path $repo 'tests/EditorVisibilityUi.cjs') $block --held-stop-only}
+  else{& 'C:/Program Files/nodejs/node.exe' (Join-Path $repo 'tests/EditorVisibilityUi.cjs') $block}
   if($LASTEXITCODE -ne 0){throw "Visibility acceptance failed at $block."}
  }finally{
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments;$env:WEBVIEW2_USER_DATA_FOLDER=$savedProfile;$env:AION_MOUSE_TEST_RUN=$savedRun

@@ -2,6 +2,11 @@
 
 ## Current voicing integration — 15 November 2026
 
+16 November follow-up: a controlled Windows blank-on-hide/show reproduction is
+fixed, with explicit unload/restore and cancellation gates. Broader early-source
+speed validation remains open. See MIGRATION_CURRENT.md for exact scope and
+failed/passing evidence; do not infer full Arp or release acceptance.
+
 Organic voicing now reaches the production worker, exact settings owner,
 version-2 persistence, native selector and shared CLI. Fresh first enables use
 Loose; legacy banks and original presets preserve Original. See

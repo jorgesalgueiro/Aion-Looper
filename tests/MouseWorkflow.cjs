@@ -770,12 +770,22 @@ let socket;
     await click('#loop-action-0');await state('recording');await delay(180);await click('#loop-action-0');await state('playing');
     // The 4s STOP gesture must clear just like DEL, even behind another track's
     // finalization wait, and discard an unsent record belonging to this track.
+    // Native PCM can auto-play before this document receives its next snapshot.
+    // Press the actual visible STOP, never a stale FINISH/RECORD origin (which
+    // correctly cannot delete). Keep the original post-press timing/assertions.
+    let stopRendered=false;for(let n=0;n<180;++n){stopRendered=await evaluate(`document.querySelector('#loop-action-0')?.textContent.trim()==='STOP'`);if(stopRendered)break;await delay(40);}assert(stopRendered,'Deferred hold starts on visible STOP');
+    await evaluate(`window.deferredHoldTrace=[];window.deferredHoldListener=e=>{if(!e.code||e.code==='Digit1')window.deferredHoldTrace.push({type:e.type,key:e.code,target:e.target===window?'window':e.target?.id,time:performance.now(),focus:document.hasFocus()});};for(const type of ['blur','focus','pagehide','keydown','keyup'])window.addEventListener(type,window.deferredHoldListener,true);`);
+    await evaluate(`window.savedOriginPress=AionPerformance.prototype.press;AionPerformance.prototype.press=function(id,key){const state=this.actions.track(id)?.state,result=window.savedOriginPress.call(this,id,key),p=this.presses.get(key);window.deferredHoldTrace.push({type:'origin',state,initial:p?.initialState,canDelete:p?.canDelete,button:document.querySelector('#loop-action-0')?.textContent,time:performance.now()});return result;};`);
     await call('Input.dispatchKeyEvent',{type:'keyDown',code:'Digit1',key:'1',windowsVirtualKeyCode:49});await state('stopped');
+    assert(await evaluate(`window.deferredHoldTrace.some(e=>e.type==='origin'&&e.initial==='playing'&&e.canDelete===true)`),'Deferred deletion must own a real STOP-origin press');
     await pauseDispatch();await delay(2800);
     await evaluate(`window.pausedHoldQueue.enqueue(()=>AionCommandQueue.wait,{track:1});window.pausedHoldQueue.enqueue(()=>({action:'record',track:0,value:0}),{track:0});`);
     await resumeDispatch();await delay(1400);
     await call('Input.dispatchKeyEvent',{type:'keyUp',code:'Digit1',key:'1',windowsVirtualKeyCode:49});
-    await wait(s=>s.tracks[0].state==='empty','Held STOP bypasses another track finalization wait',1200);
+    try{await wait(s=>s.tracks[0].state==='empty','Held STOP bypasses another track finalization wait',1200);}
+    catch(error){console.error('Deferred hold focus/navigation evidence',await evaluate('JSON.stringify(window.deferredHoldTrace)'));throw error;}
+    await evaluate(`for(const type of ['blur','focus','pagehide','keydown','keyup'])window.removeEventListener(type,window.deferredHoldListener,true);delete window.deferredHoldListener;delete window.deferredHoldTrace;`);
+    await evaluate(`AionPerformance.prototype.press=window.savedOriginPress;delete window.savedOriginPress;`);
     await delay(3200);assert.equal((await snapshot()).tracks[0].state,'empty','Held STOP discards a queued replacement recording');
     await click('#loop-action-0');await state('recording');await delay(180);await click('#loop-action-0');await state('playing');
     const beforeHold=await snapshot();
@@ -827,7 +837,11 @@ let socket;
     assert.equal(await evaluate(`document.getElementById('loop-state-symbol-0').textContent`),'[.]','Original pending STOP symbol differs from stopped');
     assert.equal(await evaluate(`document.getElementById('loop-state-text-0').textContent`),'STOPPING');
     assert.equal(pendingStop.tracks[0].waveformId,statusBefore.tracks[0].waveformId);
-    await wait(s=>s.outputPeak>0.02,'Queued stop still produces captured PCM');
+    // The observation above already pins the queued-stop callback. Later CDP/
+    // DOM acknowledgements can cross its real bar deadline; requiring sound
+    // after that deadline would contradict the expected automatic silence.
+    // Keep the same PCM threshold, now tied to the actual stopping state/frame.
+    assert(pendingStop.outputPeak>0.02,'Queued stop still produces captured PCM: '+JSON.stringify({frame:pendingStop.frame,deadline:pendingStop.tracks[0].scheduledFrame,peak:pendingStop.outputPeak}));
     await exactlyOne(()=>click('#loop-action-0'),'Immediate second STOP');
     const statusStopped=await state('stopped');
     assert.equal(await evaluate(`document.getElementById('loop-state-symbol-0').textContent`),'[S]','Only completed STOP shows stopped');
@@ -843,6 +857,7 @@ let socket;
     await evaluate(`(()=>{const e=document.getElementById('loop-speed-slider-0');e.scrollIntoView({block:'center',behavior:'instant'});e.focus();})()`);
     await exactlyOne(async()=>{await call('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Home',code:'Home',windowsVirtualKeyCode:36,nativeVirtualKeyCode:36});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Home',code:'Home',windowsVirtualKeyCode:36,nativeVirtualKeyCode:36});},'Early speed trusted range key sends one shared command');
     const speedEdited=await wait(s=>s.tracks[0].playbackRate===.25,'Early speed quarter-rate accepted');
+    if(speedEdited.tracks[0].state!=='queued')console.error('Early speed deadline evidence',JSON.stringify({queuedFrame:speedSource.frame,deadline:speedSource.tracks[0].scheduledFrame,observedFrame:speedEdited.frame,state:speedEdited.tracks[0].state,rate:speedEdited.tracks[0].playbackRate}));
     assert.equal(speedEdited.tracks[0].state,'queued');assert.equal(speedEdited.outputPeak,0);
     for(const field of ['length','waveformId','undoCount','redoCount','scheduledFrame'])assert.equal(speedEdited.tracks[0][field],speedSource.tracks[0][field],'Early speed preserves '+field);
     await wait(s=>s.tracks[0].state==='playing'&&s.outputPeak>0.02,'Edited future source produces PCM at original grid');
