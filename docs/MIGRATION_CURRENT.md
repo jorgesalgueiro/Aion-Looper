@@ -20,13 +20,39 @@ licensing, real-time scope and remaining admission/ownership work. No LLVM/JIT
 or product routing is added. Default builds, existing Q/C/A and preserved UI are
 unchanged. This is an internal backend slice, not completed T/GUI/CLI integration.
 
-First Windows Release contract passes: actual compilation/import, independent
+Windows Release contract passes: actual compilation/import, independent
 instances/factory lifetime, exact gain/delay/feedback, 64/128/irregular/in-place,
 invalid-source/control rejection, finite-input sanitation, numerical-fault
-silence/recovery and concurrent off-audio compilation. Instrumented processing
-observes zero C++ new/delete, including first callbacks. Recheck the final patch
-build with environment-selected tracing disabled, then verify Linux. Retain
-`build/faust-{dependency,host}-{configure,build,tests}.log` as applicable.
+silence/recovery and concurrent off-audio compilation. It also executes Faust's
+imported stereo `aa.tanh1` implementation with exact 64/128 subdivision identity,
+and prepares gain instances at 8/22.05/32/44.1/48/96/192 kHz. Instrumented processing
+observes zero C++ new/delete, including first callbacks. The final patched build
+passes with inherited `FAUST_INTERP_TRACE=7` and `FAUST_INTERP_OUTPUT=1`, **1/1 in
+0.72s**. Retain `build/faust-{dependency,host}-{configure,build,tests}.log`.
+
+Committed snapshots `800af5d`, `14e4559`, then `1b11360` were synced through the
+non-destructive helper to the clean independent Linux mirror. Linux downloads
+and verifies its own archive and builds its own static library in native storage.
+Its focused run passes **2/2 in 0.28s**: interpreter contract (0.19s) plus original
+WaveShaper streaming contract (0.08s). The Faust callback additionally observes
+**zero wrapped malloc/calloc/realloc/free calls** from linked objects, with zero
+new/delete; this does not instrument shared-library internals or every lock API.
+Linux logs: `build/faust-linux-{source,dependency-configure,dependency-build,
+host-configure,host-build,host-tests}.log` and `build/faust-tests/Testing/Temporary/
+LastTest.log`. Exact commands are in FAUST.md. A fresh Windows selected-source
+extraction and original-hash patch configure also pass (`faust-extraction-check.log`,
+`faust-patch-check.log`). No package/push or product UI/device test was run.
+
+Illustrative warmed stereo ADAA-probe means at 64/128 frames: Windows **19.67 /
+38.54 us**, Linux WSL **12.49 / 24.02 us**. Observed maxima were **85.9 / 154.5 us**
+and **90.29 / 92.14 us** respectively (3000 callbacks per case). These are separate
+backend runs, not a cross-OS speedup, full-chain capacity or hardware-latency claim.
+Faust's GCC build emits upstream warnings, including unused double-interpreter
+bitcast array-bounds/aliasing and iterator initialization. This wrapper forces
+single precision; arbitrary patch/instruction safety is NOT established. Audit
+any selected effect/intrinsics and run applicable sanitizers before promotion.
+Runtime patch admission, bounded swapping/retirement, production integration,
+state/GUI/CLI/MIDI controls and effect quality/listening remain pending.
 
 The preceding original-wave-shaper FIR candidate passes its native streaming
 contract, but **fails** the retained actual-browser legacy comparison: worst
