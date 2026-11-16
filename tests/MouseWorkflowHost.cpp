@@ -25,6 +25,7 @@ public:
         (void)pcmDirectory.getChildFile("midi-input.json").deleteFile();(void)pcmDirectory.getChildFile("midi-ack").deleteFile();
         (void)pcmDirectory.getChildFile("navigation-probe-start").deleteFile();(void)pcmDirectory.getChildFile("navigation-probe-stop").deleteFile();(void)pcmDirectory.getChildFile("navigation-evidence.json").deleteFile();
         (void)pcmDirectory.getChildFile("pcm-reset").deleteFile();(void)pcmDirectory.getChildFile("pcm-stop").deleteFile();writePcmEvidence();
+        (void)pcmDirectory.getChildFile("visibility-command.json").deleteFile();(void)pcmDirectory.getChildFile("visibility-ack").deleteFile();
         AionProcessor::ExportDestination picker=[this,exportDirectory](const juce::String& filename,std::function<void(juce::File)> done){
             choices.push_back({exportDirectory,filename,std::move(done)});
         };
@@ -35,12 +36,13 @@ public:
         processor->setPlayConfigDetails(2, 2, 48000, blockSize);
         processor->prepareToPlay(48000, blockSize);
         window = std::make_unique<Window>();
+        if(args.contains("--steady-start")){window->setVisible(true);window->setVisible(false);} // Consume SW_HIDE before constructing a browser.
         window->setContentOwned(processor->createEditor(), true);
         window->centreWithSize(1200, 800);
         window->setVisible(true);
         // Consume Windows' initial SW_HIDE from a background launcher before
         // showing this interactive fixture. A hidden WebView throttles replies.
-        window->setVisible(false);window->setVisible(true);
+        if(!args.contains("--steady-start")){window->setVisible(false);window->setVisible(true);}
         running.store(true);
         audio = std::thread([this] {
             juce::AudioBuffer<float> buffer(2, blockSize);
@@ -127,6 +129,17 @@ private:
     struct Choice {juce::File directory;juce::String filename;std::function<void(juce::File)> done;};
     std::vector<Choice> choices;
     void timerCallback() override {
+        const auto visibility=pcmDirectory.getChildFile("visibility-command.json");
+        if(visibility.existsAsFile()){
+            const auto command=juce::JSON::parse(visibility.loadFileAsString());(void)visibility.deleteFile();
+            const int id=static_cast<int>(command["id"]),delay=static_cast<int>(command["hiddenMs"]);
+            if(id>0&&delay>=0&&delay<=2000){
+                window->setVisible(false);
+                const juce::Component::SafePointer<juce::Component> safe(window.get());const auto ack=pcmDirectory.getChildFile("visibility-ack");
+                const auto show=[safe,ack,id]{if(safe){safe->setVisible(true);(void)ack.replaceWithText(juce::String(id));}};
+                if(delay==0)show();else juce::Timer::callAfterDelay(delay,show);
+            }
+        }
         // Owned integration-test pause between callbacks, after an actual job
         // enters finalizing. The real UI/bridge remain live; no forged snapshots.
         const auto armPause=pcmDirectory.getChildFile("pause-after-finalizing");

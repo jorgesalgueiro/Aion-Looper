@@ -53,7 +53,10 @@ juce::WebBrowserComponent::Options AionWebEditor::options(AionProcessor& process
         .withUserScript(juce::String::fromUTF8(AionUi::signalchain_js, AionUi::signalchain_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::looper_js, AionUi::looper_jsSize));
    #if JUCE_WINDOWS
-    settings = settings.withBackend(juce::WebBrowserComponent::Options::Backend::webview2);
+    // Browser owns explicit blank/document hide/show navigation. Disable only
+    // JUCE's history-based implementation, not unloading or cancellation.
+    settings = settings.withBackend(juce::WebBrowserComponent::Options::Backend::webview2)
+                       .withKeepPageLoadedWhenBrowserIsHidden();
    #endif
     return settings;
 }
