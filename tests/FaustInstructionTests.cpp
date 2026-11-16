@@ -17,6 +17,11 @@ namespace {
 void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
 struct FactoryDelete {void operator()(interpreter_dsp_factory* p)const{deleteInterpreterDSPFactory(p);}};
 using Factory=std::unique_ptr<interpreter_dsp_factory,FactoryDelete>;
+struct CountingManager final:dsp_memory_manager {
+    unsigned allocated=0,released=0;
+    void* allocate(std::size_t size)override{auto* p=std::malloc(size?size:1);check(!!p,"Manager allocation");++allocated;return p;}
+    void destroy(void* p)override{if(p){++released;std::free(p);}}
+};
 std::string error;
 Factory compile(const std::string& source,bool ftz){
     const char* args[]{"-single","-scal","-ftz",ftz?"2":"0"};
@@ -68,5 +73,15 @@ int main(){
             }
         }
     }
+    CountingManager manager;
+    auto managedFactory=compile("process=(_*0.75)+0.001;",false);
+    managedFactory->setMemoryManager(&manager);
+    {
+        auto instance=aion::detail::createInterpreterInstance(managedFactory.get());
+        instance->init(48000);input.fill(.25f);instance->compute(64,in,out);
+        for(unsigned i=0;i<64;++i)check(output[i]==.25f*.75f+.001f,"Managed instance PCM");
+    }
+    check(manager.allocated>0&&manager.allocated==manager.released,"Captured manager releases every instance allocation");
+    managedFactory->setMemoryManager(nullptr);
     std::cout<<"PASS: bitcast payloads, signed zero, denormals and recursive FTZ2 at 64/128; switch/computed-goto platform coverage is separate\n";
 }

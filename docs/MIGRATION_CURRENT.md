@@ -48,6 +48,15 @@ checks pass **2/2 in 1.22s** (`faust-ownership-host-{build,tests}.log`). Rebuild
 Linux normal and fully instrumented dependency and rerun the same gates before
 marking these repairs accepted. No product GUI/CLI/effect promotion yet.
 
+The next full sanitizer run clears both undefined-behavior failures, but reports
+**287 bytes / six allocations leaked** on rejected compilation; retain
+`build/faust-sanitized-ownership-host-tests.log`. `PatchCompilerCleanup.cmake`
+adds exception-safe lexer teardown and deletes unfinished visitor blocks, clearing
+their owners only after a factory successfully takes them. This is compiler-side
+cleanup, never callback work. The manager regression also checks exact PCM and
+balanced configured-allocator allocations/releases using the production deleter.
+Windows focused cleanup gates pass; final Linux/ASan/UBSan/LSan reruns are next.
+
 The owner authorized a Faust interpreter for native effect implementations.
 `source/faust/FaustInterpreter` is an opt-in, prepared portable VM backend using
 pinned Faust 2.88.0; see [FAUST.md](FAUST.md) for exact build commands, hash,
