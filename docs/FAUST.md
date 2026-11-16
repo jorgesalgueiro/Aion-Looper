@@ -20,7 +20,9 @@ audio. They must not overlap processing of the same instance. The API is for
 **trusted local DSP**, not a sandbox. Source-size/UI/I/O bounds do not establish
 bounded compilation time, DSP memory or CPU cost. A future loader needs explicit
 resource admission, bounded ownership transfer/retirement, cancellation, validated
-state and shared GUI/CLI access. Never destroy an instance from the audio callback.
+state and shared GUI/CLI access. Fault silence is not memory isolation and cannot
+recover arbitrary invalid integer arithmetic or unsafe foreign functions. Never
+destroy an instance from the audio callback.
 
 Nonfinite inputs become zero. Nonfinite outputs silence the whole block and latch
 a fault until an explicit off-audio clear. Invalid buffer/control arguments leave
@@ -28,11 +30,13 @@ DSP state untouched. The pinned dependency adaptation removes compute exception
 diagnostic allocation/file output, disables environment-selected tracing and
 removes an unused signed cycle counter. An upstream exception may still allocate
 while being constructed; this is not a claim that arbitrary invalid Faust DSP is
-real-time safe. Tests instrument C++ new/delete, not every malloc or lock API.
+real-time safe. Tests instrument C++ new/delete; Linux additionally wraps direct
+malloc/calloc/realloc/free references in linked objects. This does not instrument
+every shared-library internal allocation or lock API.
 
 Faust documents the scalar interpreter as generally slower than compiled code.
 Measure each actual effect at relevant rates/block sizes before promotion. The
-gain benchmark is a backend smoke measurement, not a full-chain performance or
+gain/nonlinear benchmark is a backend smoke measurement, not a full-chain performance or
 hardware-latency result. If an effect misses its budget, the same DSP source can
 be evaluated for ahead-of-time C++ generation; that pipeline is not implemented.
 
