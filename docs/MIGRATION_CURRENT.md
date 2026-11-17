@@ -11,6 +11,39 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Latest follow-up: stereo EQ CPU cost — 17 November 2026
+
+Local code snapshot `4c9a3a2` pairs independent stereo EQ recurrences using the
+existing fixed SSE2/portable helper, now shared in `StereoFrame.h`. No musical,
+parameter/state, smoothing, routing or interface changes. The frozen `80433e4`
+scalar EQ/automation oracle matches **1,271,264 samples exactly** on both optimized
+and forced-portable paths, Windows and Linux. Preserved resources remain intact.
+
+Windows focused core/reference gates: **11/11** plus **2/2** drive/chain ownership;
+production EQ/drive GUI/CLI/MIDI/state **4/4** at 64/128. Linux corresponding set
+**17/17**. Linux ASan/UBSan/leaks **6/6**. Both Standalone builds succeeded. Actual
+WebView2 EQ UI passes 64/128; original worklet/smoothing **48 cases** passes at
+peak **8.570541420310773e-8** (unchanged 1e-6). Both connected capture/OD/SUB audits
+pass **126 cases / 965,826 frames**, peak **7.394757495227111e-8**. A first UI128
+status-clear assertion failed during concurrent work; the unchanged isolated
+retry passed. Keep that timing-sensitive observation and failed log visible.
+
+Twenty all-band EQ kernels at 48k/64 now take about **91us vs 197us** on Windows;
+fresh sequential Linux **93us vs 208us**. Full QCTFO improvements are smaller:
+fresh Linux ten loops/96k/64 steady mean **609 → 578us**, overruns **136 → 85/1024**,
+but p99 worsened. Full high-rate capacity remains **open**; do not infer a deadline
+pass from average savings or benchmark exit zero. All 40 cases per OS preserve
+reported PCM checksums and zero watched callback C++ new/delete. Full data,
+commands, limitations and fresh baseline worktree details:
+[EQ_PERFORMANCE.md](EQ_PERFORMANCE.md). Logs: `build/eq-stereo-*` per checkout.
+
+Next: continue profiling the remaining full-chain CPU cost and actual Standalone
+load before another effect. One candidate to investigate is compressor detector
+release math currently evaluated even when the release coefficient is unused;
+retain the accepted envelope/float rounding and prove equivalence before changing
+it. Listening, physical drivers, Linux WebKit and full instrument/release checks
+remain separate. No package, dependency upgrade or wrapper work this session.
+
 ### Active follow-up: loaded T/O/F workspace performance — 17 November 2026
 
 The existing manual `aion_effects_engine_benchmark` now accepts `--drives`:
