@@ -62,6 +62,10 @@ guarantees or hardware latency. The declared spectral matrix exceeds its 10 dB
 alias-reduction gate; full-path improvements range from 36.53 to 101.60 dB in
 that fixture, not an assurance for every input or setting.
 
+The subsequent stereo optimization preserves the accepted PCM while reducing
+loaded-loop CPU time. See [measured performance and capacity limits](DRIVE_PERFORMANCE.md)
+for Windows/Linux before/after data, exact verification and reproduction commands.
+
 Design references: [Faust antialiased nonlinearities](https://faustlibraries.grame.fr/libs/aanl/)
 (ADAA precision, half-sample delay, combining low-factor oversampling),
 [ChowDSP ADAA experiments](https://github.com/jatinchowdhury18/ADAA)

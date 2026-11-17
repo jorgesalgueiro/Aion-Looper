@@ -24,24 +24,65 @@ coverage remains intact.
 
 Windows scalar baseline shows sustained 96 kHz overload with ten T/O/F loops
 at 64 samples: mean 727.12us versus 666.67us budget, 1024/1024 observed overruns.
-This takes priority over another effect port. Raw baseline logs are
-`build/drive-workspace-baseline.jsonl` in each platform's independent checkout.
+This takes priority over another effect port. Initial baseline logs are
+`build/drive-workspace-baseline.jsonl`; the final Linux comparison uses the
+independently serialized snapshot run documented below.
 
 The optimization pairs independent stereo lanes (baseline SSE2 on x64, portable
 C++ fallback elsewhere), reuses exact previous antiderivatives and shared bias
-terms, and stores only the actual five/eight allpass coefficients plus necessary
+terms, and stores only the live five/eight allpass state entries plus necessary
 downsample delays. No oversampling reduction, changed transfer curve, smoothing,
 dry/wet alignment, parameter/state ID or dependency change. Test-only
 `DriveScalarReference.*` retains accepted processor equations from `4e2a9d4`;
 do not edit that oracle to conceal a regression.
 
-Windows optimized AND forced-portable kernel/reference/connected gates pass
-4/4; each compares 1,569,936 scalar/stereo samples across eight rates, rapid
-controls/bypass/reset, different lane histories and variable blocks, maximum
-error zero. Existing numerical/spectral/64/128/live-state acceptance is retained.
-Intermediate layout experiments were slower and are not promoted as gains.
-Final capacity matrix, Linux/sanitizers and linked-app/UI checks remain under
-validation. Do not claim universal 64/128 deadline compliance from kernel timing.
+Final product snapshot `d90ec37` also skips prepared, stateless bypass dispatch.
+It retains first preparation after clear/cancel and pending fades; it does not
+skip muted tracks or active filters. Tests add cold post-clear starts, sleeping
+control edits/wake-up, reset during a fade, and all six T/F/O orders. Optimized
+AND forced-portable paths each compare **1,634,448** scalar/stereo samples across
+eight rates, maximum finite-sample error **zero**. Existing numerical/spectral/
+64/128/live-state limits remain; no tolerance was relaxed. Intermediate slower
+layout experiments remain in ignored logs and are not promoted as gains.
+
+Executed final gates:
+
+| Gate | Windows | Linux |
+| --- | --- | --- |
+| Core/Drive/portable/Arp/chain + original settings/chain | 7/7, 11.84s | Included in 20/20 below |
+| Unchanged-JS state/DSP/sync/MULT/history/reverse/NORM | 7/7, 132.22s | Included in 20/20 below |
+| Linked processor/CLI/MIDI/state/chain/restore, 64/128 | 6/6, 43.11s | Combined core/reference/processor set: 20/20, 253.76s |
+| Actual WebView2 pointer/key/MIDI/reload/bypass/DEL/PCM | 64/128 pass | Linux WebKit not executed |
+| Unchanged-JS capture/OD/SUB audit | 126 cases / 965,826 frames, peak 7.394757495e-8 | Same result |
+| ASan/UBSan/leaks: optimized/portable/connected/Arp/chain | Not executed | 5/5, 149.45s; no suppressions |
+
+Logs: `drive-dispatch-{build,tests,reference-build,reference-tests,audio-audit,app-build,app-tests,ui}.log`
+as applicable per checkout, and Linux `drive-stereo-sanitized-{configure,rebuild,tests}.log`.
+An initial sanitizer build failed resolving the new portable target from an old
+Makefile. Explicit CMake reconfiguration fixed the build prerequisite; the
+original failure log remains `drive-stereo-sanitized-build.log`.
+
+All 40 timing cases per OS validate playing clips, reported settings/routing,
+finite nonzero PCM and zero watched callback C++ new/delete (aligned included).
+Before/after reported checksums match in every case. Serial Linux timing uses
+the clean detached baseline `build/drive-baseline-3572c72` with its own cache
+`build/drive-baseline-build`; the primary mirror remains clean on main. Do not
+reset that snapshot or copy toolchain caches between OSes. Earlier concurrent
+Linux timing is retained but excluded from the committed comparison.
+
+At ten T/F/O loops, 96 kHz/64, Engine mean time falls Windows **727.12 → 474.93us**
+and Linux **722.06 → 394.51us**; observed overruns fall **1024 → 0** and **837 → 0**.
+This is processing headroom, not reduced device/round-trip latency. The full
+Q/C/T/F/O chain at 96 kHz/64 still overruns (Windows 222/1024, Linux 36/1024);
+twenty-loop high-rate cases and some isolated lower-rate outliers also remain.
+Benchmark exit zero is fixture acceptance, not a universal timing pass.
+
+See [DRIVE_PERFORMANCE.md](DRIVE_PERFORMANCE.md) for environment, full CSV data,
+commands and limits. Next: profile the remaining high-rate full-chain load and
+measure actual Standalone/MIDI/UI/device workloads before advancing beyond that
+capacity issue. Listening, physical drivers and Linux GUI remain unverified.
+Both Standalone apps rebuild; no dependency/format/state-ID changes, package or
+push. Preserved UI/reference files remain unchanged.
 
 ### T / Distortion, O / Overdrive, F / Fuzz — 17 November 2026
 
