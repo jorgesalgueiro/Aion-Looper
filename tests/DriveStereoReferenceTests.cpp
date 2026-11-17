@@ -56,6 +56,14 @@ void driveStereoReferenceTests(bool& watch,std::atomic<unsigned>& calls){
    check(packed.process(l.data(),r.data(),pl.data(),pr.data(),64)&&reference.process(l.data(),r.data(),sl.data(),sr.data(),64),"Sleeping and wake PCM");
    watch=false;compare(64);
   }
+  settings.enabled=false;
+  watch=true;check(packed.set(settings)&&reference.set(settings),"Start bypass fade before reset");
+  packed.reset();reference.reset();watch=false;
+  check(!packed.isBypassed(),"Reset during a pending bypass fade is not a stateless bypass");
+  for(unsigned n=0;n<4;++n){watch=true;
+   check(packed.process(l.data(),r.data(),pl.data(),pr.data(),64)&&reference.process(l.data(),r.data(),sl.data(),sr.data(),64),"Reset preserves pending bypass fade processing");
+   watch=false;compare(64);
+  }
  }
  check(maximum<=1e-6,"Stereo optimization preserves accepted scalar PCM within 1e-6");
  check(calls.load()==0,"Stereo/scalar rendering performs zero tracked new/delete");

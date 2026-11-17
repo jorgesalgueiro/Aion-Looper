@@ -95,8 +95,7 @@ AION_DRIVE_HOT Drive::Frame Drive::stereo(Frame x)noexcept{
 }
 #undef AION_DRIVE_HOT
 std::array<float,2> Drive::tick(float l,float r)noexcept{
- if(!ready)return {l,r};
- if(sleeping&&bypass==0&&bypassTarget==0)return {l,r};
+ if(isBypassed())return {l,r};
  for(unsigned p=0;p<5;++p){current[p]+=smoothing*(target[p]-current[p]);if(std::abs(target[p]-current[p])<1.e-14)current[p]=target[p];}
  bypass+=smoothing*(bypassTarget-bypass);if(std::abs(bypass-bypassTarget)<1.e-12)bypass=bypassTarget;
  if(bypass==0&&bypassTarget==0){if(!sleeping)reset();return {l,r};}

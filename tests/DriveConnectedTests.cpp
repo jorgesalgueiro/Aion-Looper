@@ -14,9 +14,11 @@ void* operator new[](std::size_t n){return ::operator new(n);}
 void operator delete[](void* p)noexcept{::operator delete(p);}
 void operator delete(void* p,std::size_t)noexcept{::operator delete(p);}
 void operator delete[](void* p,std::size_t)noexcept{::operator delete(p);}
-void run(unsigned block){
+void run(unsigned block,bool afterClear=false){
  using namespace aion;auto dry=std::make_unique<Engine>(),wet=std::make_unique<Engine>();
- for(auto* e:{dry.get(),wet.get()}){e->prepare(48000,32768);e->setMonitoring(false);check(e->enqueue({0,1})&&e->enqueueLoop({LoopAction::record,0,1,e->generation()}),"Capture fixture");}
+ for(auto* e:{dry.get(),wet.get()}){e->prepare(48000,32768);e->setMonitoring(false);
+  if(afterClear)check(e->enqueueLoop({LoopAction::clear,0,0,e->generation()}),"Cold post-clear preparation fixture");
+  check(e->enqueue({0,1})&&e->enqueueLoop({LoopAction::record,0,1,e->generation()}),"Capture fixture");}
  std::array<float,128> dl{},dr{},wl{},wr{};float* d[]{dl.data(),dr.data()},*w[]{wl.data(),wr.data()};std::uint64_t frame=0;
  auto render=[&](bool capture){for(unsigned i=0;i<block;++i)dl[i]=dr[i]=wl[i]=wr[i]=capture?static_cast<float>(.08*std::sin((frame+i)*.131)+.03*std::cos((frame+i)*.027)):0;watching=true;dry->process(d,2,block,{},true);wet->process(w,2,block,{},true);watching=false;frame+=block;};
  for(unsigned n=0;n<8192/block;++n)render(true);
@@ -58,7 +60,7 @@ void run(unsigned block){
  }}check(originalTail,"Retain the original nonzero panic fade");
  check(wet->inspectAudioThread().track.drives==bank,"Panic keeps settings");
  check(wet->enqueueLoop({LoopAction::clear,0,9,wet->generation()}),"Delete");render(false);check(wet->inspectAudioThread().track.drives==defaultDriveBank(),"Delete resets all drive settings");
- std::cout<<"PASS Engine "<<block<<" max PCM error="<<maximum<<"\n";
+ std::cout<<"PASS Engine "<<block<<" post-clear="<<afterClear<<" max PCM error="<<maximum<<"\n";
 }
 // Live controls are an owner-approved extension to the original graph workflow.
 // Compare actual special-state playback with independent persistent processors.
@@ -95,4 +97,4 @@ void live(unsigned block,aion::LoopAction action){
  check(error<=1e-6&&audible>.001,"Live state/reorder/history DSP remains persistent and audibly active");
  std::cout<<"PASS live T/O/F "<<static_cast<unsigned>(action)<<" / "<<block<<" PCM error="<<error<<'\n';
 }
-int main(){for(unsigned block:{64u,128u}){run(block);for(auto action:{aion::LoopAction::overdub,aion::LoopAction::substitute,aion::LoopAction::multiply,aion::LoopAction::stop})live(block,action);}check(!allocations,"No callback new/delete");}
+int main(){for(unsigned block:{64u,128u}){run(block);run(block,true);for(auto action:{aion::LoopAction::overdub,aion::LoopAction::substitute,aion::LoopAction::multiply,aion::LoopAction::stop})live(block,action);}check(!allocations,"No callback new/delete");}

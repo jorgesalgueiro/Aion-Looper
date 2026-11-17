@@ -1076,13 +1076,16 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         // source tail. Never feed already-filtered PCM back through this chain.
         auto equalized=out;
         const auto id=static_cast<unsigned>(&t-tracks.data());
+        const auto& driveBank=(*drives)[id];
         for(const auto code:v.signalChain.text()){
             if(code=='Q')equalized=tickEqualizer(id,equalized,eqSource);
             else if(code=='C')equalized=tickCompressor(id,equalized,eqSource);
             else if(code=='A')equalized=tickArp(id,equalized,eqSource);
-            else if(code=='T')equalized=tickDrive(id,0,equalized,eqSource);
-            else if(code=='O')equalized=tickDrive(id,1,equalized,eqSource);
-            else if(code=='F')equalized=tickDrive(id,2,equalized,eqSource);
+            // Keep the first preparation after clear/cancel. Only skip a
+            // prepared processor whose own tick is an exact, stateless bypass.
+            else if(code=='T'){if(!driveBank.prepared||!driveBank.filters[0].isBypassed())equalized=tickDrive(id,0,equalized,eqSource);}
+            else if(code=='O'){if(!driveBank.prepared||!driveBank.filters[1].isBypassed())equalized=tickDrive(id,1,equalized,eqSource);}
+            else if(code=='F'){if(!driveBank.prepared||!driveBank.filters[2].isBypassed())equalized=tickDrive(id,2,equalized,eqSource);}
             // Unported original codes retain their position as metadata.
         }
         if(t.queuedGainAt){

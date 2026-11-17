@@ -14,6 +14,8 @@ public:
  bool process(const float*,const float*,float*,float*,unsigned)noexcept;
  std::array<float,2> tick(float,float)noexcept;
  bool active()const noexcept{return ready&&(!sleeping||bypassTarget!=0);}
+ // Exact no-state-change return predicate; a reset during a fade still ticks.
+ bool isBypassed()const noexcept{return !ready||(sleeping&&bypass==0&&bypassTarget==0);}
  // Pure double precision antiderivative evaluation for independent verification.
  static double transfer(DriveKind,double)noexcept;
  static double integrated(DriveKind,double)noexcept;
