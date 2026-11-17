@@ -60,4 +60,39 @@ void run(unsigned block){
  check(wet->enqueueLoop({LoopAction::clear,0,9,wet->generation()}),"Delete");render(false);check(wet->inspectAudioThread().track.drives==defaultDriveBank(),"Delete resets all drive settings");
  std::cout<<"PASS Engine "<<block<<" max PCM error="<<maximum<<"\n";
 }
-int main(){run(64);run(128);check(!allocations,"No callback new/delete");}
+// Live controls are an owner-approved extension to the original graph workflow.
+// Compare actual special-state playback with independent persistent processors.
+void live(unsigned block,aion::LoopAction action){
+ using namespace aion;auto dry=std::make_unique<Engine>(),wet=std::make_unique<Engine>();
+ for(auto* e:{dry.get(),wet.get()}){e->prepare(48000,65536);e->setMonitoring(false);check(e->enqueue({0,1})&&e->enqueueLoop({LoopAction::record,0,1,e->generation()}),"Live seed");}
+ std::array<float,128> dl{},dr{},wl{},wr{};float* d[]{dl.data(),dr.data()},*w[]{wl.data(),wr.data()};std::uint64_t frame=0;
+ auto render=[&](bool input){for(unsigned i=0;i<block;++i)dl[i]=dr[i]=wl[i]=wr[i]=input?static_cast<float>(.11*std::sin((frame+i)*.073)):0;
+  watching=true;dry->process(d,2,block,{},true);wet->process(w,2,block,{},true);watching=false;frame+=block;
+  const auto a=dry->inspectAudioThread().track,b=wet->inspectAudioThread().track;
+  check(a.state==b.state&&a.position==b.position&&a.length==b.length&&a.undoCount==b.undoCount&&a.redoCount==b.redoCount&&a.scheduledFrame==b.scheduledFrame&&a.sourceRevision==b.sourceRevision,"Drive edits preserve transport/history/source ownership");};
+ auto paired=[&](LoopAction op,unsigned request){for(auto* e:{dry.get(),wet.get()}){LoopCommand c{op,0,request,e->generation()};c.value=op==LoopAction::multiply?1:0;check(e->enqueueLoop(c),"Live paired command");}};
+ for(unsigned n=0;n<4096/block;++n)render(true);paired(LoopAction::finish,2);render(false);paired(LoopAction::play,3);for(unsigned n=0;n<1024/block;++n)render(false);
+ if(action==LoopAction::stop)for(auto* e:{dry.get(),wet.get()})e->configureSync({SyncMode::fixed,120,1,4,4,false});
+ paired(action,4);auto bank=defaultDriveBank();std::array<Drive,3> oracle;
+ for(unsigned k=0;k<3;++k){check(oracle[k].prepare(48000,static_cast<DriveKind>(k),bank[k]),"Live oracle prepare");bank[k].enabled=true;}
+ double error=0,audible=0;std::string_view order="FOT";
+ auto edit=[&](unsigned request){LoopCommand c{LoopAction::drive,0,request,wet->generation()};c.drives=bank;check(wet->enqueueLoop(c),"Live drive command");for(unsigned k=0;k<3;++k)check(oracle[k].set(bank[k]),"Live oracle targets");};
+ auto chain=[&]{LoopCommand c{LoopAction::signalChain,0,5,wet->generation()};c.signalChain=normalizedSignalChain(order);check(wet->enqueueLoop(c),"Live reorder");};chain();edit(6);
+ auto compare=[&]{constexpr float centre=.7071067811865475f;for(unsigned i=0;i<block;++i){float l=dl[i]/centre,r=dr[i]/centre;
+  for(char code:order)for(unsigned k=0;k<3;++k)if(code==driveCodes[k]){const auto y=oracle[k].tick(l,r);l=y[0];r=y[1];}
+  const auto expected=std::clamp((l+r)*.5f*centre,-1.f,1.f);error=std::max({error,std::abs(static_cast<double>(wl[i])-expected),std::abs(static_cast<double>(wr[i])-expected)});audible=std::max(audible,std::abs(static_cast<double>(wl[i])-dl[i]));}};
+ const auto expected=action==LoopAction::overdub?LoopState::overdubbing:action==LoopAction::substitute?LoopState::substituting:action==LoopAction::multiply?LoopState::multiplying:LoopState::stopping;
+ for(unsigned offset=0;offset<2304;offset+=block){
+  if(offset==256){for(unsigned k=0;k<3;++k){bank[k].values[2]=1200;bank[k].values[4]=.6;}edit(7);}
+  if(offset==512){order="TOF";chain();}
+  if(offset==768||offset==1024){for(auto& s:bank)s.enabled=offset==1024;edit(8);}
+  if(offset==1536){for(unsigned k=0;k<3;++k)check(applyDrivePreset(static_cast<DriveKind>(k),bank[k],2),"Live original presets");edit(9);}
+  render(action!=LoopAction::stop);compare();const auto v=wet->inspectAudioThread().track;check(v.state==expected&&v.drives==bank,"Special-state audio acknowledges live settings");
+ }
+ if(action!=LoopAction::stop){paired(LoopAction::finish,10);render(false);compare();check(wet->inspectAudioThread().track.state==LoopState::playing,"Live capture finalizes");
+  for(const auto op:{LoopAction::undo,LoopAction::redo,LoopAction::retrigger}){paired(op,11);for(unsigned n=0;n<1024/block;++n){render(false);compare();}}
+ }
+ check(error<=1e-6&&audible>.001,"Live state/reorder/history DSP remains persistent and audibly active");
+ std::cout<<"PASS live T/O/F "<<static_cast<unsigned>(action)<<" / "<<block<<" PCM error="<<error<<'\n';
+}
+int main(){for(unsigned block:{64u,128u}){run(block);for(auto action:{aion::LoopAction::overdub,aion::LoopAction::substitute,aion::LoopAction::multiply,aion::LoopAction::stop})live(block,action);}check(!allocations,"No callback new/delete");}

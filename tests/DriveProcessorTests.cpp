@@ -27,12 +27,12 @@ int main(int argc,char** argv){
  }
  juce::MemoryBlock queued;p->getStateInformation(queued);state=process();juce::MemoryBlock saved;p->getStateInformation(saved);check(queued==saved,"Accepted intent survives save before callback");const auto wanted=rendered;
  for(unsigned k=0;k<3;++k){check(rendered[k].enabled&&rendered[k].preset==2,"All native processors acknowledge preset/enable");
-  const auto name=juce::String(aion::driveNames[k].data());
+  const auto name=juce::Identifier(aion::driveNames[k].data());
   check(!static_cast<bool>(originalSnapshot["tracks"][19]["drives"][name]["enabled"])&&static_cast<bool>(state["tracks"][19]["drives"][name]["enabled"]),"New telemetry cannot mutate an earlier reply");
  }const auto enabledSnapshot=state;
  check(!drive(0,"set",",\"values\":{\"amount\":5,\"tone\":-1}")["ok"],"Malformed batch rejected atomically");juce::MemoryBlock after;p->getStateInformation(after);check(after==saved,"Invalid batch preserves complete state");
  check(request(R"({"operation":"loop","action":"clear","track":19})")["ok"],"DEL admitted");check(!drive(0,"toggle")["ok"],"DEL barrier rejects older control work");state=process();check(rendered==aion::defaultDriveBank(),"DEL resets all three effects");
- for(const auto name:aion::driveNames){const auto key=juce::String(name.data());check(static_cast<bool>(enabledSnapshot["tracks"][19]["drives"][key]["enabled"])&&!static_cast<bool>(state["tracks"][19]["drives"][key]["enabled"]),"DEL publishes fresh telemetry while retained replies remain immutable");}
+ for(const auto name:aion::driveNames){const auto key=juce::Identifier(name.data());check(static_cast<bool>(enabledSnapshot["tracks"][19]["drives"][key]["enabled"])&&!static_cast<bool>(state["tracks"][19]["drives"][key]["enabled"]),"DEL publishes fresh telemetry while retained replies remain immutable");}
  p->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));for(unsigned n=0;n<1000&&rendered!=wanted;++n){state=process();std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(rendered==wanted,"Atomic full effects-bank restore reaches audio");
  // A malformed bank may not partially replace either effects or APVTS.
  auto xml=juce::AudioProcessor::getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));auto* bank=xml->getChildByName("LoopDrives");check(bank!=nullptr,"Versioned drive bank stored");
@@ -44,7 +44,7 @@ int main(int argc,char** argv){
   midi.addEvent(juce::MidiMessage::controllerEvent(1,static_cast<int>(11+i),0),17);midi.addEvent(juce::MidiMessage::controllerEvent(16,static_cast<int>(11+i),127),18);state=process();
   const auto pair=aion::driveMidiParameters[i];check(rendered[pair[0]].values[pair[1]]==aion::driveControls(static_cast<aion::DriveKind>(pair[0]))[pair[1]].maximum,"Learn consumes first CC then applies same-block maximum");state=process();
   const auto control=aion::driveControls(static_cast<aion::DriveKind>(pair[0]))[pair[1]];
-  check(static_cast<double>(state["tracks"][19]["drives"][juce::String(aion::driveNames[pair[0]].data())]["values"][juce::String(control.name.data())])==control.maximum,"Every MIDI control publishes the new telemetry value");
+  check(static_cast<double>(state["tracks"][19]["drives"][juce::Identifier(aion::driveNames[pair[0]].data())]["values"][juce::Identifier(control.name.data())])==control.maximum,"Every MIDI control publishes the new telemetry value");
   check(static_cast<int>(state["midi"]["bindings"][static_cast<int>(aion::MidiSettings::driveBase+i)])==aion::midiBinding(2,11+i),"Learned binding persists");
  }
  // v6's 133 slots remain unchanged; v7 appends fourteen empty bindings.
