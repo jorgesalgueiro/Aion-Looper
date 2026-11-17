@@ -92,14 +92,15 @@ int driveEngineBenchmark(){
     for(unsigned i=0;i<block;++i){check(std::isfinite(left[i])&&std::isfinite(right[i]),"Finite workspace PCM");if(n>=warm)checksum+=std::abs(left[i])+std::abs(right[i]);}
    }
    check(checksum>1,"Never report a silent fixture");
-   for(unsigned id=0;id<tracks;++id){const auto t=engine->inspectAudioThread(id).track;check(t.state==LoopState::playing&&t.waveformId==clips[id]&&t.length==1024&&t.drives==drive,"Measured effects preserve clips, playback and accepted settings");}
+   for(unsigned id=0;id<tracks;++id){const auto t=engine->inspectAudioThread(id).track;check(t.state==LoopState::playing&&t.waveformId==clips[id]&&t.length==1024&&t.drives==drive,"Measured effects preserve clips, playback and accepted settings");
+    check(t.equalizer==EqSettings{eqPresetValues(8),qc,8}&&t.compressor==CompressorSettings{compressorPresetValues(3),qc,3}&&t.signalChain==normalizedSignalChain("QCTFO"),"EQ/compressor and routing really match the reported workload");}
    check(heapCalls.load()==0,"No watched callback new/delete, including aligned storage");
    std::sort(times.begin(),times.end());double sum=0;unsigned over=0;const double deadline=block/rate*1e6;
    for(double t:times){sum+=t;over+=t>deadline;}
    std::cout<<"{\"scope\":\"Engine playing loops, bounded telemetry; excludes Arp, synth/sampler, JUCE/device/UI/roundtrip\",\"rate\":"<<rate<<",\"block\":"<<block<<",\"tracks\":"<<tracks
     <<",\"drives\":"<<(enabled?"true":"false")<<",\"eqCompressor\":"<<(qc?"true":"false")<<",\"automated\":"<<(automated?"true":"false")
     <<",\"warmCallbacks\":"<<warm<<",\"measuredCallbacks\":"<<measured<<",\"meanUs\":"<<sum/measured<<",\"p99Us\":"<<times[measured*99/100]
-    <<",\"maximumUs\":"<<times.back()<<",\"deadlineUs\":"<<deadline<<",\"observedOverruns\":"<<over<<",\"callbackHeapCalls\":"<<heapCalls.load()<<",\"checksum\":"<<checksum<<"}"<<std::endl;
+    <<",\"maximumUs\":"<<times.back()<<",\"deadlineUs\":"<<deadline<<",\"observedOverruns\":"<<over<<",\"callbackHeapCalls\":"<<heapCalls.load()<<",\"allocationScope\":\"audio-thread C++ new/delete including aligned forms\",\"checksum\":"<<checksum<<"}"<<std::endl;
   }
  }
  return 0;
