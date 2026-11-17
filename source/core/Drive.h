@@ -20,13 +20,17 @@ public:
  static double antialiased(DriveKind,double,double)noexcept;
 private:
  using Frame=drive_detail::Frame;
- struct Halfband {
-  std::array<Frame,8> state{};Frame delayed{};
-  std::array<Frame,2> up(Frame,bool)noexcept;
-  Frame down(std::array<Frame,2>,bool)noexcept;
+ template<std::size_t N> struct Up {
+  std::array<Frame,N> state{};
+  std::array<Frame,2> tick(Frame)noexcept;
+ };
+ template<std::size_t N> struct Down {
+  std::array<Frame,N> state{};Frame delayed{};
+  Frame tick(std::array<Frame,2>)noexcept;
  };
  struct Path {
-  Halfband up1,up2,down1,down2,dry1,dry2;
+  Up<8> up1;Up<5> up2;
+  Down<8> down1,dry1;Down<5> down2,dry2;
   Frame previous{},primitive{},dryPrevious{},dcInput{},dcOutput{},ic1{},ic2{};
   double zeroPrevious=0; // Bias history is identical in both independent lanes.
  };

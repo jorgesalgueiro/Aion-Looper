@@ -11,6 +11,38 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Active follow-up: loaded T/O/F workspace performance — 17 November 2026
+
+The existing manual `aion_effects_engine_benchmark` now accepts `--drives`:
+40 warmed cases, 10/20 actual playing stereo loops, 48/96 kHz, 64/128, bypass /
+TFO / QCTFO, steady and bounded live edits. It verifies nonzero finite PCM,
+accepted settings, clip identities/lengths and watched callback C++ new/delete
+(including aligned forms). The callback is measured separately from setup,
+command production and off-audio telemetry consumption. No device, WebView,
+Arp, drone/sampler or round-trip latency claim. Default no-argument Q/C benchmark
+coverage remains intact.
+
+Windows scalar baseline shows sustained 96 kHz overload with ten T/O/F loops
+at 64 samples: mean 727.12us versus 666.67us budget, 1024/1024 observed overruns.
+This takes priority over another effect port. Raw baseline logs are
+`build/drive-workspace-baseline.jsonl` in each platform's independent checkout.
+
+The optimization pairs independent stereo lanes (baseline SSE2 on x64, portable
+C++ fallback elsewhere), reuses exact previous antiderivatives and shared bias
+terms, and stores only the actual five/eight allpass coefficients plus necessary
+downsample delays. No oversampling reduction, changed transfer curve, smoothing,
+dry/wet alignment, parameter/state ID or dependency change. Test-only
+`DriveScalarReference.*` retains accepted processor equations from `4e2a9d4`;
+do not edit that oracle to conceal a regression.
+
+Windows optimized AND forced-portable kernel/reference/connected gates pass
+4/4; each compares 1,569,936 scalar/stereo samples across eight rates, rapid
+controls/bypass/reset, different lane histories and variable blocks, maximum
+error zero. Existing numerical/spectral/64/128/live-state acceptance is retained.
+Intermediate layout experiments were slower and are not promoted as gains.
+Final capacity matrix, Linux/sanitizers and linked-app/UI checks remain under
+validation. Do not claim universal 64/128 deadline compliance from kernel timing.
+
 ### T / Distortion, O / Overdrive, F / Fuzz — 17 November 2026
 
 The owner requested all three effects. Native `Drive` implements separate
