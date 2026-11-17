@@ -190,6 +190,10 @@ private:
     static bool readCompressors(const juce::ValueTree&,CompressorBank&);
     using DriveBanks=aion::LoopBank::DriveBanks;
     DriveBanks driveSettings=aion::LoopBank::defaultDriveBanks();
+    // Message-owner telemetry only. Published objects are immutable, so old
+    // replies retain their values while unchanged polling reuses the same tree.
+    DriveBanks driveSnapshotSettings=aion::LoopBank::defaultDriveBanks();
+    std::array<juce::var,aion::LoopBank::trackCount> driveSnapshotCache{};
     bool driveRestorePending=false;
     std::array<std::uint32_t,aion::LoopBank::trackCount> drivePending{};
     std::array<bool,aion::LoopBank::trackCount> driveClearing{};

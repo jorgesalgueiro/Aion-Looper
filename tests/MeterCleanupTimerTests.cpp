@@ -1655,18 +1655,25 @@ private:
 }
 
 void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
-    adapterReadinessTests(audioWatch);
-    immediatePlayAdapterTests(audioWatch);
-    clearDispatcherTests(audioWatch);
-    processorBufferReceiptTests(audioWatch);
-    processorEarlyStartTests(audioWatch);
-    processorQueuedStopHistoryTests(audioWatch);
-    processorQueuedHistoryTests(audioWatch);
-    processorQueuedMultiplyTests(audioWatch);
-    processorPostbirthMultiplyTests(audioWatch);processorQueuedInputMultiplyTests(audioWatch);processorMultiplyWorkerMetadataTests(audioWatch);
-    processorDueDeliveryTests(audioWatch);
-    panicDispatcherTests(audioWatch);
-    queuedAdapterTests(audioWatch);
+    // Flush phase boundaries so a killed/slow CI run identifies the affected
+    // matrix. Measurements are off audio; every original case remains intact.
+    const auto run=[&](const char* name,auto test){const double start=wall();
+        std::cout<<"START cleanup "<<name<<std::endl;test(audioWatch);
+        std::cout<<"DONE cleanup "<<name<<" "<<wall()-start<<"s"<<std::endl;};
+    run("readiness",adapterReadinessTests);
+    run("immediate play",immediatePlayAdapterTests);
+    run("clear dispatcher",clearDispatcherTests);
+    run("buffer receipt",processorBufferReceiptTests);
+    run("early start",processorEarlyStartTests);
+    run("queued stop history",processorQueuedStopHistoryTests);
+    run("queued history",processorQueuedHistoryTests);
+    run("queued multiply",processorQueuedMultiplyTests);
+    run("postbirth multiply",processorPostbirthMultiplyTests);
+    run("queued input multiply",processorQueuedInputMultiplyTests);
+    run("multiply worker metadata",processorMultiplyWorkerMetadataTests);
+    run("due delivery",processorDueDeliveryTests);
+    run("panic dispatcher",panicDispatcherTests);
+    run("queued adapter",queuedAdapterTests);
     std::mutex mutex;std::condition_variable changed;bool finished=false,cliFinished=false;
     std::thread watchdog([&]{std::unique_lock lock(mutex);
         if(!changed.wait_for(lock,std::chrono::seconds(60),[&]{return cliFinished||finished;})){

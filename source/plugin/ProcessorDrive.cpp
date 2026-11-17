@@ -47,7 +47,15 @@ void AionProcessor::serviceDrives(){
  }
 }
 void AionProcessor::driveCleared(unsigned id,bool all,std::uint32_t request){std::lock_guard guard(midiSettingsMutex);for(unsigned i=0;i<driveSettings.size();++i)if(all||id==i){driveSettings[i]=aion::defaultDriveBank();drivePending[i]=request;driveClearing[i]=true;}}
-void AionProcessor::driveSnapshot(juce::DynamicObject& object,unsigned id){std::lock_guard guard(midiSettingsMutex);auto* bank=new juce::DynamicObject;for(unsigned k=0;k<3;++k)bank->setProperty(text(aion::driveNames[k]),value(static_cast<aion::DriveKind>(k),driveSettings[id][k]));object.setProperty("drives",juce::var(bank));}
+void AionProcessor::driveSnapshot(juce::DynamicObject& object,unsigned id){
+ std::lock_guard guard(midiSettingsMutex);
+ if(driveSnapshotCache[id].isVoid()||driveSnapshotSettings[id]!=driveSettings[id]){
+  auto* bank=new juce::DynamicObject;
+  for(unsigned k=0;k<3;++k)bank->setProperty(text(aion::driveNames[k]),value(static_cast<aion::DriveKind>(k),driveSettings[id][k]));
+  driveSnapshotCache[id]=juce::var(bank);driveSnapshotSettings[id]=driveSettings[id];
+ }
+ object.setProperty("drives",driveSnapshotCache[id]);
+}
 bool AionProcessor::driveRequest(const juce::var& request,juce::DynamicObject& result){
  const auto fail=[&](const char* why){result.setProperty("error",why);return false;};std::lock_guard guard(midiSettingsMutex);
  const auto id=request.getProperty("track",{});if(!id.isInt()||static_cast<int>(id)<0||static_cast<int>(id)>=static_cast<int>(driveSettings.size()))return fail("Invalid drive track");const auto track=static_cast<unsigned>(static_cast<int>(id));
