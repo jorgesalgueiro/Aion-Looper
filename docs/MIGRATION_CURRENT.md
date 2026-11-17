@@ -86,11 +86,44 @@ and RTRG without resetting the independent persistent DSP oracle. Windows passes
 at 64/128, maximum error 5.96046e-8 (`drive-live-final-tests.log`). The first MULT
 fixture incorrectly selected doubling (value 0); it now selects capture (value 1),
 matching the retained compressor fixture. No product/tolerance change.
-Final source/timer and expanded Linux/sanitizer validation is in progress.
+Expanded Linux connected/processor/CLI/MIDI/state checks pass 5/5 (159.27s,
+`drive-final-tests.log`), including the earlier combined cleanup matrix. Expanded
+live-state ASan/UBSan/LSan passes 1/1 (13.57s,
+`drive-live-sanitized-tests.log`), without suppressions. Both Standalone apps build;
+the Windows binary is `build/windows/AionLooper_artefacts/Release/Standalone/Aion-Looper.exe`.
+
+Final three-way Windows gates pass 3/3 (207.04s): MIDI 4.40s, source ownership
+154.42s, real message-loop CLI/timers 48.18s (`drive-final-midi-tests.log`).
+All original assertions remain, including actual paired nonzero PCM, callback
+allocation tracking and real timer deadlines. Final Linux registration also
+passes 3/3 (149.16s): MIDI 5.60s, source 127.52s, actual CLI/timers 16.03s
+(`drive-final-suites-tests.log`); no watchdog/tolerance extension. Tested code
+snapshot: `4e2a9d4` (subsequent edits are documentation only).
+The new kernel-only local CPU measurement is recorded in DRIVE.md; do not infer
+full 10/20-track workspace performance or physical latency.
+
+Next: audition T/O/F in the working Standalone, check full-workspace CPU and
+physical device workflows. Keep release/listening acceptance separate from this
+software preview; do not advance to another FX to bypass a reproduced defect.
+All three requested effects now have connected development GUI/CLI/MIDI/state
+coverage; no known blocking failure remains in the executed gates. No wrapper,
+physical-device or Linux WebKit UI test, package or push was performed. Preserved
+`resources/ui` and reference paths remain unchanged. Reproduction:
+
+```powershell
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_mouse_host aion_drive_processor_tests aion_midi_processor_tests --parallel 2
+ctest --test-dir build/windows -C Release -R '^native_(drive_processor_(64|128)|(midi|meter_source|meter_cleanup)_processor)$' --output-on-failure
+./tools/TestDriveUi.ps1
+```
+
+```sh
+cmake --build build/linux --target AionLooper_Standalone aion_drive_processor_tests aion_midi_processor_tests aion_drive_connected_tests --parallel 2
+ctest --test-dir build/linux -R '^(drive_connected_contract|native_(drive_processor_(64|128)|(midi|meter_source|meter_cleanup)_processor))$' --output-on-failure
+```
 Listening, physical devices, Linux WebKit interaction and full-workspace CPU
 acceptance remain pending; no release-ready claim, package or push.
 
-### Active owner request: optional Faust backend — 16 November 2026
+### Optional Faust backend — accepted foundation, 16–17 November 2026
 
 **Current checkpoint — 17 November:** the supported interpreter safety slice
 passes Windows and Linux focused gates, including the fully instrumented Faust
@@ -112,11 +145,10 @@ Leak detection and halt-on-UB remain enabled, with no suppressions. Processing
 retains zero watched new/delete and Linux wrapped direct heap calls for its
 documented scope. Preserve the two earlier sanitizer failure logs below. Final
 tested code snapshot is `5ca979a`; both checkouts are clean at that snapshot.
-Only affected internal targets were built; no WebView/device/DAW test, push or
-package was performed. T remains disabled/unported in the product. Next: select
-and measure a fixed trusted organic saturation DSP model, then integrate its
-prepared ownership, smoothing, original controls/presets and GUI/CLI/state.
-Arbitrary-patch admission, full program safety and audition remain pending.
+Only affected internal targets were built for that backend checkpoint; no
+WebView/device/DAW test, push or package was performed then. T was still unported
+at that point; the T/O/F integration above supersedes that product status. Faust
+arbitrary-patch admission, full program safety and audition remain pending.
 
 Earlier development evidence for this slice follows.
 

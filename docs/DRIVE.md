@@ -54,6 +54,14 @@ Shift-right-click removes its binding. Binding follows the selected loop tab.
 Device/hardware, listening and full-workspace performance acceptance remain
 separate; synthetic messages do not establish a physical-pedal test.
 
+One local Windows Release measurement (1,000 stereo blocks, 64 samples, 48 kHz)
+reported mean / observed maximum kernel times of T 23.52 / 56.80 us,
+O 22.53 / 39.00 us and F 22.09 / 57.10 us (`build/drive-kernel-performance.log`).
+These measure one isolated effect, not a loaded workspace, worst-case execution
+guarantees or hardware latency. The declared spectral matrix exceeds its 10 dB
+alias-reduction gate; full-path improvements range from 36.53 to 101.60 dB in
+that fixture, not an assurance for every input or setting.
+
 Design references: [Faust antialiased nonlinearities](https://faustlibraries.grame.fr/libs/aanl/)
 (ADAA precision, half-sample delay, combining low-factor oversampling),
 [ChowDSP ADAA experiments](https://github.com/jatinchowdhury18/ADAA)
