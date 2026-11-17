@@ -47,7 +47,7 @@ bool Drive::prepare(double sr,DriveKind k,const DriveSettings& s)noexcept{
  rate=sr;kind=k;smoothing=1-std::exp(-1/(.01*rate));dcPole=std::exp(-2*std::numbers::pi*15/rate);current=target=mapped(s);bypass=bypassTarget=s.enabled?1:0;ready=true;reset();return true;
 }
 void Drive::reset()noexcept{channels={};sleeping=true;}
-bool Drive::set(const DriveSettings& s)noexcept{if(!ready||!validDriveSettings(kind,s))return false;target=mapped(s);bypassTarget=s.enabled?1:0;return true;}
+bool Drive::set(const DriveSettings& s)noexcept{if(!ready||!validDriveSettings(kind,s))return false;target=mapped(s);bypassTarget=s.enabled?1:0;if(sleeping&&bypass==0&&bypassTarget==0)current=target;return true;}
 double Drive::channel(Channel& c,double x)noexcept{
  const auto a=c.up1.up(x,false);std::array<double,2> wet{},dry{};
  for(unsigned n=0;n<2;++n){auto b=c.up2.up(a[n],true);std::array<double,2> w{},d{};
@@ -63,6 +63,7 @@ double Drive::channel(Channel& c,double x)noexcept{
 }
 std::array<float,2> Drive::tick(float l,float r)noexcept{
  if(!ready)return {l,r};
+ if(sleeping&&bypass==0&&bypassTarget==0)return {l,r};
  for(unsigned p=0;p<5;++p){current[p]+=smoothing*(target[p]-current[p]);if(std::abs(target[p]-current[p])<1.e-14)current[p]=target[p];}
  bypass+=smoothing*(bypassTarget-bypass);if(std::abs(bypass-bypassTarget)<1.e-12)bypass=bypassTarget;
  if(bypass==0&&bypassTarget==0){if(!sleeping)reset();return {l,r};}

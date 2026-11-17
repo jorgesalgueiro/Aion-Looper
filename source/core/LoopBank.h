@@ -15,13 +15,14 @@
 #include "core/MeterGraphEvents.h"
 #include "core/EqSettings.h"
 #include "core/SignalChain.h"
+#include "core/Drive.h"
 #include "core/ArpRenderSettings.h"
 
 namespace aion {
 // Application queues wait for explicit source creation; direct DSP clients may schedule at the grid.
 enum class QueuedStartMode { sampleGrid, messageCallback };
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor, signalChain, arpDelay }; // Append-only. Source/reset primitives remain core-only.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor, signalChain, arpDelay, drive }; // Append-only. Source/reset primitives remain core-only.
 constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart||action==LoopAction::meterQueuedWindowRequest||action==LoopAction::meterQueuedGraphRequest;}
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
@@ -46,6 +47,8 @@ struct LoopView {
     std::uint32_t eqRequest=0;
     CompressorSettings compressor{};
     std::uint32_t compressorRequest=0;
+    DriveBank drives=defaultDriveBank();
+    std::uint32_t driveRequest=0;
     SignalChain signalChain{};
     std::uint32_t chainRequest=0;
     ArpRenderSettings arp{};
@@ -73,6 +76,11 @@ public:
                        std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
     bool setSignalChain(std::uint32_t,const SignalChain&,std::uint32_t request,
                         std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
+    // Validate the complete merged result before changing any state or targets.
+    bool setDrives(std::uint32_t,const DriveBank&,std::uint32_t request,std::uint64_t clearEpoch,bool checkEpoch=true,std::uint32_t mask=allDriveFields) noexcept;
+    void resetDrives(unsigned)noexcept;
+    using DriveBanks=std::array<DriveBank,trackCount>;
+    static DriveBanks defaultDriveBanks()noexcept{DriveBanks b;for(auto& v:b)v=defaultDriveBank();return b;}
     // Internal storage/render admission. Product A and its GUI/CLI/state/MIDI
     // remain disabled until product-level connected acceptance.
     bool requestArpStorage(unsigned id,const ArpModValues&,std::uint32_t seed,std::uint64_t clearEpoch,
@@ -86,6 +94,7 @@ public:
         std::array<EqSettings,trackCount> equalizers{};
         std::array<CompressorSettings,trackCount> compressors{};
         std::array<SignalChain,trackCount> chains{};
+        DriveBanks drives=defaultDriveBanks();
         bool operator==(const EffectsBank&) const noexcept=default;
     };
     static bool validEffectsBank(const EffectsBank&) noexcept;
@@ -430,6 +439,9 @@ private:
     struct TrackCompressor { Compressor filter{}; bool prepared=false; };
     std::unique_ptr<std::array<TrackCompressor,trackCount>> compressors=std::make_unique<std::array<TrackCompressor,trackCount>>();
     Stereo tickCompressor(unsigned,Stereo,bool sourceActive) noexcept;
+    struct TrackDrives {std::array<Drive,3> filters{};bool prepared=false;};
+    std::unique_ptr<std::array<TrackDrives,trackCount>> drives=std::make_unique<std::array<TrackDrives,trackCount>>();
+    Stereo tickDrive(unsigned,unsigned,Stereo,bool sourceActive)noexcept;
     std::array<std::uint16_t, maxBlocks> freeBlocks{};
     std::vector<float> audio;
     std::uint32_t totalBlocks = 0, freeCount = 0, fadeLength = 240;

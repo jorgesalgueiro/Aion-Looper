@@ -38,6 +38,7 @@ bool Engine::enqueueLoop(LoopCommand command) noexcept {
     if(command.action==LoopAction::equalizer&&(!validEqSettings(command.equalizer)||(command.eqMask&~eqAllParameters)))return false;
     if(command.action==LoopAction::compressor&&(!validCompressorSettings(command.compressor)||(command.compressorMask&~compressorAllParameters)))return false;
     if(command.action==LoopAction::signalChain&&!validSignalChain(command.signalChain))return false;
+    if(command.action==LoopAction::drive&&(!validDriveBank(command.drives)||(command.driveMask&~allDriveFields)))return false;
     if(command.action==LoopAction::arpDelay&&(!validArpRenderSettings(command.arp)||(command.arpMask&~arpAllParameters)||(command.arpPreset&&command.arpMask!=arpAllParameters)))return false;
     if(isMeterCommand(command.action)&&!command.meterGraphTicket)return false;
     if((command.action==LoopAction::meterQueuedWindowStart||command.action==LoopAction::meterQueuedWindowRequest||command.action==LoopAction::meterQueuedGraphRequest)
@@ -206,6 +207,8 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
                       ?loops.setSignalChain(pendingLoop.track,pendingLoop.signalChain,pendingLoop.requestId,pendingLoop.chainClearEpoch,pendingLoop.chainCheckEpoch)
                       :pendingLoop.action==LoopAction::compressor
                       ?loops.setCompressor(pendingLoop.track,pendingLoop.compressor,pendingLoop.compressorMask,pendingLoop.requestId,pendingLoop.compressorClearEpoch,pendingLoop.compressorCheckEpoch)
+                      :pendingLoop.action==LoopAction::drive
+                      ?loops.setDrives(pendingLoop.track,pendingLoop.drives,pendingLoop.requestId,pendingLoop.driveClearEpoch,pendingLoop.driveCheckEpoch,pendingLoop.driveMask)
                       :applyLoop(pendingLoop.action,pendingLoop.track,pendingLoop.value)));
             }
             if(nonRealtime)loops.completeOfflineEdits();

@@ -86,6 +86,15 @@ void MidiController::main(unsigned id,int requestedMode,Dispatch& d) noexcept {
     else apply(A::finish,id,0,d);
 }
 void MidiController::continuous(int target,std::uint8_t cc,Dispatch& d) noexcept {
+    if(target>=static_cast<int>(MidiSettings::driveBase)){
+        const auto parameter=static_cast<unsigned>(target)-MidiSettings::driveBase;
+        if(parameter>=driveMidiParameters.size()){++rejections;return;}
+        const auto pair=driveMidiParameters[parameter];const auto kind=static_cast<DriveKind>(pair[0]);
+        const auto t=d.bank.trackView(settings.eqTrack);auto bank=t.drives;const auto& control=driveControls(kind)[pair[1]];
+        const auto value=control.minimum+(cc/127.0)*(control.maximum-control.minimum);
+        if(setDriveControl(kind,bank[pair[0]],pair[1],value)&&d.bank.setDrives(settings.eqTrack,bank,t.driveRequest,t.clearEpoch))++actions;else ++rejections;
+        return;
+    }
     if(target>=static_cast<int>(MidiSettings::arpBase)){
         if(d.arp&&d.arp(d.context,settings.eqTrack,static_cast<unsigned>(target)-MidiSettings::arpBase,cc))++actions;else ++rejections;
         return;

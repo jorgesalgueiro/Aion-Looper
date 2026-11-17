@@ -38,6 +38,7 @@ target_sources(aion_core PRIVATE source/core/EqSettings.cpp)
 target_sources(aion_core PRIVATE source/core/Compressor.cpp)
 target_sources(aion_core PRIVATE source/core/DistortionSettings.cpp)
 target_sources(aion_core PRIVATE source/core/DriveSettings.cpp source/core/Drive.cpp)
+target_sources(aion_core PRIVATE source/core/LoopBankDrive.cpp)
 target_sources(aion_core PRIVATE source/core/DistortionWaveShaper.cpp)
 target_sources(aion_core PRIVATE source/core/ArpDelay.cpp)
 target_sources(aion_core PRIVATE source/core/ArpModulation.cpp)
@@ -69,6 +70,9 @@ if(BUILD_TESTING)
     add_executable(aion_drive_tests tests/DriveTests.cpp)
     target_link_libraries(aion_drive_tests PRIVATE aion_core)
     add_test(NAME drive_dsp_contract COMMAND aion_drive_tests)
+    add_executable(aion_drive_connected_tests tests/DriveConnectedTests.cpp)
+    target_link_libraries(aion_drive_connected_tests PRIVATE aion_core)
+    add_test(NAME drive_connected_contract COMMAND aion_drive_connected_tests)
     add_executable(aion_distortion_waveshaper_tests tests/DistortionWaveShaperTests.cpp)
     target_link_libraries(aion_distortion_waveshaper_tests PRIVATE aion_core)
     add_test(NAME distortion_waveshaper_contract COMMAND aion_distortion_waveshaper_tests)
@@ -317,7 +321,7 @@ execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/too
     --source "${CMAKE_CURRENT_SOURCE_DIR}/resources/ui"
     --manifest "${CMAKE_CURRENT_SOURCE_DIR}/resources/reference-manifest.json"
     --output "${ui_archive}" COMMAND_ERROR_IS_FATAL ANY)
-juce_add_binary_data(AionUi NAMESPACE AionUi HEADER_NAME UiData.h SOURCES "${ui_archive}" resources/native/bridge.js resources/native/loop-view.js resources/native/controls.js resources/native/midi-view.js resources/native/midi.js resources/native/equalizer.js resources/native/compressor.js resources/native/arp.js resources/native/signal-chain.js resources/native/looper.js)
+juce_add_binary_data(AionUi NAMESPACE AionUi HEADER_NAME UiData.h SOURCES "${ui_archive}" resources/native/bridge.js resources/native/loop-view.js resources/native/controls.js resources/native/midi-view.js resources/native/midi.js resources/native/equalizer.js resources/native/compressor.js resources/native/drive.js resources/native/arp.js resources/native/signal-chain.js resources/native/looper.js)
 juce_add_plugin(AionLooper
     COMPANY_NAME "Jorge Salgueiro"
     COMPANY_WEBSITE "https://github.com/jorgesalgueiro/Aion-Looper"
@@ -344,7 +348,7 @@ include(cmake/Vst3Programs.cmake)
 include(cmake/StandaloneClock.cmake)
 include(cmake/DeviceDelivery.cmake)
 
-target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/plugin/ProcessorEqualizer.cpp source/plugin/ProcessorCompressor.cpp source/plugin/ProcessorSignalChain.cpp source/plugin/ProcessorEffectsRestore.cpp source/plugin/ProcessorArpState.cpp source/plugin/ProcessorArp.cpp source/plugin/ProcessorArpTempo.cpp source/ui/WebEditor.cpp)
+target_sources(AionLooper PRIVATE source/plugin/Processor.cpp source/plugin/ProcessorEqualizer.cpp source/plugin/ProcessorCompressor.cpp source/plugin/ProcessorDrive.cpp source/plugin/ProcessorSignalChain.cpp source/plugin/ProcessorEffectsRestore.cpp source/plugin/ProcessorArpState.cpp source/plugin/ProcessorArp.cpp source/plugin/ProcessorArpTempo.cpp source/ui/WebEditor.cpp)
 target_include_directories(AionLooper PRIVATE source)
 target_compile_definitions(AionLooper PUBLIC
     JUCE_WEB_BROWSER=1 JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
@@ -391,6 +395,10 @@ if(BUILD_TESTING AND (WIN32 OR linux_desktop))
         AION_CLI_PYTHON="${Python3_EXECUTABLE}" AION_ARP_CLI_TEST="${CMAKE_CURRENT_SOURCE_DIR}/tests/ArpCliTests.py")
     target_link_libraries(aion_arp_processor_tests PRIVATE AionLooper)
     add_executable(aion_compressor_processor_tests EXCLUDE_FROM_ALL tests/CompressorProcessorTests.cpp)
+    add_executable(aion_drive_processor_tests EXCLUDE_FROM_ALL tests/DriveProcessorTests.cpp)
+    target_include_directories(aion_drive_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
+    target_compile_definitions(aion_drive_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1 AION_CLI_PYTHON="${Python3_EXECUTABLE}" AION_DRIVE_CLI_TEST="${CMAKE_CURRENT_SOURCE_DIR}/tests/DriveCliTests.py")
+    target_link_libraries(aion_drive_processor_tests PRIVATE AionLooper)
     target_include_directories(aion_compressor_processor_tests PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
     target_compile_definitions(aion_compressor_processor_tests PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
         AION_CLI_PYTHON="${Python3_EXECUTABLE}" AION_COMPRESSOR_CLI_TEST="${CMAKE_CURRENT_SOURCE_DIR}/tests/CompressorCliTests.py")
@@ -410,6 +418,8 @@ if(BUILD_TESTING AND (WIN32 OR linux_desktop))
     option(AION_TEST_NATIVE_PROCESSOR "Register the optional production processor CTest" OFF)
     if(AION_TEST_NATIVE_PROCESSOR)
         foreach(eq_block IN ITEMS 64 128)
+            add_test(NAME native_drive_processor_${eq_block} COMMAND aion_drive_processor_tests ${eq_block})
+            set_tests_properties(native_drive_processor_${eq_block} PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected" LABELS "native;processor;drive")
             add_test(NAME native_arp_processor_${eq_block} COMMAND aion_arp_processor_tests ${eq_block})
             set_tests_properties(native_arp_processor_${eq_block} PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
                 FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected" LABELS "native;processor;arp")

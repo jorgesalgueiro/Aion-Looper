@@ -10,7 +10,8 @@ window.AionMidiMode = class {
 window.AionMidiEqParameters=['lcFreq','lsFreq','lsGain',...Array.from({length:6},(_,i)=>[`p${i+1}Freq`,`p${i+1}Gain`,`p${i+1}Q`]).flat(),'hsFreq','hsGain','hcFreq'];
 window.AionMidiCompressorParameters=['threshold','ratio','knee','attack','release','gain','mix'];
 window.AionMidiArpParameters=['time','repetitions','mix','amplitude','range','humanize','scale','panSpeed','panDepth'];
-window.AionMidiSliderTarget=id=>{const arp=window.AionMidiArpParameters.findIndex(p=>id==='arpDelay'+p[0].toUpperCase()+p.slice(1));if(arp>=0)return 124+arp;const comp=window.AionMidiCompressorParameters.findIndex(p=>id==='compressor'+p[0].toUpperCase()+p.slice(1));if(comp>=0)return 117+comp;const eq=window.AionMidiEqParameters.findIndex(p=>id==='eq'+p[0].toUpperCase()+p.slice(1));if(eq>=0)return 93+eq;const live=/^live_mm_slider_l_(\d+)$/.exec(id);if(live)return Number(live[1])<20?33+Number(live[1]):-1;const m=/^loop-(vol|pan)-slider-(\d+)$/.exec(id);return m&&Number(m[2])<20?(m[1]==='vol'?33:53)+Number(m[2]):-1;};
+window.AionMidiDriveParameters=[...['amount','shape','tone','volume','mix'].map(p=>['distortion',p]),...['drive','tone','volume','mix'].map(p=>['overdrive',p]),...['gain','bias','tone','volume','mix'].map(p=>['fuzz',p])];
+window.AionMidiSliderTarget=id=>{const drive=window.AionMidiDriveParameters.findIndex(([effect,p])=>id===effect+p[0].toUpperCase()+p.slice(1));if(drive>=0)return 133+drive;const arp=window.AionMidiArpParameters.findIndex(p=>id==='arpDelay'+p[0].toUpperCase()+p.slice(1));if(arp>=0)return 124+arp;const comp=window.AionMidiCompressorParameters.findIndex(p=>id==='compressor'+p[0].toUpperCase()+p.slice(1));if(comp>=0)return 117+comp;const eq=window.AionMidiEqParameters.findIndex(p=>id==='eq'+p[0].toUpperCase()+p.slice(1));if(eq>=0)return 93+eq;const live=/^live_mm_slider_l_(\d+)$/.exec(id);if(live)return Number(live[1])<20?33+Number(live[1]):-1;const m=/^loop-(vol|pan)-slider-(\d+)$/.exec(id);return m&&Number(m[2])<20?(m[1]==='vol'?33:53)+Number(m[2]):-1;};
 window.AionMidiLearnTarget=id=>{const mute=/^live_mm_mute_l_(\d+)$/.exec(id);if(mute)return Number(mute[1])<20?73+Number(mute[1]):-1;const m=/^loop-action-(\d+)$/.exec(id);return m?(Number(m[1])<20?Number(m[1]):-1):window.AionMidiSliderTarget(id);};
 // Original main MUTE has no ID; recognise its bound button in its owning card.
 window.AionMidiMuteButton=row=>[...(row?.querySelectorAll?.('button')||[])].find(e=>e.dataset?.nativeControl==='true'&&['MUTE','UNM'].includes(e.textContent?.trim()))||null;
@@ -134,6 +135,11 @@ window.AionMidiSetup=({rpc,notify,setMode})=>{
         for(const [i,p]of window.AionMidiArpParameters.entries()){
             const slider=document.getElementById('arpDelay'+p[0].toUpperCase()+p.slice(1));if(!slider)continue;
             const target=124+i,b=midi.bindings[target]||0;slider.style.outline=midi.learnTarget===target?'2px solid #f0f':'';
+            slider.title=`Right-click: learn MIDI CC for selected loop tab; Shift+right-click: clear${b?` | CC ${(b>>2)&127}${b>>9?' CH '+(b>>9):' ANY'}`:''}`;
+        }
+        for(const [i,[effect,p]]of window.AionMidiDriveParameters.entries()){
+            const slider=document.getElementById(effect+p[0].toUpperCase()+p.slice(1));if(!slider)continue;
+            const target=133+i,b=midi.bindings[target]||0;slider.style.outline=midi.learnTarget===target?'2px solid #f0f':'';
             slider.title=`Right-click: learn MIDI CC for selected loop tab; Shift+right-click: clear${b?` | CC ${(b>>2)&127}${b>>9?' CH '+(b>>9):' ANY'}`:''}`;
         }
         window.AionMidiMuteStatus(midi,document);

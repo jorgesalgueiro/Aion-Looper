@@ -188,5 +188,16 @@ private:
     bool compressorRequest(const juce::var&,juce::DynamicObject&);
     void saveCompressors(juce::ValueTree&);
     static bool readCompressors(const juce::ValueTree&,CompressorBank&);
+    using DriveBanks=aion::LoopBank::DriveBanks;
+    DriveBanks driveSettings=aion::LoopBank::defaultDriveBanks();
+    bool driveRestorePending=false;
+    std::array<std::uint32_t,aion::LoopBank::trackCount> drivePending{};
+    std::array<bool,aion::LoopBank::trackCount> driveClearing{};
+    void serviceDrives();
+    void driveCleared(unsigned,bool,std::uint32_t);
+    void driveSnapshot(juce::DynamicObject&,unsigned);
+    bool driveRequest(const juce::var&,juce::DynamicObject&);
+    void saveDrives(juce::ValueTree&);
+    static bool readDrives(const juce::ValueTree&,DriveBanks&);
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AionProcessor)
 };

@@ -194,7 +194,7 @@ void AionProcessor::prepareToPlay(double rate, int) {
      arpOwner.service(latest);
      if(arpOwner.bound()&&!arpRestorePending&&!effectsRestore.active)for(unsigned id=0;id<arpSettings.size();++id)if(!arpOwner.track(id)->pending)arpSettings[id]=arpOwner.track(id)->committed;
      engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
-     engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);
+     engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareDriveBank(driveSettings);driveRestorePending=false;drivePending.fill(0);driveClearing.fill(false);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);
      auto renderIntent=arpSettings;for(auto& s:renderIntent)s.fresh=false;
      // Fresh classification alone needs no audio bank at first prepare. Keep a
      // previously accepted restore even for all-default legacy banks: their
@@ -390,11 +390,12 @@ void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
     std::lock_guard stateGuard(midiSettingsMutex);
     auto state=parameters.copyState();juce::ValueTree stored("MidiSettings");
     {std::lock_guard guard(midiSettingsMutex);stored.setProperty("enabled",midiSettings.enabled,nullptr);
-     stored.setProperty("version",6,nullptr);stored.setProperty("eqTrack",static_cast<int>(midiSettings.eqTrack),nullptr);
+     stored.setProperty("version",7,nullptr);stored.setProperty("eqTrack",static_cast<int>(midiSettings.eqTrack),nullptr);
      for(unsigned i=0;i<aion::MidiSettings::bindingCount;++i)stored.setProperty("binding"+juce::String(i),static_cast<int>(midiSettings.bindings[i]),nullptr);}
     state.removeChild(state.getChildWithName("MidiSettings"),nullptr);state.appendChild(stored,nullptr);
     saveEqualizers(state);
     saveCompressors(state);
+    saveDrives(state);
     saveChains(state);
     saveArps(state);
     if (auto xml = state.createXml()) copyXmlToBinary(*xml, data);
@@ -402,15 +403,15 @@ void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
 void AionProcessor::setStateInformation(const void* data, int size) {
     if (size <= 0 || size > 1024 * 1024) return;
     if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName("AionState")) {
-        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;CompressorBank restoredCompressor;ChainBank restoredChains;aion::ArpSettingsOwner::Bank restoredArps;
-        if(!readEqualizers(state,restoredEq)||!readCompressors(state,restoredCompressor)||!readChains(state,restoredChains)||!readArps(state,restoredArps))return;
+        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;CompressorBank restoredCompressor;ChainBank restoredChains;DriveBanks restoredDrives;aion::ArpSettingsOwner::Bank restoredArps;
+        if(!readEqualizers(state,restoredEq)||!readCompressors(state,restoredCompressor)||!readChains(state,restoredChains)||!readArps(state,restoredArps)||!readDrives(state,restoredDrives))return;
         aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
         if(stored.isValid()){
             const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
-            const auto version=stored.getProperty("version",1).toString();if(version!="1"&&version!="2"&&version!="3"&&version!="4"&&version!="5"&&version!="6")return;
-            const unsigned count=version=="6"?aion::MidiSettings::bindingCount:version=="5"?aion::MidiSettings::arpBase:version=="4"?aion::MidiSettings::compressorBase:version=="3"?aion::MidiSettings::eqBase:version=="2"?aion::MidiSettings::muteBase:aion::MidiSettings::volumeBase;
+            const auto version=stored.getProperty("version",1).toString();if(version!="1"&&version!="2"&&version!="3"&&version!="4"&&version!="5"&&version!="6"&&version!="7")return;
+            const unsigned count=version=="7"?aion::MidiSettings::bindingCount:version=="6"?aion::MidiSettings::driveBase:version=="5"?aion::MidiSettings::arpBase:version=="4"?aion::MidiSettings::compressorBase:version=="3"?aion::MidiSettings::eqBase:version=="2"?aion::MidiSettings::muteBase:aion::MidiSettings::volumeBase;
             for(unsigned i=0;i<count;++i){const auto value=stored.getProperty("binding"+juce::String(i)).toString();if(value.isEmpty()||!value.containsOnly("0123456789")||value.getLargeIntValue()>65535)return;next.bindings[i]=static_cast<std::uint16_t>(value.getIntValue());}
-            if(version=="4"||version=="5"||version=="6") {const auto value=stored.getProperty("eqTrack").toString();if(value.isEmpty()||value.length()>2||!value.containsOnly("0123456789")||value.getIntValue()>=static_cast<int>(aion::LoopBank::trackCount))return;next.eqTrack=static_cast<unsigned>(value.getIntValue());}
+            if(version=="4"||version=="5"||version=="6"||version=="7") {const auto value=stored.getProperty("eqTrack").toString();if(value.isEmpty()||value.length()>2||!value.containsOnly("0123456789")||value.getIntValue()>=static_cast<int>(aion::LoopBank::trackCount))return;next.eqTrack=static_cast<unsigned>(value.getIntValue());}
         }
         {
             std::lock_guard guard(midiSettingsMutex);next.learnToken=midiSettings.learnToken+1;
@@ -419,6 +420,7 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             compressorSettings=restoredCompressor;compressorRestorePending=true;compressorPending.fill(0);compressorClearing.fill(false);
             chainSettings=restoredChains;chainRestorePending=true;chainPending.fill(0);chainClearing.fill(false);
             arpSettings=restoredArps;arpRestorePending=true;
+            driveSettings=restoredDrives;driveRestorePending=true;drivePending.fill(0);driveClearing.fill(false);
             ++effectsIntent;engine.cancelArpPreparation(); // Host thread publishes cancellation only, never consumes or enqueues.
             parameters.replaceState(state);
             arpTiming=readArpTiming();arpTempoSeen=++arpTempoIntent; // Restore explicit original BPMs, not an incidental APVTS notification.
@@ -559,6 +561,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             object->setProperty("volume", t.volume); object->setProperty("feedback", t.feedback);
             equalizerSnapshot(*object,static_cast<unsigned>(trackIndex));
             compressorSnapshot(*object,static_cast<unsigned>(trackIndex));
+            driveSnapshot(*object,static_cast<unsigned>(trackIndex));
             chainSnapshot(*object,static_cast<unsigned>(trackIndex));
             arpSnapshot(*object,static_cast<unsigned>(trackIndex));
             object->setProperty("finalizationFailed", t.finalizationFailed); object->setProperty("solo", t.solo); object->setProperty("muted", t.muted); object->setProperty("peak", t.peak);
@@ -573,6 +576,8 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         result->setProperty("ok",equalizerRequest(request,*result));
     } else if(operation=="compressor") {
         result->setProperty("ok",compressorRequest(request,*result));
+    } else if(operation=="drive") {
+        result->setProperty("ok",driveRequest(request,*result));
     } else if (operation == "cancelExport") {
         cancelExport();result->setProperty("ok",true);
     } else if (operation == "exportLoop") {
@@ -625,7 +630,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         engine.cancelStutter(static_cast<unsigned>(static_cast<int>(id)));result->setProperty("ok",true);
     } else if (operation == "loop") {
         {std::lock_guard guard(midiSettingsMutex);const auto cleanup=request.getProperty("action",{}).toString();
-         if((eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending)&&cleanup!="stopAll"&&cleanup!="clear"&&cleanup!="clearAll")return fail("Wait for pending EQ state restore");}
+         if((eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending)&&cleanup!="stopAll"&&cleanup!="clear"&&cleanup!="clearAll")return fail("Wait for pending EQ state restore");}
         const auto expiration = request.getProperty("expiresAt", {});
         if (!(expiration.isInt() || expiration.isInt64() || expiration.isDouble())) return fail("Missing command expiration");
         const double expiresAt = static_cast<double>(expiration);
@@ -655,6 +660,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         lastOrdinaryRequest = nextRequest = requestId;
         if(actionName=="clear"||actionName=="clearAll")equalizerCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")compressorCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
+        if(actionName=="clear"||actionName=="clearAll")driveCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")chainCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         result->setProperty("ok", true); result->setProperty("queued", true);
         result->setProperty("requestId", static_cast<juce::int64>(requestId));

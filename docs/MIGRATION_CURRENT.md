@@ -11,6 +11,41 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### T / Distortion, O / Overdrive, F / Fuzz — 17 November 2026
+
+The owner requested all three effects. Native `Drive` implements separate
+double-precision ADAA models with fixed-storage 4x polyphase oversampling, DC
+blocking, smoothed controls/bypass and Nyquist-safe tone. Exact original defaults,
+bounds and all 17 named presets are retained; sound intentionally follows the
+owner's quality-first policy. See [DRIVE.md](DRIVE.md) for models/quality scope.
+
+Windows: DSP/reference checks pass 2/2; connected Engine, existing chain and
+unchanged original-chain checks pass 3/3 with <=1e-6 ordered PCM at 64/128.
+New production processor/state/CLI tests pass 2/2 (30.57s), including all fourteen
+actual MidiBuffer learn targets. Actual WebView2/CDP pointer/key tests pass at
+64/128: original checkboxes/presets/sliders, send failure recovery, all fourteen
+focused learned sliders, reload, bypass, DEL, nonzero PCM and no runtime errors.
+Logs: `drive-{tests,connected-tests,processor-tests,ui-final}.log`.
+
+T/O/F share one GUI/CLI/native owner, per-field audio merging, editable chain
+order, persistent processors and versioned `LoopDrives` state. MIDI schema v7
+appends targets 133..146; v1..v6 remain loadable. The existing schema test advances
+its current-version assertion and ADDS v6 migration coverage; old cases remain.
+Preserved UI/reference assets and existing APVTS/action IDs are unchanged.
+
+The first UI failures were fixture readiness, incorrectly ordered synthetic
+packet size/offset fields, and post-reload layout movement. The fixture now waits
+for catalog/bootstrap, uses the existing host packet format and requires actual
+hit-tested pointer targets after scrolling. No product bridge timeout, audio
+assertion, hold deadline or DSP tolerance was loosened. The new panic fixture
+also verifies the unchanged 240-sample/5ms source fade before asserting hard zero;
+it no longer mistakes that original fade for source resurrection.
+
+Linux DSP/reference snapshot `3b3c6b5` passes 2/2 (0.79s). Full integration Linux,
+sanitizers and final regressions remain in progress; do not infer their result.
+Windows `drive-regressions.log` currently includes a running full core gate.
+The native chain/effects-restore regressions pass 4/4 (14.48s). No package/push.
+
 ### Active owner request: optional Faust backend — 16 November 2026
 
 **Current checkpoint — 17 November:** the supported interpreter safety slice

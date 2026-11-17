@@ -416,16 +416,19 @@ void LoopBank::cancelArmed(Track& track) noexcept {
     // clear() directly. Reconstruct runtime filters on their next tick.
     const auto settings=track.info.equalizer;const auto request=track.info.eqRequest;
     const auto compressor=track.info.compressor;const auto compressorRequest=track.info.compressorRequest;
+    const auto drive=track.info.drives;const auto driveRequest=track.info.driveRequest;
     const auto chain=track.info.signalChain;const auto chainRequest=track.info.chainRequest;
     const auto arp=track.info.arp;const auto arpRevision=track.info.arpSettingsRevision;const auto arpRequest=track.info.arpRequest;
     clear(track,true);track.info.signalChain=chain;track.info.chainRequest=chainRequest;track.info.equalizer=settings;track.info.eqRequest=request;
     track.info.compressor=compressor;track.info.compressorRequest=compressorRequest;
+    track.info.drives=drive;track.info.driveRequest=driveRequest;
     track.info.arp=arp;track.info.arpSettingsRevision=arpRevision;track.info.arpRequest=arpRequest;
 }
 void LoopBank::clear(Track& track,bool preserveArp) noexcept {
     cancelArpBank();
     (*equalizers)[static_cast<unsigned>(&track-tracks.data())]={};
     (*compressors)[static_cast<unsigned>(&track-tracks.data())]={};
+    (*drives)[static_cast<unsigned>(&track-tracks.data())]={};
     track.historyClock=false;
     clearRetained(track);
     const auto removedBuffer=track.clip?track.clip->waveformId:0;
@@ -466,6 +469,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         stop(tracks[next]);
         auto& eq=(*equalizers)[next];eq={};(void)eq.filter.prepare(rate,tracks[next].info.equalizer.values,frame);eq.prepared=true;
         auto& comp=(*compressors)[next];comp={};(void)comp.filter.prepare(rate,tracks[next].info.compressor.values,frame);comp.prepared=true;
+        resetDrives(next);
         if(tracks[next].info.arp.enabled){cancelArpStorage(next);if(auto* graph=arpStorage->graph(next))(void)graph->reset(tracks[next].info.arp.seed,frame);}
         }return true;}
     if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks){++track.clearEpoch;clear(track);}return true;}
@@ -730,6 +734,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::clearAll:
         case LoopAction::equalizer: // Dedicated validated settings command, never float payload.
         case LoopAction::compressor:
+        case LoopAction::drive:
         case LoopAction::signalChain:
         case LoopAction::arpDelay:
         case LoopAction::stopAll:break;
@@ -946,6 +951,7 @@ Stereo LoopBank::tickRetained(const Track& track) noexcept {
     return mix;
 }
 void LoopBank::resetEqualizers() noexcept {
+    for(unsigned i=0;i<trackCount;++i)resetDrives(i);
     for(unsigned i=0;i<trackCount;++i){auto& eq=(*equalizers)[i];eq={};(void)eq.filter.prepare(rate,tracks[i].info.equalizer.values,0);eq.prepared=true;}
     for(unsigned i=0;i<trackCount;++i){auto& comp=(*compressors)[i];comp={};(void)comp.filter.prepare(rate,tracks[i].info.compressor.values,0);comp.prepared=true;}
 }
@@ -958,6 +964,9 @@ bool LoopBank::setSignalChain(std::uint32_t id,const SignalChain& settings,std::
     if(settings.contains('Q')&&!previous.contains('Q')&&t.info.equalizer.enabled){auto& eq=(*equalizers)[id];(void)eq.filter.prepare(rate,t.info.equalizer.values,frame);eq.prepared=true;}
     if(settings.contains('C')&&!previous.contains('C')&&t.info.compressor.enabled){auto& comp=(*compressors)[id];(void)comp.filter.prepare(rate,t.info.compressor.values,frame);comp.prepared=true;}
     if(settings.contains('A')&&!previous.contains('A')&&t.info.arp.enabled){if(auto* graph=arpStorage->graph(id))(void)graph->reset(t.info.arp.seed,frame);}
+    for(unsigned k=0;k<3;++k)if(settings.contains(driveCodes[k])&&!previous.contains(driveCodes[k])){
+        auto& bank=(*drives)[id];(void)bank.filters[k].prepare(rate,static_cast<DriveKind>(k),t.info.drives[k]);
+    }
     t.info.signalChain=settings;t.info.chainRequest=request;return true;
 }
 bool LoopBank::setCompressor(std::uint32_t id,const CompressorSettings& settings,std::uint32_t mask,std::uint32_t request,std::uint64_t epoch,bool checkEpoch) noexcept {
@@ -1071,6 +1080,9 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
             if(code=='Q')equalized=tickEqualizer(id,equalized,eqSource);
             else if(code=='C')equalized=tickCompressor(id,equalized,eqSource);
             else if(code=='A')equalized=tickArp(id,equalized,eqSource);
+            else if(code=='T')equalized=tickDrive(id,0,equalized,eqSource);
+            else if(code=='O')equalized=tickDrive(id,1,equalized,eqSource);
+            else if(code=='F')equalized=tickDrive(id,2,equalized,eqSource);
             // Unported original codes retain their position as metadata.
         }
         if(t.queuedGainAt){

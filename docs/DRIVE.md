@@ -22,7 +22,36 @@ at coherent 802.7/4107.4/10998 Hz, 48 kHz; finite bounded output across all supp
 control extremes; bit-identical 64/128/irregular processing; stereo/in-place/reset,
 rapid controls and zero callback new/delete. Measure CPU without treating a buffer
 deadline as hardware latency. Listening, shared GUI/CLI/state, MIDI and actual
-chain/lifecycle integration remain separate gates; do not enable disconnected UI.
+chain/lifecycle integration are verified separately from kernel acceptance.
+
+The shared native owner now exposes all three original colored control panels,
+original loop/live-card toggles, selected-loop CC Learn, presets and persistence.
+`LoopDrives` version 1 stores 20 track banks with three effects each. Missing
+legacy banks restore disabled original defaults; malformed banks reject the
+entire state before APVTS replacement. MIDI version 7 appends fourteen targets
+133..146 without shifting earlier IDs. Partial GUI edits merge only their owned
+fields on audio, preserving newer MIDI values on other controls. Explicit DEL
+resets all three; ordinary PLAY/RTRG/history retain processor memory. Omission
+from the chain bypasses it; reinsertion resets that stage like existing Q/C.
+
+The Python client controls the running Standalone (track numbers are 1..20):
+
+```text
+python tools/aion.py distortion 1 preset --preset tube-warmth
+python tools/aion.py distortion 1 on
+python tools/aion.py overdrive 1 preset --preset "American Sparkle"
+python tools/aion.py overdrive 1 on
+python tools/aion.py fuzz 1 preset --preset "Big Muff"
+python tools/aion.py fuzz 1 on
+python tools/aion.py fuzz 1 set --values '{"gain":35,"bias":0.1,"mix":0.7}'
+python tools/aion.py chain 1 set FOT
+```
+
+Each effect also accepts `get`, `off`, `toggle` and `reset`. A reset keeps enable
+state and restores untouched defaults. Right-click a knob for CC Learn;
+Shift-right-click removes its binding. Binding follows the selected loop tab.
+Device/hardware, listening and full-workspace performance acceptance remain
+separate; synthetic messages do not establish a physical-pedal test.
 
 Design references: [Faust antialiased nonlinearities](https://faustlibraries.grame.fr/libs/aanl/)
 (ADAA precision, half-sample delay, combining low-factor oversampling),

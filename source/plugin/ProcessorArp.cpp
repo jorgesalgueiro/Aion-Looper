@@ -30,7 +30,7 @@ bool AionProcessor::arpRequest(const juce::var& request,juce::DynamicObject& res
  if(!numeric(request.getProperty("expiresAt",{}),expires)||expires<now||expires>now+5000)return fail("Arp command expired");
  const auto generation=request.getProperty("generation",{});
  if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation())||latest.generation!=engine.generation()||!meterPrepared()||!arpOwner.bound())return fail("Audio generation changed");
- if(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||effectsRestore.active||eqClearing[track]||compressorClearing[track]||chainClearing[track]||arpOwner.track(track)->pending)return fail("Wait for Arp restore/edit/clear acknowledgement");
+ if(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||effectsRestore.active||eqClearing[track]||compressorClearing[track]||chainClearing[track]||arpOwner.track(track)->pending)return fail("Wait for Arp restore/edit/clear acknowledgement");
  if(nextRequest==UINT32_MAX)return fail("Arp request IDs exhausted");
  const auto requestId=nextRequest+1;auto candidate=arpSettings[track];const double bpm=syncBpm->load(std::memory_order_relaxed);bool accepted=false;
  if(action=="toggle"||action=="enable"){

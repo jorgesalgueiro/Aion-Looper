@@ -57,7 +57,7 @@ bool AionProcessor::chainRequest(const juce::var& request,juce::DynamicObject& r
     if(!(expires.isDouble()||expires.isInt64()||expires.isInt())||!std::isfinite(static_cast<double>(expires))||static_cast<double>(expires)<now||static_cast<double>(expires)>now+5000)return fail("Chain command expired");
     const auto generation=request.getProperty("generation",{});
     if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation())||latest.generation!=engine.generation())return fail("Audio generation changed");
-    if(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||chainClearing[track])return fail("Wait for chain restore/clear acknowledgement");
+    if(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||chainClearing[track])return fail("Wait for chain restore/clear acknowledgement");
     if(action=="reset")next={};
     else if(action=="set"){
         const auto order=request.getProperty("order",{});if(!order.isString()||order.toString().getNumBytesAsUTF8()>256)return fail("Expected bounded chain text");

@@ -34,14 +34,15 @@ bool AionProcessor::serviceEffectsRestore(){
             if(effectsRestore.intent==effectsIntent){
                 for(unsigned i=0;i<eqSettings.size();++i){
                     eqSettings[i]=latest.tracks[i].equalizer;compressorSettings[i]=latest.tracks[i].compressor;chainSettings[i]=latest.tracks[i].signalChain;
+                    driveSettings[i]=latest.tracks[i].drives;
                     arpSettings[i]=arpOwner.track(i)->committed;
                 }
-                eqRestorePending=compressorRestorePending=chainRestorePending=arpRestorePending=false;
+                eqRestorePending=compressorRestorePending=chainRestorePending=arpRestorePending=driveRestorePending=false;
             }
             effectsRestore={};
         }
     }
-    if(!(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending)){
+    if(!(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending)){
         for(unsigned i=0;i<arpSettings.size();++i)if(!arpOwner.track(i)->pending)arpSettings[i]=arpOwner.track(i)->committed;
         return true;
     }
@@ -50,7 +51,7 @@ bool AionProcessor::serviceEffectsRestore(){
     // these IDs belong to the ordinary FIFO. An earlier bank ID is already
     // covered by its exact terminal receipt and must not strand the next load.
     if(latest.lastRequestId<lastOrdinaryRequest)return false;
-    const aion::LoopBank::EffectsBank effects{eqSettings,compressorSettings,chainSettings};
+    const aion::LoopBank::EffectsBank effects{eqSettings,compressorSettings,chainSettings,driveSettings};
     if(!arpOwner.restore(arpSettings,nextRequest+1,&effects))return false;
     lastEffectsRequest=++nextRequest;
     effectsRestore={};effectsRestore.active=true;effectsRestore.request=nextRequest;effectsRestore.generation=engine.generation();effectsRestore.intent=effectsIntent;

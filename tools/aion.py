@@ -148,6 +148,12 @@ def main(argv=None):
     comp.add_argument('action', choices=('get', 'curve', 'on', 'off', 'toggle', 'reset', 'preset', 'set'))
     comp.add_argument('--preset', help='Original preset name, e.g. vocals')
     comp.add_argument('--values', type=strict_json, help='Parameter object, e.g. {"threshold":-24,"mix":0.5}')
+    for name in ('distortion', 'overdrive', 'fuzz'):
+        drive = commands.add_parser(name, help='Per-loop native ' + name)
+        drive.add_argument('track', type=track)
+        drive.add_argument('action', choices=('get', 'on', 'off', 'toggle', 'reset', 'preset', 'set'))
+        drive.add_argument('--preset', help='Original preset name')
+        drive.add_argument('--values', type=strict_json, help='Original parameter object')
     arp = commands.add_parser('arp', help='Per-loop Arp Delay on the running audio engine')
     arp.add_argument('track', type=track)
     arp.add_argument('action', choices=('get', 'on', 'off', 'toggle', 'preset', 'set', 'voice'))
@@ -155,7 +161,7 @@ def main(argv=None):
     arp.add_argument('--preset', help='Original preset name, e.g. sync-trip')
     arp.add_argument('--parameter', help='Original control name, e.g. repetitions or panDepth')
     arp.add_argument('--value', type=strict_json, help='Numeric control value')
-    chain = commands.add_parser('chain', help='Per-loop effect order on the running audio engine (Q/C/A preview)')
+    chain = commands.add_parser('chain', help='Per-loop effect order on the running audio engine (Q/C/A/T/O/F preview)')
     chain.add_argument('track', type=track)
     chain.add_argument('action', choices=('get', 'set', 'reset'))
     chain.add_argument('order', nargs='?', help='Original effect codes, e.g. CQ or QCATFODBVKZG')
@@ -214,7 +220,7 @@ def main(argv=None):
             request.update(action=args.action, value=args.value, expiresAt=int(time.time() * 1000) + 4000)
         else:
             request.update(waveformId=status['tracks'][args.track]['waveformId'], filename=args.filename)
-    elif args.command in ('eq', 'comp', 'chain', 'arp'):
+    elif args.command in ('eq', 'comp', 'chain', 'arp', 'distortion', 'overdrive', 'fuzz'):
         status = invoke(endpoint, {'operation': 'snapshot'})
         if not status.get('ok'):
             return status
@@ -230,8 +236,10 @@ def main(argv=None):
                     return status
                 if status.get('generation') != generation or status['tracks'][args.track]['clearEpoch'] != epoch:
                     return {'ok': False, 'applied': False, 'error': 'Arp ownership changed before command admission'}
-        request = {'operation': {'eq': 'equalizer', 'comp': 'compressor', 'chain': 'signalChain', 'arp': 'arp'}[args.command], 'track': args.track, 'generation': status['generation'],
+        request = {'operation': {'eq': 'equalizer', 'comp': 'compressor', 'chain': 'signalChain', 'arp': 'arp', 'distortion': 'drive', 'overdrive': 'drive', 'fuzz': 'drive'}[args.command], 'track': args.track, 'generation': status['generation'],
                    'action': args.action, 'expiresAt': int(time.time() * 1000) + 4000}
+        if args.command in ('distortion', 'overdrive', 'fuzz'):
+            request['effect'] = args.command
         if args.command == 'chain' and args.action == 'set':
             if args.order is None:
                 raise ValueError('chain set requires an order (use reset for the default)')
@@ -278,7 +286,7 @@ def main(argv=None):
                 return dict(reply, ok=False, applied=False, error='Arp preparation/edit failed or was cancelled')
             time.sleep(.01)
         return dict(reply, ok=False, error='Arp outcome is unconfirmed; inspect status before retrying')
-    if args.command in ('loop', 'eq', 'comp', 'chain') and reply.get('ok') and reply.get('queued'):
+    if args.command in ('loop', 'eq', 'comp', 'chain', 'distortion', 'overdrive', 'fuzz') and reply.get('ok') and reply.get('queued'):
         deadline = time.monotonic() + 4
         while time.monotonic() < deadline:
             observed = invoke(endpoint, {'operation': 'snapshot'})

@@ -65,6 +65,7 @@ void AionProcessor::serviceEqualizer(){
         // truth, including internal capture cleanup without a DEL epoch change.
     }
     serviceCompressor();
+    serviceDrives();
     serviceChains();
     serviceArpTempo(true);
 }
@@ -96,7 +97,7 @@ bool AionProcessor::equalizerRequest(const juce::var& request,juce::DynamicObjec
     if(!numeric(request.getProperty("expiresAt",{}),expires)||expires<now||expires>now+5000)return fail("EQ command expired");
     const auto generation=request.getProperty("generation",{});
     if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation())||latest.generation!=engine.generation())return fail("Audio generation changed");
-    if(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||eqClearing[track])return fail("Wait for EQ restore/clear acknowledgement");
+    if(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||eqClearing[track])return fail("Wait for EQ restore/clear acknowledgement");
     std::uint32_t mask=0;
     if(action=="toggle")next.enabled=!next.enabled;
     else if(action=="enable"){const auto enabled=request.getProperty("enabled",{});if(!enabled.isBool())return fail("Expected EQ boolean");next.enabled=static_cast<bool>(enabled);}

@@ -21,7 +21,7 @@
     }
     const input=row.querySelector('[aria-label="Loop FX Chain"]');if(!input)return;
     input.disabled=false;input.maxLength=256;input.dataset.nativeControl='true';
-    input.title='Manual FX Chain — Q and C are ported; other codes retain their position';
+    input.title='Manual FX Chain — Q/C/A/T/O/F available; other codes retain their position';
     input.addEventListener('click',e=>{e.stopPropagation();select(track);});
     input.addEventListener('keydown',e=>e.stopPropagation());
     input.addEventListener('change',e=>{e.stopPropagation();enqueue(track,input.value);});

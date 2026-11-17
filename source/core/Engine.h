@@ -34,6 +34,12 @@ struct LoopCommand {
     std::uint32_t compressorMask=compressorAllParameters;
     std::uint64_t compressorClearEpoch=0;
     bool compressorCheckEpoch=true;
+    DriveBank drives=defaultDriveBank();
+    // Six mask bits per family: five original controls, then enable. Partial
+    // message-owner edits merge with current audio-owned MIDI controls.
+    std::uint32_t driveMask=allDriveFields;
+    std::uint64_t driveClearEpoch=0;
+    bool driveCheckEpoch=true;
     SignalChain signalChain{};
     std::uint64_t chainClearEpoch=0;
     bool chainCheckEpoch=true;
@@ -149,6 +155,7 @@ public:
     void prepareCompressorBank(const std::array<CompressorSettings,LoopBank::trackCount>& settings) noexcept {
         for(unsigned i=0;i<settings.size();++i)(void)loops.setCompressor(i,settings[i],compressorAllParameters,0,0,false);
     }
+    void prepareDriveBank(const LoopBank::DriveBanks& settings)noexcept{for(unsigned i=0;i<settings.size();++i)(void)loops.setDrives(i,settings[i],0,0,false);}
     // Single message owner publishes a cumulative source-retirement fence.
     // Independent of the performance FIFO, so cleanup cannot be lost on overflow.
     bool retireQueuedSourceThrough(std::uint32_t requestedGeneration,unsigned track,std::uint32_t ticket) noexcept {

@@ -4,7 +4,7 @@
 #include <limits>
 namespace aion {
 bool LoopBank::validEffectsBank(const EffectsBank& bank) noexcept {
- for(unsigned id=0;id<trackCount;++id)if(!validEqSettings(bank.equalizers[id])||!validCompressorSettings(bank.compressors[id])||!validSignalChain(bank.chains[id]))return false;
+ for(unsigned id=0;id<trackCount;++id)if(!validEqSettings(bank.equalizers[id])||!validCompressorSettings(bank.compressors[id])||!validSignalChain(bank.chains[id])||!validDriveBank(bank.drives[id]))return false;
  return true;
 }
 bool LoopBank::applyArpTempoBank(const ArpBank& settings,const ArpEpochs& epochs,const ArpEpochs& revisions,std::uint32_t request) noexcept {
@@ -73,6 +73,7 @@ void LoopBank::pollArps() noexcept {
     (void)setEqualizer(id,fx.equalizers[id],eqAllParameters,pendingArpBank.request,tracks[id].clearEpoch);
     (void)setCompressor(id,fx.compressors[id],compressorAllParameters,pendingArpBank.request,tracks[id].clearEpoch);
     (void)setSignalChain(id,fx.chains[id],pendingArpBank.request,tracks[id].clearEpoch);
+    (void)setDrives(id,fx.drives[id],pendingArpBank.request,tracks[id].clearEpoch);
    }
   }
   bankArpResult={pendingArpBank.request,completion.bankInstalled?ArpBankStatus::ready:ArpBankStatus::failed};pendingArpBank={};

@@ -132,6 +132,7 @@
             run:async c=>{
                 if(c.action==='equalizer')return sendEqualizer(c.track,c.eq);
                 if(c.action==='compressor')return sendCompressor(c.track,c.compressor);
+                if(c.action==='drive')return sendDrive(c.track,c.drive);
                 if(c.action==='arp')return sendArp(c.track,c.arp);
                 if(c.action==='signalChain')return sendChain(c.track,c.order);
                 if(c.action==='exportLoop'){
@@ -188,6 +189,8 @@
             enqueue:(track,eq,key)=>scheduler.enqueue(()=>({action:'equalizer',track,eq}),{track,key:key?`${track}:${key}`:undefined})});
         const compressor=window.AionCompressorUI({rpc,current:()=>snapshot,notify,equalizer,
             enqueue:(track,compressor,key)=>scheduler.enqueue(()=>({action:'compressor',track,compressor}),{track,key:key?`${track}:${key}`:undefined})});
+        const drive=window.AionDriveUI({rpc,current:()=>snapshot,notify,equalizer,
+            enqueue:(track,drive,key)=>scheduler.enqueue(()=>({action:'drive',track,drive}),{track,key:key?`${track}:${key}`:undefined})});
         const arp=window.AionArpUI({current:()=>snapshot,equalizer,
             enqueue:(track,arp,key)=>scheduler.enqueue(()=>timingRequests||BigInt(snapshot.arpTempoSeen??'0')<arpTempoFence||snapshot.tracks[track].arpBusy?window.AionCommandQueue.wait:({action:'arp',track,arp}),{track,key:key?`${track}:${key}`:undefined})});
         const signalChain=window.AionSignalChainUI({current:()=>snapshot,select:id=>equalizer.select(id),
@@ -211,6 +214,13 @@
             error='';const generation=snapshot.generation;
             const reply=await rpc({operation:'compressor',track,...settings,generation,expiresAt:Date.now()+3000});
             if(!reply.ok)throw Error(reply.error||'Compressor command rejected');
+            await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,resolve,reject,deadline:Date.now()+4000};});
+        }
+        async function sendDrive(track,settings){
+            if(!enabled())return;
+            error='';const generation=snapshot.generation;
+            const reply=await rpc({operation:'drive',track,...settings,generation,expiresAt:Date.now()+3000});
+            if(!reply.ok)throw Error(reply.error);
             await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,resolve,reject,deadline:Date.now()+4000};});
         }
         async function sendEqualizer(track,eq){
@@ -321,6 +331,7 @@
                 signalChain.bindRow(row,i);
                 equalizer.bindRow(row,i);
                 compressor.bindRow(row,i);
+                drive.bindRow(row,i);
                 arp.bindRow(row,i);
                 const bind=(element,callback,event='click') => {element.dataset.nativeControl='true';element.title=element.getAttribute('aria-label')||element.textContent.trim();element.addEventListener(event,callback);return element;};
                 // Original header background/state text is also a short-action target.
@@ -419,6 +430,7 @@
                 signalChain.bindRow(row,i);
                 equalizer.bindRow(row,i);
                 compressor.bindRow(row,i);
+                drive.bindRow(row,i);
                 arp.bindRow(row,i);
                 header.addEventListener('click',()=>{if(enabled())mainAction(i);});
                 row.addEventListener('pointerdown',()=>{selected=i;});
@@ -431,6 +443,7 @@
             if(!snapshot)return;
             equalizer.update();
             compressor.update();
+            drive.update();
             arp.update();
             signalChain.update();
             const active=enabled();
