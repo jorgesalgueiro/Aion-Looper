@@ -7,8 +7,12 @@
 #include <cmath>
 #include <iostream>
 #include <memory>
+#include <string_view>
 #include <vector>
-int main(){
+int driveEngineBenchmark();
+int main(int argc,char** argv){
+ if(argc==2&&std::string_view(argv[1])=="--drives")return driveEngineBenchmark();
+ if(argc!=1){std::cerr<<"Usage: aion_effects_engine_benchmark [--drives]\n";return 1;}
  using namespace aion;
  constexpr unsigned warm=512,measured=2048;constexpr double rate=48000;
  for(unsigned block:{64u,128u})for(bool automated:{false,true}){
