@@ -64,6 +64,19 @@ Internal browser graph topology need not be identical if a simpler native path
 has demonstrated the same required behavior. Explain implementation-coupled test
 changes and retain equivalent or stronger observable regression evidence.
 
+The production MIDI executable's former combined CTest is now three independent
+gates: `native_midi_processor`, `native_meter_source_processor` (source/grid/
+history ownership), and `native_meter_cleanup_processor` (real message-loop CLI
+and timers). Run all three when the former broad matrix is relevant:
+
+```sh
+ctest --test-dir build/linux -R '^native_(midi|meter_source|meter_cleanup)_processor$' --output-on-failure
+```
+
+For Windows use `build/windows -C Release`. All original cases remain; default
+direct executable invocation still runs the combined matrix. Each CTest retains
+the 180s limit; real cleanup retains its own 60s CLI / 30s timer watchdogs.
+
 Once configured, Standalone-only incremental builds are:
 
 ```powershell

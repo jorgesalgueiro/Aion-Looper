@@ -436,14 +436,20 @@ if(BUILD_TESTING AND (WIN32 OR linux_desktop))
             set_tests_properties(native_eq_processor_${eq_block} PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE
                 FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected" LABELS "native;processor;equalizer")
         endforeach()
-        # Keep the growing cleanup/lifecycle matrix independently runnable.
+        # Keep MIDI, source ownership and actual message-loop timers independently
+        # runnable. Source/grid PCM rendering must not consume the real timer
+        # workflow's watchdog budget.
         # The default executable still runs both; CTest retains every assertion,
         # the 180-second per-suite limit and the cleanup's own 60s/30s watchdogs.
         add_test(NAME native_midi_processor COMMAND aion_midi_processor_tests --midi-only)
         set_tests_properties(native_midi_processor PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE
             FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected"
             LABELS "native;processor;midi")
-        add_test(NAME native_meter_cleanup_processor COMMAND aion_midi_processor_tests --cleanup-only)
+        add_test(NAME native_meter_source_processor COMMAND aion_midi_processor_tests --cleanup-sources-only)
+        set_tests_properties(native_meter_source_processor PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE
+            FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected"
+            LABELS "native;processor;cleanup;ownership")
+        add_test(NAME native_meter_cleanup_processor COMMAND aion_midi_processor_tests --cleanup-timers-only)
         set_tests_properties(native_meter_cleanup_processor PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE
             FAIL_REGULAR_EXPRESSION "JUCE Assertion failure;Leaked objects detected"
             LABELS "native;processor;cleanup")

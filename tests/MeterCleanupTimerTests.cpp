@@ -1654,7 +1654,8 @@ private:
 };
 }
 
-void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
+void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations,unsigned part){
+    if(part!=2){
     // Flush phase boundaries so a killed/slow CI run identifies the affected
     // matrix. Measurements are off audio; every original case remains intact.
     const auto run=[&](const char* name,auto test){const double start=wall();
@@ -1674,6 +1675,9 @@ void meterCleanupTimerTests(bool& audioWatch,std::atomic<int>& allocations){
     run("due delivery",processorDueDeliveryTests);
     run("panic dispatcher",panicDispatcherTests);
     run("queued adapter",queuedAdapterTests);
+    check(allocations.load()==0,"Source/lifecycle callbacks have zero tracked new/delete");
+    if(part==1)return;
+    }
     std::mutex mutex;std::condition_variable changed;bool finished=false,cliFinished=false;
     std::thread watchdog([&]{std::unique_lock lock(mutex);
         if(!changed.wait_for(lock,std::chrono::seconds(60),[&]{return cliFinished||finished;})){

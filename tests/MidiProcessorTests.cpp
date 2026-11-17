@@ -14,7 +14,7 @@ void operator delete(void* p) noexcept {if(audioWatch)++audioAllocations;std::fr
 void* operator new[](std::size_t n){return ::operator new(n);}void operator delete[](void* p) noexcept {::operator delete(p);}
 void operator delete(void* p,std::size_t) noexcept {::operator delete(p);}void operator delete[](void* p,std::size_t) noexcept {::operator delete(p);}
 void deviceSplitTests(bool&,std::atomic<int>&);
-void meterCleanupTimerTests(bool&,std::atomic<int>&);
+void meterCleanupTimerTests(bool&,std::atomic<int>&,unsigned part=0);
 class TestPlayHead final : public juce::AudioPlayHead {
 public:
  juce::Optional<PositionInfo> position;
@@ -40,9 +40,11 @@ public:
 int main(int argc,char** argv){
  juce::ScopedJuceInitialiser_GUI gui;
  const bool cleanupOnly=argc==2&&std::string_view(argv[1])=="--cleanup-only";
+ const bool sourcesOnly=argc==2&&std::string_view(argv[1])=="--cleanup-sources-only";
+ const bool timersOnly=argc==2&&std::string_view(argv[1])=="--cleanup-timers-only";
  const bool midiOnly=argc==2&&std::string_view(argv[1])=="--midi-only";
- check(argc==1||cleanupOnly||midiOnly,"Expected --midi-only or --cleanup-only");
- if(cleanupOnly){meterCleanupTimerTests(audioWatch,audioAllocations);check(audioAllocations.load()==0,"Cleanup callbacks must perform zero new/delete");return 0;}
+ check(argc==1||cleanupOnly||sourcesOnly||timersOnly||midiOnly,"Expected MIDI or cleanup suite mode");
+ if(cleanupOnly||sourcesOnly||timersOnly){meterCleanupTimerTests(audioWatch,audioAllocations,timersOnly?2:sourcesOnly?1:0);check(audioAllocations.load()==0,"Cleanup callbacks must perform zero new/delete");return 0;}
  for(int block:{64,128}){
   AionProcessor* preparing=nullptr;unsigned prepareReads=0;
   const auto snapshot=[](AionProcessor& processor){return processor.request({juce::JSON::parse(R"({"operation":"snapshot"})")});};

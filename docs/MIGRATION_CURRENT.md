@@ -64,10 +64,29 @@ and `drive-sanitized-{configure,build,tests}.log`.
 The broad Windows MIDI executable twice reached CTest's 180s limit after entering
 the separate cleanup matrix (previous pre-T/O/F pass: 172.28s). Preserve both
 failure logs `drive-midi-processor-{tests,retry}.log`. CTest now registers the
-unchanged MIDI/device matrix and cleanup matrix separately, using explicit modes
-of the same executable. Default invocation still runs both. Every case and
-allocation assertion remains; both per-suite 180s limits and cleanup's internal
-60s CLI / 30s timer watchdogs are unchanged. Split-suite validation is in progress.
+unchanged MIDI/device, source/grid ownership and actual message-loop cleanup
+matrices separately, using explicit modes of the same executable. A two-way
+split still exceeded 180s before completing the real timer stage; phase logs
+identify ~150s of synthetic source/history/grid rendering ahead of that stage.
+All old cases remain, with default direct invocation still running the complete
+matrix. Every allocation assertion, per-suite 180s limit and cleanup's internal
+60s CLI / 30s timer watchdogs remains. See DEVELOPMENT_WORKFLOW.md for all three
+CTest names; no formerly combined coverage may be silently omitted.
+
+The new drive telemetry also reuses unchanged immutable message-owner objects
+instead of rebuilding sixty nested effect trees on every poll. Regression checks
+retain old replies across control changes and DEL, and validate newly published
+values for every learned CC. No callback cache or audio-thread allocation/lock.
+Actual cached-telemetry WebView2 UI checks pass again at 64/128
+(`drive-cache-ui.log`), and both production Drive/CLI/MIDI/state tests pass.
+
+Expanded connected acceptance adds live presets/parameter smoothing, bypass,
+chain reorder during OD/SUB/MULT/scheduled STOP, then capture finish, Undo/Redo
+and RTRG without resetting the independent persistent DSP oracle. Windows passes
+at 64/128, maximum error 5.96046e-8 (`drive-live-final-tests.log`). The first MULT
+fixture incorrectly selected doubling (value 0); it now selects capture (value 1),
+matching the retained compressor fixture. No product/tolerance change.
+Final source/timer and expanded Linux/sanitizer validation is in progress.
 Listening, physical devices, Linux WebKit interaction and full-workspace CPU
 acceptance remain pending; no release-ready claim, package or push.
 
