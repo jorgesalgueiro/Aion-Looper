@@ -32,14 +32,13 @@ removes an unused signed cycle counter. A further pinned VM adaptation replaces
 pointer-punned 32-bit scalar bitcasts with representation copies, value-initializes
 the iterator return stacks in both dispatch implementations, and explicitly
 rejects unsupported non-single bitcasts. The runtime marker requires this patch.
-An upstream exception may still allocate
-while being constructed. Compiler-side adaptations also release lexer buffers
+Compiler-side adaptations also release lexer buffers
 on parse failure and unfinished visitor blocks on rejected compilation, with
 explicit ownership handoff when a factory succeeds. The host uses typed C UI
 callbacks and captures the instance allocator before destruction, avoiding the
 upstream convenience UI cast and destructor-time object access found by UBSan.
-An exception may still allocate
-while being constructed; this is not a claim that arbitrary invalid Faust DSP is
+An upstream exception may still allocate while being constructed; this is not a
+claim that arbitrary invalid Faust DSP is
 real-time safe. Tests instrument C++ new/delete; Linux additionally wraps direct
 malloc/calloc/realloc/free references in linked objects. This does not instrument
 every shared-library internal allocation or lock API.

@@ -13,6 +13,34 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ### Active owner request: optional Faust backend — 16 November 2026
 
+**Current checkpoint — 17 November:** the supported interpreter safety slice
+passes Windows and Linux focused gates, including the fully instrumented Faust
+dependency. Repairs cover defined bitcasts/iterator initialization, typed waveform
+preparation, safe instance destruction, typed C UI callbacks and rejected-source
+lexer/visitor cleanup. Cached AND fresh worker compilation preserve exact running
+stereo PCM; the original cached case and numerical-input cases remain covered.
+
+| Executed gate | Result | Log (under the relevant checkout's build/) |
+| --- | --- | --- |
+| Windows Release instruction/backend | 2/2, 1.22s | `faust-cleanup-host-tests.log` |
+| Windows expanded worker/backend | 1/1, 3.20s | `faust-worker-host-tests.log` |
+| Linux Release instruction/backend | 2/2, 0.23s | `faust-cleanup-host-tests.log` |
+| Linux expanded worker/backend | 1/1, 0.20s | `faust-worker-host-tests.log` |
+| Linux dependency-wide ASan/UBSan/LSan | 2/2, 9.91s | `faust-sanitized-cleanup-host-tests.log` |
+| Linux expanded worker/backend, same sanitizers | 1/1, 9.59s | `faust-sanitized-worker-host-tests.log` |
+
+Leak detection and halt-on-UB remain enabled, with no suppressions. Processing
+retains zero watched new/delete and Linux wrapped direct heap calls for its
+documented scope. Preserve the two earlier sanitizer failure logs below. Final
+tested code snapshot is `5ca979a`; both checkouts are clean at that snapshot.
+Only affected internal targets were built; no WebView/device/DAW test, push or
+package was performed. T remains disabled/unported in the product. Next: select
+and measure a fixed trusted organic saturation DSP model, then integrate its
+prepared ownership, smoothing, original controls/presets and GUI/CLI/state.
+Arbitrary-patch admission, full program safety and audition remain pending.
+
+Earlier development evidence for this slice follows.
+
 **Follow-up slice: defined VM instruction execution.** Acceptance is exact
 single-precision bit-representation round trips (signed zero, subnormals,
 infinity/NaN payloads), original recursive FTZ2 normal/subnormal semantics at
