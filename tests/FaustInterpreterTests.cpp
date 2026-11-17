@@ -97,10 +97,23 @@ int main(int argc,char** argv){
     watching=false;require(fault->clearOffAudio(),"Explicit fault recovery");
     watching=true;require(fault->process(in,out,128)&&ol[0]==1,"Recovered DSP");watching=false;
     // Compilation/cache calls on a worker may run while another instance computes.
-    std::atomic<bool> done{false},success{false};
-    std::thread worker([&]{std::string e;auto p=FaustInterpreter::compile(gain,44100,argv[1],e);success=!!p;done=true;});
-    watching=true;do{require(b->process(in,other,64),"Compute during worker compile");}while(!done.load());watching=false;
-    worker.join();require(success,"Worker compilation");
+    r[0]=.25f; // End the earlier NaN-input fixture before this finite PCM check.
+    for(bool cached:{true,false}){
+      std::atomic<bool> done{false},success{false};
+      std::thread worker([&,cached]{
+        // A different program/control name forces real compilation rather than
+        // only exercising the existing gain factory's reference-counted cache.
+        std::string e;
+        auto p=FaustInterpreter::compile(cached?gain:std::string("g=hslider(\"workerGain\",0.375,0,1,0.01); process=(_*g),(_*g);"),44100,argv[1],e);
+        success=p&&p->controls().size()==1&&p->controls()[0].initial==(cached?.5f:.375f);
+        done=true;
+    });
+      watching=true;do{
+          require(b->process(in,other,64),"Compute during worker compile");
+          for(unsigned i=0;i<64;++i)require(bl[i]==l[i]*.5f&&br[i]==r[i]*.5f,"Worker preserves running PCM");
+      }while(!done.load());watching=false;
+      worker.join();require(success,"Worker compilation");
+    }
     auto synth=compile("process=0.25,-0.5;",96000);
     watching=true;require(synth->process(nullptr,out,128)&&ol[0]==.25f&&orr[0]==-.5f,"Zero-input generator");watching=false;
     for(const auto& tableSource:{"process=int(_) : rdtable(waveform{0.25,-0.5,1.0,0.0});", "process=int(_) : rdtable(waveform{1,2,-3,0});"}){

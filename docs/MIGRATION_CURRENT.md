@@ -57,6 +57,19 @@ cleanup, never callback work. The manager regression also checks exact PCM and
 balanced configured-allocator allocations/releases using the production deleter.
 Windows focused cleanup gates pass; final Linux/ASan/UBSan/LSan reruns are next.
 
+**17 November follow-up:** the repaired full dependency-wide sanitizer run passes
+**2/2 in 9.91s**, with ASan leak detection and UBSan halt-on-error enabled and no
+suppressions (`faust-sanitized-cleanup-host-tests.log`). The initial two failure
+logs above remain intact. Normal Linux cleanup gates also pass. A subsequent
+test improvement retains cached-factory concurrency and additionally forces a
+different program to compile while checking exact running stereo PCM. The old
+test exercised a cache hit only; its original case is retained. Windows passes
+the expanded backend gate in **3.20s** (`faust-worker-host-tests.log`). The initial
+finite-PCM assertion saw an intentionally retained NaN from an earlier fixture;
+the independent NaN/sanitization checks remain unchanged, and the later steady
+PCM fixture now explicitly restores that input before comparing finite samples.
+Verify this test-only increment on Linux normal/sanitized builds next.
+
 The owner authorized a Faust interpreter for native effect implementations.
 `source/faust/FaustInterpreter` is an opt-in, prepared portable VM backend using
 pinned Faust 2.88.0; see [FAUST.md](FAUST.md) for exact build commands, hash,
