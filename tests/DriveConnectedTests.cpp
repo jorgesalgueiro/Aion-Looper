@@ -28,7 +28,7 @@ void run(unsigned block){
  const auto original=wet->inspectAudioThread().track;SignalChain previous;
  double maximum=0;
  LoopCommand enable{LoopAction::drive,0,4,wet->generation(),frame+17};enable.drives=bank;enable.driveClearEpoch=original.clearEpoch;check(wet->enqueueLoop(enable),"Sample-offset enable");const auto enabledAt=frame+17;
- for(const auto order:{"TFO","OFT","FTO","T","FO","OFT","QCATFODBVKZG"}){
+ for(const auto order:{"TFO","OFT","FTO","TOF","FOT","OTF","T","FO","OFT","QCATFODBVKZG"}){
   const auto next=normalizedSignalChain(order);const auto at=frame+17;LoopCommand c{LoopAction::signalChain,0,5,wet->generation(),at};c.signalChain=next;c.chainClearEpoch=original.clearEpoch;check(wet->enqueueLoop(c),"Reorder command");
   for(unsigned n=0;n<2048/block;++n){const auto begin=frame;render(false);
    for(unsigned i=0;i<block;++i){const auto now=begin+i;

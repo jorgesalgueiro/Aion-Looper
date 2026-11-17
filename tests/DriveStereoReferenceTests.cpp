@@ -17,6 +17,11 @@ void driveStereoReferenceTests(bool& watch,std::atomic<unsigned>& calls){
   Drive packed;ScalarDrive reference;
   check(packed.prepare(rate,k,settings)&&reference.prepare(rate,k,settings),"Stereo/scalar preparation");
   std::array<float,128> l{},r{},pl{},pr{},sl{},sr{};std::uint64_t frame=0;
+  const auto compare=[&](unsigned block){for(unsigned i=0;i<block;++i)for(const auto pair:{std::array<float,2>{pl[i],sl[i]},std::array<float,2>{pr[i],sr[i]}}){
+   if(std::isfinite(pair[1])){check(std::isfinite(pair[0]),"Finite accepted scalar output stays finite");maximum=std::max(maximum,std::abs(static_cast<double>(pair[0])-pair[1]));}
+   else check((std::isnan(pair[0])&&std::isnan(pair[1]))||pair[0]==pair[1],"Disabled direct bypass retains scalar nonfinite semantics");
+   ++samples;
+  }};
   for(unsigned n=0;n<384;++n){
    // Different lane histories include a near-equal/constant lane beside a
    // changing lane. No lane mask may select the other channel's ADAA result.
@@ -35,11 +40,21 @@ void driveStereoReferenceTests(bool& watch,std::atomic<unsigned>& calls){
    if(n==128||n==256){packed.reset();reference.reset();}
    check(packed.process(l.data(),r.data(),pl.data(),pr.data(),block)&&reference.process(l.data(),r.data(),sl.data(),sr.data(),block),"Stereo/scalar variable blocks");
    watch=false;
-   for(unsigned i=0;i<block;++i)for(const auto pair:{std::array<float,2>{pl[i],sl[i]},std::array<float,2>{pr[i],sr[i]}}){
-    if(std::isfinite(pair[1])){check(std::isfinite(pair[0]),"Finite accepted scalar output stays finite");maximum=std::max(maximum,std::abs(static_cast<double>(pair[0])-pair[1]));}
-    else check((std::isnan(pair[0])&&std::isnan(pair[1]))||pair[0]==pair[1],"Disabled direct bypass retains scalar nonfinite semantics");
-    ++samples;
-   }frame+=block;
+   compare(block);frame+=block;
+  }
+  // Also cover a genuinely sleeping processor: controls edited while asleep
+  // must snap without priming its audio history, then wake with the old ramp.
+  settings=driveDefaults(k);
+  check(packed.prepare(rate,k,settings)&&reference.prepare(rate,k,settings),"Sleeping prepare");
+  settings.values[2]=2500;settings.values[4]=.75;
+  if(kind!=1)settings.values[1]=.2;
+  for(unsigned n=0;n<17;++n){settings.enabled=n!=0;
+   for(unsigned i=0;i<64;++i){l[i]=static_cast<float>(.37*std::sin((n*64+i)*.071));r[i]=static_cast<float>(.23*std::cos((n*64+i)*.031));}
+   if(!n){l[0]=std::numeric_limits<float>::quiet_NaN();r[0]=std::numeric_limits<float>::infinity();}
+   watch=true;
+   check(packed.set(settings)&&reference.set(settings),"Sleeping edit/wake controls");
+   check(packed.process(l.data(),r.data(),pl.data(),pr.data(),64)&&reference.process(l.data(),r.data(),sl.data(),sr.data(),64),"Sleeping and wake PCM");
+   watch=false;compare(64);
   }
  }
  check(maximum<=1e-6,"Stereo optimization preserves accepted scalar PCM within 1e-6");
