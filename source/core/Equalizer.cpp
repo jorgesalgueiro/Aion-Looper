@@ -61,7 +61,7 @@ bool Equalizer::calculate(double sr,const EqValues& p,Configuration& next) noexc
 }
 void Equalizer::commit(const Configuration& next) noexcept {
     for(unsigned b=0;b<10;++b)
-        if(next.bypass[b]&&!configuration.bypass[b])for(auto& channel:states)channel[b]={};
+        if(next.bypass[b]&&!configuration.bypass[b])states[b]={};
     configuration=next;
 }
 bool Equalizer::prepare(double sr,const EqValues& values) noexcept {
@@ -95,35 +95,35 @@ bool Equalizer::magnitude(double frequency,double& amplitude) const noexcept {
     const double result=std::abs(response);if(!std::isfinite(result))return false;
     amplitude=result;return true;
 }
-double Equalizer::tick(unsigned channel,double input) noexcept {
-    double sample=input;
-    for(unsigned b=0;b<10;++b){
-        if(configuration.bypass[b])continue;
-        auto& s=states[channel][b];const auto& c=configuration.coefficients[b];
-        const double v3=sample-s.two;
-        const double v1=c.a1*s.one+c.a2*v3;
-        const double v2=s.two+c.a2*s.one+c.a3*v3;
-        s.one=2*v1-s.one;s.two=2*v2-s.two;
-        if(std::abs(s.one)<1e-9)s.one=0;
-        if(std::abs(s.two)<1e-9)s.two=0;
-        sample=c.m0*sample+c.m1*v1+c.m2*v2;
-    }
-    // Defensive containment for malformed input or arithmetic overflow. Normal
-    // reference-domain finite PCM is unchanged. Never poison later callbacks.
-    if(!std::isfinite(sample)||std::abs(sample)>std::numeric_limits<float>::max()){
-        states[channel]={};return 0;
-    }
-    return sample;
-}
 void Equalizer::process(const float* left,const float* right,float* outLeft,float* outRight,std::size_t frames) noexcept {
+    using namespace stereo_detail;
     for(std::size_t i=0;i<frames;++i){
-        const double l=left?left[i]:0,r=right?right[i]:0;
-        const float resultLeft=prepared?static_cast<float>(tick(0,l)):static_cast<float>(l);
-        const float resultRight=prepared?static_cast<float>(tick(1,r)):static_cast<float>(r);
-        if(outLeft)outLeft[i]=resultLeft;
-        if(outRight)outRight[i]=resultRight;
+        Frame sample(left?left[i]:0,right?right[i]:0);
+        if(prepared){
+            for(unsigned b=0;b<10;++b){
+                if(configuration.bypass[b])continue;
+                auto& s=states[b];const auto& c=configuration.coefficients[b];
+                // Independent lanes retain scalar operation order and 1e-9 flush.
+                const Frame v3=sample-s.two;
+                const Frame v1=Frame(c.a1)*s.one+Frame(c.a2)*v3;
+                const Frame v2=s.two+Frame(c.a2)*s.one+Frame(c.a3)*v3;
+                s.one=Frame(2)*v1-s.one;s.two=Frame(2)*v2-s.two;
+                s.one=select(less(absolute(s.one),Frame(1e-9)),Frame(0),s.one);
+                s.two=select(less(absolute(s.two),Frame(1e-9)),Frame(0),s.two);
+                sample=Frame(c.m0)*sample+Frame(c.m1)*v1+Frame(c.m2)*v2;
+            }
+            // A bad channel resets only its own history; retain the healthy tail.
+            const auto valid=lessEqual(absolute(sample),Frame(std::numeric_limits<float>::max()));
+            if(!both(valid)){
+                for(auto& state:states){state.one=select(valid,state.one,Frame(0));state.two=select(valid,state.two,Frame(0));}
+                sample=select(valid,sample,Frame(0));
+            }
+        }
+        if(outLeft)outLeft[i]=static_cast<float>(sample.lane(0));
+        if(outRight)outRight[i]=static_cast<float>(sample.lane(1));
     }
 }
+
 double SmoothedEqualizer::valueAt(std::size_t i) const noexcept {
     const double destination=target[i];
     if(start[i]==destination)return destination;

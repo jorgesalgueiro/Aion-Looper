@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #pragma once
+#include "StereoFrame.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -57,15 +58,14 @@ public:
     bool magnitude(double frequency,double& amplitude) const noexcept;
 private:
     struct Coefficients { double a1=0,a2=0,a3=0,m0=0,m1=0,m2=0; };
-    struct State { double one=0,two=0; };
+    struct State { stereo_detail::Frame one{},two{}; };
     struct Configuration {
         std::array<Coefficients,10> coefficients{};
         std::array<bool,10> bypass{};
     } configuration{};
     static bool calculate(double,const EqValues&,Configuration&) noexcept;
     void commit(const Configuration&) noexcept;
-    double tick(unsigned channel,double input) noexcept;
-    std::array<std::array<State,10>,2> states{};
+    std::array<State,10> states{};
     double rate=48000;
     bool prepared=false;
 };
