@@ -7,6 +7,7 @@
 #include <new>
 #include <limits>
 #include <cmath>
+#include <string_view>
 namespace {thread_local bool audioWatch=false;std::atomic<int> audioAllocations{0};void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}}
 void* operator new(std::size_t n){if(audioWatch)++audioAllocations;if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
 void operator delete(void* p) noexcept {if(audioWatch)++audioAllocations;std::free(p);}
@@ -36,8 +37,12 @@ public:
   ++changes;rescan=details.parameterInfoChanged;dirty=details.nonParameterStateChanged;
  }
 };
-int main(){
+int main(int argc,char** argv){
  juce::ScopedJuceInitialiser_GUI gui;
+ const bool cleanupOnly=argc==2&&std::string_view(argv[1])=="--cleanup-only";
+ const bool midiOnly=argc==2&&std::string_view(argv[1])=="--midi-only";
+ check(argc==1||cleanupOnly||midiOnly,"Expected --midi-only or --cleanup-only");
+ if(cleanupOnly){meterCleanupTimerTests(audioWatch,audioAllocations);check(audioAllocations.load()==0,"Cleanup callbacks must perform zero new/delete");return 0;}
  for(int block:{64,128}){
   AionProcessor* preparing=nullptr;unsigned prepareReads=0;
   const auto snapshot=[](AionProcessor& processor){return processor.request({juce::JSON::parse(R"({"operation":"snapshot"})")});};
@@ -490,7 +495,7 @@ int main(){
   midi.clear();for(int i=0;i<300;++i)midi.addEvent(juce::MidiMessage::noteOn(1,40,juce::uint8{100}),0);process();state=rpc(R"({"operation":"snapshot"})");check(static_cast<int>(state["midi"]["overflows"])>0,"Bounded MidiBuffer overflow reported and held actions cancelled");
   for(const auto* request:{R"({"operation":"midiConfig","action":"learn","target":20})",R"({"operation":"midiConfig","action":"mode","mode":7})",R"({"operation":"midiConfig","action":"enable","enabled":1})",R"({"operation":"midiConfig","action":"cancelLearn","target":20})",R"({"operation":"midiConfig","action":"cancelLearn","target":"17"})"})check(!p->request({juce::JSON::parse(request)}).getProperty("ok",false),"Invalid MIDI IPC rejected");
  }
- meterCleanupTimerTests(audioWatch,audioAllocations);
+ if(!midiOnly)meterCleanupTimerTests(audioWatch,audioAllocations);
  check(audioAllocations.load()==0,"Production processBlock MIDI path must perform zero new/delete");
  std::cout<<"PASS: actual juce::MidiBuffer offsets, PC0 learn/consume, state roundtrip/invalid rollback, cancellation/overflow/IPC and zero processBlock new/delete at 64/128\n";
 }

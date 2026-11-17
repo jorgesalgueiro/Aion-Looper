@@ -21,8 +21,9 @@ more than 10 dB normalized alias-energy reduction versus naive base-rate shaping
 at coherent 802.7/4107.4/10998 Hz, 48 kHz; finite bounded output across all supported
 control extremes; bit-identical 64/128/irregular processing; stereo/in-place/reset,
 rapid controls and zero callback new/delete. Measure CPU without treating a buffer
-deadline as hardware latency. Listening, shared GUI/CLI/state, MIDI and actual
-chain/lifecycle integration are verified separately from kernel acceptance.
+deadline as hardware latency. Shared GUI/CLI/state, MIDI and connected
+chain/lifecycle tests are separate from kernel acceptance; listening remains
+pending and is not established by these numerical tests.
 
 The shared native owner now exposes all three original colored control panels,
 original loop/live-card toggles, selected-loop CC Learn, presets and persistence.

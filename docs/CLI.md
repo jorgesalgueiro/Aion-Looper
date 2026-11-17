@@ -125,7 +125,24 @@ CC targets 117..123 follow that parameter order and the shared `midi eqTrack`
 selection (native 0-based index), with the same learn/clear/cancellation commands
 above. No second DSP process or product AudioContext is created.
 
-The editable per-loop FX chain uses the same running processor:
+Distortion, overdrive and fuzz also share this processor:
+
+```sh
+python tools/aion.py distortion 1 preset --preset tube-warmth
+python tools/aion.py distortion 1 on
+python tools/aion.py overdrive 1 preset --preset "American Sparkle"
+python tools/aion.py overdrive 1 on
+python tools/aion.py fuzz 1 preset --preset "Big Muff"
+python tools/aion.py fuzz 1 on
+python tools/aion.py fuzz 1 set --values '{"gain":35,"bias":0.1,"mix":0.7}'
+```
+
+All three accept `get`, `off`, `toggle` and `reset`; reset keeps the current enable
+state. Invalid batches change nothing. Fourteen appended MIDI targets 133..146
+follow the selected loop tab, without moving earlier binding IDs. Original
+control ranges/presets, supported names and model details: [DRIVE.md](DRIVE.md).
+
+For the chain:
 
 ```sh
 python tools/aion.py chain 1 get
@@ -135,8 +152,8 @@ python tools/aion.py chain 1 reset
 ```
 
 `chain` tracks are 1-based (1..20). `CQ` runs compressor before EQ; `Q` omits
-compressor even when enabled. Only Q and C currently process audio; other codes
-retain their positions for later ports. Lowercase/repeated codes normalize as
+compressor even when enabled. Q, C, A, T, O and F have native processing; remaining
+codes retain their positions for later ports. Lowercase/repeated codes normalize as
 in the original manual field. Empty/invalid-only text or `reset` restore the
 default. Reordering applies live during overdub, substitute, MULT and scheduled
 STOP, as approved by the owner. It does not change captured PCM or a STOP deadline.

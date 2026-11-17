@@ -41,10 +41,35 @@ assertion, hold deadline or DSP tolerance was loosened. The new panic fixture
 also verifies the unchanged 240-sample/5ms source fade before asserting hard zero;
 it no longer mistakes that original fade for source resurrection.
 
-Linux DSP/reference snapshot `3b3c6b5` passes 2/2 (0.79s). Full integration Linux,
-sanitizers and final regressions remain in progress; do not infer their result.
-Windows `drive-regressions.log` currently includes a running full core gate.
-The native chain/effects-restore regressions pass 4/4 (14.48s). No package/push.
+Linux Standalone integration snapshot `a83c8d8` builds; all eleven focused
+DSP/reference/connected/processor/CLI/state checks pass (14.96s). Native core
+ASan/UBSan/LSan passes 3/3 (45.41s), including ordered source/ownership cases,
+with leak detection and halt-on-UB enabled, no suppressions. Exact commands:
+
+```sh
+cmake --preset linux -DAION_TEST_NATIVE_PROCESSOR=ON
+cmake --build build/linux --target AionLooper_Standalone aion_drive_processor_tests aion_effects_restore_processor_tests aion_signal_chain_processor_tests aion_drive_tests aion_drive_connected_tests aion_signal_chain_tests --parallel 2
+ctest --test-dir build/linux -R '^(drive_dsp_contract|drive_connected_contract|original_drive_settings_contract|signal_chain_connected_contract|original_signal_chain_contract|native_(drive|effects_restore|signal_chain)_processor_(64|128))$' --output-on-failure
+cmake -S . -B build/drive-sanitized -DAION_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined'
+cmake --build build/drive-sanitized --target aion_drive_tests aion_drive_connected_tests aion_signal_chain_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build/drive-sanitized -R '^(drive_dsp_contract|drive_connected_contract|signal_chain_connected_contract)$' --output-on-failure
+```
+
+Windows full core and affected/reference gates pass 6/6 (1081.64s), native
+chain/effects-restore 4/4 (14.48s), frontend command regression 1/1 (5.65s).
+Logs are `drive-regressions.log`, `drive-native-regressions.log`,
+`drive-frontend-tests.log`; Linux logs `drive-linux-{configure,build,tests}.log`
+and `drive-sanitized-{configure,build,tests}.log`.
+
+The broad Windows MIDI executable twice reached CTest's 180s limit after entering
+the separate cleanup matrix (previous pre-T/O/F pass: 172.28s). Preserve both
+failure logs `drive-midi-processor-{tests,retry}.log`. CTest now registers the
+unchanged MIDI/device matrix and cleanup matrix separately, using explicit modes
+of the same executable. Default invocation still runs both. Every case and
+allocation assertion remains; both per-suite 180s limits and cleanup's internal
+60s CLI / 30s timer watchdogs are unchanged. Split-suite validation is in progress.
+Listening, physical devices, Linux WebKit interaction and full-workspace CPU
+acceptance remain pending; no release-ready claim, package or push.
 
 ### Active owner request: optional Faust backend — 16 November 2026
 

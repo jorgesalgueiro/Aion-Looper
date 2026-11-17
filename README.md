@@ -43,6 +43,10 @@ workspace, playable with a mouse, keyboard, MIDI controller or command line.
 - **Control each loop's dynamics with C.** The native compressor keeps the original
   seven controls, eleven presets and curve display. Adjust it from the UI, CLI or
   learned MIDI CCs, with settings saved in native state.
+- **Add warmth, crunch or fuzz.** T / Distortion, O / Overdrive and F / Fuzz have
+  separate native models, antialiasing, smoothed controls and the original presets.
+  Arrange them in your own FX order, blend dry/wet, and control them from the
+  original panels, MIDI Learn or CLI. See [the drive guide](docs/DRIVE.md).
 - **Control the running app from a terminal.** The development CLI shares the
   Standalone's session, devices and native command layer.
 
