@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #pragma once
 #include "DriveSettings.h"
+#include "DriveFrame.h"
 namespace aion {
 // Persistent fixed-storage 4x oversampled native nonlinear family. Preparation
 // is exclusive/off audio. Controls are bounded audio-owner updates; no tables,
@@ -18,20 +19,22 @@ public:
  static double integrated(DriveKind,double)noexcept;
  static double antialiased(DriveKind,double,double)noexcept;
 private:
+ using Frame=drive_detail::Frame;
  struct Halfband {
-  std::array<double,8> state{};double delayed=0;
-  std::array<double,2> up(double,bool)noexcept;
-  double down(std::array<double,2>,bool)noexcept;
+  std::array<Frame,8> state{};Frame delayed{};
+  std::array<Frame,2> up(Frame,bool)noexcept;
+  Frame down(std::array<Frame,2>,bool)noexcept;
  };
- struct Channel {
+ struct Path {
   Halfband up1,up2,down1,down2,dry1,dry2;
-  double previous=0,zeroPrevious=0,dryPrevious=0,dcInput=0,dcOutput=0,ic1=0,ic2=0;
+  Frame previous{},primitive{},dryPrevious{},dcInput{},dcOutput{},ic1{},ic2{};
+  double zeroPrevious=0; // Bias history is identical in both independent lanes.
  };
- std::array<Channel,2> channels{};
+ Path path{};
  DriveValues current{},target{};
  double rate=48000,smoothing=0,bypass=0,bypassTarget=0,dcPole=0;
  DriveKind kind=DriveKind::distortion;bool ready=false,sleeping=true;
  DriveValues mapped(const DriveSettings&)const noexcept;
- double channel(Channel&,double)noexcept;
+ Frame stereo(Frame)noexcept;
 };
 }

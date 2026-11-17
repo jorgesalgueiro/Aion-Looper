@@ -23,6 +23,7 @@ void operator delete[](void* p)noexcept{::operator delete(p);}
 void operator delete(void* p,std::size_t)noexcept{::operator delete(p);}
 void operator delete[](void* p,std::size_t)noexcept{::operator delete(p);}
 using namespace aion;
+void driveStereoReferenceTests(bool&,std::atomic<unsigned>&);
 using Complex=std::complex<double>;
 void fft(std::vector<Complex>& a){
  const auto n=a.size();for(std::size_t i=1,j=0;i<n;++i){auto bit=n>>1;for(;j&bit;bit>>=1)j^=bit;j^=bit;if(i<j)std::swap(a[i],a[j]);}
@@ -90,5 +91,6 @@ int main(int argc,char** argv){
   for(unsigned i=0;i<1000;++i){watching=true;const auto start=std::chrono::steady_clock::now();check(timed.process(l.data(),r.data(),ol.data(),orr.data(),64),"Benchmark process");const auto end=std::chrono::steady_clock::now();watching=false;const auto us=std::chrono::duration<double,std::micro>(end-start).count();total+=us;worst=std::max(worst,us);}
   std::cout<<driveNames[which]<<" stereo/64 mean="<<total/1000<<" us worst="<<worst<<" us\n";
  }
- check(heapCalls==0,"No callback new/delete");std::cout<<"PASS: three native drive kernels; product integration remains pending\n";
+ driveStereoReferenceTests(watching,heapCalls);
+ check(heapCalls==0,"No callback new/delete");std::cout<<"PASS: three native drive kernels; connected integration is verified separately\n";
 }
