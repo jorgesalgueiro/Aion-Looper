@@ -11,7 +11,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Active follow-up: identical drive bias correction — 20 November 2026
+### Latest follow-up: identical drive bias correction — 20 November 2026
 
 Current candidate keeps the accepted shared T/O/F rendering path and reuses the
 first bias correction for later subsamples ONLY when both input arguments are
@@ -29,8 +29,21 @@ settling/retarget/reset/rate-change and signed-zero bias boundaries. Windows
 optimized AND forced-portable paths each compare 4,671,120 samples at maximum
 error zero. The original 1e-6 bound is unchanged; added long/boundary cases require
 exact Float32 equality. Focused Windows core/reference/chain gates: 5/5, 9.97s.
-Linux, sanitizer and UI checks for THIS candidate remain pending this session.
-Earlier drive-kind-* results belong to the rejected specialization candidate.
+Linux passes the same exact comparison and its nine focused core/reference/
+processor/fixture tests (16.22s). Windows processor/fixtures pass 4/4 (31.32s).
+Linux ASan+UBSan passes 4/4 (280.79s), leak detection enabled, no suppressions.
+Both Standalone builds and both capture/OD/SUB audio audits pass (126 cases,
+965,826 samples, maximum error 7.394757495227111e-8). Earlier drive-kind-* results
+belong to the rejected specialization candidate, not this final code (9bbc11e).
+
+Actual WebView2 tests pass at 64 and at 128 on diagnostic retry: presets, sliders,
+failed-send recovery, 14 CC controls, reload, bypass, DEL and nonzero PCM. The
+first 128 run timed out evaluating control readiness during startup or reload;
+the cause remains unresolved. Preserve build/drive-bias-ui.log. The retry changes
+only diagnostics, retaining deadlines/assertions; it does NOT prove that the
+intermittent browser/CDP timeout is fixed. Future failures now distinguish initial
+bootstrap/reload and retain bounded browser lifecycle evidence. Linux WebKit,
+physical devices, listening and long-session interaction were not executed.
 
 The paired component helper tools/BenchmarkDriveSnapshot.cjs uses an accepted
 SSE2 snapshot and current DSP in one process, alternates execution order each
@@ -56,8 +69,23 @@ C++ new/delete and matching PCM checksums; mean savings are small and deadlines
 still miss. Preserve all run rows, p99/maxima and overrun counts. This is not an
 application capacity, physical device, editor scheduling or round-trip pass.
 
-Final validation, durable data and commands will be recorded after the pending
-checks. No release package, dependency change, wrapper build or push.
+All 40 Engine and 24 production-processor fixtures per OS pass state/nonzero/
+finite PCM checks, match accepted baseline fixture checksums and report zero
+tracked callback C++ new/delete. Same-framework ABBA observations at ten loops,
+96k/64 show small average savings, but deadline misses and worse tail cases remain.
+Paired moving-bias T/F cases are slightly slower; retain these tradeoffs, not a
+universal speedup claim. Neither the full matrices nor these synthetic callback
+measurements establish hardware capacity or round-trip latency.
+
+Exact commands, provenance, every matrix/paired/ABBA row and limitations:
+[drive bias validation](benchmarks/drive-bias-2026-11-20.md). Optional snapshot
+benchmark restored OFF in both app caches after use. No package, dependency
+change, wrapper build or push.
+
+**Next:** investigate the intermittent editor/CDP readiness timeout using the
+added bounded lifecycle diagnostics; high-rate ten/twenty-loop deadline capacity
+remains open. Do not promote release readiness or start another effect on the
+strength of a successful retry or the modest average CPU savings.
 
 ### Latest follow-up: production callback load diagnostic — 20 November 2026
 
