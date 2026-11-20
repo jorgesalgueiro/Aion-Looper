@@ -35,11 +35,12 @@ private:
   Down<8> down1,dry1;Down<5> down2,dry2;
   Frame previous{},primitive{},dryPrevious{},dcInput{},dcOutput{},ic1{},ic2{};
   double zeroPrevious=0; // Bias history is identical in both independent lanes.
+  double toneIntegrator=-1,toneA1=0; // Derived coefficients, invalidated by reset.
  };
  Path path{};
  DriveValues current{},target{};
  double rate=48000,smoothing=0,bypass=0,bypassTarget=0,dcPole=0;
- DriveKind kind=DriveKind::distortion;bool ready=false,sleeping=true;
+ DriveKind kind=DriveKind::distortion;bool ready=false,sleeping=true,controlsMoving=false;
  DriveValues mapped(const DriveSettings&)const noexcept;
  Frame stereo(Frame)noexcept;
 };

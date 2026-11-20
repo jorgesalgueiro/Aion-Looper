@@ -73,10 +73,10 @@ DriveValues Drive::mapped(const DriveSettings& s)const noexcept{
 }
 bool Drive::prepare(double sr,DriveKind k,const DriveSettings& s)noexcept{
  if(!std::isfinite(sr)||sr<8000||sr>384000||!validDriveSettings(k,s))return false;
- rate=sr;kind=k;smoothing=1-std::exp(-1/(.01*rate));dcPole=std::exp(-2*std::numbers::pi*15/rate);current=target=mapped(s);bypass=bypassTarget=s.enabled?1:0;ready=true;reset();return true;
+ rate=sr;kind=k;smoothing=1-std::exp(-1/(.01*rate));dcPole=std::exp(-2*std::numbers::pi*15/rate);current=target=mapped(s);controlsMoving=false;bypass=bypassTarget=s.enabled?1:0;ready=true;reset();return true;
 }
 void Drive::reset()noexcept{path={};path.primitive=Frame(kind==DriveKind::distortion?1:0);sleeping=true;}
-bool Drive::set(const DriveSettings& s)noexcept{if(!ready||!validDriveSettings(kind,s))return false;target=mapped(s);bypassTarget=s.enabled?1:0;if(sleeping&&bypass==0&&bypassTarget==0)current=target;return true;}
+bool Drive::set(const DriveSettings& s)noexcept{if(!ready||!validDriveSettings(kind,s))return false;target=mapped(s);controlsMoving=true;bypassTarget=s.enabled?1:0;if(sleeping&&bypass==0&&bypassTarget==0)current=target;return true;}
 AION_DRIVE_HOT Drive::Frame Drive::stereo(Frame x)noexcept{
  auto& c=path;const auto a=c.up1.tick(x);std::array<Frame,2> wet{},dry{};
  // Reuse the exact previous primitive instead of recomputing it. The bias
@@ -88,7 +88,9 @@ AION_DRIVE_HOT Drive::Frame Drive::stereo(Frame x)noexcept{
  }
  auto w=c.down1.tick(wet);const auto d=c.dry1.tick(dry);
  const auto dc=w-c.dcInput+dcPole*c.dcOutput;c.dcInput=w;c.dcOutput=drive_detail::flush(dc);
- const double g=current[2],a1=1/(1+g*(g+std::numbers::sqrt2));
+ const double g=current[2];
+ if(g!=c.toneIntegrator){c.toneA1=1/(1+g*(g+std::numbers::sqrt2));c.toneIntegrator=g;}
+ const double a1=c.toneA1;
  const auto v1=a1*(c.ic1+g*(dc-c.ic2)),v2=c.ic2+g*v1;
  c.ic1=drive_detail::flush(2*v1-c.ic1);c.ic2=drive_detail::flush(2*v2-c.ic2);
  w=current[3]*v2;return d*(1-current[4])+w*current[4];
@@ -96,7 +98,12 @@ AION_DRIVE_HOT Drive::Frame Drive::stereo(Frame x)noexcept{
 #undef AION_DRIVE_HOT
 std::array<float,2> Drive::tick(float l,float r)noexcept{
  if(isBypassed())return {l,r};
- for(unsigned p=0;p<5;++p){current[p]+=smoothing*(target[p]-current[p]);if(std::abs(target[p]-current[p])<1.e-14)current[p]=target[p];}
+ // Once all five values have snapped to their exact destinations, repeating
+ // zero-delta smoothing cannot change them. Every accepted set rechecks once.
+ if(controlsMoving){
+  controlsMoving=false;
+  for(unsigned p=0;p<5;++p){current[p]+=smoothing*(target[p]-current[p]);if(std::abs(target[p]-current[p])<1.e-14)current[p]=target[p];else controlsMoving=true;}
+ }
  bypass+=smoothing*(bypassTarget-bypass);if(std::abs(bypass-bypassTarget)<1.e-12)bypass=bypassTarget;
  if(bypass==0&&bypassTarget==0){if(!sleeping)reset();return {l,r};}
  sleeping=false;
