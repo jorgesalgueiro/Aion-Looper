@@ -65,10 +65,10 @@ void driveStereoReferenceTests(bool& watch,std::atomic<unsigned>& calls){
    watch=false;compare(64);
   }
   // Run long settling phases at every rate, then retarget just one field,
-  // repeat the same gesture, reset, and reprepare at another rate. Derived
-  // caches must never change the accepted PCM, even after long steady runs.
+  // repeat the same gesture, reset, and reprepare at another rate. Specialization
+  // must never change the accepted PCM, even after long steady runs.
   settings=driveDefaults(k);settings.enabled=true;
-  check(packed.prepare(rate,k,settings)&&reference.prepare(rate,k,settings),"Steady-cache preparation");
+  check(packed.prepare(rate,k,settings)&&reference.prepare(rate,k,settings),"Long settling preparation");
   settings.values[2]=7500;
   watch=true;check(packed.set(settings)&&reference.set(settings),"Start settling tone");watch=false;
   const unsigned steadyBlocks=static_cast<unsigned>(std::ceil(rate*.6/128));
@@ -78,10 +78,10 @@ void driveStereoReferenceTests(bool& watch,std::atomic<unsigned>& calls){
    if(n==steadyBlocks){settings.values[4]=.35;check(packed.set(settings)&&reference.set(settings),"Retarget one field after settling");}
    if(n==steadyBlocks+1)check(packed.set(settings)&&reference.set(settings),"Repeated accepted gesture after settling");
    if(n==steadyBlocks+2){packed.reset();reference.reset();}
-   if(n==steadyBlocks+4)check(packed.prepare(48000,k,settings)&&reference.prepare(48000,k,settings),"Rate reprepare invalidates cached tone coefficient");
-   check(packed.process(l.data(),r.data(),pl.data(),pr.data(),128)&&reference.process(l.data(),r.data(),sl.data(),sr.data(),128),"Steady/settling/reset cached PCM");
+   if(n==steadyBlocks+4)check(packed.prepare(48000,k,settings)&&reference.prepare(48000,k,settings),"Sample-rate reprepare retains accepted PCM");
+   check(packed.process(l.data(),r.data(),pl.data(),pr.data(),128)&&reference.process(l.data(),r.data(),sl.data(),sr.data(),128),"Long settling/retarget/reset PCM");
    watch=false;compare(128);
-   check(pl==sl&&pr==sr,"Settled-work optimization retains exact accepted float PCM");
+   check(pl==sl&&pr==sr,"Specialization retains exact accepted float PCM");
   }
 
  }

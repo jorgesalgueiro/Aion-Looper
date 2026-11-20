@@ -23,22 +23,25 @@ AION_DRIVE_HOT Frame branch(Frame x,std::array<Frame,N>& state){
  const auto& coefficients=N==5?second:first;constexpr auto split=(N+1)/2;
  for(std::size_t i=Odd?split:0;i<(Odd?N:split);++i){const auto y=coefficients[i]*x+state[i];state[i]=drive_detail::flush(x-coefficients[i]*y);x=y;}return x;
 }
-AION_DRIVE_HOT Frame transfer(DriveKind k,Frame x){
+template<DriveKind K>
+AION_DRIVE_HOT Frame transfer(Frame x){
  x=minimum(maximum(x,Frame(-1)),Frame(1));
- return k==DriveKind::overdrive?1.5*x-.5*x*x*x:x;
+ return K==DriveKind::overdrive?1.5*x-.5*x*x*x:x;
 }
-AION_DRIVE_HOT Frame integral(DriveKind k,Frame x){
+template<DriveKind K>
+AION_DRIVE_HOT Frame integral(Frame x){
  const auto a=absolute(x);const auto inside=lessEqual(a,Frame(1));
- return k==DriveKind::overdrive?select(inside,.75*x*x-.125*x*x*x*x,a-.375):select(inside,.5*x*x,a-.5);
+ return K==DriveKind::overdrive?select(inside,.75*x*x-.125*x*x*x*x,a-.375):select(inside,.5*x*x,a-.5);
 }
-AION_DRIVE_HOT Frame aa(DriveKind k,Frame x,Frame previous,Frame& primitive){
+template<DriveKind K>
+AION_DRIVE_HOT Frame aa(Frame x,Frame previous,Frame& primitive){
  // Only finite, bounded channel inputs reach here; the public scalar primitive
  // retains its hypot overflow fallback for independent extreme-value callers.
- if(k==DriveKind::distortion){const auto next=root(1+x*x),result=(x+previous)/(next+primitive);primitive=next;return result;}
+ if constexpr(K==DriveKind::distortion){const auto next=root(1+x*x),result=(x+previous)/(next+primitive);primitive=next;return result;}
  const auto difference=x-previous;
  const auto close=less(absolute(difference),1.e-5*(1+maximum(absolute(x),absolute(previous))));
- const auto midpoint=transfer(k,.5*(x+previous));
- const auto next=integral(k,x),before=primitive;primitive=next;
+ const auto midpoint=transfer<K>(.5*(x+previous));
+ const auto next=integral<K>(x),before=primitive;primitive=next;
  if(drive_detail::both(close))return midpoint;
  // Do not evaluate a zero denominator in a lane selected for the midpoint.
  return select(close,midpoint,(next-before)/select(close,Frame(1),difference));
@@ -73,24 +76,25 @@ DriveValues Drive::mapped(const DriveSettings& s)const noexcept{
 }
 bool Drive::prepare(double sr,DriveKind k,const DriveSettings& s)noexcept{
  if(!std::isfinite(sr)||sr<8000||sr>384000||!validDriveSettings(k,s))return false;
- rate=sr;kind=k;smoothing=1-std::exp(-1/(.01*rate));dcPole=std::exp(-2*std::numbers::pi*15/rate);current=target=mapped(s);controlsMoving=false;bypass=bypassTarget=s.enabled?1:0;ready=true;reset();return true;
+ rate=sr;kind=k;smoothing=1-std::exp(-1/(.01*rate));dcPole=std::exp(-2*std::numbers::pi*15/rate);current=target=mapped(s);bypass=bypassTarget=s.enabled?1:0;ready=true;reset();return true;
 }
 void Drive::reset()noexcept{path={};path.primitive=Frame(kind==DriveKind::distortion?1:0);sleeping=true;}
-bool Drive::set(const DriveSettings& s)noexcept{if(!ready||!validDriveSettings(kind,s))return false;target=mapped(s);controlsMoving=true;bypassTarget=s.enabled?1:0;if(sleeping&&bypass==0&&bypassTarget==0)current=target;return true;}
+bool Drive::set(const DriveSettings& s)noexcept{if(!ready||!validDriveSettings(kind,s))return false;target=mapped(s);bypassTarget=s.enabled?1:0;if(sleeping&&bypass==0&&bypassTarget==0)current=target;return true;}
+// Select the nonlinear family once per base-rate frame; keep exactly the same
+// 4x recurrences, parameter clocks and persistent state in each specialization.
+template<DriveKind K>
 AION_DRIVE_HOT Drive::Frame Drive::stereo(Frame x)noexcept{
  auto& c=path;const auto a=c.up1.tick(x);std::array<Frame,2> wet{},dry{};
  // Reuse the exact previous primitive instead of recomputing it. The bias
  // input is identical across channels and constant within this base-rate frame.
- const double firstZero=antialiased(kind,current[1],c.zeroPrevious),laterZero=antialiased(kind,current[1],current[1]);c.zeroPrevious=current[1];
+ const double firstZero=antialiased(K,current[1],c.zeroPrevious),laterZero=antialiased(K,current[1],current[1]);c.zeroPrevious=current[1];
  for(unsigned n=0;n<2;++n){auto b=c.up2.tick(a[n]);std::array<Frame,2> w{},d{};
-  for(unsigned j=0;j<2;++j){const auto value=b[j]*current[0]+current[1];w[j]=aa(kind,value,c.previous,c.primitive)-(n==0&&j==0?firstZero:laterZero);c.previous=value;d[j]=.5*(b[j]+c.dryPrevious);c.dryPrevious=b[j];}
+  for(unsigned j=0;j<2;++j){const auto value=b[j]*current[0]+current[1];w[j]=aa<K>(value,c.previous,c.primitive)-(n==0&&j==0?firstZero:laterZero);c.previous=value;d[j]=.5*(b[j]+c.dryPrevious);c.dryPrevious=b[j];}
   wet[n]=c.down2.tick(w);dry[n]=c.dry2.tick(d);
  }
  auto w=c.down1.tick(wet);const auto d=c.dry1.tick(dry);
  const auto dc=w-c.dcInput+dcPole*c.dcOutput;c.dcInput=w;c.dcOutput=drive_detail::flush(dc);
- const double g=current[2];
- if(g!=c.toneIntegrator){c.toneA1=1/(1+g*(g+std::numbers::sqrt2));c.toneIntegrator=g;}
- const double a1=c.toneA1;
+ const double g=current[2],a1=1/(1+g*(g+std::numbers::sqrt2));
  const auto v1=a1*(c.ic1+g*(dc-c.ic2)),v2=c.ic2+g*v1;
  c.ic1=drive_detail::flush(2*v1-c.ic1);c.ic2=drive_detail::flush(2*v2-c.ic2);
  w=current[3]*v2;return d*(1-current[4])+w*current[4];
@@ -98,16 +102,13 @@ AION_DRIVE_HOT Drive::Frame Drive::stereo(Frame x)noexcept{
 #undef AION_DRIVE_HOT
 std::array<float,2> Drive::tick(float l,float r)noexcept{
  if(isBypassed())return {l,r};
- // Once all five values have snapped to their exact destinations, repeating
- // zero-delta smoothing cannot change them. Every accepted set rechecks once.
- if(controlsMoving){
-  controlsMoving=false;
-  for(unsigned p=0;p<5;++p){current[p]+=smoothing*(target[p]-current[p]);if(std::abs(target[p]-current[p])<1.e-14)current[p]=target[p];else controlsMoving=true;}
- }
+ for(unsigned p=0;p<5;++p){current[p]+=smoothing*(target[p]-current[p]);if(std::abs(target[p]-current[p])<1.e-14)current[p]=target[p];}
  bypass+=smoothing*(bypassTarget-bypass);if(std::abs(bypass-bypassTarget)<1.e-12)bypass=bypassTarget;
  if(bypass==0&&bypassTarget==0){if(!sleeping)reset();return {l,r};}
  sleeping=false;
- const Frame input{finite(l),finite(r)};const auto wet=stereo(input),out=input+bypass*(wet-input);
+ const Frame input{finite(l),finite(r)};
+ const auto wet=kind==DriveKind::distortion?stereo<DriveKind::distortion>(input):kind==DriveKind::overdrive?stereo<DriveKind::overdrive>(input):stereo<DriveKind::fuzz>(input);
+ const auto out=input+bypass*(wet-input);
  return {static_cast<float>(finite(out.lane(0))),static_cast<float>(finite(out.lane(1)))};
 }
 bool Drive::process(const float* l,const float* r,float* ol,float* orr,unsigned frames)noexcept{
