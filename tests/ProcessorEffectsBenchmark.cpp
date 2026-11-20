@@ -12,6 +12,9 @@
 #include <memory>
 #include <new>
 #include <vector>
+#ifdef AION_DRIVE_SNAPSHOT_RUN
+extern "C" const char* aionDriveSnapshotIdentity();
+#endif
 #ifdef _WIN32
 #include <malloc.h>
 #endif
@@ -51,10 +54,13 @@ int main(int argc,char** argv){
  juce::ScopedJuceInitialiser_GUI gui;
  const bool quick=argc==3&&juce::String(argv[1])=="--quick";
  const int quickBlock=quick?juce::String(argv[2]).getIntValue():0;
- check(argc==1||(quick&&(quickBlock==64||quickBlock==128)),"Usage: aion_processor_effects_benchmark [--quick 64|128]");
+ const bool single=argc==5&&juce::String(argv[1])=="--case";
+ const int selectedRate=single?juce::String(argv[2]).getIntValue():0,selectedBlock=single?juce::String(argv[3]).getIntValue():0,selectedTracks=single?juce::String(argv[4]).getIntValue():0;
+ check(argc==1||(quick&&(quickBlock==64||quickBlock==128))||(single&&(selectedRate==48000||selectedRate==96000)&&(selectedBlock==64||selectedBlock==128)&&(selectedTracks==10||selectedTracks==20)),"Usage: aion_processor_effects_benchmark [--quick 64|128 | --case 48000|96000 64|128 10|20]");
  const unsigned warm=quick?16:256,measured=quick?64:1024;
  for(double rate:{48000.,96000.})for(int block:{64,128})for(unsigned tracks:{10u,20u}){
   if(quick&&(rate!=48000||block!=quickBlock||tracks!=10))continue;
+  if(single&&(rate!=selectedRate||block!=selectedBlock||tracks!=static_cast<unsigned>(selectedTracks)))continue;
   auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,rate,block);p->prepareToPlay(rate,block);
   juce::AudioBuffer<float> audio(2,block);juce::MidiBuffer midi;midi.ensureSize(4096);
   auto snapshot=[&]{return p->request({juce::JSON::parse(R"({"operation":"snapshot"})")});};
@@ -117,7 +123,13 @@ int main(int argc,char** argv){
     check(t.equalizer==aion::EqSettings{aion::eqPresetValues(8),effects,8}&&t.compressor==aion::CompressorSettings{aion::compressorPresetValues(3),effects,3}&&t.drives==expected&&t.signalChain==aion::normalizedSignalChain("QCTFO"),"Reported effects and editable chain really match audio-owned settings");
    }
    std::sort(times.begin(),times.end());double sum=0;unsigned over=0;const double deadline=block/rate*1e6;for(double t:times){sum+=t;over+=t>deadline;}
-   std::cout<<"{\"scope\":\"Production processBlock/APVTS/MidiBuffer, synthetic stereo captures; excludes device, editor, message dispatch timers and roundtrip\",\"rate\":"<<rate<<",\"block\":"<<block<<",\"tracks\":"<<tracks<<",\"effects\":"<<(effects?"true":"false")<<",\"midiEventsPerCallback\":"<<events<<",\"warmCallbacks\":"<<warm<<",\"measuredCallbacks\":"<<measured<<",\"meanUs\":"<<sum/measured<<",\"p99Us\":"<<times[measured*99/100]<<",\"maximumUs\":"<<times.back()<<",\"deadlineUs\":"<<deadline<<",\"observedOverruns\":"<<over<<",\"callbackCxxHeapCalls\":"<<heapCalls.load()<<",\"offAudioSnapshotServiceTotalUs\":"<<serviceUs<<",\"checksum\":"<<checksum<<"}"<<std::endl;
+   std::cout<<"{\"driveImplementation\":\""
+#ifdef AION_DRIVE_SNAPSHOT_RUN
+    <<aionDriveSnapshotIdentity()
+#else
+    <<"current"
+#endif
+    <<"\",\"scope\":\"Production processBlock/APVTS/MidiBuffer, synthetic stereo captures; excludes device, editor, message dispatch timers and roundtrip\",\"rate\":"<<rate<<",\"block\":"<<block<<",\"tracks\":"<<tracks<<",\"effects\":"<<(effects?"true":"false")<<",\"midiEventsPerCallback\":"<<events<<",\"warmCallbacks\":"<<warm<<",\"measuredCallbacks\":"<<measured<<",\"meanUs\":"<<sum/measured<<",\"p99Us\":"<<times[measured*99/100]<<",\"maximumUs\":"<<times.back()<<",\"deadlineUs\":"<<deadline<<",\"observedOverruns\":"<<over<<",\"callbackCxxHeapCalls\":"<<heapCalls.load()<<",\"offAudioSnapshotServiceTotalUs\":"<<serviceUs<<",\"checksum\":"<<checksum<<"}"<<std::endl;
   }
  }
 }

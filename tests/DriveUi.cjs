@@ -2,18 +2,18 @@
 // Production WebView2 editor with actual CDP pointer/key events and synthetic
 // callback PCM/MidiBuffer. Not a driver, listening or Linux WebKit test.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
-const wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
+const wait=ms=>new Promise(r=>setTimeout(r,ms));let socket,phase='connect';
 (async()=>{
  assert(process.env.AION_MOUSE_TEST_RUN,'Use TestDriveUi.ps1');let target;
  for(let n=0;n<100;++n){try{target=(await(await fetch('http://127.0.0.1:9235/json')).json()).find(t=>t.url.includes('juce.backend'));}catch{}if(target)break;await wait(100);}assert(target);
  socket=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{socket.addEventListener('open',r,{once:true});socket.addEventListener('error',j,{once:true});});
  let serial=0;const replies=new Map(),errors=[];
  socket.addEventListener('message',e=>{const r=JSON.parse(e.data);if(r.method==='Runtime.exceptionThrown')errors.push(r.params.exceptionDetails);replies.get(r.id)?.(r);});
- const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++serial,timer=setTimeout(()=>{replies.delete(id);reject(Error(method+' timeout'));},12000);replies.set(id,r=>{clearTimeout(timer);replies.delete(id);r.error?reject(Error(JSON.stringify(r.error))):resolve(r.result);});socket.send(JSON.stringify({id,method,params}));});
+ const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++serial,timer=setTimeout(()=>{replies.delete(id);reject(Error(method+' timeout during '+phase+': '+String(params.expression||params.type||'').slice(0,160)));},12000);replies.set(id,r=>{clearTimeout(timer);replies.delete(id);r.error?reject(Error(JSON.stringify(r.error))):resolve(r.result);});socket.send(JSON.stringify({id,method,params}));});
  const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
  const rpc=request=>evaluate(`AionNative.request(${JSON.stringify(request)})`),snapshot=()=>rpc({operation:'snapshot'});
- const until=async(predicate,label)=>{let s;for(let n=0;n<120;++n){s=await snapshot();if(predicate(s))return s;await wait(50);}assert.fail(label+': '+JSON.stringify({track:s?.tracks?.[0]?.drives,errors}));};
- const rect=async selector=>{
+ const until=async(predicate,label)=>{phase=label;let s;for(let n=0;n<120;++n){s=await snapshot();if(predicate(s))return s;await wait(50);}assert.fail(label+': '+JSON.stringify({track:s?.tracks?.[0]?.drives,errors}));};
+ const rect=async selector=>{phase='pointer target '+selector;
   let r;
   for(let attempt=0;attempt<10;++attempt){
    await evaluate(`(()=>{document.documentElement.style.scrollBehavior='auto';document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'});})()`);await wait(100);
@@ -24,8 +24,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
  const click=async(selector,button='left',modifiers=0,count=1)=>{const r=await rect(selector);assert(!r.disabled&&r.hit,selector+' blocked '+JSON.stringify(r));const down=call('Input.dispatchMouseEvent',{type:'mousePressed',x:r.x,y:r.y,button,modifiers,clickCount:count}),up=call('Input.dispatchMouseEvent',{type:'mouseReleased',x:r.x,y:r.y,button,modifiers,clickCount:count});await Promise.all([down,up]);};
  const key=async(name,code)=>{await call('Input.dispatchKeyEvent',{type:'keyDown',key:name,code:name,windowsVirtualKeyCode:code,nativeVirtualKeyCode:code});await call('Input.dispatchKeyEvent',{type:'keyUp',key:name,code:name,windowsVirtualKeyCode:code,nativeVirtualKeyCode:code});};
  let injected=0;const directory=path.resolve(__dirname,`../build/windows/Release/wav-export-${process.argv[2]}`);
- const inject=async messages=>{const id=++injected,tmp=path.join(directory,'midi-input.tmp');fs.writeFileSync(tmp,JSON.stringify({id,messages}));fs.renameSync(tmp,path.join(directory,'midi-input.json'));for(let n=0;n<150;++n){try{if(Number(fs.readFileSync(path.join(directory,'midi-ack'),'utf8'))===id)return;}catch{}await wait(20);}assert.fail('Drive MidiBuffer injection timeout');};
- const ready=async()=>{for(let n=0;n<120;++n){if(await evaluate(`['distortionAmount','overdriveDrive','fuzzGain'].every(id=>{const e=document.getElementById(id);return e&&!e.disabled;})`))return;await wait(100);}assert.fail('Native drive controls not ready');};
+ const inject=async messages=>{phase='MIDI injection';const id=++injected,tmp=path.join(directory,'midi-input.tmp');fs.writeFileSync(tmp,JSON.stringify({id,messages}));fs.renameSync(tmp,path.join(directory,'midi-input.json'));for(let n=0;n<150;++n){try{if(Number(fs.readFileSync(path.join(directory,'midi-ack'),'utf8'))===id)return;}catch{}await wait(20);}assert.fail('Drive MidiBuffer injection timeout');};
+ const ready=async()=>{phase='bootstrap or reload';for(let n=0;n<120;++n){if(await evaluate(`['distortionAmount','overdriveDrive','fuzzGain'].every(id=>{const e=document.getElementById(id);return e&&!e.disabled;})`))return;await wait(100);}assert.fail('Native drive controls not ready');};
  await call('Runtime.enable');await call('Page.enable');await call('Emulation.setFocusEmulationEnabled',{enabled:true});await call('Page.bringToFront');
  // Wait for the real page/bootstrap (and its catalog replies), not merely the
  // document-start bridge function, before issuing test-owned native requests.

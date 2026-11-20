@@ -39,7 +39,7 @@ command(cmake,['-S',source,'-B',build,...(win?['-G','Visual Studio 17 2022','-A'
 command(cmake,['--build',build,'--config','Release','--parallel','2']);
 const report=command(path.join(build,win?'Release/drive_paired.exe':'drive_paired'),[]);
 const rows=report.trim().split(/\r?\n/).map(JSON.parse);
-if(rows.length!==6||rows.some(r=>!Number.isFinite(r.oldMean)||!Number.isFinite(r.newMean)))throw Error('Incomplete paired result');
+if(rows.length!==9||rows.some(r=>!Number.isFinite(r.oldMean)||!Number.isFinite(r.newMean)))throw Error('Incomplete paired result');
 const output=path.join(directory,'results-'+run+'.jsonl');fs.writeFileSync(output,report);
 fs.writeFileSync(path.join(directory,'metadata-'+run+'.json'),JSON.stringify({baseline,currentHead:git('rev-parse','HEAD').trim(),workingTreeModified:!!git('status','--porcelain').trim(),sourceHashes:Object.fromEntries(['source/core/Drive.h','source/core/Drive.cpp','tests/DriveKindBenchmark.cpp'].map(p=>[p,crypto.createHash('sha256').update(fs.readFileSync(path.join(root,p))).digest('hex')])),output,logFile},null,2));
 process.stdout.write(report);process.stderr.write('Saved paired observation: '+output+'\n');

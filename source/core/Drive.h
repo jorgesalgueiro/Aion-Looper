@@ -41,6 +41,6 @@ private:
  double rate=48000,smoothing=0,bypass=0,bypassTarget=0,dcPole=0;
  DriveKind kind=DriveKind::distortion;bool ready=false,sleeping=true;
  DriveValues mapped(const DriveSettings&)const noexcept;
- template<DriveKind K> Frame stereo(Frame)noexcept;
+ Frame stereo(Frame)noexcept;
 };
 }

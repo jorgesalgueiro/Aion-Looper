@@ -11,6 +11,54 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Active follow-up: identical drive bias correction — 20 November 2026
+
+Current candidate keeps the accepted shared T/O/F rendering path and reuses the
+first bias correction for later subsamples ONLY when both input arguments are
+bit-identical. Bit comparison preserves +0/-0 distinctions. No new processor
+state, approximation, oversampling reduction, controls, IDs, presets, routing,
+capacity or presentation changes. Drive.h is identical to fcef1a9.
+
+The persistent control/tone cache (ca9ea81) and full-path type specialization
+(0faa24b) are NOT the final implementation: controlled measurements found
+tradeoffs or inconclusive application gains. Their original logs remain under
+build/drive-settled-* and build/drive-kind-*. Keep negative evidence visible.
+
+Extended unchanged-scalar comparisons retain every original case and add long
+settling/retarget/reset/rate-change and signed-zero bias boundaries. Windows
+optimized AND forced-portable paths each compare 4,671,120 samples at maximum
+error zero. The original 1e-6 bound is unchanged; added long/boundary cases require
+exact Float32 equality. Focused Windows core/reference/chain gates: 5/5, 9.97s.
+Linux, sanitizer and UI checks for THIS candidate remain pending this session.
+Earlier drive-kind-* results belong to the rejected specialization candidate.
+
+The paired component helper tools/BenchmarkDriveSnapshot.cjs uses an accepted
+SSE2 snapshot and current DSP in one process, alternates execution order each
+callback, checks PCM equality and verifies equal storage footprint. It uses only
+existing Node/CMake/compiler tools. Generated sources are immutable/guarded;
+unique result/metadata files retain every run and source hashes. Nine cases:
+T/O/F at 96k/64 with 20 instances, 256 warm / 2048 measured callbacks; automation
+0=none, 1=tone/mix, 2=bias (T/F) or drive amount (O). It is not full-app latency.
+
+An additional optional AION_BUILD_DRIVE_SNAPSHOT_BENCHMARK builds a production
+processor comparison executable using accepted Drive.cpp with the same current
+processor/common code. Header compatibility is checked; the link map verifies
+Drive::tick comes from the snapshot object. The current header matches exactly
+and needs no signature adapter. The optional tool also supports the previous
+private-template signature for reproducing that rejected experiment, without
+changing its runtime-kind DSP equations. No snapshot code is installed or built
+by default. Keep the option OFF for ordinary work and restore OFF after use.
+
+Both processor benchmark binaries support --case RATE BLOCK TRACKS (48/96k,
+64/128, 10/20). Default 24-case and quick fixture behavior remains. Same-framework
+baseline/current/current/baseline runs at ten loops/96k/64 report zero callback
+C++ new/delete and matching PCM checksums; mean savings are small and deadlines
+still miss. Preserve all run rows, p99/maxima and overrun counts. This is not an
+application capacity, physical device, editor scheduling or round-trip pass.
+
+Final validation, durable data and commands will be recorded after the pending
+checks. No release package, dependency change, wrapper build or push.
+
 ### Latest follow-up: production callback load diagnostic — 20 November 2026
 
 Snapshot `f0578de` adds the optional, development-only

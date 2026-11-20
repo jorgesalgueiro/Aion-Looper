@@ -11,15 +11,15 @@
 #include <vector>
 #include <algorithm>
 int main(){
- static_assert(sizeof(aion::Drive)==sizeof(aion::BaselineDrive),"Specialization must preserve processor storage footprint");
- for(unsigned kind=0;kind<3;++kind)for(bool edits:{false,true}){
+ static_assert(sizeof(aion::Drive)==sizeof(aion::BaselineDrive),"Bias reuse must preserve processor storage footprint");
+ for(unsigned kind=0;kind<3;++kind)for(unsigned edits:{0u,1u,2u}){
   auto old=std::make_unique<std::array<aion::BaselineDrive,20>>();auto now=std::make_unique<std::array<aion::Drive,20>>();
   const auto k=static_cast<aion::DriveKind>(kind);auto settings=aion::driveDefaults(k);settings.enabled=true;
-  for(unsigned i=0;i<20;++i){old->at(i).prepare(96000,k,settings);now->at(i).prepare(96000,k,settings);}
+  for(unsigned i=0;i<20;++i){if(!old->at(i).prepare(96000,k,settings)||!now->at(i).prepare(96000,k,settings))return 2;}
   std::array<float,64> l{},r{},a{},b{},c{},d{};std::vector<double> x(2048),y(2048);
   for(unsigned block=0;block<256+2048;++block){
    for(unsigned i=0;i<64;++i){l[i]=static_cast<float>(.13*std::sin((block*64+i)*.13));r[i]=static_cast<float>(.07*std::cos((block*64+i)*.17));}
-   if(edits&&block%16==0){settings.values[2]=block%32?1800:8500;settings.values[4]=block%32?.3:.9;for(unsigned i=0;i<20;++i){old->at(i).set(settings);now->at(i).set(settings);}}
+   if(edits&&block%16==0){if(edits==1){settings.values[2]=block%32?1800:8500;settings.values[4]=block%32?.3:.9;}else{const auto p=kind==1?0u:1u;const auto control=aion::driveControls(k)[p];settings.values[p]=control.minimum+(control.maximum-control.minimum)*(block%32?.3:.8);}for(unsigned i=0;i<20;++i){if(!old->at(i).set(settings)||!now->at(i).set(settings))return 2;}}
    auto before=[&]{const auto t=std::chrono::steady_clock::now();for(auto& f:*old)f.process(l.data(),r.data(),a.data(),b.data(),64);return std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-t).count();};
    auto after=[&]{const auto t=std::chrono::steady_clock::now();for(auto& f:*now)f.process(l.data(),r.data(),c.data(),d.data(),64);return std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-t).count();};
    double u=0,v=0;if(block%2){v=after();u=before();}else{u=before();v=after();}

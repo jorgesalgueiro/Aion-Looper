@@ -65,7 +65,7 @@ void driveStereoReferenceTests(bool& watch,std::atomic<unsigned>& calls){
    watch=false;compare(64);
   }
   // Run long settling phases at every rate, then retarget just one field,
-  // repeat the same gesture, reset, and reprepare at another rate. Specialization
+  // repeat the same gesture, reset, and reprepare at another rate. Bias reuse
   // must never change the accepted PCM, even after long steady runs.
   settings=driveDefaults(k);settings.enabled=true;
   check(packed.prepare(rate,k,settings)&&reference.prepare(rate,k,settings),"Long settling preparation");
@@ -81,7 +81,18 @@ void driveStereoReferenceTests(bool& watch,std::atomic<unsigned>& calls){
    if(n==steadyBlocks+4)check(packed.prepare(48000,k,settings)&&reference.prepare(48000,k,settings),"Sample-rate reprepare retains accepted PCM");
    check(packed.process(l.data(),r.data(),pl.data(),pr.data(),128)&&reference.process(l.data(),r.data(),sl.data(),sr.data(),128),"Long settling/retarget/reset PCM");
    watch=false;compare(128);
-   check(pl==sl&&pr==sr,"Specialization retains exact accepted float PCM");
+   check(pl==sl&&pr==sr,"Bias reuse retains exact accepted float PCM");
+  }
+  if(k==DriveKind::fuzz){
+   check(!std::signbit(Drive::antialiased(k,-0.,+0.))&&std::signbit(Drive::antialiased(k,-0.,-0.)),"Signed-zero corrections cannot use numeric equality as a reuse guard");
+   settings.values[1]=-0.;
+   check(packed.prepare(48000,k,settings)&&reference.prepare(48000,k,settings),"Signed-zero preparation");
+   for(double bias:{-0.,+0.,-0.,-.25,.25,0.}){
+    settings.values[1]=bias;watch=true;
+    check(packed.set(settings)&&reference.set(settings),"Signed-zero or changing bias");
+    check(packed.process(l.data(),r.data(),pl.data(),pr.data(),128)&&reference.process(l.data(),r.data(),sl.data(),sr.data(),128),"Bias boundary rendering");
+    watch=false;compare(128);check(pl==sl&&pr==sr,"Bias boundary retains accepted PCM");
+   }
   }
 
  }
