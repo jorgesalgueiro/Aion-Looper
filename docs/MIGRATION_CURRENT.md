@@ -11,6 +11,57 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Latest follow-up: document-owned drive UI acceptance — 20 November 2026
+
+Scope: repair a confirmed test-readiness gap while investigating the historical
+intermittent CDP timeout. No product, DSP, bridge, UI assets, IDs or preset/state
+changes. Baseline `307a534` actual Drive UI passes 64/128 this session without
+reproducing the timeout (`build/drive-readiness-baseline.log`). That pass alone
+does not diagnose the prior failure.
+
+The previous test waited 100ms after Page.reload and checked enabled controls;
+it could accept controls from the old document before navigation completed.
+The test now waits for a different default-world context in the same main frame
+and native origin, and pins evaluations to its system-unique CDP identity.
+Numeric context IDs alone can be recycled across processes; see the official
+[Runtime protocol](https://raw.githubusercontent.com/ChromeDevTools/devtools-protocol/master/pdl/js_protocol.pdl).
+No automatic retry of failed evaluations, longer deadlines, suppressed runtime
+exceptions, PCM tolerance changes or changes to original pointer/MIDI assertions.
+This closes the false-readiness gap; it is NOT proof of the earlier timeout's
+cause or a product/browser timeout fix. Existing failure logs remain preserved.
+
+Acceptance: an old ready page cannot qualify for reload; isolated worlds,
+subframes and blank-origin contexts cannot qualify; reused numeric IDs still
+require a new unique identity; late old-world destruction cannot retire the new
+context. The deterministic `drive_document_readiness_contract` covers these
+ownership cases, including missing identity and ordinary context destruction.
+Windows CTest passes 1/1 (0.14s); Linux verification is recorded below after sync.
+
+Actual WebView2 acceptance passes with **20 document replacements per block size,
+40 total**, on the existing production editor/processor host, with no retries.
+Every additional reload checks nonzero playback, unchanged clip identity/length,
+playing state, all drive settings and MIDI bindings. All existing preset, slider,
+send-failure, 14 CC learning, reload/bypass/DEL and runtime-exception assertions
+also pass. Evidence: `build/drive-document-stress.log`.
+
+Commands (existing configured caches; pinned Windows CMake/CTest tools):
+
+```powershell
+node tests/DriveDocumentTests.cjs
+node --check tests/DriveUi.cjs
+cmake -S . -B build/windows-core
+ctest --test-dir build/windows-core -C Release -R '^drive_document_readiness_contract$' --output-on-failure --no-tests=error
+./tools/TestDriveUi.ps1 -ReloadCycles 20
+```
+
+No audio rebuild or audio-suite repeat is required for this test-only change;
+reuse the exact-DSP, ownership, sanitizer and callback evidence below. Linux
+WebKit/device/long-session coverage remains separate. No package/push/dependency
+change. **Next:** continue the open high-rate callback-capacity investigation for
+the current Q/C/T/F/O slice. Retain lifecycle diagnostics if the historical timeout
+recurs; do not claim it fixed or restart repeated full-suite retries without new
+evidence. Do not promote release capacity or start another effect prematurely.
+
 ### Latest follow-up: identical drive bias correction — 20 November 2026
 
 Current candidate keeps the accepted shared T/O/F rendering path and reuses the

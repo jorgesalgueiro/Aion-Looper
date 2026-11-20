@@ -1,4 +1,4 @@
-param([int[]] $Blocks = @(64,128))
+param([int[]] $Blocks = @(64,128),[ValidateRange(1,50)][int] $ReloadCycles = 1)
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 $hostPath=Join-Path $repo 'build/windows/Release/aion_mouse_host.exe'
@@ -7,12 +7,14 @@ if((Get-NetTCPConnection -LocalPort 9235 -State Listen -ErrorAction SilentlyCont
 $savedArguments=$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 $savedProfile=$env:WEBVIEW2_USER_DATA_FOLDER
 $savedTestRun=$env:AION_MOUSE_TEST_RUN
+$savedReloadCycles=$env:AION_DRIVE_RELOAD_CYCLES
 foreach($block in $Blocks){
     if($block -notin @(64,128)){throw 'Use 64/128 samples.'}
     $preview=$null
     try{
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-address=127.0.0.1 --remote-debugging-port=9235 --disable-background-timer-throttling --disable-renderer-backgrounding'
         $env:AION_MOUSE_TEST_RUN=[guid]::NewGuid().ToString('N')
+        $env:AION_DRIVE_RELOAD_CYCLES="$ReloadCycles"
         $env:WEBVIEW2_USER_DATA_FOLDER=Join-Path $repo "build/drive-mouse-profile-$block-$($env:AION_MOUSE_TEST_RUN)"
         $preview=Start-Process -FilePath $hostPath -ArgumentList "$block" -WindowStyle Hidden -PassThru
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments
@@ -23,6 +25,7 @@ foreach($block in $Blocks){
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments
         $env:WEBVIEW2_USER_DATA_FOLDER=$savedProfile
         $env:AION_MOUSE_TEST_RUN=$savedTestRun
+        $env:AION_DRIVE_RELOAD_CYCLES=$savedReloadCycles
         if($preview -and !$preview.HasExited){$preview.CloseMainWindow() | Out-Null;if(!$preview.WaitForExit(10000)){throw "Owned drive test host did not close: PID $($preview.Id)."}}
     }
 }
