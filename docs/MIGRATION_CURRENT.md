@@ -11,6 +11,108 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Latest follow-up: compressor detector CPU cost — 20 November 2026
+
+Code snapshot `76c8c68` evaluates the detector's release logarithm/power only
+when the existing update actually uses that coefficient. The accepted Float32
+update, rounding, envelope/automation clocks, lookahead, metering, presets,
+IDs/state, persistent/live controls and editable chain remain unchanged. No new
+allocation, lock, dependency or presentation change. GUI and CLI retain one DSP.
+
+`tests/CompressorScalarReference.*` freezes the complete accepted `5908944`
+compressor, retaining its BSD notices; only namespace/includes/provenance differ.
+New regression: **6,920,848 channel samples and 28,160 gain-reduction readings
+exactly equal**, all 11 presets, eight rates, variable blocks including 64/128,
+rapid/repeated parameter edits, silence/attack/release, resets, missing channels
+and malformed inputs. Existing allocation, numeric, in-place, subdivision,
+connected PCM, live OD/SUB/MULT/STOP and ownership cases remain intact.
+
+| Executed gate | Result |
+| --- | --- |
+| Windows compressor/scalar/connected, original reference, chain | 5/5, 10.06s |
+| Windows production compressor CLI/MIDI/state/lifecycle | 2/2 at 64/128, 15.42s |
+| Linux corresponding core/reference/processor set | 7/7, 8.73s |
+| Linux ASan/UBSan/leaks, compressor/scalar/connected/chain | 4/4, 69.25s; no suppressions |
+| Actual WebView2 native compressor UI | 64/128 pass, controls/MIDI/reload/bypass/DEL/nonzero PCM; no runtime exceptions |
+| Actual original WebAudio compressor graph/presets/automation | 60 cases, 1,966,080 frames, peak 4.806921385380747e-7; unchanged 1e-6 peak / 1e-5 relative RMS limits |
+| Windows and Linux connected capture/OD/SUB audit | Each 126 cases / 965,826 frames, peak 7.394757495227111e-8; unchanged 1e-6 limit |
+
+Both Standalone builds succeeded. No preserved `resources/ui` or reference files
+changed. Listening, physical drivers, Linux WebKit and actual device/UI-heavy
+application load remain unverified; synthetic/native UI gates do not establish
+them. No wrappers, package, dependency upgrade or push this session.
+
+Before/after timing uses `5908944` / `76c8c68`, warmed identical benchmark
+configurations with no concurrent builds/tests. Raw logs per checkout:
+`build/compressor-hotpath-*`. Complete 40-case Engine data, including slower cases,
+outliers and zero watched callback C++ new/delete (aligned included), is retained
+in `docs/benchmarks/compressor-hotpath-2026-11-20-{windows,linux}.csv`;
+`...-kernels.csv` retains all eight initial kernel comparisons. All reported
+before/after PCM checksums match; the exact-sample oracle is the sound proof.
+Windows 20-compressor 48k/64 steady mean **240.91 → 211.255us**. Ten QCTFO loops,
+96k/64 steady mean **618.514 → 571.745us**, overruns **166 → 44/1024**, but p99
+**758.6 → 776.3us**. Automated mean **624.206 → 569.559us**, overruns **212 → 42**.
+Initial Linux timing was mixed, prompting a fresh paired comparison below.
+These are processing costs, not device/round-trip latency or a deadline guarantee.
+
+Fresh Linux comparison uses clean detached `5908944` at
+`build/compressor-baseline-5908944`, with independent Release/plugin-OFF cache
+`build/compressor-baseline-build`. Baseline then optimized binaries run serially,
+same compiler/flags, without concurrent builds/tests. Preserve this worktree;
+never reset/overwrite it. All 40 fixture checksums match and both binaries report
+zero watched callback C++ new/delete. Retain full data in
+`...-linux-fresh-workspace.csv` and `...-linux-fresh-kernel.csv`, including outliers.
+
+| Fresh Linux workload | Mean us before → after | p99 us before → after | Overruns /1024 before → after |
+| --- | --- | --- | --- |
+| Ten QCTFO loops, 96k/64, steady | 538.752 → 546.516 | 698.426 → 688.369 | 25 → 26 |
+| Same, automated | 551.62 → 539.578 | 716.046 → 677.979 | 57 → 12 |
+
+Fresh 20-compressor kernel means: 48k/64 steady **173.176 → 156.493us**,
+automated **186.662 → 171.585us**; 128 steady **326.382 → 317.558us**, automated
+**353.769 → 345.114us**. The baseline 64 steady kernel has one 13.78ms outlier
+(measured over 2048 callbacks), retained in CSV. Full-chain gains are not universal;
+the steady mean and overrun count above are slightly worse. These single-run
+comparisons do not establish causal improvements for every workload or eliminate
+OS/VM scheduling/frequency variation. Do not repeat runs to select only good data.
+
+To reproduce the paired baseline, verify the existing worktree's commit and clean
+state first; use `git worktree add --detach build/compressor-baseline-5908944 5908944`
+only if absent. Then, in the native Linux mirror:
+
+```sh
+cmake -G Ninja -S build/compressor-baseline-5908944 -B build/compressor-baseline-build -DAION_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build/compressor-baseline-build --target aion_compressor_benchmark aion_effects_engine_benchmark --parallel 2
+./build/compressor-baseline-build/aion_compressor_benchmark > build/compressor-hotpath-fresh-before-kernel-linux.jsonl
+./build/linux/aion_compressor_benchmark > build/compressor-hotpath-fresh-after-kernel-linux.jsonl
+./build/compressor-baseline-build/aion_effects_engine_benchmark --drives > build/compressor-hotpath-fresh-before-workspace-linux.jsonl
+./build/linux/aion_effects_engine_benchmark --drives > build/compressor-hotpath-fresh-after-workspace-linux.jsonl
+```
+
+Reproduce affected Windows checks with the existing Release caches:
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_compressor_tests aion_compressor_scalar_tests aion_compressor_connected_tests aion_compressor_probe aion_compressor_benchmark aion_effects_engine_benchmark aion_signal_chain_tests --parallel 2
+ctest --test-dir build/windows-core -C Release -R '^(compressor_.*contract|original_compressor_contract|signal_chain_connected_contract)$' --output-on-failure --no-tests=error
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_compressor_processor_tests aion_mouse_host --parallel 2
+ctest --test-dir build/windows -C Release -R '^native_compressor_processor_(64|128)$' --output-on-failure --no-tests=error
+./tools/TestCompressorWebAudio.ps1
+./tools/TestCompressorUi.ps1
+./build/windows-core/Release/aion_compressor_benchmark.exe
+./build/windows-core/Release/aion_effects_engine_benchmark.exe --drives
+```
+
+Linux uses the independent committed mirror, `build/linux`, corresponding
+targets/expressions without `-C Release`, and the existing sanitizer cache
+explicitly reconfigured after adding the scalar target. The capture audit uses
+`node tests/AudioParityAudit.cjs BUILD/aion_reference_probe` (add `.exe` on Windows).
+Keep ASan leak detection and UBSan halt-on-error enabled. No tolerance changed.
+
+Full high-rate capacity remains **open**, including twenty-track overload and
+isolated deadline misses. Continue profiling actual Standalone load and remaining
+full-chain costs before another effect; do not present the average savings as
+complete 96k/64 acceptance.
+
 ### Latest follow-up: stereo EQ CPU cost — 17 November 2026
 
 Local code snapshot `4c9a3a2` pairs independent stereo EQ recurrences using the

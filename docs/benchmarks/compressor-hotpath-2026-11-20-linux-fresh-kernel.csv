@@ -1,0 +1,5 @@
+rate,block,automated,before_mean_us,after_mean_us,before_p99_us,after_p99_us,before_maximum_us,after_maximum_us,before_overruns,after_overruns,checksum
+48000,64,false,173.176,156.493,246.099,236.267,13781.9,282.061,1,0,-12697.8
+48000,64,true,186.662,171.585,266.69,257.164,307.574,334.094,0,0,-9165
+48000,128,false,326.382,317.558,448.479,440.716,523.359,504.222,0,0,-39203.4
+48000,128,true,353.769,345.114,478.934,469.307,552.023,540.96,0,0,-45154.1
