@@ -217,8 +217,14 @@ void Compressor::process(const float* left,const float* right,unsigned channels,
         const float input=std::max(std::abs(l),std::abs(r));
         const float shaped=saturate(input,knee);
         const float attenuation=input<=.0001f?1:shaped/input;
-        const float dbAttenuation=std::max(2.0f,-db(attenuation));
-        const float releaseRate=linear(dbAttenuation/satReleaseFrames)-1;
+        // Attack/equal detector samples use unity below. Only evaluate the
+        // logarithm/power when their release coefficient actually contributes;
+        // retain the accepted Float32 update and its rounding on both paths.
+        float releaseRate=1;
+        if(attenuation>detectorAverage){
+            const float dbAttenuation=std::max(2.0f,-db(attenuation));
+            releaseRate=linear(dbAttenuation/satReleaseFrames)-1;
+        }
         detectorAverage+=(attenuation-detectorAverage)*(attenuation>detectorAverage?releaseRate:1);
         detectorAverage=finite(std::min(1.0f,detectorAverage),1);
         if(envelopeRate<1)compressorGain+=(scaledDesired-compressorGain)*envelopeRate;
