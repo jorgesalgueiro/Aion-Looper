@@ -11,6 +11,82 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Latest follow-up: production callback load diagnostic — 20 November 2026
+
+Snapshot `f0578de` adds the optional, development-only
+`aion_processor_effects_benchmark`. It links the production `AionProcessor` and
+measures `processBlock`, including APVTS reads, JUCE MidiBuffer validation/routing,
+native callback stamps and Engine rendering. No production code, DSP, parameters,
+state, GUI, reference or preserved assets changed. This is a test executable,
+not a second product headless engine or a distributable target.
+
+Acceptance: synthesize real stereo input through production RECORD/FINISH/PLAY
+requests; verify committed 1024-frame clips, stable owners, playback/mixer/FX/chain
+settings, nonzero finite PCM, actual MIDI event counts, no MIDI transport actions
+or overflow, real-time processing mode, and zero watched callback C++ new/delete
+(aligned forms included). Setup uses offline finalization **before** measurement;
+timed callbacks use `setNonRealtime(false)`. No timing threshold is asserted.
+
+Executed:
+
+| Gate | Windows | Linux |
+| --- | --- | --- |
+| Optional benchmark build | Pass | Pass |
+| Quick functional fixture, 64/128 | 2/2, 0.78s | 2/2, 0.50s |
+| Full warmed matrix | 24/24 fixtures pass | 24/24 fixtures pass |
+
+Each matrix has 10/20 playing loops, 48/96k, 64/128, and three profiles: bypassed
+FX, QCTFO enabled, and QCTFO plus 32 unassigned CC events per callback. MIDI is
+enabled, events span channels/sample offsets, and delivered counts are checked;
+these are not mapped continuous edits or physical hardware. Warm 256 / measured
+1024 callbacks per case. Every case reports zero watched callback C++ heap calls.
+Full results, including slower cases/outliers:
+`docs/benchmarks/processor-effects-2026-11-20-{windows,linux}.csv`.
+
+Ten loops, 96k/64; nominal callback budget 666.667us:
+
+| Platform / MIDI events per callback | Mean us | p99 us | Overruns /1024 |
+| --- | --- | --- | --- |
+| Windows / 0 | 599.697 | 726.6 | 93 |
+| Windows / 32 | 602.823 | 718 | 90 |
+| Linux / 0 | 526.499 | 684.726 | 19 |
+| Linux / 32 | 531.217 | 679.592 | 12 |
+
+The observed extra MIDI cost is small in these cases; absent-MIDI processing
+already overruns. This does not establish causal/constant MIDI overhead, mapped
+MIDI performance or a universal deadline guarantee. Twenty-loop high-rate cases
+also remain overloaded. Continue profiling rendering cost before another FX.
+
+Scope limits: unpaced synthetic playback without a device, editor/WebView,
+automatic message dispatch/timers, Arp or instruments. Snapshot servicing every
+16 callbacks runs outside the measured interval on the same caller thread and
+is reported separately, including warm-up service. It is not concurrent message
+thread/GUI load. Older Engine-only and new processor fixtures have different
+setup/capture/control timelines: do not subtract their timings or compare their
+PCM checksums to claim exact wrapper overhead. No driver/xrun, listening,
+round-trip latency, actual GUI scheduling or release acceptance is established.
+Previous DSP/browser/sanitizer evidence remains unchanged; those suites were not
+rerun for this test-tool-only addition. No package or push.
+
+Reproduce after configuring changed CMake targets:
+
+```powershell
+cmake --build build/windows --config Release --target aion_processor_effects_benchmark --parallel 2
+ctest --test-dir build/windows -C Release -R '^native_effects_benchmark_fixture_(64|128)$' --output-on-failure --no-tests=error
+./build/windows/Release/aion_processor_effects_benchmark.exe > build/processor-effects-benchmark-windows.jsonl
+```
+
+```sh
+cmake --build build/linux --target aion_processor_effects_benchmark --parallel 2
+ctest --test-dir build/linux -R '^native_effects_benchmark_fixture_(64|128)$' --output-on-failure --no-tests=error
+./build/linux/aion_processor_effects_benchmark > build/processor-effects-benchmark-linux.jsonl
+```
+
+Run timing serially, after other builds/tests and owned UI hosts finish. Logs:
+`build/processor-effects-benchmark-{build,fixture-tests}.log` per checkout, plus
+the platform JSONL above. The quick invocations are `--quick 64` and `--quick 128`;
+they validate the fixture, not CPU capacity. Keep target opt-in and uninstalled.
+
 ### Latest follow-up: compressor detector CPU cost — 20 November 2026
 
 Code snapshot `76c8c68` evaluates the detector's release logarithm/power only
