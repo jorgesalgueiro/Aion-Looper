@@ -35,7 +35,8 @@ subframes and blank-origin contexts cannot qualify; reused numeric IDs still
 require a new unique identity; late old-world destruction cannot retire the new
 context. The deterministic `drive_document_readiness_contract` covers these
 ownership cases, including missing identity and ordinary context destruction.
-Windows CTest passes 1/1 (0.14s); Linux verification is recorded below after sync.
+Snapshot `3eadd8f`: Windows CTest passes 1/1 (0.14s); Linux CTest passes 1/1
+(0.41s) after clean committed-snapshot sync into native WSL storage.
 
 Actual WebView2 acceptance passes with **20 document replacements per block size,
 40 total**, on the existing production editor/processor host, with no retries.
@@ -52,6 +53,13 @@ node --check tests/DriveUi.cjs
 cmake -S . -B build/windows-core
 ctest --test-dir build/windows-core -C Release -R '^drive_document_readiness_contract$' --output-on-failure --no-tests=error
 ./tools/TestDriveUi.ps1 -ReloadCycles 20
+```
+
+Linux (after `tools/SetupWslWorkspace.sh`, in `/home/jorge/projects/Aion-Looper`):
+
+```sh
+cmake -S . -B build/linux
+ctest --test-dir build/linux -R '^drive_document_readiness_contract$' --output-on-failure --no-tests=error
 ```
 
 No audio rebuild or audio-suite repeat is required for this test-only change;
