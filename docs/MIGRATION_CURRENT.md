@@ -11,7 +11,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Active follow-up: measured decimator scheduling — 21 November 2026
+### Latest follow-up: measured decimator scheduling — 21 November 2026
 
 Completed the planned intra-drive attribution using EXISTING gmon samples, not
 another instrumented audio render. Offline inline-aware addr2line resolution
@@ -21,15 +21,38 @@ so this is not exact per-stage timing. The new bounded offline resolver checks
 format/ranges, source/executable identity and retains unknown/unresolved groups;
 malformed-input/inline classification regression is registered in CTest.
 
-Based on that evidence, the candidate interleaves independent wet/dry decimator
-recurrences. Every path keeps its original coefficients, equations, state and
-sample order; no oversampling/quality/controls/IDs/layout change. No new storage,
-allocation, lock or product API. Initial paired Windows accepted/current checks
-match PCM exactly and reduce means in all nine cases (roughly 1–4%). Windows
-core/reference/ownership plus offline attribution regression pass 6/6 (9.73s),
-with the unchanged scalar/native/portable gates. Linux/native processor/sanitizer
-and production callback observations are pending; do not advance or claim full
-capacity from this component result. No package/push/dependency change.
+Based on that evidence, candidate `8e335b8` interleaves independent wet/dry
+decimator recurrences, preserving coefficients/equations/state/sample order and
+class size. Its component means improve in all nine cases on both OSes. Full
+callback observations are mixed: GNU/Linux means improve about 1.2–1.4%, while
+Windows no-MIDI is slower despite the component gain. **Final `ea07783` retains
+paired decimation only for GNU/Linux x64; Windows/MSVC and unvalidated compilers/
+platforms keep the accepted schedule.** No quality/latency/oversampling, controls,
+IDs, layout, routing, source scheduling, new storage/allocation/lock/API changes.
+
+Native AND forced-portable paths match 4,818,576 samples exactly. GNU/Linux
+focused gates pass 10/10 (17.13s), ASan/UBSan/leak checks 4/4 (256.95s), no
+suppressions. Final selector has byte-identical native/portable GNU token streams
+to the validated candidate, so unchanged Linux suites were not repeated. Final
+Windows fallback: core/reference/parser 6/6 (11.06s), processor/CLI/MIDI 64/128
+2/2 (56.51s), benchmark fixtures 2/2 (0.91s). Candidate JS capture/OD/SUB audits
+pass both OSes (126 cases / 965,826 samples, max error 7.394757495227111e-8).
+Both normal Standalone/benchmark artifacts rebuilt; snapshot benchmarking and
+callback profiling restored OFF. No new UI/device/listening/DAW/Apple acceptance.
+
+Every candidate full-matrix fixture passes state/nonzero/finite PCM and zero
+tracked callback C++ heap checks, with accepted checksums. Windows timing rows
+are retained explicitly as the REJECTED scheduling experiment, not a final
+Windows speedup. Full-workspace high-rate deadlines remain open. No packages,
+push, dependency or format change. Full scope/data/commands:
+[decimator validation](benchmarks/drive-decimator-2026-11-21.md).
+
+**Next priority needs the owner's pending choice:** resume remaining loop
+features in roadmap order with heavy-load CPU tracked for hardening, or continue
+high-rate CPU work as the next task. The roadmap and recent CPU-blocking handoff
+differ here; do not silently waive release gates or choose based on elapsed time.
+Current measured slice is finished; do not repeat the same profiles or turn
+offline tooling into another product gate while waiting for that choice.
 
 ### Latest follow-up: planned callback attribution — 21 November 2026
 
