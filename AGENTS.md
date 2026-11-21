@@ -1,3 +1,12 @@
+# Owner priority update — 21 November 2026
+
+Resume remaining loop features in roadmap order. Defer broad CPU profiling and
+tuning until feature implementation is complete. Design each new slice with
+bounded work, prepare-time storage and cached coefficients from the outset;
+retain focused safety/performance checks. Earlier CPU investigations remain
+evidence, not a gate preventing the next feature. Musical, compatibility and
+real-time ownership acceptance still applies.
+
 # Owner target update — 30 October 2026
 
 The current owner prompt at `D:\Jorge\Documents\Codex\aion_prompt.txt` supersedes

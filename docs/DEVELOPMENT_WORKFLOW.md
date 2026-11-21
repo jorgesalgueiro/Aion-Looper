@@ -1,5 +1,11 @@
 # Development workflow
 
+Owner priority, 21 November 2026: implement remaining loop features before broad
+CPU tuning. Keep processing bounded and allocation-free, prepare storage off
+audio and cache derived coefficients when building each feature. Run focused
+safety/performance checks; defer full-chain profiling until feature completion.
+Historical CPU investigations do not block the next loop-feature slice.
+
 Owner-approved policy, updated 30 October 2026 (current aion_prompt.txt). Preserve the working implementation and
 acceptance evidence; reduce redundant build/validation work rather than weaken
 sound, timing, state compatibility or real-time safety.

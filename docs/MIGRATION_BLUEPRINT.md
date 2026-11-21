@@ -8,6 +8,12 @@ Windows VST3 pluginval and CLAP validator gates added 22 October 2026; their exa
 
 ## Current delivery and iteration policy — owner update 30 October 2026
 
+Owner priority update, 21 November: finish remaining loop features before broad
+CPU tuning. New components must still use bounded work, prepared storage and
+cached coefficients, with focused safety checks. Prior profiling evidence is
+retained for hardening; it does not block the next effect. D / Delay is the active
+slice; see [DELAY.md](DELAY.md) for component acceptance and integration gaps.
+
 Active formats are Windows and Linux Standalone only. VST3/REAPER, LV2/Ardour and
 CLAP stay opt-in/deferred, preserving code/IDs and historical acceptance. Future macOS is
 Standalone/AU; future iOS is Standalone/AUv3. Historical all-format test records

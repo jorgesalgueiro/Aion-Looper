@@ -11,6 +11,21 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Owner priority resolved — 21 November 2026
+
+Resume remaining loop features; broad CPU profiling/tuning moves to hardening
+after feature implementation. New components still require bounded processing,
+off-audio preparation, cached coefficients and focused real-time checks. Earlier
+CPU measurements remain release evidence, not a blocker to the next effect.
+Next feature is **D / Delay**, following accepted Q/C/A/T/F/O. Its first internal
+component slice preserves original controls/presets while implementing the approved
+organic/natural direction. D is NOT yet connected to GUI/CLI/state or complete.
+See [DELAY.md](DELAY.md) for observable acceptance, commands and ownership limits.
+The component preallocates a four-second stereo ring, hides cleared history in
+O(1), caches coefficients and crossfades two read heads during time changes.
+Next: bounded worker-owned per-track preparation/retirement, then editable-chain
+and shared GUI/CLI/MIDI/state integration; keep D disabled until connected gates.
+
 ### Latest follow-up: measured decimator scheduling — 21 November 2026
 
 Completed the planned intra-drive attribution using EXISTING gmon samples, not
@@ -47,12 +62,9 @@ Windows speedup. Full-workspace high-rate deadlines remain open. No packages,
 push, dependency or format change. Full scope/data/commands:
 [decimator validation](benchmarks/drive-decimator-2026-11-21.md).
 
-**Next priority needs the owner's pending choice:** resume remaining loop
-features in roadmap order with heavy-load CPU tracked for hardening, or continue
-high-rate CPU work as the next task. The roadmap and recent CPU-blocking handoff
-differ here; do not silently waive release gates or choose based on elapsed time.
-Current measured slice is finished; do not repeat the same profiles or turn
-offline tooling into another product gate while waiting for that choice.
+**Priority resolved by the owner:** resume remaining loop features in roadmap
+order; retain heavy-load CPU work for hardening after feature implementation.
+Do not repeat these profiles as a prerequisite to implementing D / Delay.
 
 ### Latest follow-up: planned callback attribution — 21 November 2026
 
