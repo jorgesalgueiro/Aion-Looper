@@ -60,6 +60,10 @@ replacement, live edits, D→T / T→D order, in-flight/transition tempo changes
 timeline reset, epoch/revision rejection, superseded
 worker requests, STOP and clear. This is not yet Engine command-queue, GUI,
 persistence, hardware or full original browser audio acceptance.
+It also removes D while a prepared mode replacement is adopted, verifies dry/T
+audio without delayed leakage, drains the hidden transition and reinserts D with
+fresh history/fade-in. Windows PCM maximum observed error is `4.47035e-8` at
+8 kHz and `2.98023e-8` at 48 kHz for both 64/128 cases (limit remains `2e-6`).
 
 The unchanged original `effects.js` defines six sliders, a sync checkbox and nine
 presets. `DelaySettingsReference.cjs` executes those definitions and checks them

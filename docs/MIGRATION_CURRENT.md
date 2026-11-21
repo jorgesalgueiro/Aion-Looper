@@ -28,6 +28,14 @@ STOP/clear at 8/48 kHz and 64/128 frames against independently scheduled DSP.
 Windows final focused storage/connected checks pass 2/2 (5.11s), PCM tolerance
 2e-6; zero tracked audio C++ heap operations. Wider regressions/Linux checks are
 being recorded in this checkpoint; no feature-complete/release claim.
+Additional Windows off-chain/reinserted D PCM checks pass at both rates/blocks,
+maximum error 4.47035e-8, with unchanged 2e-6 tolerance. The earlier exhaustive
+Windows `core_realtime_contract` run was manually stopped after 796.17s without
+an assertion failure being observed; CTest correctly records it failed/incomplete,
+not passed. It had progressed through many existing source/clock/meter/MULT cases.
+Final core `--loop-edits` verification and Linux results are recorded separately.
+Do not treat this interrupted exhaustive run as a CPU finding or waive its later
+integration gate; do not routinely rerun the full suite for every internal edit.
 
 Still INTERNAL: no Engine/message-thread command or result queue, UI/CLI, MIDI
 Learn or new session serialization. Next is generation/cancellation/result

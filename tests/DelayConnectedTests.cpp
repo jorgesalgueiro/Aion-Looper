@@ -83,16 +83,34 @@ static void run(double rate,unsigned block){
  {AudioScope scope;check(wet->setSignalChain(0,normalizedSignalChain("TD"),8,info.clearEpoch),"T then D live reorder");}
  render(2048);
  check(error<2.e-6&&difference>1.e-3,"connected D/mode replacement/user order PCM oracle");
+ // Remove D while preparing a new mode. The hidden transition must finish
+ // without leaking delayed audio or retaining its old allocation indefinitely.
+ info=wet->view()[0];
+ {AudioScope scope;check(wet->setSignalChain(0,normalizedSignalChain("T"),9,info.clearEpoch),"remove D");}
+ check(setDelayRepeats(settings,DelayRepeatMode::feedback,1),"off-chain mode settings");request(10);adopt(10);
+ const unsigned hiddenFrames=((static_cast<unsigned>(std::ceil(.02*rate))+block-1)/block+1)*block;
+ {AudioScope scope;for(unsigned base=0;base<hiddenFrames;base+=block){dry->beginBlock();wet->beginBlock();
+  for(unsigned n=0;n<block;++n){const auto input=dry->tick({});const auto actual=wet->tick({});
+   constexpr float centre=.7071067811865475f;const auto d=distortion.tick(input.left/centre,input.right/centre);
+   const float expected=(d[0]+d[1])*.5f*centre;
+   check(std::abs(actual.left-expected)<2.e-6&&std::abs(actual.right-expected)<2.e-6,"removed D cannot leak transition PCM");
+   if(oracle.view(0).transitioning){float l,r;oracle.tick(0,0,0,l,r);}
+  }
+ }}
+ check(!wet->delayStorageView(0).transitioning&&!oracle.view(0).transitioning,"off-chain transition cannot strand owner");
+ info=wet->view()[0];
+ {AudioScope scope;check(wet->setSignalChain(0,normalizedSignalChain("TD"),11,info.clearEpoch),"reinsert D");oracle.reset(0,true);}
+ render(2048);check(error<2.e-6,"reinserted D resets history with shared fade-in");
  // A fresh value invalidates an older not-yet-adopted worker replacement.
  info=wet->view()[0];auto pending=settings;check(setDelayRepeats(pending,DelayRepeatMode::exact,10),"large-count settings");
- {AudioScope scope;check(wet->requestDelay(0,pending,info.clearEpoch,info.delaySettingsRevision,9),"pending replacement");
-  settings.values[3]=.25;check(wet->setDelay(0,settings,info.clearEpoch,info.delaySettingsRevision,10),"newer edit cancels pending replacement");}
+ {AudioScope scope;check(wet->requestDelay(0,pending,info.clearEpoch,info.delaySettingsRevision,12),"pending replacement");
+  settings.values[3]=.25;check(wet->setDelay(0,settings,info.clearEpoch,info.delaySettingsRevision,13),"newer edit cancels pending replacement");}
  for(unsigned n=0;n<32;++n){{AudioScope scope;wet->beginBlock();}std::this_thread::sleep_for(std::chrono::milliseconds(1));}
- check(wet->view()[0].delayRequest==10&&wet->view()[0].delay==settings&&!wet->delayStorageView(0).pending,"stale completion cannot overwrite live edit");
+ check(wet->view()[0].delayRequest==13&&wet->view()[0].delay==settings&&!wet->delayStorageView(0).pending,"stale completion cannot overwrite live edit");
  {AudioScope scope;check(wet->apply(LoopAction::stopAll,0),"panic");
   for(unsigned n=0;n<2048;++n){const auto out=wet->tick({});check(out.left==0&&out.right==0,"STOP source gate no delayed resurrection");}}
  info=wet->view()[0];check(info.delay==settings,"panic keeps settings");
- {AudioScope scope;check(wet->requestDelay(0,pending,info.clearEpoch,info.delaySettingsRevision,11),"pre-clear worker request");
+ {AudioScope scope;check(wet->requestDelay(0,pending,info.clearEpoch,info.delaySettingsRevision,14),"pre-clear worker request");
   check(wet->apply(LoopAction::clear,0),"clear");}
  for(unsigned n=0;n<32;++n){{AudioScope scope;wet->beginBlock();}std::this_thread::sleep_for(std::chrono::milliseconds(1));}
  info=wet->view()[0];check(info.delay==DelaySettings{}&&info.clearEpoch!=0&&!wet->delayStorageView(0).active&&!wet->delayStorageView(0).pending,"DEL invalidates prepared work and resets D");
