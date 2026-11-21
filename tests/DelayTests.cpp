@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/Delay.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -45,12 +46,13 @@ int main(int argc,char** argv){
  settings.preset=1;check(!validDelaySettings(settings),"false preset metadata rejected");
  unsigned samples=0;
  for(double rate:{8000.,22050.,32000.,44100.,48000.,96000.,192000.,384000.}){
-  for(unsigned block:{64u,128u}){
+  for(unsigned block:{64u,128u})for(bool sync:{false,true}){
    settings={};settings.enabled=true;settings.values={.01,0,3000,1,0,.8,0};
+   settings.values[6]=sync?1:0;
    Delay delay;check(delay.prepare(rate,settings),"prepare");
    // Analytic fractional impulse: no feedback, no pan, full wet. This checks
    // actual echo placement and weights without reimplementing the kernel.
-   const double frames=.01*rate;const unsigned first=static_cast<unsigned>(frames);
+   const double frames=.01*(sync?.5:1)*rate;const unsigned first=static_cast<unsigned>(frames);
    {Guard guard;for(unsigned base=0;base<8192;base+=block)for(unsigned j=0;j<block;++j){
     const unsigned n=base+j;float l,r;delay.tick(n==0?1.f:0.f,n==0?-.5f:0.f,l,r);
     const double expected=n==first?1-(frames-first):(n==first+1?frames-first:0);
@@ -72,7 +74,10 @@ int main(int argc,char** argv){
  // Four-second limit is observable, not just a settings-clamp assertion.
  settings={};settings.enabled=true;settings.values={4,0,3000,1,0,.8,1};
  Delay limited;check(limited.prepare(8000,settings,10),"slow sync prepare");
- {Guard guard;for(unsigned n=0;n<=32000;++n){float l,r;limited.tick(n==0?1.f:0.f,0,l,r);check(l==(n==32000?1.f:0.f)&&r==0,"bounded sync echo");}}
+ {Guard guard;for(unsigned n=0;n<=96000;++n){float l,r;limited.tick(n==0||n==64000?1.f:0.f,0,l,r);
+  check(l==(n==32000||n==96000?1.f:0.f)&&r==0,"bounded sync echo before/after ring wrap");}
+  limited.reset();for(unsigned n=0;n<33000;++n){float l,r;limited.tick(0,0,l,r);check(l==0&&r==0,"clear after wrap hides stale PCM");}
+ }
  // Fully bypassed is bit-transparent. Disabled edits must not reveal old PCM.
  settings={};Delay bypass;check(bypass.prepare(48000,settings),"bypass prepare");
  {Guard guard;for(unsigned n=0;n<1024;++n){const float x=static_cast<float>(n)*.001f;float l,r;bypass.tick(x,-x,l,r);check(l==x&&r==-x,"exact bypass");}}
@@ -84,9 +89,12 @@ int main(int argc,char** argv){
  float previous=0;
  {Guard guard;for(unsigned n=0;n<1400;++n){
   if(n==1000){setDelayControl(settings,0,.02);check(transition.set(settings,120),"time edit");}
+  if(n==1040||n==1080){setDelayControl(settings,0,n==1040?.03:.04);check(transition.set(settings,120),"coalesced time edit");}
   float l,r;transition.tick(wave(n),wave(n),l,r);
   if(n>=1000){const double blend=std::min(1.,(n-1000)/160.);
-   const double expected=(1-blend)*wave(n-80)+blend*wave(n-160);
+   const double latestBlend=std::clamp((double(n)-1160)/160.,0.,1.);
+   const double expected=n<1160?(1-blend)*wave(n-80)+blend*wave(n-160)
+    :(1-latestBlend)*wave(n-160)+latestBlend*wave(n-320);
    check(std::abs(l-expected)<1.e-6&&l==r,"constant-sum dual-head analytic PCM");
    check(std::abs(l-previous)<.065,"time change no discontinuity");}
   previous=l;
@@ -107,14 +115,14 @@ int main(int argc,char** argv){
  // callback segmentation. This component has no block-size assumption.
  double peak=0;
  for(unsigned id=1;id<=9;++id){settings={};settings.enabled=true;check(applyDelayPreset(settings,id),"stress preset");
-  Delay a,b;check(a.prepare(32000,settings)&&b.prepare(32000,settings),"stress prepare");
+  Delay a;check(a.prepare(32000,settings),"stress prepare");
   {Guard guard;for(unsigned n=0;n<96000;++n){
    if(n%997==0){setDelayControl(settings,0,.01+(n%399)*.01);setDelayControl(settings,2,200+(n%199)*100);
-    check(a.set(settings,n%2?10:999)&&b.set(settings,n%2?10:999),"rapid set");}
-   if(n==30000){a.reset();b.reset();}
-   float l,r,x,y;const float input=n%131==0?.8f:0.f;
-   a.tick(input,-input*.5f,l,r);b.tick(input,-input*.5f,x,y);
-   check(l==x&&r==y&&std::isfinite(l)&&std::isfinite(r),"deterministic finite persistent DSP");
+    check(a.set(settings,n%2?10:999),"rapid set");}
+   if(n==30000)a.reset();
+   float l,r;const float input=n%131==0?.8f:0.f;
+   a.tick(input,-input*.5f,l,r);
+   check(std::isfinite(l)&&std::isfinite(r),"finite persistent DSP");
    peak=std::max(peak,std::max(std::abs(double(l)),std::abs(double(r))));++samples;
   }
   float l,r;a.tick(NAN,INFINITY,l,r);check(std::isfinite(l)&&std::isfinite(r),"nonfinite input containment");}

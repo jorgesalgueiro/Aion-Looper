@@ -54,9 +54,11 @@ double Delay::read(unsigned c,double frames) const noexcept {
  const auto age=static_cast<std::size_t>(frames);const double fraction=frames-static_cast<double>(age);
  const auto sample=[&](std::size_t back) noexcept ->double {
   if(back>history)return 0;
-  return ring[(write+ring.size()-back)%ring.size()][c];
+  const auto index=write>=back?write-back:write+ring.size()-back;
+  return ring[index][c];
  };
- const double first=sample(age);return first+(sample(age+1)-first)*fraction;
+ const double first=sample(age);
+ return fraction==0?first:first+(sample(age+1)-first)*fraction;
 }
 void Delay::tick(float left,float right,float& outLeft,float& outRight) noexcept {
  if(!prepared){outLeft=left;outRight=right;return;}
