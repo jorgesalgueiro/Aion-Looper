@@ -6,10 +6,10 @@ working implementation or claim complete Ascii-Looper parity.
 Host-observation increment updated 22 October 2026; fresh evidence is in VALIDATION.md.
 Windows VST3 pluginval and CLAP validator gates added 22 October 2026; their exact scope is recorded there.
 
-## Current delivery and iteration policy — 28 October 2026
+## Current delivery and iteration policy — owner update 30 October 2026
 
-Active formats are Windows Standalone/VST3 and Linux Standalone/LV2. CLAP stays
-opt-in/deferred, preserving code/IDs and historical acceptance. Future macOS is
+Active formats are Windows and Linux Standalone only. VST3/REAPER, LV2/Ardour and
+CLAP stay opt-in/deferred, preserving code/IDs and historical acceptance. Future macOS is
 Standalone/AU; future iOS is Standalone/AUv3. Historical all-format test records
 below are evidence, not the current per-edit build matrix.
 
@@ -124,8 +124,8 @@ juce_add_plugin(AionLooper
 | Preset | Selected default formats | Backend / validation boundary |
 | --- | --- | --- |
 | `core` | No JUCE wrappers | Portable DSP/queue/reference tests; Windows also has an existing MSVC core tree |
-| `windows` | Standalone, VST3 | WebView2; ASIO is opt-in and enabled in this PC's current cache; hardware/host gates separate |
-| `linux` | Standalone, LV2 | JUCE ALSA/JACK, WebKitGTK; current portable tests do not establish current Linux GUI/host acceptance |
+| `windows` | Standalone | WebView2; ASIO is opt-in and enabled in this PC's current cache; hardware/host gates separate |
+| `linux` | Standalone | JUCE ALSA/JACK, WebKitGTK; current portable tests do not establish current Linux GUI/host acceptance |
 | `macos` | Future Standalone, AU | Xcode universal arm64/x86_64; CoreAudio/WebKit; requires a Mac |
 | `ios` | Standalone, AUv3 | Xcode/iPhoneOS, CoreAudio/WebKit; device/signing/extension lifecycle unverified |
 

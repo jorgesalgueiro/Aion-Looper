@@ -11,6 +11,40 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Latest follow-up: planned callback attribution — 21 November 2026
+
+Completed the preceding handoff's **profile the remaining full callback costs**
+step, without another speculative DSP rewrite or advancing unaccepted effects.
+Snapshot `a512d8a` adds an opt-in, non-installed Linux/GNU diagnostic with a
+separate instrumented core object library. The ordinary core, processor, DSP,
+UI/assets, state/IDs and formats are unchanged. Normal builds default OFF.
+
+Normal benchmark fixtures pass Windows 2/2 (0.97s), Linux 2/2 (0.55s) at 64/128.
+Two profiled production workloads (10 loops/96k/64 and 20 loops/96k/128) retain
+all six PCM/state/MIDI fixture checks and accepted normal PCM checksums. Symbol
+and link-map inspection confirms normal core/benchmark have no profiler hooks,
+and the diagnostic resolves core symbols from its explicit instrumented objects.
+Profiling includes fixture and off-audio snapshot work; it is NOT native callback
+latency/deadline evidence. Profiler runtime is not certified audio-thread safe.
+
+Drive::tick dominates sampled executable self time (56.10% / 60.04%); LoopBank's
+own dispatch work and compression follow (roughly 9–12%). Shared-library time,
+instrumentation overhead, coarse samples and inlining limit interpretation.
+Existing disassembly already vectorizes control smoothing; do not propose it
+again as an unmeasured scalar bottleneck. Optional gprof line analysis fails with
+an internal line-table error, so no intra-drive line-level claim is made. This
+tool limitation does not become a new product feature gate.
+
+Full tables, commands, raw-bundle provenance, the fixed diagnostic build failure,
+limits and next bounded investigation:
+[callback attribution](benchmarks/callback-profile-2026-11-21.md).
+No product/audio-suite rebuild/repeat, package, push or dependency upgrade.
+**Next:** distinguish drive wet/dry resampling from nonlinear/tone cost before a
+production optimization; preserve exact sound/ownership and roadmap scope. Do
+not restart rejected cache/type-specialization experiments or add new formats.
+High-rate capacity and historical intermittent editor timeout remain open; no
+new release acceptance is claimed. Return optional profile option OFF after use.
+
 ### Latest follow-up: unused drive midpoint elimination — 21 November 2026
 
 Snapshot `49c1001` keeps accepted T/O/F formulas, smoothing, primitive history, 4x

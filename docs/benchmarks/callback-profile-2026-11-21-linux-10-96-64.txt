@@ -1,0 +1,69 @@
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls  us/call  us/call  name    
+ 56.10      0.69     0.69  4914588     0.14     0.15  aion::Drive::tick(float, float)
+  9.76      0.81     0.12  1638263     0.07     0.07  aion::Compressor::process(float const*, float const*, unsigned int, float*, float*, unsigned long)
+  9.76      0.93     0.12   245731     0.49     4.31  aion::LoopBank::tick(aion::Stereo, bool)
+  4.07      0.98     0.05                             juce::NamedValueSet::set(juce::Identifier const&, juce::var const&)
+  2.44      1.01     0.03     3839     7.81   291.74  aion::Engine::process(float* const*, int, int, std::span<aion::MidiEvent const, 18446744073709551615ul>, bool, aion::ProcessorClockObservation, aion::DeviceCallbackObservation)
+  1.63      1.03     0.02  4914705     0.00     0.01  aion::LoopBank::tickEqualizer(unsigned int, aion::Stereo, bool)
+  1.63      1.05     0.02  4914688     0.00     0.00  aion::LoopBank::tickRetained(aion::LoopBank::Track const&)
+  1.63      1.07     0.02  4914529     0.00     0.00  aion::Drive::antialiased(aion::DriveKind, double, double)
+  1.63      1.09     0.02  1638231     0.01     0.01  aion::Equalizer::process(float const*, float const*, float*, float*, unsigned long)
+  1.63      1.11     0.02  1638198     0.01     0.02  aion::SmoothedEqualizer::process(float const*, float const*, float*, float*, unsigned long)
+  1.63      1.13     0.02                             juce::StringPool::getPooledString(juce::String const&)
+  0.81      1.14     0.01  4914690     0.00     0.00  aion::LoopBank::schedules(aion::LoopBank::Track&)
+  0.81      1.15     0.01  4914572     0.00     0.15  aion::LoopBank::tickDrive(unsigned int, unsigned int, aion::Stereo, bool)
+  0.81      1.16     0.01  3276370     0.00     0.00  aion::Drive::transfer(aion::DriveKind, double)
+  0.81      1.17     0.01     3840     2.60     2.60  aion::Engine::serviceArpPreparations()
+  0.81      1.18     0.01     3840     2.60     2.60  aion::LoopBank::acceptResult()
+  0.81      1.19     0.01     3840     2.60     2.60  aion::LoopBank::view() const
+  0.81      1.20     0.01                             AionProcessor::request(juce::Array<juce::var, juce::DummyCriticalSection, 0> const&)
+  0.81      1.21     0.01                             juce::DynamicObject::~DynamicObject()
+  0.81      1.22     0.01                             juce::var::VariantType::defaultCleanUp(juce::var::ValueUnion&)
+  0.81      1.23     0.01                             juce::String juce::addPooledString<juce::CharPointer_UTF8>(juce::Array<juce::String, juce::DummyCriticalSection, 0>&, juce::CharPointer_UTF8 const&)
+  0.00      1.23     0.00  4914816     0.00     0.00  aion::Compressor::audioRate(unsigned long)
+  0.00      1.23     0.00  4914784     0.00     0.02  aion::LoopBank::tickCompressor(unsigned int, aion::Stereo, bool)
+  0.00      1.23     0.00  2457418     0.00     0.00  aion::LoopBank::tickArp(unsigned int, aion::Stereo, bool)
+  0.00      1.23     0.00  1651075     0.00     0.00  aion::Compressor::saturate(float, float) const
+  0.00      1.23     0.00  1050957     0.00     0.00  aion::Compressor::kneeCurve(float, float) const
+  0.00      1.23     0.00   475163     0.00     0.00  aion::driveDefaults(aion::DriveKind)
+  0.00      1.23     0.00   475162     0.00     0.00  aion::driveControls(aion::DriveKind)
+  0.00      1.23     0.00   307177     0.00     0.00  aion::SmoothedEqualizer::valueAt(unsigned long) const
+  0.00      1.23     0.00   246055     0.00     0.00  aion::MidiController::tick(aion::MidiController::Dispatch&, bool)
+  0.00      1.23     0.00   245732     0.00     0.00  aion::LoopBank::applyPhaseEvents()
+  0.00      1.23     0.00   222478     0.00     0.00  operator new[](unsigned long)
+  0.00      1.23     0.00   222414     0.00     0.00  operator delete[](void*)
+  0.00      1.23     0.00    76789     0.00     0.00  aion::LoopBank::updateRate(aion::LoopBank::Track&, bool)
+  0.00      1.23     0.00    51196     0.00     0.00  aion::Compressor::envelope()
+  0.00      1.23     0.00    40957     0.00     0.00  aion::MidiController::event(aion::MidiEvent const&, aion::MidiController::Dispatch&)
+  0.00      1.23     0.00    38395     0.00     0.00  aion::LoopBank::effectiveRateFor(aion::LoopBank::Track const&, unsigned int) const
+  0.00      1.23     0.00    38361     0.00     0.00  operator delete(void*, unsigned long)
+  0.00      1.23     0.00    38312     0.00     0.00  operator new(unsigned long)
+  0.00      1.23     0.00    12800     0.00     0.00  aion::Compressor::configure(std::array<float, 7ul> const&)
+  0.00      1.23     0.00    12800     0.00     0.00  aion::SmoothedEqualizer::currentValues() const
+  0.00      1.23     0.00     4800     0.00     0.00  aion::validArpValues(std::array<float, 10ul> const&)
+  0.00      1.23     0.00     4800     0.00     0.00  aion::validArpSettings(aion::ArpSettings const&)
+  0.00      1.23     0.00     4800     0.00     0.00  aion::validArpModValues(std::array<float, 12ul> const&)
+  0.00      1.23     0.00     4800     0.00     0.00  aion::compileArpSettings(aion::ArpSettings const&, double, unsigned int, aion::ArpRenderSettings&)
+  0.00      1.23     0.00     3840     0.00     0.00  aion::Engine::serviceArpBank()
+  0.00      1.23     0.00     3840     0.00     0.00  aion::Engine::cancelStaleArpBank()
+  0.00      1.23     0.00     3840     0.00     0.00  aion::Engine::cancelStaleArpPreparations()
+  0.00      1.23     0.00     3840     0.00     0.00  aion::Engine::setTarget(float)
+  0.00      1.23     0.00     3840     0.00     2.60  aion::LoopBank::beginBlock()
+  0.00      1.23     0.00     3840     0.00     0.00  aion::LoopBank::configureSync(aion::SyncSettings)
+  0.00      1.23     0.00     3839     0.00     0.00  aion::MidiController::begin(aion::MidiController::Dispatch&)
+  0.00      1.23     0.00     3839     0.00     0.00  aion::ArpDelayStorage::poll(unsigned long)
+  0.00      1.23     0.00     3839     0.00     0.00  aion::ArpDelayStorage::pollBank(unsigned long, aion::ArpDelayStorage::Completion&)
+  0.00      1.23     0.00     3839     0.00     0.00  aion::LoopBank::pollArps()
+  0.00      1.23     0.00     3838     0.00     0.00  aion::MidiController::view() const
+  0.00      1.23     0.00     3838     0.00     0.00  aion::LoopBank::available() const
+  0.00      1.23     0.00     2400     0.00     0.00  aion::LoopBank::blend(aion::LoopBank::Track&)
+  0.00      1.23     0.00     1721     0.00     0.00  aion::ArpDelayStorage::serviceWorker()
+  0.00      1.23     0.00      240     0.00     0.00  aion::ArpSettingsOwner::serviceBank()
+  0.00      1.23     0.00      240     0.00     0.00  aion::ArpSettingsOwner::service(aion::EngineView const&)
+  0.00      1.23     0.00      240     0.00     0.00  aion::Engine::popArpBank(aion::ArpBankResult&)
+  0.00      1.23     0.00      240     0.00     0.00  aion::Engine::popArpPreparation(aion::ArpPreparationResult&)
+  0.00      1.23     0.00      240     0.00     0.00  main::{lambda(juce::var)#1}::operator()(juce::var) const
