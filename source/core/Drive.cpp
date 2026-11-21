@@ -25,6 +25,10 @@ AION_DRIVE_HOT Frame branch(Frame x,std::array<Frame,N>& state){
  const auto& coefficients=N==5?second:first;constexpr auto split=(N+1)/2;
  for(std::size_t i=Odd?split:0;i<(Odd?N:split);++i){const auto y=coefficients[i]*x+state[i];state[i]=drive_detail::flush(x-coefficients[i]*y);x=y;}return x;
 }
+#if defined(__linux__) && defined(__x86_64__) && defined(__GNUC__) && !defined(__clang__)
+// Retained only for the measured GNU/Linux x64 path. MSVC's complete callback
+// observation regressed despite component gains, so it keeps the old schedule.
+#define AION_DRIVE_PAIRED_DECIMATION 1
 template<std::size_t N,bool Odd>
 AION_DRIVE_HOT std::array<Frame,2> branchPair(std::array<Frame,2> x,std::array<Frame,N>& wet,std::array<Frame,N>& dry){
  const auto& coefficients=N==5?second:first;constexpr auto split=(N+1)/2;
@@ -39,6 +43,7 @@ AION_DRIVE_HOT std::array<Frame,2> downPair(Down& wet,Down& dry,const std::array
  const auto direct=branchPair<N,false>({w[0],d[0]},wet.state,dry.state),odd=branchPair<N,true>({w[1],d[1]},wet.state,dry.state);
  const std::array<Frame,2> out{.5*(direct[0]+wet.delayed),.5*(direct[1]+dry.delayed)};wet.delayed=odd[0];dry.delayed=odd[1];return out;
 }
+#endif
 AION_DRIVE_HOT Frame transfer(DriveKind k,Frame x){
  x=minimum(maximum(x,Frame(-1)),Frame(1));
  return k==DriveKind::overdrive?1.5*x-.5*x*x*x:x;
@@ -108,9 +113,17 @@ AION_DRIVE_HOT Drive::Frame Drive::stereo(Frame x)noexcept{
  const double laterZero=sameBias?firstZero:antialiased(kind,current[1],current[1]);c.zeroPrevious=current[1];
  for(unsigned n=0;n<2;++n){auto b=c.up2.tick(a[n]);std::array<Frame,2> w{},d{};
   for(unsigned j=0;j<2;++j){const auto value=b[j]*current[0]+current[1];w[j]=aa(kind,value,c.previous,c.primitive)-(n==0&&j==0?firstZero:laterZero);c.previous=value;d[j]=.5*(b[j]+c.dryPrevious);c.dryPrevious=b[j];}
+#ifdef AION_DRIVE_PAIRED_DECIMATION
   const auto pair=downPair(c.down2,c.dry2,w,d);wet[n]=pair[0];dry[n]=pair[1];
+#else
+  wet[n]=c.down2.tick(w);dry[n]=c.dry2.tick(d);
+#endif
  }
+#ifdef AION_DRIVE_PAIRED_DECIMATION
  const auto pair=downPair(c.down1,c.dry1,wet,dry);auto w=pair[0];const auto d=pair[1];
+#else
+ auto w=c.down1.tick(wet);const auto d=c.dry1.tick(dry);
+#endif
  const auto dc=w-c.dcInput+dcPole*c.dcOutput;c.dcInput=w;c.dcOutput=drive_detail::flush(dc);
  const double g=current[2],a1=1/(1+g*(g+std::numbers::sqrt2));
  const auto v1=a1*(c.ic1+g*(dc-c.ic2)),v2=c.ic2+g*v1;
@@ -118,6 +131,7 @@ AION_DRIVE_HOT Drive::Frame Drive::stereo(Frame x)noexcept{
  w=current[3]*v2;return d*(1-current[4])+w*current[4];
 }
 #undef AION_DRIVE_HOT
+#undef AION_DRIVE_PAIRED_DECIMATION
 std::array<float,2> Drive::tick(float l,float r)noexcept{
  if(isBypassed())return {l,r};
  for(unsigned p=0;p<5;++p){current[p]+=smoothing*(target[p]-current[p]);if(std::abs(target[p]-current[p])<1.e-14)current[p]=target[p];}
