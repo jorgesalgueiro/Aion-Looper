@@ -9,6 +9,7 @@ function histogram(b){
  const low=Number(b.readBigUInt64LE(21)),high=Number(b.readBigUInt64LE(29)),size=b.readUInt32LE(37),rate=b.readUInt32LE(41);
  assert(Number.isSafeInteger(low)&&Number.isSafeInteger(high)&&high>low,'Unsupported address range');
  assert(size>0&&size<=16*1024*1024&&61+size*2<=b.length,'Invalid histogram length');
+ assert(Number.isSafeInteger((size-1)*(high-low)),'Unsupported histogram scale');
  assert(rate>0&&rate<=1000000,'Invalid sample rate');
  const bins=[];let total=0;
  for(let i=0;i<size;++i){const count=b.readUInt16LE(61+i*2);if(count){assert(bins.length<8192,'Too many nonzero buckets');const address=low+Math.floor(i*(high-low)/size);assert(Number.isSafeInteger(address),'Unsupported bucket address');bins.push({address,count});total+=count;}}
@@ -39,12 +40,14 @@ function classify(frames,r){
  return 'drive_other';
 }
 function main(){
- assert.equal(process.argv.length,5,'Usage: node tools/AttributeDriveProfile.cjs EXECUTABLE GMON EXPECTED_DRIVE_CPP_SHA256');
- const [executable,profile,expected]=process.argv.slice(2);assert(/^[0-9a-f]{64}$/i.test(expected),'Expected source SHA256');
- const source=fs.readFileSync(path.resolve(__dirname,'../source/core/Drive.cpp')),hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+ assert(process.argv.length===6||process.argv.length===7,'Usage: node tools/AttributeDriveProfile.cjs EXECUTABLE GMON SOURCE_SHA256 EXECUTABLE_SHA256 [FROZEN_DRIVE_CPP]');
+ const [executable,profile,expected,expectedBinary,frozenSource]=process.argv.slice(2);assert(/^[0-9a-f]{64}$/i.test(expected)&&/^[0-9a-f]{64}$/i.test(expectedBinary),'Expected source and executable SHA256');
+ const bounded=(file,max)=>{const info=fs.statSync(file);assert(info.isFile()&&info.size<=max,'Input file exceeds supported bounds');return fs.readFileSync(file);};
+ const source=bounded(frozenSource||path.resolve(__dirname,'../source/core/Drive.cpp'),1024*1024),hash=b=>crypto.createHash('sha256').update(b).digest('hex');
  assert.equal(hash(source),expected.toLowerCase(),'Source changed since measured snapshot; refusing current line anchors');
- const elf=fs.readFileSync(executable);assert(elf.toString('hex',0,4)==='7f454c46'&&elf[4]===2&&elf[5]===1,'Only ELF64 little-endian is supported');
- const raw=fs.readFileSync(profile),h=histogram(raw),addresses=h.bins.map(b=>b.address);
+ const elf=bounded(executable,256*1024*1024);assert(elf.toString('hex',0,4)==='7f454c46'&&elf[4]===2&&elf[5]===1,'Only ELF64 little-endian is supported');
+ assert.equal(hash(elf),expectedBinary.toLowerCase(),'Executable changed since measured snapshot');
+ const raw=bounded(profile,64*1024*1024),h=histogram(raw),addresses=h.bins.map(b=>b.address);
  const result=cp.spawnSync('addr2line',['-a','-f','-C','-i','-e',executable],{input:addresses.map(a=>'0x'+a.toString(16)).join('\n')+'\n',encoding:'utf8',maxBuffer:16*1024*1024,timeout:60000});
  if(result.error)throw result.error;assert.equal(result.status,0,result.stderr);
  const stacks=locations(result.stdout,addresses),ranges=sourceRanges(source.toString('utf8')),counts={};

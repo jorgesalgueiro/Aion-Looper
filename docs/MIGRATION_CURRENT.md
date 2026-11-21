@@ -11,6 +11,26 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Active follow-up: measured decimator scheduling — 21 November 2026
+
+Completed the planned intra-drive attribution using EXISTING gmon samples, not
+another instrumented audio render. Offline inline-aware addr2line resolution
+finds up/downsampling in 39/72 and 149/296 identified drive samples. Decimation
+is the largest resolved stage; roughly 35% of drive samples remain other work,
+so this is not exact per-stage timing. The new bounded offline resolver checks
+format/ranges, source/executable identity and retains unknown/unresolved groups;
+malformed-input/inline classification regression is registered in CTest.
+
+Based on that evidence, the candidate interleaves independent wet/dry decimator
+recurrences. Every path keeps its original coefficients, equations, state and
+sample order; no oversampling/quality/controls/IDs/layout change. No new storage,
+allocation, lock or product API. Initial paired Windows accepted/current checks
+match PCM exactly and reduce means in all nine cases (roughly 1–4%). Windows
+core/reference/ownership plus offline attribution regression pass 6/6 (9.73s),
+with the unchanged scalar/native/portable gates. Linux/native processor/sanitizer
+and production callback observations are pending; do not advance or claim full
+capacity from this component result. No package/push/dependency change.
+
 ### Latest follow-up: planned callback attribution — 21 November 2026
 
 Completed the preceding handoff's **profile the remaining full callback costs**

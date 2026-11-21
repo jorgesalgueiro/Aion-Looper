@@ -25,6 +25,20 @@ AION_DRIVE_HOT Frame branch(Frame x,std::array<Frame,N>& state){
  const auto& coefficients=N==5?second:first;constexpr auto split=(N+1)/2;
  for(std::size_t i=Odd?split:0;i<(Odd?N:split);++i){const auto y=coefficients[i]*x+state[i];state[i]=drive_detail::flush(x-coefficients[i]*y);x=y;}return x;
 }
+template<std::size_t N,bool Odd>
+AION_DRIVE_HOT std::array<Frame,2> branchPair(std::array<Frame,2> x,std::array<Frame,N>& wet,std::array<Frame,N>& dry){
+ const auto& coefficients=N==5?second:first;constexpr auto split=(N+1)/2;
+ for(std::size_t i=Odd?split:0;i<(Odd?N:split);++i){
+  const auto w=coefficients[i]*x[0]+wet[i],d=coefficients[i]*x[1]+dry[i];
+  wet[i]=drive_detail::flush(x[0]-coefficients[i]*w);dry[i]=drive_detail::flush(x[1]-coefficients[i]*d);x={w,d};
+ }return x;
+}
+template<class Down>
+AION_DRIVE_HOT std::array<Frame,2> downPair(Down& wet,Down& dry,const std::array<Frame,2>& w,const std::array<Frame,2>& d){
+ constexpr auto N=std::tuple_size_v<decltype(wet.state)>;
+ const auto direct=branchPair<N,false>({w[0],d[0]},wet.state,dry.state),odd=branchPair<N,true>({w[1],d[1]},wet.state,dry.state);
+ const std::array<Frame,2> out{.5*(direct[0]+wet.delayed),.5*(direct[1]+dry.delayed)};wet.delayed=odd[0];dry.delayed=odd[1];return out;
+}
 AION_DRIVE_HOT Frame transfer(DriveKind k,Frame x){
  x=minimum(maximum(x,Frame(-1)),Frame(1));
  return k==DriveKind::overdrive?1.5*x-.5*x*x*x:x;
@@ -94,9 +108,9 @@ AION_DRIVE_HOT Drive::Frame Drive::stereo(Frame x)noexcept{
  const double laterZero=sameBias?firstZero:antialiased(kind,current[1],current[1]);c.zeroPrevious=current[1];
  for(unsigned n=0;n<2;++n){auto b=c.up2.tick(a[n]);std::array<Frame,2> w{},d{};
   for(unsigned j=0;j<2;++j){const auto value=b[j]*current[0]+current[1];w[j]=aa(kind,value,c.previous,c.primitive)-(n==0&&j==0?firstZero:laterZero);c.previous=value;d[j]=.5*(b[j]+c.dryPrevious);c.dryPrevious=b[j];}
-  wet[n]=c.down2.tick(w);dry[n]=c.dry2.tick(d);
+  const auto pair=downPair(c.down2,c.dry2,w,d);wet[n]=pair[0];dry[n]=pair[1];
  }
- auto w=c.down1.tick(wet);const auto d=c.dry1.tick(dry);
+ const auto pair=downPair(c.down1,c.dry1,wet,dry);auto w=pair[0];const auto d=pair[1];
  const auto dc=w-c.dcInput+dcPole*c.dcOutput;c.dcInput=w;c.dcOutput=drive_detail::flush(dc);
  const double g=current[2],a1=1/(1+g*(g+std::numbers::sqrt2));
  const auto v1=a1*(c.ic1+g*(dc-c.ic2)),v2=c.ic2+g*v1;
