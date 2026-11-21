@@ -11,9 +11,9 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
-### Active follow-up: unused drive midpoint elimination — 21 November 2026
+### Latest follow-up: unused drive midpoint elimination — 21 November 2026
 
-Candidate keeps accepted T/O/F formulas, smoothing, primitive history, 4x
+Snapshot `49c1001` keeps accepted T/O/F formulas, smoothing, primitive history, 4x
 oversampling, state/layout/IDs and controls. O/F now skip midpoint transfer and
 safe-denominator selection only when NEITHER stereo lane uses that fallback.
 Both-close/mixed cases retain their original behavior. No new storage, callback
@@ -24,16 +24,35 @@ Acceptance: preserve all prior scalar/reference/ownership regressions and their
 tolerances; add exact PCM for independent silent/changing lanes and all four mask
 combinations, including 64/128. Windows core/connected/reference: 5/5 (10.42s).
 Native AND forced-portable paths each compare 4,818,576 samples, max error zero.
-Initial same-process accepted/current component observations improve O/F means
-in all six cases; distortion is effectively unchanged. This is not yet evidence
-of full callback capacity. Production processor, Linux, sanitizer and controlled
-callback validation remain pending for this candidate. Do not advance effects.
+Windows production processor/CLI/MIDI + callback fixtures pass 4/4 (33.25s).
+Linux focused core/reference/processor fixtures pass 9/9 (14.08s), including the
+same 4,818,576-sample zero-error native AND portable comparisons. Linux ASan/UBSan
+with leak detection/halt on UB passes 4/4 (259.05s), no suppressions. Both
+Standalone builds and original-JS capture/OD/SUB audits pass (126 cases, 965,826
+samples, max error 7.394757495227111e-8). Controls/UI/bridge code did not change;
+reuse the prior 40 real document-reload checks rather than repeat unchanged UI.
+
+Paired component observations improve O/F means in all six cases on both OSes
+(about 1.7–5.2%). Distortion arithmetic is unchanged but some measured cases are
+slower (Linux up to about 1.9%); preserve that tradeoff. All 24 full production
+fixtures per OS pass state/PCM/zero tracked C++ callback heap checks. Controlled
+ABBA means improve about 2.5% on Linux and under 1% on Windows; deadline misses
+are NOT consistently better. Twenty Windows loops at 96k/64 with QCTFO miss all
+observed deadlines. This kernel improvement does not close high-rate capacity.
+Do not promote release readiness or advance to another effect on these timings.
 
 The opt-in processor snapshot benchmark now accepts
 `AION_DRIVE_SNAPSHOT_REVISION` (default still fcef1a9) so the new change can be
 isolated against accepted `9b874ef`, which already contains bias reuse. Header
 compatibility and immutable generated-source/link-ownership guards remain.
-Restore benchmark OFF/default revision after measurements. No package/push.
+Both app caches restored to benchmark OFF/default revision after measurements.
+All measurements, negative/tail cases, provenance and exact commands:
+[midpoint validation](benchmarks/drive-midpoint-2026-11-21.md).
+No package/push/dependency/format change. **Next:** profile the remaining full
+callback costs and choose the next bounded optimization; retain the existing
+sound/ownership gates. Avoid another cache/specialization rewrite without new
+evidence; their rejected results remain documented. The historical intermittent
+editor/CDP timeout remains undiagnosed, not reproduced/fixed by this DSP work.
 
 ### Latest follow-up: document-owned drive UI acceptance — 20 November 2026
 
