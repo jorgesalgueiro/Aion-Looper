@@ -43,7 +43,8 @@ No product/audio-suite rebuild/repeat, package, push or dependency upgrade.
 production optimization; preserve exact sound/ownership and roadmap scope. Do
 not restart rejected cache/type-specialization experiments or add new formats.
 High-rate capacity and historical intermittent editor timeout remain open; no
-new release acceptance is claimed. Return optional profile option OFF after use.
+new release acceptance is claimed. The committed Release guard configures
+successfully; optional profiling is restored OFF (`build/callback-profile-restore-default.log`).
 
 ### Latest follow-up: unused drive midpoint elimination — 21 November 2026
 

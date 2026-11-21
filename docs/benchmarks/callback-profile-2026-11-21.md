@@ -77,6 +77,8 @@ Unique raw bundles in the independent WSL checkout:
 fixtures JSONL, empty stderr, PID-specific gmon binary and full function report.
 Link map: `build/linux/callback-profile-link.map`. Initial failure and successful
 rebuild logs: `build/callback-profile-{build,rebuild}.log`. No packages or pushes.
+The committed Release-only guard configured successfully and the optional target
+was restored OFF afterward; logs are `build/callback-profile-{release-guard,restore-default}.log`.
 
 ## Reproduce
 
