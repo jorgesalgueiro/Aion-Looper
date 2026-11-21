@@ -47,6 +47,7 @@ AION_STEREO_INLINE Frame root(Frame a){return frame(_mm_sqrt_pd(load(a)));}
 AION_STEREO_INLINE Mask less(Frame a,Frame b){return _mm_cmplt_pd(load(a),load(b));}
 AION_STEREO_INLINE Mask lessEqual(Frame a,Frame b){return _mm_cmple_pd(load(a),load(b));}
 AION_STEREO_INLINE bool both(Mask m){return _mm_movemask_pd(m)==3;}
+AION_STEREO_INLINE bool none(Mask m){return _mm_movemask_pd(m)==0;}
 AION_STEREO_INLINE Frame select(Mask m,Frame a,Frame b){return frame(_mm_or_pd(_mm_and_pd(m,load(a)),_mm_andnot_pd(m,load(b))));}
 #else
 using Mask=std::array<bool,2>;
@@ -61,6 +62,7 @@ AION_STEREO_INLINE Frame root(Frame a){return {std::sqrt(a.v[0]),std::sqrt(a.v[1
 AION_STEREO_INLINE Mask less(Frame a,Frame b){return {a.v[0]<b.v[0],a.v[1]<b.v[1]};}
 AION_STEREO_INLINE Mask lessEqual(Frame a,Frame b){return {a.v[0]<=b.v[0],a.v[1]<=b.v[1]};}
 AION_STEREO_INLINE bool both(Mask m){return m[0]&&m[1];}
+AION_STEREO_INLINE bool none(Mask m){return !m[0]&&!m[1];}
 AION_STEREO_INLINE Frame select(Mask m,Frame a,Frame b){return {m[0]?a.v[0]:b.v[0],m[1]?a.v[1]:b.v[1]};}
 #endif
 AION_STEREO_INLINE Frame flush(Frame x){return select(less(absolute(x),Frame(1.e-30)),Frame(0),x);}

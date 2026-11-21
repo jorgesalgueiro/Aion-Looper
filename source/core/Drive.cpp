@@ -39,9 +39,13 @@ AION_DRIVE_HOT Frame aa(DriveKind k,Frame x,Frame previous,Frame& primitive){
  if(k==DriveKind::distortion){const auto next=root(1+x*x),result=(x+previous)/(next+primitive);primitive=next;return result;}
  const auto difference=x-previous;
  const auto close=less(absolute(difference),1.e-5*(1+maximum(absolute(x),absolute(previous))));
- const auto midpoint=transfer(k,.5*(x+previous));
  const auto next=integral(k,x),before=primitive;primitive=next;
- if(drive_detail::both(close))return midpoint;
+ if(drive_detail::both(close))return transfer(k,.5*(x+previous));
+ // Neither independent lane needs the midpoint or a guarded denominator.
+ // Keep the same divided difference and primitive history, without computing
+ // an unused fallback transfer. Mixed lanes retain the original safe select.
+ if(drive_detail::none(close))return (next-before)/difference;
+ const auto midpoint=transfer(k,.5*(x+previous));
  // Do not evaluate a zero denominator in a lane selected for the midpoint.
  return select(close,midpoint,(next-before)/select(close,Frame(1),difference));
 }

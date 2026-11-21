@@ -12,6 +12,10 @@ void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
 }
 void driveStereoReferenceTests(bool& watch,std::atomic<unsigned>& calls){
  using namespace aion;double maximum=0;std::uint64_t samples=0;
+ for(bool left:{false,true})for(bool right:{false,true}){
+  const auto mask=drive_detail::less(drive_detail::Frame(left?0.:1.,right?0.:1.),drive_detail::Frame(.5));
+  check(drive_detail::none(mask)==(!left&&!right)&&drive_detail::both(mask)==(left&&right),"Independent stereo midpoint mask classification");
+ }
  for(double rate:{8000.,22050.,32000.,44100.,48000.,96000.,192000.,384000.})for(unsigned kind=0;kind<3;++kind){
   const auto k=static_cast<DriveKind>(kind);auto settings=driveDefaults(k);settings.enabled=true;
   Drive packed;ScalarDrive reference;
@@ -92,6 +96,19 @@ void driveStereoReferenceTests(bool& watch,std::atomic<unsigned>& calls){
     check(packed.set(settings)&&reference.set(settings),"Signed-zero or changing bias");
     check(packed.process(l.data(),r.data(),pl.data(),pr.data(),128)&&reference.process(l.data(),r.data(),sl.data(),sr.data(),128),"Bias boundary rendering");
     watch=false;compare(128);check(pl==sl&&pr==sr,"Bias boundary retains accepted PCM");
+   }
+  }
+
+  // Exercise both-close, mixed and neither-close histories, including silent
+  // lanes beside independently changing lanes. Primitive history must advance
+  // identically even when a fallback transfer is not evaluated.
+  settings=driveDefaults(k);settings.enabled=true;
+  for(unsigned pattern=0;pattern<4;++pattern){
+   check(packed.prepare(rate,k,settings)&&reference.prepare(rate,k,settings),"Midpoint lane-history preparation");
+   for(unsigned n=0;n<8;++n){const unsigned block=n%2?128:64;
+    for(unsigned i=0;i<block;++i){l[i]=pattern&1?static_cast<float>(.4*std::sin((n*128+i)*.19)):0;r[i]=pattern&2?static_cast<float>(.3*std::cos((n*128+i)*.23)):0;}
+    watch=true;check(packed.process(l.data(),r.data(),pl.data(),pr.data(),block)&&reference.process(l.data(),r.data(),sl.data(),sr.data(),block),"Midpoint lane-history rendering");watch=false;compare(block);
+    for(unsigned i=0;i<block;++i)check(pl[i]==sl[i]&&pr[i]==sr[i],"Unused midpoint elimination retains exact accepted float PCM");
    }
   }
 

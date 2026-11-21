@@ -11,6 +11,30 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Active follow-up: unused drive midpoint elimination — 21 November 2026
+
+Candidate keeps accepted T/O/F formulas, smoothing, primitive history, 4x
+oversampling, state/layout/IDs and controls. O/F now skip midpoint transfer and
+safe-denominator selection only when NEITHER stereo lane uses that fallback.
+Both-close/mixed cases retain their original behavior. No new storage, callback
+allocation, approximation or product/UI changes. A pure `none` mask helper is
+provided for SSE2 and portable frames; existing frame operations are unchanged.
+
+Acceptance: preserve all prior scalar/reference/ownership regressions and their
+tolerances; add exact PCM for independent silent/changing lanes and all four mask
+combinations, including 64/128. Windows core/connected/reference: 5/5 (10.42s).
+Native AND forced-portable paths each compare 4,818,576 samples, max error zero.
+Initial same-process accepted/current component observations improve O/F means
+in all six cases; distortion is effectively unchanged. This is not yet evidence
+of full callback capacity. Production processor, Linux, sanitizer and controlled
+callback validation remain pending for this candidate. Do not advance effects.
+
+The opt-in processor snapshot benchmark now accepts
+`AION_DRIVE_SNAPSHOT_REVISION` (default still fcef1a9) so the new change can be
+isolated against accepted `9b874ef`, which already contains bias reuse. Header
+compatibility and immutable generated-source/link-ownership guards remain.
+Restore benchmark OFF/default revision after measurements. No package/push.
+
 ### Latest follow-up: document-owned drive UI acceptance — 20 November 2026
 
 Scope: repair a confirmed test-readiness gap while investigating the historical
