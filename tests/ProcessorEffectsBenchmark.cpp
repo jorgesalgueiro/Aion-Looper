@@ -13,7 +13,8 @@
 #include <new>
 #include <vector>
 #ifdef AION_GPROF_CORE
-#include <sys/gmon.h>
+// glibc exports moncontrol but its installed sys/gmon.h omits the declaration.
+extern "C" void moncontrol(int);
 #endif
 #ifdef AION_DRIVE_SNAPSHOT_RUN
 extern "C" const char* aionDriveSnapshotIdentity();
