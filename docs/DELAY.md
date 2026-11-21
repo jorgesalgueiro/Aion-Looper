@@ -136,6 +136,36 @@ ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build
 
 ## Remaining before D is a working feature
 
+Latest connected evidence, source/test snapshot `bd2e34d`, 21 November 2026:
+
+- Final Windows Release Delay CTest: 5/5, 6.10s.
+- Final native WSL Linux Release Delay CTest: 5/5, 1.18s.
+- Linux ASan/UBSan Debug with leak detection: 5/5, 12.71s; no reported
+  sanitizer errors or suppressions.
+- Final Windows and Linux `aion_core_tests --loop-edits` pass capture/edit,
+  reverse, history, Multiply, Start and Merge assertions, including their
+  allocation/ownership guards. These existing cases were not removed or relaxed.
+- Existing drive, Arp and signal-chain connected regressions pass in the broader
+  selected runs. Those runs were **not 9/9 passes**: the exhaustive
+  `core_realtime_contract` processes were manually stopped at 796.17s on Windows
+  (pre-final tempo/bypass version) and 342.69s on Linux. CTest records the stopped
+  cases as failed/terminated. No assertion failure was observed before stopping;
+  no cause or CPU-speed conclusion is inferred. Full core-suite completion
+  remains an integration acceptance gap; use focused checks during this slice.
+- No product Standalone/GUI/CLI/listening/hardware test or wrapper build was
+  executed for this internal integration; no package or remote push.
+
+The storage fixture now renders its initial 20ms fade (160 zero frames at 8 kHz)
+before requesting another owner. This reflects the new bounded admission rule,
+not a removed failure case: all original OOM/PCM/cancel/exhaustion checks remain.
+Added independent every-sample dry/new and old/new crossfade oracles, clear during
+fade, and proof that retired bytes remain reserved until worker reclamation.
+No tolerances were loosened. No ownership/destruction work moved onto audio.
+
+For the next edit, use the five Delay cases above plus affected existing cases
+and `aion_core_tests --loop-edits` when source/history paths change. Do not make
+another exhaustive suite/profile run the default prerequisite to command wiring.
+
 Latest executed checks, source snapshot `5707e01`, 21 November 2026:
 
 - Windows Release: four focused checks passed, 0.88s.
