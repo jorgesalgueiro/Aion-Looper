@@ -14,6 +14,9 @@ public:
  Delay(Delay&&)=delete;
  Delay& operator=(Delay&&)=delete;
  bool prepare(double sampleRate,const DelaySettings& settings={},double bpm=120) noexcept;
+ static std::size_t requiredStorageFrames(double sampleRate,const DelaySettings&) noexcept;
+ // Mode changes and increasing exact count beyond prepared capacity require
+ // a worker-prepared replacement. Rejection preserves the complete old owner.
  bool set(const DelaySettings&,double bpm) noexcept;
  void reset() noexcept;
  void tick(float left,float right,float& outLeft,float& outRight) noexcept;
@@ -22,6 +25,7 @@ public:
 private:
  double read(unsigned channel,double frames) const noexcept;
  void derive(double bpm) noexcept;
+ double damp(double input,double& state1,double& state2) noexcept;
  std::vector<std::array<float,2>> ring;
  DelaySettings target{};
  std::size_t write=0,history=0;
@@ -31,6 +35,9 @@ private:
  double g=0,gTarget=0,a1=0;
  double cachedDamp=-1,cachedPanSpeed=-1;
  std::array<double,2> ic1{},ic2{};
+ std::array<std::array<double,2>,delayMaximumRepeats-1> tapIc1{},tapIc2{};
+ std::array<double,delayMaximumRepeats> tapGain{};
+ unsigned preparedRepeats=1;
  double sine=0,cosine=1,rotationSin=0,rotationCos=1;
  unsigned phaseAge=0;
  bool prepared=false,asleep=true;

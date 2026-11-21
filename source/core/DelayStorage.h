@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+#pragma once
+#include "Delay.h"
+#include <atomic>
+#include <memory>
+#include <optional>
+namespace aion {
+// Single audio owner + sole existing worker. Internal preparation component;
+// not yet connected to LoopBank. Borrowed graphs never enter UI snapshots.
+class DelayStorage {
+public:
+ static constexpr unsigned trackCount=20,capacity=40;
+ static constexpr std::size_t defaultBudget=256u*1024u*1024u;
+ struct View {bool active=false,pending=false,failed=false;std::uint64_t installation=0;};
+ struct Completion {std::uint32_t installed=0,failed=0;};
+ explicit DelayStorage(std::size_t byteBudget=defaultBudget);
+ DelayStorage(const DelayStorage&)=delete;
+ DelayStorage& operator=(const DelayStorage&)=delete;
+ // Both owners must be quiescent. Invalid rates leave the bank untouched.
+ bool prepareStopped(double sampleRate) noexcept;
+ void releaseStopped() noexcept;
+ // Audio-only. Fixed slot and ring-byte limits reject before mutation. One
+ // pending preparation per track; old owner survives cancellation or failure.
+ bool request(unsigned track,const DelaySettings&,double bpm) noexcept;
+ void cancel(unsigned track) noexcept;
+ void clear(unsigned track) noexcept;
+ void clearAll() noexcept;
+ Completion poll() noexcept;
+ Delay* graph(unsigned track) noexcept; // valid until next poll/clear/prepare
+ View view(unsigned track) const noexcept;
+ // Sole worker: reclaim retired storage before allocating at most one request.
+ void serviceWorker() noexcept;
+private:
+ enum class Phase : unsigned {free,queued,preparing,ready,failed,active,retired};
+ static_assert(std::atomic<Phase>::is_always_lock_free);
+ static_assert(std::atomic<bool>::is_always_lock_free);
+ struct Slot {
+  std::atomic<Phase> phase{Phase::free};std::atomic<bool> cancelled{false};
+  unsigned track=0;std::size_t bytes=0;double bpm=120;DelaySettings settings{};
+  std::optional<Delay> graph; // created/destroyed only off audio
+ };
+ std::unique_ptr<std::array<Slot,capacity>> slots;
+ std::array<Slot*,trackCount> active{},pending{};
+ std::array<bool,trackCount> failed{};
+ std::array<std::uint64_t,trackCount> installations{};
+ const std::size_t budget;
+ double rate=0;unsigned cursor=0;
+};
+}

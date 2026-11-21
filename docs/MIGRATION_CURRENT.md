@@ -11,6 +11,28 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Delay exact repeats + Feedback — 21 November 2026
+
+Owner explicitly requests both: exact 1/2/3/multiple repeats and fading Feedback.
+Added native mode/count metadata (1–10), separate finite stereo taps and preserved
+legacy Feedback values/presets. Exact mode has no recirculation and handles
+overlapping input independently; later copies use damping and a 0.65 level taper.
+Original presets restore Feedback mode. New controls are NOT yet exposed in the
+app, serialized or shared through GUI/CLI commands.
+
+Added internal `DelayStorage`: 20 tracks / 40 slots, a default 256 MiB ring budget,
+worker-only preparation/destruction, atomic overflow rejection, stale-result
+identity guards and preservation of active audio after OOM/cancellation. It is
+not yet connected to LoopBank. Windows focused tests 4/4 (0.88s); Linux validation
+is the next checkpoint. Counts 1/2/3/10, overlapping input, 64/128 tick grouping,
+feedback regression, budget boundaries, cancellation during real allocation and
+zero tracked audio heap operations are exercised. See [DELAY.md](DELAY.md).
+
+Next: integrate preparation with LoopBank/Engine generation and acknowledgement
+guards, click-free mode/count-capacity replacement and atomic bank restore, then
+chain + shared GUI/CLI/MIDI/state. Keep D unavailable until connected acceptance.
+Broad CPU work remains deferred by owner request.
+
 ### Owner priority resolved — 21 November 2026
 
 Resume remaining loop features; broad CPU profiling/tuning moves to hardening

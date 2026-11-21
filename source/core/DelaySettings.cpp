@@ -17,16 +17,25 @@ bool validValues(const DelayValues& v) noexcept {
 }
 }
 bool validDelaySettings(const DelaySettings& s) noexcept {
- return validValues(s.values)&&s.preset<=presets.size()&&(!s.preset||s.values==presets[s.preset-1]);
+ return validValues(s.values)&&s.preset<=presets.size()
+  &&(s.repeatMode==DelayRepeatMode::feedback||s.repeatMode==DelayRepeatMode::exact)
+  &&s.repeatCount>=1&&s.repeatCount<=delayMaximumRepeats
+  &&(!s.preset||(s.values==presets[s.preset-1]&&s.repeatMode==DelayRepeatMode::feedback));
 }
 bool applyDelayPreset(DelaySettings& s,unsigned id) noexcept {
  if(!validDelaySettings(s)||!id||id>presets.size())return false;
- s.values=presets[id-1];s.preset=static_cast<std::uint8_t>(id);return true;
+ s.values=presets[id-1];s.preset=static_cast<std::uint8_t>(id);
+ s.repeatMode=DelayRepeatMode::feedback;return true;
 }
 bool setDelayControl(DelaySettings& s,unsigned p,double value) noexcept {
  if(!validDelaySettings(s)||p>=delayControls.size()||!std::isfinite(value)
   ||value<delayControls[p].minimum||value>delayControls[p].maximum
   ||(p==6&&value!=0&&value!=1))return false;
  s.values[p]=value==0?0:value;s.preset=0;return true;
+}
+bool setDelayRepeats(DelaySettings& s,DelayRepeatMode mode,unsigned count) noexcept {
+ if(!validDelaySettings(s)||(mode!=DelayRepeatMode::feedback&&mode!=DelayRepeatMode::exact)
+  ||count<1||count>delayMaximumRepeats)return false;
+ s.repeatMode=mode;s.repeatCount=count;s.preset=0;return true;
 }
 }

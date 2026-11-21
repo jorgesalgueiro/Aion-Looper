@@ -5,6 +5,8 @@
 #include <string_view>
 namespace aion {
 struct DelayControl {std::string_view name;double initial,minimum,maximum,step;};
+enum class DelayRepeatMode : std::uint8_t { feedback, exact };
+inline constexpr unsigned delayMaximumRepeats=10;
 inline constexpr std::array<DelayControl,7> delayControls{{
  {"time",.375,.01,4,.01},{"repetitions",4,0,10,1},
  {"damp",3000,200,20000,100},{"mix",.4,0,1,.01},
@@ -19,9 +21,13 @@ inline constexpr std::array<std::string_view,9> delayPresetNames{
  "short-ambience","tape-echo","rhythmic"};
 struct DelaySettings {
  DelayValues values=delayDefaults();bool enabled=false;std::uint8_t preset=0;
+ // Additive native controls. Legacy values/presets retain feedback semantics.
+ DelayRepeatMode repeatMode=DelayRepeatMode::feedback;
+ unsigned repeatCount=1;
  bool operator==(const DelaySettings&) const noexcept=default;
 };
 bool validDelaySettings(const DelaySettings&) noexcept;
 bool applyDelayPreset(DelaySettings&,unsigned) noexcept;
 bool setDelayControl(DelaySettings&,unsigned,double) noexcept;
+bool setDelayRepeats(DelaySettings&,DelayRepeatMode,unsigned count) noexcept;
 }

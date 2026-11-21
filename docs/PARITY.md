@@ -8,7 +8,7 @@ or Apple acceptance.
 
 | Capability | Foundation status | Release acceptance |
 | --- | --- | --- |
-| D / Delay | Internal DSP/settings component: original six sliders, sync flag and nine presets; prepared stereo ring, time crossfades, feedback damping and wet pan | Not connected to GUI/CLI/MIDI/state/chain yet. Component/reference evidence and remaining acceptance: [DELAY.md](DELAY.md). Broad CPU tuning deferred by owner until remaining features implemented |
+| D / Delay | Internal DSP/settings + bounded storage: exact 1–10 repeat mode and original Feedback mode; six legacy sliders, sync flag and nine presets; time crossfades, damping and wet pan | Not connected to GUI/CLI/MIDI/state/chain yet. Component/reference evidence and remaining acceptance: [DELAY.md](DELAY.md). Broad CPU tuning deferred by owner until remaining features implemented |
 | Original runtime assets | 16 files preserved with SHA256 | Automated byte identity checks |
 | Running-Standalone CLI | Development Python client routes existing native operations to the same session/processor using bounded private local mailboxes; exact-ID outcomes and instance selection | Native 64/128 external-process and real Standalone/WebView checks are recorded in VALIDATION.md; unported engines, remaining session/device setup commands, compiled/bundled CLI and Apple remain separate |
 | Native build formats | CMake targets/platform guards configured | Compile/load/validate each OS+format |
