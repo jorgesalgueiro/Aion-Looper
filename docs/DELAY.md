@@ -102,7 +102,26 @@ ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build
 
 ## Remaining before D is a working feature
 
-Executed 21 November 2026, source snapshot `e75c210`:
+Latest executed checks, source snapshot `5707e01`, 21 November 2026:
+
+- Windows Release: four focused checks passed, 0.88s.
+- Native WSL Linux Release: four focused checks passed, 0.88s.
+- Linux ASan/UBSan Debug with leak detection: four focused checks passed, 5.65s;
+  no reported sanitizer errors or suppressions. An initial Makefile multi-target
+  invocation did not see newly generated targets; explicit CMake regeneration
+  followed by the documented build fixed the invocation, then all checks ran.
+- Exact-count tests cover 1/2/3/10 at 8/32/48 kHz with 64/128 tick grouping,
+  independently overlapping input trains, no extra recirculated echo, legacy
+  feedback, capacity rejection, OOM rollback and zero tracked audio heap work.
+- Ownership tests cover 20 tracks, 40-slot exhaustion/recovery, ring-budget
+  boundaries, active PCM preservation, stale completions, clear during a real
+  worker allocation, rate reset and worker-only retirement. ASan is not a data
+  race detector; this is not a claim of ThreadSanitizer or full Engine acceptance.
+
+No UI/CLI, session persistence, connected Engine, listening or hardware checks
+were run for these internal changes. No package or remote push.
+
+Earlier component evidence, source snapshot `e75c210`:
 
 - Windows Release: focused CTest 2/2, 0.48s.
 - Native WSL Linux Release: focused CTest 2/2, 0.65s.

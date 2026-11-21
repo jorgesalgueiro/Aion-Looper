@@ -23,8 +23,11 @@ app, serialized or shared through GUI/CLI commands.
 Added internal `DelayStorage`: 20 tracks / 40 slots, a default 256 MiB ring budget,
 worker-only preparation/destruction, atomic overflow rejection, stale-result
 identity guards and preservation of active audio after OOM/cancellation. It is
-not yet connected to LoopBank. Windows focused tests 4/4 (0.88s); Linux validation
-is the next checkpoint. Counts 1/2/3/10, overlapping input, 64/128 tick grouping,
+not yet connected to LoopBank. Source snapshot `5707e01`: Windows focused tests
+4/4 (0.88s), native WSL Linux Release 4/4 (0.88s), Linux ASan/UBSan/leak Debug
+4/4 (5.65s), no reported sanitizer errors or suppressions. The sanitizer Makefile
+needed an explicit CMake regeneration before its new targets were available;
+the corrected build/test completed. Counts 1/2/3/10, overlapping input, 64/128 tick grouping,
 feedback regression, budget boundaries, cancellation during real allocation and
 zero tracked audio heap operations are exercised. See [DELAY.md](DELAY.md).
 
