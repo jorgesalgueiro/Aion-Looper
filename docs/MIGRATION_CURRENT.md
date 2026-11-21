@@ -11,6 +11,30 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Connected LoopBank D / prepared-owner transitions — 21 November 2026
+
+D now uses LoopBank's existing worker and editable signal-chain position. Added
+clear-epoch/settings-revision admission/adoption checks, success-only settings
+commit, superseding-live-edit cancellation, STOP/DEL/reprepare cleanup and a
+20ms pinned old/new owner crossfade. Old ring bytes stay budgeted until actual
+worker reclamation. Absent D owners skip processing; removing D cannot strand a
+hidden owner transition. Synced tempo updates both transition owners, fresh
+adoption initializes at the latest tempo, and timeline reset uses reset-clock BPM.
+
+New connected tests capture/finalize actual native loop PCM, use the real worker,
+and compare Feedback→exact mode replacement, live controls, D→T / T→D order,
+BPM changes during preparation/transition, timeline reset, stale requests and
+STOP/clear at 8/48 kHz and 64/128 frames against independently scheduled DSP.
+Windows final focused storage/connected checks pass 2/2 (5.11s), PCM tolerance
+2e-6; zero tracked audio C++ heap operations. Wider regressions/Linux checks are
+being recorded in this checkpoint; no feature-complete/release claim.
+
+Still INTERNAL: no Engine/message-thread command or result queue, UI/CLI, MIDI
+Learn or new session serialization. Next is generation/cancellation/result
+acknowledgement wiring and atomic bank restore, then shared product controls.
+Preserve existing IDs; keep D unavailable in the UI until those connected gates.
+Earlier standalone-component descriptions below are historical checkpoints.
+
 ### Delay exact repeats + Feedback — 21 November 2026
 
 Owner explicitly requests both: exact 1/2/3/multiple repeats and fading Feedback.

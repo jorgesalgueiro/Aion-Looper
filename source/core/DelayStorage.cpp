@@ -5,14 +5,15 @@ namespace aion {
 DelayStorage::DelayStorage(std::size_t byteBudget):slots(std::make_unique<std::array<Slot,capacity>>()),budget(byteBudget){}
 bool DelayStorage::prepareStopped(double sr) noexcept {
  if(!std::isfinite(sr)||sr<8000||sr>384000)return false;
- releaseStopped();rate=sr;return true;
+ releaseStopped();rate=sr;fadeFrames=static_cast<unsigned>(std::ceil(.02*sr));return true;
 }
 void DelayStorage::releaseStopped() noexcept {
  for(auto& slot:*slots){slot.graph.reset();slot.phase.store(Phase::free,std::memory_order_relaxed);}
- active.fill(nullptr);pending.fill(nullptr);failed.fill(false);installations.fill(0);cursor=0;rate=0;
+ active.fill(nullptr);pending.fill(nullptr);previous.fill(nullptr);remaining.fill(0);
+ failed.fill(false);installations.fill(0);cursor=fadeFrames=0;rate=0;
 }
 bool DelayStorage::request(unsigned track,const DelaySettings& settings,double bpm) noexcept {
- if(track>=trackCount||!rate||pending[track]||!std::isfinite(bpm)||bpm<10||bpm>999)return false;
+ if(track>=trackCount||!rate||pending[track]||remaining[track]||!std::isfinite(bpm)||bpm<10||bpm>999)return false;
  const auto frames=Delay::requiredStorageFrames(rate,settings);if(!frames)return false;
  const auto bytes=frames*sizeof(std::array<float,2>);std::size_t reserved=0;Slot* available=nullptr;
  for(auto& slot:*slots){
@@ -32,8 +33,23 @@ void DelayStorage::cancel(unsigned track) noexcept {
 void DelayStorage::clear(unsigned track) noexcept {
  if(track>=trackCount)return;
  cancel(track);if(auto* slot=active[track]){active[track]=nullptr;slot->phase.store(Phase::retired,std::memory_order_release);}
+ if(auto* slot=previous[track]){previous[track]=nullptr;slot->phase.store(Phase::retired,std::memory_order_release);}
+ remaining[track]=0;
 }
 void DelayStorage::clearAll() noexcept {for(unsigned id=0;id<trackCount;++id)clear(id);}
+void DelayStorage::reset(unsigned track,bool fadeIn) noexcept {
+ if(track>=trackCount)return;
+ cancel(track);
+ if(auto* old=previous[track]){previous[track]=nullptr;old->phase.store(Phase::retired,std::memory_order_release);}
+ if(auto* slot=active[track])slot->graph->reset();
+ remaining[track]=active[track]&&fadeIn?fadeFrames:0;
+}
+bool DelayStorage::setTempo(unsigned track,double bpm) noexcept {
+ if(track>=trackCount||!std::isfinite(bpm)||bpm<10||bpm>999)return false;
+ if(auto* slot=active[track])(void)slot->graph->set(slot->graph->settings(),bpm);
+ if(auto* slot=previous[track])(void)slot->graph->set(slot->graph->settings(),bpm);
+ return true;
+}
 DelayStorage::Completion DelayStorage::poll() noexcept {
  Completion result;
  for(auto& slot:*slots){
@@ -43,7 +59,7 @@ DelayStorage::Completion DelayStorage::poll() noexcept {
   if(pending[id]!=&slot){slot.phase.store(Phase::retired,std::memory_order_release);continue;}
   pending[id]=nullptr;
   if(phase==Phase::ready){
-   if(auto* old=active[id])old->phase.store(Phase::retired,std::memory_order_release);
+   previous[id]=active[id];remaining[id]=fadeFrames;
    active[id]=&slot;failed[id]=false;++installations[id];result.installed|=1u<<id;
    slot.phase.store(Phase::active,std::memory_order_release);
   }else{failed[id]=true;result.failed|=1u<<id;slot.phase.store(Phase::retired,std::memory_order_release);}
@@ -52,7 +68,20 @@ DelayStorage::Completion DelayStorage::poll() noexcept {
 }
 Delay* DelayStorage::graph(unsigned track) noexcept {return track<trackCount&&active[track]?&*active[track]->graph:nullptr;}
 DelayStorage::View DelayStorage::view(unsigned track) const noexcept {
- return track<trackCount?View{active[track]!=nullptr,pending[track]!=nullptr,failed[track],installations[track]}:View{};
+ return track<trackCount?View{active[track]!=nullptr,pending[track]!=nullptr,failed[track],installations[track],remaining[track]!=0}:View{};
+}
+void DelayStorage::tick(unsigned track,float left,float right,float& outLeft,float& outRight) noexcept {
+ if(track>=trackCount||!active[track]){outLeft=left;outRight=right;return;}
+ active[track]->graph->tick(left,right,outLeft,outRight);
+ if(!remaining[track])return;
+ float oldLeft=left,oldRight=right;
+ if(auto* old=previous[track])old->graph->tick(left,right,oldLeft,oldRight);
+ const double blend=1-static_cast<double>(remaining[track])/fadeFrames;
+ outLeft=static_cast<float>(oldLeft+blend*(double(outLeft)-oldLeft));
+ outRight=static_cast<float>(oldRight+blend*(double(outRight)-oldRight));
+ if(!--remaining[track])if(auto* old=previous[track]){
+  previous[track]=nullptr;old->phase.store(Phase::retired,std::memory_order_release);
+ }
 }
 void DelayStorage::serviceWorker() noexcept {
  for(auto& slot:*slots)if(slot.phase.load(std::memory_order_acquire)==Phase::retired){

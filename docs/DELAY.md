@@ -1,8 +1,8 @@
 # D / Delay implementation checkpoint
 
 Owner priority (21 November 2026): remaining loop features precede broad CPU
-tuning. This is an **internal DSP/settings component**, not an enabled product
-feature. Existing GUI/CLI/session IDs and the running audio chain are unchanged.
+tuning. This is **internal LoopBank audio integration**, not an enabled product
+control. Existing GUI/CLI/session IDs are unchanged; no new UI control is exposed.
 
 ## Contract and acceptance
 
@@ -29,7 +29,37 @@ ring-storage admission budget. Active, pending, cancelled and retired slots stay
 reserved until the worker actually frees them. It prepares at most one request
 per service call; cancellations/clear and OOM leave an existing active graph
 untouched and stale completions cannot resurrect cleared tracks. These ownership
-components are not yet wired into LoopBank's worker or product commands.
+components now use LoopBank's existing worker and editable D position. Product
+message-thread commands/CLI and session serialization remain pending.
+
+## Connected loop ownership
+
+LoopBank validates clear epochs and settings revisions before admitting a
+preparation and again before adoption. Only that matching ready owner commits
+settings/request metadata. A newer accepted live edit cancels the older pending
+preparation; DEL, panic and stopped reprepare invalidate old work. Failures retain
+the previous audible owner. A prepared replacement crossfades old/new processors
+for 20ms with both pinned; its old storage remains budgeted until worker
+reclamation. New replacement admission is bounded by that transition, never an
+audio-thread wait. `graph()` is only a control/inspection borrow; rendering must
+use the storage's shared `tick()` to advance and retire transitions.
+
+D runs at its actual user-selected chain position. Loop settings remain live
+without changing PCM/history/source position. Persistent tails obey the existing
+source STOP gate. If D is removed from the chain, only an outstanding bounded
+owner transition advances silently; re-inserting D resets history with a fade-in.
+This prevents hidden transitions from permanently reserving an old buffer.
+Synced tempo updates both pinned owners. A just-prepared graph is initialized
+at the latest BPM before rendering; resetting the timeline retargets and clears
+D after resetting the clock. Unchanged-BPM configurations skip retargeting.
+
+`DelayConnectedTests` records/finalizes real native clips, uses the real worker,
+and compares audible LoopBank PCM to independently scheduled Delay/Drive DSP at
+8/48 kHz and 64/128 frames, tolerance `2e-6`. It covers Feedback-to-exact mode
+replacement, live edits, D→T / T→D order, in-flight/transition tempo changes and
+timeline reset, epoch/revision rejection, superseded
+worker requests, STOP and clear. This is not yet Engine command-queue, GUI,
+persistence, hardware or full original browser audio acceptance.
 
 The unchanged original `effects.js` defines six sliders, a sync checkbox and nine
 presets. `DelaySettingsReference.cjs` executes those definitions and checks them
@@ -83,8 +113,8 @@ Windows, existing core cache (PowerShell):
 $cmake = '.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
 $ctest = '.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe'
 & $cmake -S . -B build/windows-core
-& $cmake --build build/windows-core --config Release --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests --parallel 4
-& $ctest --test-dir build/windows-core -C Release -R '^(delay_component_contract|delay_repeat_modes_contract|delay_storage_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
+& $cmake --build build/windows-core --config Release --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests --parallel 4
+& $ctest --test-dir build/windows-core -C Release -R '^(delay_component_contract|delay_repeat_modes_contract|delay_storage_contract|delay_loopbank_connected_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 ```
 
 Linux, after committing the Windows snapshot and using `SetupWslWorkspace.sh`:
@@ -92,12 +122,12 @@ Linux, after committing the Windows snapshot and using `SetupWslWorkspace.sh`:
 ```sh
 cd /home/jorge/projects/Aion-Looper
 cmake -S . -B build/linux
-cmake --build build/linux --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests --parallel 2
-ctest --test-dir build/linux -R '^(delay_component_contract|delay_repeat_modes_contract|delay_storage_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
+cmake --build build/linux --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests --parallel 2
+ctest --test-dir build/linux -R '^(delay_component_contract|delay_repeat_modes_contract|delay_storage_contract|delay_loopbank_connected_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 # Existing ASan/UBSan Debug cache, plugin builds disabled:
 cmake -S . -B build/drive-sanitized
-cmake --build build/drive-sanitized --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests --parallel 2
-ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(delay_component_contract|delay_repeat_modes_contract|delay_storage_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
+cmake --build build/drive-sanitized --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(delay_component_contract|delay_repeat_modes_contract|delay_storage_contract|delay_loopbank_connected_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 ```
 
 ## Remaining before D is a working feature
@@ -135,9 +165,8 @@ Earlier component evidence, source snapshot `e75c210`:
 No product UI, CLI, connected Engine, device, host or listening test was run for
 this internal component. No distributable produced or remote push performed.
 
-Connect the worker-prepared bounded per-track ownership/retirement to LoopBank
-and add generation/revision/clear acknowledgement guards, click-free replacement
-and all-or-nothing bank restore; editable-chain integration; shared commands,
+Add Engine/message-thread generation/cancellation/result acknowledgement guards
+and all-or-nothing bank restore; shared commands,
 CLI, MIDI Learn, native UI,
 versioned persistence and editor lifecycle. Then connected Engine 64/128 PCM,
 actual GUI/CLI interaction and listening acceptance. Keep D unavailable until

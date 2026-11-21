@@ -6,12 +6,12 @@
 #include <optional>
 namespace aion {
 // Single audio owner + sole existing worker. Internal preparation component;
-// not yet connected to LoopBank. Borrowed graphs never enter UI snapshots.
+// used by LoopBank's existing worker. Borrowed graphs never enter UI snapshots.
 class DelayStorage {
 public:
  static constexpr unsigned trackCount=20,capacity=40;
  static constexpr std::size_t defaultBudget=256u*1024u*1024u;
- struct View {bool active=false,pending=false,failed=false;std::uint64_t installation=0;};
+ struct View {bool active=false,pending=false,failed=false;std::uint64_t installation=0;bool transitioning=false;};
  struct Completion {std::uint32_t installed=0,failed=0;};
  explicit DelayStorage(std::size_t byteBudget=defaultBudget);
  DelayStorage(const DelayStorage&)=delete;
@@ -25,8 +25,14 @@ public:
  void cancel(unsigned track) noexcept;
  void clear(unsigned track) noexcept;
  void clearAll() noexcept;
+ void reset(unsigned track,bool fadeIn=false) noexcept; // cancel, clear history, retain active settings/storage
+ bool setTempo(unsigned track,double bpm) noexcept; // both pinned transition owners
  Completion poll() noexcept;
- Delay* graph(unsigned track) noexcept; // valid until next poll/clear/prepare
+ bool hasOwner(unsigned track) const noexcept {return track<trackCount&&active[track]!=nullptr;}
+ Delay* graph(unsigned track) noexcept; // control/inspection borrow until poll/clear/prepare; render through tick
+ // Audio-only: crossfade prepared replacements for 20ms, retaining both owners.
+ // Further replacement admission waits for this bounded transition to finish.
+ void tick(unsigned track,float left,float right,float& outLeft,float& outRight) noexcept;
  View view(unsigned track) const noexcept;
  // Sole worker: reclaim retired storage before allocating at most one request.
  void serviceWorker() noexcept;
@@ -40,10 +46,11 @@ private:
   std::optional<Delay> graph; // created/destroyed only off audio
  };
  std::unique_ptr<std::array<Slot,capacity>> slots;
- std::array<Slot*,trackCount> active{},pending{};
+ std::array<Slot*,trackCount> active{},pending{},previous{};
+ std::array<unsigned,trackCount> remaining{};
  std::array<bool,trackCount> failed{};
  std::array<std::uint64_t,trackCount> installations{};
  const std::size_t budget;
- double rate=0;unsigned cursor=0;
+ double rate=0;unsigned cursor=0,fadeFrames=0;
 };
 }

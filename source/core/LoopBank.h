@@ -1,6 +1,7 @@
 #pragma once
 #include "core/CompressorSettings.h"
 #include "core/ArpDelayStorage.h"
+#include "core/DelayStorage.h"
 #include <array>
 #include <algorithm>
 #include <cstdint>
@@ -54,6 +55,9 @@ struct LoopView {
     ArpRenderSettings arp{};
     std::uint64_t arpSettingsRevision=0;
     std::uint32_t arpRequest=0;
+    DelaySettings delay{};
+    std::uint64_t delaySettingsRevision=0;
+    std::uint32_t delayRequest=0;
 };
 // Audio owns capture blocks/state; the worker borrows pinned takes and owns immutable clips.
 // Capture storage is allocated in prepare; clip allocation/deletion stays off the callback.
@@ -78,6 +82,11 @@ public:
                         std::uint64_t clearEpoch,bool checkEpoch=true) noexcept;
     // Validate the complete merged result before changing any state or targets.
     bool setDrives(std::uint32_t,const DriveBank&,std::uint32_t request,std::uint64_t clearEpoch,bool checkEpoch=true,std::uint32_t mask=allDriveFields) noexcept;
+    // Internal audio-owner D integration; product bridge/CLI/state remain gated.
+    bool requestDelay(unsigned,const DelaySettings&,std::uint64_t clearEpoch,std::uint64_t revision,std::uint32_t request) noexcept;
+    bool setDelay(unsigned,const DelaySettings&,std::uint64_t clearEpoch,std::uint64_t revision,std::uint32_t request) noexcept;
+    void cancelDelay(unsigned) noexcept;
+    DelayStorage::View delayStorageView(unsigned id) const noexcept {return delayStorage->view(id);}
     void resetDrives(unsigned)noexcept;
     using DriveBanks=std::array<DriveBank,trackCount>;
     static DriveBanks defaultDriveBanks()noexcept{DriveBanks b;for(auto& v:b)v=defaultDriveBank();return b;}
@@ -196,7 +205,7 @@ public:
     bool exhausted() const noexcept { return poolFull; }
     void configureSync(SyncSettings settings) noexcept;
     void resetEqualizers() noexcept;
-    void resetTimeline() noexcept { resetArps(0);resetEqualizers();deferredMultiplyGraph={};meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
+    void resetTimeline() noexcept { resetArps(0);resetEqualizers();deferredMultiplyGraph={};meterCallbackClock={};retiredSourceTickets.fill(0);for(auto& window:*meterWindows)window.reset();meterGraphTickets.fill(0);meterGraphHighWater.fill(0);meterImmediateTickets.fill(0);meterPanicKnown.fill(false);meterQueuedIds.fill(0);meterQueuedBufferIds.fill(0);meterQueuedWindowIds.fill(0);meterQueueHighWater=0;meterGraphFrames.fill(0);frame=0;sync.reset(rate);resetDelays();while(phaseRead!=phaseWrite){retire(phaseEvents[phaseRead].reverseClip);retire(phaseEvents[phaseRead].forwardClip);phaseRead=(phaseRead+1)%phaseCapacity;}phaseRead=phaseWrite=0;for(auto& track:tracks){clearRetained(track);track.queuedSourceTicket=0;track.queuedGainAt=0;++track.phaseEpoch;++track.sourceRevision;track.info.phaseApplyFrame=0;} }
     SyncView syncView() const noexcept {return sync.view(frame);}
     void setMeterCallbackClock(const CallbackClockStamp& callback) noexcept {meterCallbackClock=callback;}
     double armedStartSeconds(std::uint32_t id) const noexcept {return id<trackCount&&tracks[id].info.state==LoopState::armed?tracks[id].recordStartSeconds:-1;}
@@ -361,6 +370,16 @@ private:
     std::thread worker;
     static_assert(trackCount==ArpDelayStorage::trackCount);
     std::unique_ptr<ArpDelayStorage> arpStorage=std::make_unique<ArpDelayStorage>();
+    static_assert(trackCount==DelayStorage::trackCount);
+    std::unique_ptr<DelayStorage> delayStorage=std::make_unique<DelayStorage>();
+    struct PendingDelaySettings {
+        DelaySettings settings{};std::uint64_t clearEpoch=0,revision=0;std::uint32_t request=0;bool active=false;
+    };
+    std::array<PendingDelaySettings,trackCount> pendingDelays{};
+    void pollDelays() noexcept;
+    void resetDelay(unsigned,bool fadeIn=false) noexcept;
+    void resetDelays() noexcept;
+    Stereo tickDelay(unsigned,Stereo,bool sourceActive) noexcept;
     struct PendingArpSettings {
         ArpRenderSettings settings{};
         std::uint64_t revision=0,clearEpoch=0;
