@@ -23,6 +23,12 @@ organic/natural direction. D is NOT yet connected to GUI/CLI/state or complete.
 See [DELAY.md](DELAY.md) for observable acceptance, commands and ownership limits.
 The component preallocates a four-second stereo ring, hides cleared history in
 O(1), caches coefficients and crossfades two read heads during time changes.
+Source snapshot `e75c210`: Windows Release 2/2 (0.48s), native WSL Linux Release
+2/2 (0.65s), Linux ASan/UBSan/leak Debug 2/2 (3.78s). These are component audio
+and original settings/preset checks, not connected Engine/GUI/listening acceptance.
+The fixture exercises eight rates and 64/128 tick groupings, OOM preservation,
+sync limits, wrapped clear, time-edit coalescing, feedback decay and zero tracked
+callback heap operations. No new product control, package, push or CPU claim.
 Next: bounded worker-owned per-track preparation/retirement, then editable-chain
 and shared GUI/CLI/MIDI/state integration; keep D disabled until connected gates.
 

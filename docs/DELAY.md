@@ -77,6 +77,20 @@ ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build
 
 ## Remaining before D is a working feature
 
+Executed 21 November 2026, source snapshot `e75c210`:
+
+- Windows Release: focused CTest 2/2, 0.48s.
+- Native WSL Linux Release: focused CTest 2/2, 0.65s.
+- Linux ASan/UBSan Debug with leak detection: focused CTest 2/2, 3.78s;
+  no suppressions or reported sanitizer errors.
+- DSP fixture counts 1,126,144 rate/segmentation/stress samples, plus analytic
+  transition, wrapped-history, bypass and feedback-decay cases; tracked
+  callback C++ heap operations: zero. No runtime performance gain is claimed.
+- Diff whitespace check passes; original reference/presentation files unchanged.
+
+No product UI, CLI, connected Engine, device, host or listening test was run for
+this internal component. No distributable produced or remote push performed.
+
 Worker-prepared bounded per-track ownership/retirement with OOM/cancellation
 tests; editable-chain integration; shared commands, CLI, MIDI Learn, native UI,
 versioned persistence and editor lifecycle. Then connected Engine 64/128 PCM,
