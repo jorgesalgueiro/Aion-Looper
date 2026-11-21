@@ -12,6 +12,9 @@
 #include <memory>
 #include <new>
 #include <vector>
+#ifdef AION_GPROF_CORE
+#include <sys/gmon.h>
+#endif
 #ifdef AION_DRIVE_SNAPSHOT_RUN
 extern "C" const char* aionDriveSnapshotIdentity();
 #endif
@@ -51,6 +54,9 @@ void operator delete[](void* p,std::align_val_t a)noexcept{::operator delete(p,a
 void operator delete(void* p,std::size_t,std::align_val_t a)noexcept{::operator delete(p,a);}
 void operator delete[](void* p,std::size_t,std::align_val_t a)noexcept{::operator delete(p,a);}
 int main(int argc,char** argv){
+#ifdef AION_GPROF_CORE
+ moncontrol(0); // Do not attribute capture/setup/teardown to the playback loop.
+#endif
  juce::ScopedJuceInitialiser_GUI gui;
  const bool quick=argc==3&&juce::String(argv[1])=="--quick";
  const int quickBlock=quick?juce::String(argv[2]).getIntValue():0;
@@ -104,6 +110,12 @@ int main(int argc,char** argv){
    for(unsigned i=0;i<3;++i){process(false);snapshot();}
    const int midiBefore=static_cast<int>(snapshot()["midi"]["messages"]);
    std::vector<double> times(measured);double checksum=0,serviceUs=0;heapCalls=0;
+#ifdef AION_GPROF_CORE
+   // One continuous window preserves the sampling interval. This includes the
+   // fixture's MIDI/input/checksum and periodic off-audio snapshot service too;
+   // the profile is attribution, never a clean callback latency measurement.
+   moncontrol(1);
+#endif
    for(unsigned n=0;n<warm+measured;++n){
     audio.clear();midi.clear();
     for(unsigned event=0;event<events;++event)midi.addEvent(juce::MidiMessage::controllerEvent(1+event%16,119,static_cast<int>((n+event)%128)),static_cast<int>(event*block/events));
@@ -113,6 +125,9 @@ int main(int argc,char** argv){
     if(n%16==0){const auto before=std::chrono::steady_clock::now();state=snapshot();serviceUs+=std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-before).count();}
     for(int i=0;i<block;++i){const float l=audio.getSample(0,i),r=audio.getSample(1,i);check(std::isfinite(l)&&std::isfinite(r),"Finite production callback PCM");if(n>=warm)checksum+=std::abs(l)+std::abs(r);}
    }
+#ifdef AION_GPROF_CORE
+   moncontrol(0);
+#endif
    snapshot();midi.clear();process(false);state=snapshot(); // Fresh final telemetry, outside timing.
    check(static_cast<int>(state["midi"]["messages"])-midiBefore==static_cast<int>(events*(warm+measured)),"MIDI traffic really traversed the production router");
    check(static_cast<int>(state["midi"]["overflows"])==0&&static_cast<int>(state["midi"]["actions"])==0,"Unmapped CC traffic never overflows or triggers transport");
@@ -129,7 +144,11 @@ int main(int argc,char** argv){
 #else
     <<"current"
 #endif
-    <<"\",\"scope\":\"Production processBlock/APVTS/MidiBuffer, synthetic stereo captures; excludes device, editor, message dispatch timers and roundtrip\",\"rate\":"<<rate<<",\"block\":"<<block<<",\"tracks\":"<<tracks<<",\"effects\":"<<(effects?"true":"false")<<",\"midiEventsPerCallback\":"<<events<<",\"warmCallbacks\":"<<warm<<",\"measuredCallbacks\":"<<measured<<",\"meanUs\":"<<sum/measured<<",\"p99Us\":"<<times[measured*99/100]<<",\"maximumUs\":"<<times.back()<<",\"deadlineUs\":"<<deadline<<",\"observedOverruns\":"<<over<<",\"callbackCxxHeapCalls\":"<<heapCalls.load()<<",\"offAudioSnapshotServiceTotalUs\":"<<serviceUs<<",\"checksum\":"<<checksum<<"}"<<std::endl;
+    <<"\""
+#ifdef AION_GPROF_CORE
+    <<",\"instrumentation\":\"gprof core; timing invalid for capacity; profile includes fixture and snapshot service\""
+#endif
+    <<",\"scope\":\"Production processBlock/APVTS/MidiBuffer, synthetic stereo captures; excludes device, editor, message dispatch timers and roundtrip\",\"rate\":"<<rate<<",\"block\":"<<block<<",\"tracks\":"<<tracks<<",\"effects\":"<<(effects?"true":"false")<<",\"midiEventsPerCallback\":"<<events<<",\"warmCallbacks\":"<<warm<<",\"measuredCallbacks\":"<<measured<<",\"meanUs\":"<<sum/measured<<",\"p99Us\":"<<times[measured*99/100]<<",\"maximumUs\":"<<times.back()<<",\"deadlineUs\":"<<deadline<<",\"observedOverruns\":"<<over<<",\"callbackCxxHeapCalls\":"<<heapCalls.load()<<",\"offAudioSnapshotServiceTotalUs\":"<<serviceUs<<",\"checksum\":"<<checksum<<"}"<<std::endl;
   }
  }
 }

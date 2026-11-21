@@ -415,6 +415,25 @@ if(BUILD_TESTING AND (WIN32 OR linux_desktop))
     target_include_directories(aion_processor_effects_benchmark PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
     target_compile_definitions(aion_processor_effects_benchmark PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
     target_link_libraries(aion_processor_effects_benchmark PRIVATE AionLooper)
+    # Isolated developer attribution only. Never instrument the product core,
+    # install this executable, or treat profiling overhead as deadline evidence.
+    option(AION_BUILD_CALLBACK_PROFILE "Build opt-in Linux GNU callback attribution tool" OFF)
+    if(AION_BUILD_CALLBACK_PROFILE)
+        if(NOT linux_desktop OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            message(FATAL_ERROR "Callback gprof attribution requires Linux and GNU C++")
+        endif()
+        add_library(aion_profile_core OBJECT EXCLUDE_FROM_ALL $<TARGET_PROPERTY:aion_core,SOURCES>)
+        target_include_directories(aion_profile_core PRIVATE source)
+        target_compile_options(aion_profile_core PRIVATE -pg -fno-omit-frame-pointer -g)
+        add_executable(aion_processor_effects_profile EXCLUDE_FROM_ALL tests/ProcessorEffectsBenchmark.cpp $<TARGET_OBJECTS:aion_profile_core>)
+        target_include_directories(aion_processor_effects_profile PRIVATE source "$<TARGET_PROPERTY:AionLooper,INCLUDE_DIRECTORIES>")
+        target_compile_definitions(aion_processor_effects_profile PRIVATE JucePlugin_Build_Standalone=1 JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1 AION_GPROF_CORE=1)
+        target_compile_options(aion_processor_effects_profile PRIVATE -pg -fno-omit-frame-pointer -g)
+        target_link_options(aion_processor_effects_profile PRIVATE -pg "-Wl,-Map,${CMAKE_CURRENT_BINARY_DIR}/callback-profile-link.map")
+        # Explicit objects resolve every core symbol before the ordinary static
+        # archive is searched. JUCE/processor/editor remain their normal build.
+        target_link_libraries(aion_processor_effects_profile PRIVATE AionLooper)
+    endif()
     # Developer-only counterfactual: replace Drive.cpp, holding the current
     # production processor/common code fixed. Never installed or built by default.
     option(AION_BUILD_DRIVE_SNAPSHOT_BENCHMARK "Build accepted-drive comparison executable" OFF)
