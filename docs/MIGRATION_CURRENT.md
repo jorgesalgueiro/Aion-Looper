@@ -11,6 +11,34 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Ordered Engine D controls/results — 22 November 2026
+
+Added `enqueueDelayEdit`/`popDelayEdit`/`cancelDelayEdit` on the shared Engine.
+One atomic admission registers a never-reused transaction and an ordered
+performance-FIFO command. Live controls commit at sample offsets; mode/capacity
+changes prepare on the existing worker and report ready only at audio adoption.
+Results independently retain request/generation/transaction/epoch/revision/frame;
+normal loop acknowledgements are untouched. One outstanding per track includes
+unread receipts; fixed request/result queues and pending storage are allocated
+at construction. Cancellation is independent of FIFO room and snapshot delivery.
+
+Covered future-head cancellation/reused request IDs, full FIFO atomic rejection,
+twenty unread receipts with saturated telemetry, unread success across clear/
+prepare, worker OOM and paused-allocation cancel/panic/DEL/synthetic MIDI Stop.
+Disabled metadata can change mode/count without allocating; the existing runtime
+fades to bypass and a later enable prepares the requested mode if necessary.
+Actual Engine capture/playback is compared against independently scheduled Delay
+at 8/48 kHz, 64/128, including live edits at +17 and continuous prepared mode
+replacement. Initial Windows Engine checks pass; final focused/platform results
+are recorded after validation. See [DELAY.md](DELAY.md) for the protocol contract.
+
+STILL INTERNAL: Processor command/result/lifetime handling, atomic bank restore,
+GUI/CLI, MIDI Learn and session serialization remain pending. Next: atomic D bank
+restore and Processor shadow/result integration, then shared product controls.
+Do not expose D in the UI or mark it feature-complete yet. Reuse prior component
+evidence; run focused Delay/affected owner checks and core --loop-edits/--midi,
+not the exhaustive core suite or broad CPU profiling on each internal step.
+
 ### Connected LoopBank D / prepared-owner transitions — 21 November 2026
 
 D now uses LoopBank's existing worker and editable signal-chain position. Added

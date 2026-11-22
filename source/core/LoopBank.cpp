@@ -743,6 +743,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::equalizer: // Dedicated validated settings command, never float payload.
         case LoopAction::compressor:
         case LoopAction::drive:
+        case LoopAction::delay:
         case LoopAction::signalChain:
         case LoopAction::arpDelay:
         case LoopAction::stopAll:break;

@@ -48,9 +48,21 @@ struct LoopCommand {
     std::uint64_t arpClearEpoch=0,arpSettingsRevision=0;
     bool arpPreset=false; // Internal ordered 22-write gesture; not a product preset ID.
     std::uint64_t arpTransaction=0; // Internal tracked edit identity, never a product ID.
+    DelaySettings delay{};
+    std::uint64_t delayClearEpoch=0,delaySettingsRevision=0,delayTransaction=0;
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct ExportRequest {std::uint32_t track=0,generation=0;std::uint64_t waveformId=0;};
+enum class DelayEditStatus : std::uint8_t {ready,cancelled,stale,busy,failed};
+struct DelayEditRequest {
+    std::uint32_t track=0,requestId=0,generation=0;
+    std::uint64_t clearEpoch=0,settingsRevision=0,transaction=0,cancellation=0;
+};
+struct DelayEditResult {
+    std::uint32_t track=0,requestId=0,generation=0;
+    DelayEditStatus status=DelayEditStatus::failed;
+    std::uint64_t transaction=0,settingsRevision=0,clearEpoch=0,frame=0;
+};
 // Internal prepared-storage transaction, not a product A toggle/preset/state
 // command. Values/seed are explicit DSP inputs; product voicing is still pending.
 struct ArpPreparationRequest {
@@ -140,6 +152,12 @@ public:
     // Publish an exact receipt descriptor plus one ordered performance command.
     // Failure leaves transaction/output and both queues unchanged.
     bool enqueueArpEdit(LoopCommand,std::uint64_t& transaction) noexcept;
+    // Same sole message owner as the performance FIFO. Descriptor + ordered
+    // command admission is atomic; one outstanding per track includes unread
+    // terminal receipts. Live edits and worker preparations share this result.
+    bool enqueueDelayEdit(LoopCommand,std::uint64_t& transaction) noexcept;
+    bool popDelayEdit(DelayEditResult&) noexcept;
+    void cancelDelayEdit(unsigned track=LoopBank::trackCount) noexcept;
     bool enqueueEqBank(const std::array<EqSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;
     bool enqueueEffectsBank(const std::array<EqSettings,LoopBank::trackCount>&,
                             const std::array<CompressorSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;
@@ -242,6 +260,23 @@ private:
     bool applyArpMidi(unsigned,unsigned,unsigned) noexcept;
     std::unique_ptr<SpscQueue<ArpMidiReceipt,512>> arpMidiResults=std::make_unique<SpscQueue<ArpMidiReceipt,512>>();
     LoopBank loops;
+    struct PendingDelayEdit {
+        DelayEditRequest request{};bool active=false,preparing=false,finished=false;
+        std::uint64_t installation=0;DelayEditResult completion{};
+    };
+    std::unique_ptr<std::array<PendingDelayEdit,LoopBank::trackCount>> pendingDelay=std::make_unique<std::array<PendingDelayEdit,LoopBank::trackCount>>();
+    std::array<bool,LoopBank::trackCount> outstandingDelay{}; // sole message owner
+    static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
+    std::array<std::atomic<std::uint64_t>,LoopBank::trackCount> delayCancellations{};
+    std::uint64_t nextDelayTransaction=0,seenDelayTransaction=0; // message / audio owners, never reset
+    std::unique_ptr<SpscQueue<DelayEditRequest,32>> delayRequests=std::make_unique<SpscQueue<DelayEditRequest,32>>();
+    std::unique_ptr<SpscQueue<DelayEditResult,32>> delayResults=std::make_unique<SpscQueue<DelayEditResult,32>>();
+    void finishDelayEdit(unsigned,DelayEditStatus) noexcept;
+    void cancelStaleDelayEdits() noexcept;
+    void serviceDelayEdits() noexcept;
+    void cancelAllDelayEdits() noexcept;
+    bool currentDelayEdit(const LoopCommand&) const noexcept;
+    void applyDelayEdit(const LoopCommand&) noexcept;
     struct PendingArpPreparation {
         ArpPreparationRequest request{};
         bool active=false,started=false,finished=false;

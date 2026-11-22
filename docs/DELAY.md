@@ -1,7 +1,7 @@
 # D / Delay implementation checkpoint
 
 Owner priority (21 November 2026): remaining loop features precede broad CPU
-tuning. This is **internal LoopBank audio integration**, not an enabled product
+tuning. This is **internal native audio/control integration**, not an enabled product
 control. Existing GUI/CLI/session IDs are unchanged; no new UI control is exposed.
 
 ## Contract and acceptance
@@ -58,8 +58,8 @@ and compares audible LoopBank PCM to independently scheduled Delay/Drive DSP at
 8/48 kHz and 64/128 frames, tolerance `2e-6`. It covers Feedback-to-exact mode
 replacement, live edits, D→T / T→D order, in-flight/transition tempo changes and
 timeline reset, epoch/revision rejection, superseded
-worker requests, STOP and clear. This is not yet Engine command-queue, GUI,
-persistence, hardware or full original browser audio acceptance.
+worker requests, STOP and clear. GUI, persistence, hardware and full original
+browser audio acceptance remain separate; Engine checks are described below.
 It also removes D while a prepared mode replacement is adopted, verifies dry/T
 audio without delayed leakage, drains the hidden transition and reinserts D with
 fresh history/fade-in. Windows PCM maximum observed error is `4.47035e-8` at
@@ -109,6 +109,47 @@ rapid-edit processing and zero tracked C++ heap operations in ticks/set/reset.
 Rates: 8/22.05/32/44.1/48/96/192/384 kHz; sample ticks grouped in 64/128 chunks.
 These are component scheduling tests, **not connected Engine/driver buffer tests**.
 
+## Ordered Engine controls — 22 November 2026
+
+`enqueueDelayEdit` atomically admits a small receipt descriptor and one command
+in the existing performance FIFO. D is append-only in `LoopAction`; previous IDs
+are unchanged. Live controls apply at their requested sample. Mode/capacity
+changes start worker preparation at that FIFO point and become successful only
+when LoopBank actually adopts their matching owner at a callback boundary.
+Other performance commands can continue while preparation runs. Normal loop
+acknowledgements are unaffected; D uses its own typed terminal result.
+
+There is one outstanding edit per track, including unread results. The fixed
+32-slot request/result queues are heap-allocated at construction; twenty
+outstanding edits fit the 31-result capacity. Admission checks both queues
+before publication and leaves outputs/state untouched on failure. Transactions
+never reset/reuse on reprepare. Every result carries request ID, generation,
+transaction, clear epoch, settings revision and actual commit/cancel frame.
+Status is ready/cancelled/stale/busy/failed. A finished result is immutable even
+when DEL or prepare occurs before the message owner reads it.
+
+Cancellation uses lock-free per-track serials, independent of FIFO capacity or
+lossy telemetry. Stale/cancelled future FIFO entries cannot block a fresh edit
+or complete a newer request with a reused numeric ID. Engine prepare retains
+old unread receipts and ownership bounds; a later consumer gets their original
+generation. STOP ALL, clear and synthetic MIDI Stop invalidate pending work.
+An already-committed success is not rolled back by a later cancellation.
+
+While disabled, metadata may select another mode/count/time without allocating
+or treating an old feedback ring as input history. The old runtime fades to
+bypass; enabling a different mode/capacity later follows preparation admission.
+Accepted disabled state and audible bypass are tested independently.
+
+`DelayEngineTests` covers invalid/full FIFO admission, exact sample offsets,
+twenty unread receipts under telemetry saturation, reused IDs, zero-block/full-
+queue cancellation, unread success across clear/reprepare, worker OOM and
+cancel/panic/DEL/MIDI Stop during a paused real allocation. `DelayEngineAudioTests`
+captures actual stereo Engine PCM at 8/48 kHz and 64/128, renders continuously
+during preparation, and compares live `+17` edits, Feedback→exact replacement
+and disabled-mode bypass to independently scheduled Delay DSP (`2e-6` limit).
+No callback allocation/deallocation, UI access or locks are added. Results are
+still internal APIs: no Processor/GUI/CLI/session feature is advertised as ready.
+
 ## Reproducible checks
 
 Windows, existing core cache (PowerShell):
@@ -117,8 +158,8 @@ Windows, existing core cache (PowerShell):
 $cmake = '.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
 $ctest = '.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe'
 & $cmake -S . -B build/windows-core
-& $cmake --build build/windows-core --config Release --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests --parallel 4
-& $ctest --test-dir build/windows-core -C Release -R '^(delay_component_contract|delay_repeat_modes_contract|delay_storage_contract|delay_loopbank_connected_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
+& $cmake --build build/windows-core --config Release --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests --parallel 4
+& $ctest --test-dir build/windows-core -C Release -R '^(delay_.*_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 ```
 
 Linux, after committing the Windows snapshot and using `SetupWslWorkspace.sh`:
@@ -126,12 +167,12 @@ Linux, after committing the Windows snapshot and using `SetupWslWorkspace.sh`:
 ```sh
 cd /home/jorge/projects/Aion-Looper
 cmake -S . -B build/linux
-cmake --build build/linux --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests --parallel 2
-ctest --test-dir build/linux -R '^(delay_component_contract|delay_repeat_modes_contract|delay_storage_contract|delay_loopbank_connected_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
+cmake --build build/linux --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests --parallel 2
+ctest --test-dir build/linux -R '^(delay_.*_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 # Existing ASan/UBSan Debug cache, plugin builds disabled:
 cmake -S . -B build/drive-sanitized
-cmake --build build/drive-sanitized --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests --parallel 2
-ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(delay_component_contract|delay_repeat_modes_contract|delay_storage_contract|delay_loopbank_connected_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
+cmake --build build/drive-sanitized --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(delay_.*_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 ```
 
 ## Remaining before D is a working feature
@@ -199,10 +240,11 @@ Earlier component evidence, source snapshot `e75c210`:
 No product UI, CLI, connected Engine, device, host or listening test was run for
 this internal component. No distributable produced or remote push performed.
 
-Add Engine/message-thread generation/cancellation/result acknowledgement guards
-and all-or-nothing bank restore; shared commands,
-CLI, MIDI Learn, native UI,
-versioned persistence and editor lifecycle. Then connected Engine 64/128 PCM,
-actual GUI/CLI interaction and listening acceptance. Keep D unavailable until
+Add all-or-nothing bank restore and Processor command/result ownership, then
+shared GUI/CLI commands, MIDI Learn, versioned persistence and editor lifecycle.
+Retain the connected Engine 64/128 PCM gates, then run actual GUI/CLI interaction
+and listening acceptance. The Processor must cancel D via its independent path
+before priority purge/delete and fence returned metadata by generation/epoch/
+revision plus its existing document lifetime/correlation guards. Keep D unavailable until
 these pass; do not start another effect or package this component as complete.
 Broad full-workspace CPU tuning remains deferred, not silently accepted.

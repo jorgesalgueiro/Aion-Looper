@@ -15,7 +15,14 @@ bool LoopBank::setDelay(unsigned id,const DelaySettings& settings,std::uint64_t 
  if(id>=trackCount||!request||!validDelaySettings(settings)||epoch!=tracks[id].clearEpoch
   ||revision!=tracks[id].info.delaySettingsRevision||revision==UINT64_MAX)return false;
  auto* graph=delayStorage->graph(id);
- if(graph){if(!graph->set(settings,sync.settings.bpm))return false;}
+ if(graph){
+  // Disabled metadata may select a new mode/count without allocating a new
+  // ring. Fade the existing runtime to bypass; an eventual enable prepares
+  // the requested mode/capacity when it cannot reuse that old runtime.
+  auto runtime=settings;
+  if(!settings.enabled){runtime=graph->settings();runtime.enabled=false;}
+  if(!graph->set(runtime,sync.settings.bpm))return false;
+ }
  else if(settings.enabled)return false;
  // An accepted live edit supersedes any not-yet-adopted worker request. Do not
  // let that request overwrite a newer value when its allocation completes.
