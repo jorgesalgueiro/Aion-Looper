@@ -62,18 +62,33 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   const bad=await evaluate(`AionNative.request(${JSON.stringify({operation:'loop',action:'nudgeStart',track:0,generation:snapshot.generation,expiresAt:Date.now()+3000,value})})`);
   assert(!bad.ok,'Only exact signed nudge directions accepted by IPC');
  }
+ // Effect transactions share the processor ID allocator. Observe the actual
+ // gesture receipt rather than assuming its ID is last snapshot + 1. Keep
+ // exact acknowledgement and single-dispatch checks; do not alter replies.
+ await evaluate(`(()=>{const backend=__JUCE__.backend,original=backend.emitEvent,oracle=window.phaseReceiptOracle={calls:[]};backend.addEventListener('__juce__complete',message=>{const call=oracle.calls.find(c=>c.id===message.promiseId);if(call)call.reply=message.result;});backend.emitEvent=function(event,message){const request=message?.params?.[0];if(event==='__juce__invoke'&&request?.operation==='loop'&&['nudgeStart','quantizeStart'].includes(request.action))oracle.calls.push({id:message.resultId,action:request.action,track:request.track,value:request.value});return original.call(this,event,message);};oracle.restore=()=>{backend.emitEvent=original;};})()`);
+ const phaseReceipt=async(index,action,value)=>{
+  let observed;
+  for(let n=0;n<50;++n){observed=await evaluate(`window.phaseReceiptOracle.calls`);if(observed[index]?.reply)break;await delay(50);}
+  assert.equal(observed.length,index+1,'One native dispatch per phase gesture');
+  const call=observed[index];assert.equal(call.action,action);assert.equal(call.track,0);assert.equal(call.value,value);assert(call.reply?.ok&&Number.isSafeInteger(call.reply.requestId),'Gesture has an accepted exact native receipt');
+  return call.reply.requestId;
+ };
+ let phaseIndex=0;
  for(const direction of [-1,1]){
   const before=phaseSnapshot.lastRequestId;
   assert(await evaluate(`!document.querySelector('#loop-0 [aria-label="Nudge loop start ${direction<0?'left':'right'}"]').disabled`),'Original nudge enabled');
   await evaluate(`document.querySelector('#loop-0 [aria-label="Nudge loop start ${direction<0?'left':'right'}"]').click()`);
-  for(let n=0;n<50;++n){phaseSnapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);if(phaseSnapshot.lastRequestId>before)break;await delay(50);}
-  assert.equal(phaseSnapshot.lastRequestId,before+1);assert(!phaseSnapshot.rejected);assert.equal(phaseSnapshot.tracks[0].state,'empty');assert.equal(phaseSnapshot.tracks[0].startDelay,0.333);assert.equal(phaseSnapshot.tracks[0].phaseApplyFrame,0);
+  const receipt=await phaseReceipt(phaseIndex++,'nudgeStart',direction);assert(receipt>before);
+  for(let n=0;n<50;++n){phaseSnapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);if(phaseSnapshot.lastRequestId>=receipt)break;await delay(50);}
+  assert.equal(phaseSnapshot.lastRequestId,receipt);assert(!phaseSnapshot.rejected);assert.equal(phaseSnapshot.tracks[0].state,'empty');assert.equal(phaseSnapshot.tracks[0].startDelay,0.333);assert.equal(phaseSnapshot.tracks[0].phaseApplyFrame,0);
  }
  const qBefore=phaseSnapshot.lastRequestId;
  assert(await evaluate(`!document.querySelector('#loop-0 button[title="Quantize Start to 16th Note"]').disabled`),'Original Q button enabled');
  await evaluate(`document.querySelector('#loop-0 button[title="Quantize Start to 16th Note"]').click()`);
- for(let n=0;n<50;++n){phaseSnapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);if(phaseSnapshot.lastRequestId>qBefore)break;await delay(50);}
- assert.equal(phaseSnapshot.lastRequestId,qBefore+1);assert(!phaseSnapshot.rejected);assert.equal(phaseSnapshot.tracks[0].state,'empty');assert.equal(phaseSnapshot.tracks[0].startDelay,0.333);assert.equal(phaseSnapshot.tracks[0].phaseApplyFrame,0);
+ const qReceipt=await phaseReceipt(phaseIndex++,'quantizeStart',0);assert(qReceipt>qBefore);
+ for(let n=0;n<50;++n){phaseSnapshot=await evaluate(`AionNative.request({operation:'snapshot'})`);if(phaseSnapshot.lastRequestId>=qReceipt)break;await delay(50);}
+ assert.equal(phaseSnapshot.lastRequestId,qReceipt);assert(!phaseSnapshot.rejected);assert.equal(phaseSnapshot.tracks[0].state,'empty');assert.equal(phaseSnapshot.tracks[0].startDelay,0.333);assert.equal(phaseSnapshot.tracks[0].phaseApplyFrame,0);
+ await evaluate(`window.phaseReceiptOracle.restore()`);
  assert((await evaluate(`AionNative.request({operation:'loop',action:'startDelay',track:0,generation:${snapshot.generation},expiresAt:Date.now()+3000,value:0})`)).ok);
 
  assert(await evaluate(`document.getElementById('btnGlobalUndo').disabled&&document.getElementById('btnGlobalRedo').disabled&&[...document.querySelectorAll('#loopContainer button')].filter(b=>['UNDO','REDO'].includes(b.textContent.trim())).every(b=>b.disabled)`),'Empty history controls are disabled');

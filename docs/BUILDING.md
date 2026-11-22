@@ -460,6 +460,9 @@ main/export/merge tests. No new package or version bump is needed.
 
 After the existing Release Standalone passes its gates, run
 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/PackageStandalone.ps1`.
+For an explicitly labelled development alpha, append `-Alpha`; the archive name
+and TEST-BUILD manifest then identify the alpha channel. This does not enable
+unfinished effects or imply release acceptance.
 It packages the already-built Standalone, optional Python CLI, test instructions,
 current scope, project/dependency notices and an exact Git source snapshot into
 one commit-labelled ZIP under `dist/`. Commit tracked changes first. No installer,

@@ -55,6 +55,7 @@ Executable SHA256: $hash
 
 Extract the entire ZIP, then open Standalone/Aion-Looper.exe.
 The Microsoft Evergreen WebView2 Runtime must be installed on the test PC.
+The Microsoft Visual C++ 2015-2022 x64 Redistributable is also required.
 Start with MASTER at zero for MIDI/control checks. Existing app settings apply.
 Defaults: MIDI notes 46 OD, 47 SUB, 48 SUS. Every positive mode NoteOn toggles;
 NoteOff is not required for these three mode keys. Loop keys retain hold behavior.

@@ -1,5 +1,36 @@
 # Foundation validation — 2026-10-18
 
+## Windows alpha candidate — 22 November 2026
+
+Rebuilt `AionLooper_Standalone` Release with `cmake --build --preset windows-dev
+--parallel 4 -- /verbosity:quiet`. No plugin wrapper or version bump. Product
+source includes Delay-bank snapshot `401ce58`; D remains internal, with no
+product GUI/CLI/session activation. Focused Windows/Linux and sanitizer evidence
+is in [DELAY.md](DELAY.md).
+
+Actual Standalone `node tests/NativeUiSmoke.cjs` passed against the rebuilt EXE:
+20 cards, native IPC/audio acknowledgements, original controls/holds, master zero,
+disabled unported SAVE and no product AudioContext. The run used loopback port
+9234 and `--disable-background-timer-throttling --disable-renderer-backgrounding`,
+then closed only its own process. This is not listening or physical-device proof.
+
+The first run failed an implementation-coupled nudge assertion that assumed
+`lastRequestId + 1`; effect transactions share the allocator. The test now observes
+the actual request/reply without changing it, requires one dispatch with exact
+action/track/value, and checks the exact returned ID and all original state
+assertions. No tolerance was relaxed. A subsequent run reached the hold check
+but lost pointer capture at about 383ms, before the 600ms deadline; its log is
+retained as `build/windows/alpha-ui-smoke-first.log`. A fresh run with the above
+background-test flags passed unchanged hold assertions. This records an
+interrupted test attempt, not proof that those flags caused or fixed capture loss.
+
+Tested executable SHA256:
+`325D990A544AD5431B914729AD322ABCD2D2E701467D1148E69F3B1DE45876CD`.
+The requested alpha uses `tools/PackageStandalone.ps1 -Alpha`; verify this hash
+against the ZIP's executable entry and retain TEST-BUILD.txt/source notices.
+Delay product integration, full application parity, physical drivers/controllers,
+long sessions, original-asset permissions and release checks remain pending.
+
 Environment: Windows host, Ubuntu 24.04 under WSL; GCC 13.3.0, CMake 3.28.3,
 Ninja 1.11.1, Python 3.12.3. Windows validation also used Microsoft Build Tools
 2022 17.14.42 (MSVC toolset 14.44.35207), Windows SDK 10.0.26100.0,
