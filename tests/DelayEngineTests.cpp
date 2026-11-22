@@ -45,10 +45,11 @@ struct Fixture {
 };
 static void validationAndOrdering(unsigned block){
  Fixture f(block);auto c=f.command(1,19);std::uint64_t untouched=77;
- for(unsigned bad=0;bad<7;++bad){auto invalid=c;
+ for(unsigned bad=0;bad<8;++bad){auto invalid=c;
   if(bad==0)invalid.requestId=0;if(bad==1)invalid.generation=0;if(bad==2)invalid.track=20;
   if(bad==3)invalid.delay.values[3]=NAN;if(bad==4)invalid.delay.repeatCount=11;
   if(bad==5)invalid.delayTransaction=1;if(bad==6)invalid.delaySettingsRevision=UINT64_MAX;
+  if(bad==7)invalid.generation=f.engine->generation()+1;
   check(!f.engine->enqueueDelayEdit(invalid,untouched)&&untouched==77,"invalid admission preserves output/queues");
  }
  check(!f.engine->enqueueLoop(c),"bare Delay commands cannot bypass receipt protocol");
@@ -58,6 +59,9 @@ static void validationAndOrdering(unsigned block){
  check(ready.generation==c.generation&&ready.settingsRevision==1&&!ready.clearEpoch&&ready.frame%block==0,"prepared receipt captures actual adoption ownership");
  EngineView view,last;while(f.engine->popView(view))last=view;
  check(last.lastRequestId==700&&!last.rejected,"Delay never hijacks ordinary loop acknowledgements");
+ auto busy=f.command(90,19);check(setDelayRepeats(busy.delay,DelayRepeatMode::exact,3),"busy replacement settings");
+ const auto busyTransaction=f.enqueue(busy);const auto notAdmitted=f.expect(90,busyTransaction,DelayEditStatus::busy,19);
+ check(notAdmitted.settingsRevision==1&&f.info(19).delay==c.delay,"transition-busy receipt preserves current owner/settings");
  f.settle();const auto old=f.info(19);c=f.command(2,19);c.delayClearEpoch++;
  const auto stale=f.enqueue(c);f.expect(2,stale,DelayEditStatus::stale,19);
  check(f.info(19).delay==old.delay&&f.info(19).delaySettingsRevision==old.delaySettingsRevision,"stale epoch preserves active state");

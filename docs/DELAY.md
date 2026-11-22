@@ -144,6 +144,8 @@ Accepted disabled state and audible bypass are tested independently.
 twenty unread receipts under telemetry saturation, reused IDs, zero-block/full-
 queue cancellation, unread success across clear/reprepare, worker OOM and
 cancel/panic/DEL/MIDI Stop during a paused real allocation. `DelayEngineAudioTests`
+also has explicit wrong-generation rejection and transition-busy preservation
+coverage in the transaction fixture. The audio fixture
 captures actual stereo Engine PCM at 8/48 kHz and 64/128, renders continuously
 during preparation, and compares live `+17` edits, Feedback→exact replacement
 and disabled-mode bypass to independently scheduled Delay DSP (`2e-6` limit).
