@@ -29,8 +29,20 @@ Disabled metadata can change mode/count without allocating; the existing runtime
 fades to bypass and a later enable prepares the requested mode if necessary.
 Actual Engine capture/playback is compared against independently scheduled Delay
 at 8/48 kHz, 64/128, including live edits at +17 and continuous prepared mode
-replacement. Initial Windows Engine checks pass; final focused/platform results
-are recorded after validation. See [DELAY.md](DELAY.md) for the protocol contract.
+replacement. Code snapshot `359ffd4`, strengthened test snapshot `12f1453`:
+Windows selected regressions 12/12 (30.95s), native WSL Linux selected regressions
+12/12 (7.00s), final Linux ASan/UBSan/leak Delay 7/7 (19.90s), no reported errors
+or suppressions. Incremental busy/wrong-generation checks pass Windows 1/1
+(2.24s), Linux 1/1 (0.19s); unchanged passing normal suites were reused after
+that test-only addition. Final core --loop-edits AND --midi pass on both OSes.
+Actual Engine PCM max error is 1.49012e-8 (8k) / 7.45058e-9 (48k), both 64/128,
+against an unchanged 2e-6 limit. The fixture uses paired mono/centre pan/zero
+wet-pan speed; do not infer full stereo/browser parameter coverage. See
+[DELAY.md](DELAY.md) for exact commands, protocol and evidence limits.
+
+No product Standalone/GUI/CLI, physical device/listening or wrapper check was
+run. No package, push, dependency upgrade or CPU profiling. Earlier manually
+interrupted exhaustive core gates remain incomplete and were not rerun here.
 
 STILL INTERNAL: Processor command/result/lifetime handling, atomic bank restore,
 GUI/CLI, MIDI Learn and session serialization remain pending. Next: atomic D bank

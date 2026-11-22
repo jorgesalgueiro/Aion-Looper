@@ -142,15 +142,18 @@ Accepted disabled state and audible bypass are tested independently.
 
 `DelayEngineTests` covers invalid/full FIFO admission, exact sample offsets,
 twenty unread receipts under telemetry saturation, reused IDs, zero-block/full-
-queue cancellation, unread success across clear/reprepare, worker OOM and
-cancel/panic/DEL/MIDI Stop during a paused real allocation. `DelayEngineAudioTests`
-also has explicit wrong-generation rejection and transition-busy preservation
-coverage in the transaction fixture. The audio fixture
-captures actual stereo Engine PCM at 8/48 kHz and 64/128, renders continuously
+queue cancellation, unread success across clear/reprepare, worker OOM,
+cancel/panic/DEL/MIDI Stop during a paused real allocation, wrong-generation
+rejection and transition-busy preservation. `DelayEngineAudioTests` captures
+actual two-channel Engine PCM at 8/48 kHz and 64/128, renders continuously
 during preparation, and compares live `+17` edits, Feedback→exact replacement
 and disabled-mode bypass to independently scheduled Delay DSP (`2e-6` limit).
 No callback allocation/deallocation, UI access or locks are added. Results are
 still internal APIs: no Processor/GUI/CLI/session feature is advertised as ready.
+The Engine audio fixture uses paired mono input in two-channel buffers, centre
+loop pan and zero wet-pan speed. It does not establish full browser stereo/wet-
+pan routing parity or all Delay parameter combinations. Preserve that distinction
+when completing product audio acceptance.
 
 ## Reproducible checks
 
@@ -177,7 +180,50 @@ cmake --build build/drive-sanitized --target aion_delay_tests aion_delay_repeat_
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(delay_.*_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 ```
 
+To create a fresh sanitizer cache rather than reuse the existing one:
+
+```sh
+cmake -S . -B build/drive-sanitized -DAION_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+  -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined'
+```
+
+The affected existing-owner regression command uses the same cache and targets:
+`aion_arp_preparation_tests aion_arp_owner_tests aion_arp_owner_bank_tests
+aion_drive_connected_tests aion_signal_chain_tests aion_core_tests`. After
+building those, extend the CTest regex to
+`^(delay_.*_contract|original_delay_settings_contract|arp_preparation_contract|arp_owner_contract|arp_owner_bank_contract|drive_connected_contract|signal_chain_connected_contract)$`.
+Run the built core executable with `--loop-edits` and `--midi` separately.
+Windows uses `build/windows-core/Release/aion_core_tests.exe`; Linux uses
+`./build/linux/aion_core_tests`. Do not replace these focused commands with an
+unqualified core invocation during iteration.
+
 ## Remaining before D is a working feature
+
+Engine-stage evidence, 22 November 2026: code snapshot `359ffd4`, strengthened
+busy/generation regression snapshot `12f1453`:
+
+- Windows Release selected regressions: 12/12 (30.95s). Incremental strengthened
+  Engine transaction fixture: 1/1 (2.24s).
+- Native WSL Linux Release selected regressions: 12/12 (7.00s). Incremental
+  strengthened Engine transaction fixture: 1/1 (0.19s).
+- Final Linux ASan/UBSan Debug/leak Delay checks: 7/7 (19.90s), no reported errors
+  or suppressions. The cache flags were independently confirmed as Debug,
+  plugin builds off, address+undefined instrumentation and frame pointers.
+- Final Windows and Linux `--loop-edits` and `--midi` pass. These protect existing
+  capture/reverse/history/Multiply/Start/Merge plus MIDI routing/timing/mute/
+  held-gesture recovery. No assertion/tolerance/old case was removed or loosened.
+- Actual Engine Delay audio maximum error: `1.49012e-8` at 8 kHz and `7.45058e-9`
+  at 48 kHz, for 64/128. Limit remains `2e-6`; nonzero audible effect and exact
+  settled disabled bypass are asserted. All new callback fixtures retain zero
+  tracked C++ heap operations, including synthetic MIDI Stop during preparation.
+- Only the changed transaction fixture was repeated after its test-only busy/
+  generation addition; unchanged passing normal suites were reused. The full
+  seven-case sanitizer set includes the strengthened fixture.
+- No Standalone/GUI/CLI, physical device, panned-stereo/browser, listening or
+  plugin-wrapper acceptance was executed. No package, push or CPU profiling.
+  Prior interrupted exhaustive core runs remain incomplete; this stage did not
+  rerun or claim them as passing.
 
 Latest connected evidence, source/test snapshot `bd2e34d`, 21 November 2026:
 
