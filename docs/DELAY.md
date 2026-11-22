@@ -157,13 +157,57 @@ when completing product audio acceptance.
 
 ## Reproducible checks
 
+### Atomic D-only bank acceptance (22 November 2026)
+
+`enqueueDelayBank` admits one bank plus a small ordered FIFO marker, without
+putting twenty settings into every ordinary loop command. Individual D edits and
+banks exclude each other until their receipts are consumed. Storage validates all
+members and reserves aggregate old/new ring capacity before publishing work.
+Enabled processors prepare on the existing worker; no member adopts early.
+All twenty metadata revisions and owners commit at one callback boundary after
+the requested FIFO deadline. All-off banks need no allocation but still commit
+at that boundary, fading previous owners to dry over 20ms. Retired bytes count
+against the budget until actual worker reclamation.
+
+The bank has independent cancellation and immutable generation/transaction/
+epoch/revision receipts. Partial preparation, worker failure and stale completions
+cannot publish a partial target. Clear/panic/reset retain their intended behavior
+while cancelling the pending whole bank. An unread receipt survives reprepare;
+a fresh bank cannot steal it. This protocol covers Delay only: coordinating it
+with existing Q/C/A/T/F/O/chain/PCM session restore remains Processor work.
+
+`delay_atomic_bank_contract` checks all twenty members, partial-ready PCM rollback,
+aggregate budgets, all-off retirement, full FIFO rejection, stale identities,
+unread/queued reprepare and cancellation during a paused second allocation.
+`delay_atomic_bank_audio_contract` captures actual loops 0 and 19 and compares
+continuous Engine PCM against independent Delay owners. It checks atomic old/new
+snapshots, Feedback/exact replacement, off transitions and unchanged clip identity,
+length, cursor and Undo state at 8/48 kHz with 64/128 callbacks. Maximum Windows
+error was 7.45058e-9 against the unchanged 2e-6 limit; both tracks use paired mono,
+centre pan and zero wet-pan speed. This does not establish browser, full stereo,
+product UI/CLI, persistence, listening or physical-device acceptance.
+
+Add `aion_delay_bank_tests aion_delay_bank_audio_tests` to each build command
+below; the existing Delay CTest regex includes both new cases. Source snapshot:
+`401ce58`. No callback heap operations were observed by the test guards; ASan is
+not a race detector. No distributable or remote push was produced.
+
+Executed against that snapshot: native WSL Linux Release selected regressions
+14/14 (7.59s), focused core `--loop-edits` and `--midi` both passed. Linux Debug
+ASan/UBSan with leak detection passed Delay 9/9 (25.57s), with no reported errors
+or suppressions. These are functional test durations, not runtime benchmarks.
+Windows Release selected regressions passed 14/14 (38.33s). No original cases or
+tolerances were removed or relaxed. Reference and preserved UI assets are unchanged.
+Windows focused core `--loop-edits` and `--midi` also passed. The earlier manually
+interrupted exhaustive core runs remain incomplete; they were not repeated here.
+
 Windows, existing core cache (PowerShell):
 
 ```powershell
 $cmake = '.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
 $ctest = '.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe'
 & $cmake -S . -B build/windows-core
-& $cmake --build build/windows-core --config Release --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests --parallel 4
+& $cmake --build build/windows-core --config Release --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests aion_delay_bank_tests aion_delay_bank_audio_tests --parallel 4
 & $ctest --test-dir build/windows-core -C Release -R '^(delay_.*_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 ```
 
@@ -172,11 +216,11 @@ Linux, after committing the Windows snapshot and using `SetupWslWorkspace.sh`:
 ```sh
 cd /home/jorge/projects/Aion-Looper
 cmake -S . -B build/linux
-cmake --build build/linux --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests --parallel 2
+cmake --build build/linux --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests aion_delay_bank_tests aion_delay_bank_audio_tests --parallel 2
 ctest --test-dir build/linux -R '^(delay_.*_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 # Existing ASan/UBSan Debug cache, plugin builds disabled:
 cmake -S . -B build/drive-sanitized
-cmake --build build/drive-sanitized --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests --parallel 2
+cmake --build build/drive-sanitized --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests aion_delay_bank_tests aion_delay_bank_audio_tests --parallel 2
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(delay_.*_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 ```
 
@@ -288,7 +332,7 @@ Earlier component evidence, source snapshot `e75c210`:
 No product UI, CLI, connected Engine, device, host or listening test was run for
 this internal component. No distributable produced or remote push performed.
 
-Add all-or-nothing bank restore and Processor command/result ownership, then
+Complete Processor command/result ownership and coordinated session-bank restore, then
 shared GUI/CLI commands, MIDI Learn, versioned persistence and editor lifecycle.
 Retain the connected Engine 64/128 PCM gates, then run actual GUI/CLI interaction
 and listening acceptance. The Processor must cancel D via its independent path

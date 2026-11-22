@@ -11,6 +11,40 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Atomic D-only bank transactions — 22 November 2026
+
+Source snapshot `401ce58` adds a bounded twenty-track Delay bank through storage,
+LoopBank and the Engine performance FIFO. Admission validates the complete bank,
+all epochs/revisions, free slots and aggregate ring budget before publishing any
+worker job. The existing worker prepares enabled targets; adoption commits all
+twenty settings together at a callback boundary. Disabled targets fade old owners
+to dry without allocating dummy processors. Old rings remain charged until the
+worker reclaims them. Failure/cancellation leaves accepted owners unchanged except
+for the cancelling action's own clear/reset behavior.
+
+One outstanding bank includes its unread receipt and excludes individual D edits.
+Request IDs may be reused, transactions may not. Heap-owned fixed queues retain
+generation/epoch/revision receipts across reprepare; cancellation is independent
+of FIFO room and telemetry. Tests cover partial preparation, aggregate budget,
+OOM PCM rollback, paused-allocation cancellation/clear/panic/MIDI Stop, stale
+request reuse and old-generation receipts. Actual two-loop Engine PCM comparisons
+cover 8/48 kHz and 64/128 samples, including all-off fades and unchanged clip,
+history and playback ownership. This is D-only atomicity, not a coordinated
+whole-session restore with other effects, routing or PCM.
+
+Validation results are recorded in [DELAY.md](DELAY.md). Next: Processor shadow,
+result and lifetime integration, including coordination with existing effect-bank
+restore, then shared GUI/CLI controls and versioned persistence. D remains
+unavailable in product controls. No wrapper, package, push or broad CPU tuning.
+
+Executed: Windows Release selected regressions 14/14 (38.33s), native WSL Linux
+Release 14/14 (7.59s), Linux ASan/UBSan/leak Delay 9/9 (25.57s), and focused core
+`--loop-edits` / `--midi` on both OSes. No reported sanitizer errors/suppressions.
+New two-loop Engine PCM maximum error: 7.45058e-9 (limit 2e-6), 8/48 kHz and
+64/128; paired mono/centre pan/zero wet-pan speed only. No product UI/CLI,
+listening, device or wrapper acceptance was run. Earlier interrupted exhaustive
+core checks remain incomplete. Reference/UI resources and dependencies unchanged.
+
 ### Ordered Engine D controls/results — 22 November 2026
 
 Added `enqueueDelayEdit`/`popDelayEdit`/`cancelDelayEdit` on the shared Engine.
@@ -44,9 +78,9 @@ No product Standalone/GUI/CLI, physical device/listening or wrapper check was
 run. No package, push, dependency upgrade or CPU profiling. Earlier manually
 interrupted exhaustive core gates remain incomplete and were not rerun here.
 
-STILL INTERNAL: Processor command/result/lifetime handling, atomic bank restore,
-GUI/CLI, MIDI Learn and session serialization remain pending. Next: atomic D bank
-restore and Processor shadow/result integration, then shared product controls.
+At this earlier checkpoint, atomic D bank restore was the next internal step;
+the newer bank checkpoint above supersedes that step. Processor command/result/
+lifetime handling, GUI/CLI, MIDI Learn and session serialization remain pending.
 Do not expose D in the UI or mark it feature-complete yet. Reuse prior component
 evidence; run focused Delay/affected owner checks and core --loop-edits/--midi,
 not the exhaustive core suite or broad CPU profiling on each internal step.
