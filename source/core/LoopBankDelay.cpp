@@ -9,6 +9,7 @@ bool LoopBank::requestDelay(unsigned id,const DelaySettings& settings,std::uint6
 }
 void LoopBank::cancelDelay(unsigned id) noexcept {
  if(id>=trackCount)return;
+ cancelDelayBank();
  delayStorage->cancel(id);pendingDelays[id]={};
 }
 bool LoopBank::setDelay(unsigned id,const DelaySettings& settings,std::uint64_t epoch,std::uint64_t revision,std::uint32_t request) noexcept {
@@ -29,10 +30,20 @@ bool LoopBank::setDelay(unsigned id,const DelaySettings& settings,std::uint64_t 
  cancelDelay(id);auto& info=tracks[id].info;info.delay=settings;info.delayRequest=request;++info.delaySettingsRevision;return true;
 }
 void LoopBank::pollDelays() noexcept {
+ if(pendingDelayBank->active)for(unsigned id=0;id<trackCount;++id)
+  if(pendingDelayBank->epochs[id]!=tracks[id].clearEpoch||pendingDelayBank->revisions[id]!=tracks[id].info.delaySettingsRevision){cancelDelayBank();break;}
  for(unsigned id=0;id<trackCount;++id){const auto& p=pendingDelays[id];
   if(p.active&&(p.clearEpoch!=tracks[id].clearEpoch||p.revision!=tracks[id].info.delaySettingsRevision))cancelDelay(id);
  }
- const auto completion=delayStorage->poll();
+ const auto completion=delayStorage->poll(sync.settings.bpm);
+ if(pendingDelayBank->active&&(completion.bankInstalled||completion.bankFailed)){
+  const auto& bank=*pendingDelayBank;
+  if(completion.bankInstalled)for(unsigned id=0;id<trackCount;++id){
+   auto& info=tracks[id].info;info.delay=bank.settings[id];info.delayRequest=bank.request;++info.delaySettingsRevision;
+  }
+  bankDelayResult={bank.request,bank.transaction,completion.bankInstalled?DelayBankStatus::ready:DelayBankStatus::failed};
+  pendingDelayBank->active=false;
+ }
  for(unsigned id=0;id<trackCount;++id){auto& p=pendingDelays[id];
   if((completion.installed&(1u<<id))&&p.active){
    auto* graph=delayStorage->graph(id);
@@ -53,7 +64,7 @@ void LoopBank::resetDelays() noexcept {
  }
 }
 Stereo LoopBank::tickDelay(unsigned id,Stereo input,bool sourceActive) noexcept {
- if(!delayStorage->graph(id))return input;
+ if(!delayStorage->hasOwner(id))return input;
  delayStorage->tick(id,input.left,input.right,input.left,input.right);
  // Continue persistent memory, but obey the existing source STOP/clear gate.
  return sourceActive?input:Stereo{};

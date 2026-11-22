@@ -12,7 +12,8 @@ public:
  static constexpr unsigned trackCount=20,capacity=40;
  static constexpr std::size_t defaultBudget=256u*1024u*1024u;
  struct View {bool active=false,pending=false,failed=false;std::uint64_t installation=0;bool transitioning=false;};
- struct Completion {std::uint32_t installed=0,failed=0;};
+ struct Completion {std::uint32_t installed=0,failed=0;bool bankInstalled=false,bankFailed=false;};
+ using Bank=std::array<DelaySettings,trackCount>;
  explicit DelayStorage(std::size_t byteBudget=defaultBudget);
  DelayStorage(const DelayStorage&)=delete;
  DelayStorage& operator=(const DelayStorage&)=delete;
@@ -22,13 +23,15 @@ public:
  // Audio-only. Fixed slot and ring-byte limits reject before mutation. One
  // pending preparation per track; old owner survives cancellation or failure.
  bool request(unsigned track,const DelaySettings&,double bpm) noexcept;
+ bool requestBank(const Bank&,double bpm) noexcept;
+ void cancelBank() noexcept;
  void cancel(unsigned track) noexcept;
  void clear(unsigned track) noexcept;
  void clearAll() noexcept;
  void reset(unsigned track,bool fadeIn=false) noexcept; // cancel, clear history, retain active settings/storage
  bool setTempo(unsigned track,double bpm) noexcept; // both pinned transition owners
- Completion poll() noexcept;
- bool hasOwner(unsigned track) const noexcept {return track<trackCount&&active[track]!=nullptr;}
+ Completion poll(double bankBpm=0) noexcept; // zero retains the bank's admitted tempo
+ bool hasOwner(unsigned track) const noexcept {return track<trackCount&&(active[track]||previous[track]);}
  Delay* graph(unsigned track) noexcept; // control/inspection borrow until poll/clear/prepare; render through tick
  // Audio-only: crossfade prepared replacements for 20ms, retaining both owners.
  // Further replacement admission waits for this bounded transition to finish.
@@ -43,14 +46,18 @@ private:
  struct Slot {
   std::atomic<Phase> phase{Phase::free};std::atomic<bool> cancelled{false};
   unsigned track=0;std::size_t bytes=0;double bpm=120;DelaySettings settings{};
+  bool bankMember=false; // immutable from queued publication through retirement
   std::optional<Delay> graph; // created/destroyed only off audio
  };
  std::unique_ptr<std::array<Slot,capacity>> slots;
  std::array<Slot*,trackCount> active{},pending{},previous{};
+ std::array<Slot*,trackCount> bankSlots{};
+ bool bankActive=false;
+ void pollBank(double bpm,Completion&) noexcept;
  std::array<unsigned,trackCount> remaining{};
  std::array<bool,trackCount> failed{};
  std::array<std::uint64_t,trackCount> installations{};
  const std::size_t budget;
- double rate=0;unsigned cursor=0,fadeFrames=0;
+ double rate=0,bankTempo=120;unsigned cursor=0,fadeFrames=0;
 };
 }

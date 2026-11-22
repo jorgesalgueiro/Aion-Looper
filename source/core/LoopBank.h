@@ -23,7 +23,7 @@ namespace aion {
 // Application queues wait for explicit source creation; direct DSP clients may schedule at the grid.
 enum class QueuedStartMode { sampleGrid, messageCallback };
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor, signalChain, arpDelay, drive, delay }; // Append-only. Source/reset primitives remain core-only.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor, signalChain, arpDelay, drive, delay, delayBank }; // Append-only. Source/reset primitives remain core-only.
 constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart||action==LoopAction::meterQueuedWindowRequest||action==LoopAction::meterQueuedGraphRequest;}
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
@@ -87,6 +87,13 @@ public:
     bool setDelay(unsigned,const DelaySettings&,std::uint64_t clearEpoch,std::uint64_t revision,std::uint32_t request) noexcept;
     void cancelDelay(unsigned) noexcept;
     DelayStorage::View delayStorageView(unsigned id) const noexcept {return delayStorage->view(id);}
+    using DelayBank=DelayStorage::Bank;
+    using DelayEpochs=std::array<std::uint64_t,trackCount>;
+    enum class DelayBankStatus {none,pending,ready,failed,cancelled};
+    struct DelayBankResult {std::uint32_t request=0;std::uint64_t transaction=0;DelayBankStatus status=DelayBankStatus::none;};
+    bool requestDelayBank(const DelayBank&,const DelayEpochs&,const DelayEpochs&,std::uint32_t request,std::uint64_t transaction) noexcept;
+    void cancelDelayBank() noexcept;
+    DelayBankResult delayBankResult() const noexcept {return bankDelayResult;}
     void resetDrives(unsigned)noexcept;
     using DriveBanks=std::array<DriveBank,trackCount>;
     static DriveBanks defaultDriveBanks()noexcept{DriveBanks b;for(auto& v:b)v=defaultDriveBank();return b;}
@@ -376,6 +383,12 @@ private:
         DelaySettings settings{};std::uint64_t clearEpoch=0,revision=0;std::uint32_t request=0;bool active=false;
     };
     std::array<PendingDelaySettings,trackCount> pendingDelays{};
+    struct PendingDelayBank {
+        DelayBank settings{};DelayEpochs epochs{},revisions{};
+        std::uint32_t request=0;std::uint64_t transaction=0;bool active=false;
+    };
+    std::unique_ptr<PendingDelayBank> pendingDelayBank=std::make_unique<PendingDelayBank>();
+    DelayBankResult bankDelayResult{};
     void pollDelays() noexcept;
     void resetDelay(unsigned,bool fadeIn=false) noexcept;
     void resetDelays() noexcept;

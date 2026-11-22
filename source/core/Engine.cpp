@@ -33,7 +33,7 @@ bool Engine::enqueue(GainCommand command) noexcept {
     return std::isfinite(command.gain) && command.gain >= 0.0f && command.gain <= 2.0f && commands.push(command);
 }
 bool Engine::enqueueLoop(LoopCommand command) noexcept {
-    if(command.arpTransaction||command.delayTransaction||command.action==LoopAction::delay)return false; // Tracked edits use their dedicated admission.
+    if(command.arpTransaction||command.delayTransaction||command.action==LoopAction::delay||command.action==LoopAction::delayBank)return false; // Tracked edits use their dedicated admission.
     if (command.generation == 0 || command.generation != generation() || command.track >= LoopBank::trackCount
         || !std::isfinite(command.value)) return false;
     if(command.action==LoopAction::equalizer&&(!validEqSettings(command.equalizer)||(command.eqMask&~eqAllParameters)))return false;
@@ -89,7 +89,7 @@ bool Engine::applyMidi(LoopAction action,std::uint32_t track,double value) noexc
     if(action==LoopAction::record&&!midiInputAvailable)return false;
     if(action==LoopAction::stopAll){
         const auto discardedUiCommand=[&](const LoopCommand& command) noexcept {
-            if(!isMeterCommand(command.action)&&command.action!=LoopAction::delay){lastRequestId=std::max(lastRequestId,command.requestId);rejected=true;}
+            if(!isMeterCommand(command.action)&&command.action!=LoopAction::delay&&command.action!=LoopAction::delayBank){lastRequestId=std::max(lastRequestId,command.requestId);rejected=true;}
         };
         if(hasPendingLoop){discardedUiCommand(pendingLoop);hasPendingLoop=false;}
         LoopCommand discarded{};for(unsigned n=0;n<256&&loopCommands->pop(discarded);++n)discardedUiCommand(discarded);
@@ -186,7 +186,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
         while (hasPendingLoop && (!pendingLoop.arpTransaction||pendingLoop.arpTransaction<=seenArpTransaction)
             && (!pendingLoop.delayTransaction||pendingLoop.delayTransaction<=seenDelayTransaction)
             && (pendingLoop.frame <= frame||isMeterCommand(pendingLoop.action)||(pendingLoop.arpTransaction&&!currentArpEdit(pendingLoop))
-                ||(pendingLoop.delayTransaction&&!currentDelayEdit(pendingLoop))) && loopApplied < 128) {
+                ||(pendingLoop.delayTransaction&&!currentDelayCommand(pendingLoop))) && loopApplied < 128) {
             if(pendingLoop.action==LoopAction::meterQueuedWindowStart||pendingLoop.action==LoopAction::meterQueuedWindowRequest||pendingLoop.action==LoopAction::meterQueuedGraphRequest){
                 // The callback has already happened on the message owner.
                 // Validate against current audio ownership, not its old view.
@@ -205,6 +205,8 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
                     if(pendingLoop.frame>frame)(void)meterGraphStarts->push(pendingLoop.frame,loops.trackView(pendingLoop.track).clearEpoch,pendingLoop.track,pendingLoop.meterGraphTicket);
                     else (void)loops.startMeterGraph(pendingLoop.track,pendingLoop.meterGraphTicket);
                 }
+            }else if(pendingLoop.action==LoopAction::delayBank){
+                applyDelayBank(pendingLoop);
             }else if(pendingLoop.action==LoopAction::delay){
                 applyDelayEdit(pendingLoop); // Exact terminal receipt; never hijack ordinary UI acknowledgement.
             }else{

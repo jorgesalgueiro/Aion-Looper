@@ -63,6 +63,19 @@ struct DelayEditResult {
     DelayEditStatus status=DelayEditStatus::failed;
     std::uint64_t transaction=0,settingsRevision=0,clearEpoch=0,frame=0;
 };
+// Internal D-only restore bank. One outstanding (including unread terminal
+// result), mutually exclusive with per-track D edits. Payload is kept out of
+// LoopCommand so ordinary performance FIFO entries do not grow by 20 tracks.
+struct DelayBankRequest {
+    LoopBank::DelayBank settings{};LoopBank::DelayEpochs clearEpochs{},settingsRevisions{};
+    std::uint32_t requestId=0,generation=0;
+    std::uint64_t frame=0,transaction=0,cancellation=0;
+};
+struct DelayBankResult {
+    std::uint32_t requestId=0,generation=0;DelayEditStatus status=DelayEditStatus::failed;
+    std::uint64_t transaction=0,frame=0;
+    LoopBank::DelayEpochs clearEpochs{},settingsRevisions{};
+};
 // Internal prepared-storage transaction, not a product A toggle/preset/state
 // command. Values/seed are explicit DSP inputs; product voicing is still pending.
 struct ArpPreparationRequest {
@@ -158,6 +171,9 @@ public:
     bool enqueueDelayEdit(LoopCommand,std::uint64_t& transaction) noexcept;
     bool popDelayEdit(DelayEditResult&) noexcept;
     void cancelDelayEdit(unsigned track=LoopBank::trackCount) noexcept;
+    bool enqueueDelayBank(DelayBankRequest,std::uint64_t& transaction) noexcept;
+    bool popDelayBank(DelayBankResult&) noexcept;
+    void cancelDelayBank() noexcept;
     bool enqueueEqBank(const std::array<EqSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;
     bool enqueueEffectsBank(const std::array<EqSettings,LoopBank::trackCount>&,
                             const std::array<CompressorSettings,LoopBank::trackCount>&,std::uint32_t firstRequest) noexcept;
@@ -277,6 +293,21 @@ private:
     void cancelAllDelayEdits() noexcept;
     bool currentDelayEdit(const LoopCommand&) const noexcept;
     void applyDelayEdit(const LoopCommand&) noexcept;
+    struct PendingDelayBank {
+        DelayBankRequest request{};DelayBankResult completion{};
+        bool active=false,started=false,finished=false;
+    };
+    std::unique_ptr<PendingDelayBank> pendingDelayBank=std::make_unique<PendingDelayBank>();
+    std::unique_ptr<SpscQueue<DelayBankRequest,2>> delayBankRequests=std::make_unique<SpscQueue<DelayBankRequest,2>>();
+    std::unique_ptr<SpscQueue<DelayBankResult,2>> delayBankResults=std::make_unique<SpscQueue<DelayBankResult,2>>();
+    bool outstandingDelayBank=false; // message owner; retained across prepare
+    std::atomic<std::uint64_t> delayBankCancellation{0};
+    void finishDelayBank(DelayEditStatus) noexcept;
+    void cancelStaleDelayBank() noexcept;
+    void serviceDelayBank() noexcept;
+    void cancelQueuedDelayBank() noexcept;
+    bool currentDelayCommand(const LoopCommand&) const noexcept;
+    void applyDelayBank(const LoopCommand&) noexcept;
     struct PendingArpPreparation {
         ArpPreparationRequest request{};
         bool active=false,started=false,finished=false;

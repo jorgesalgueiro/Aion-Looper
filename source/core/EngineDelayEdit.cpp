@@ -7,7 +7,7 @@ bool Engine::enqueueDelayEdit(LoopCommand command,std::uint64_t& transaction) no
  if(command.action!=LoopAction::delay||command.track>=LoopBank::trackCount||!command.requestId
   ||!command.generation||command.generation!=generation()||command.arpTransaction||command.delayTransaction
   ||!std::isfinite(command.value)||!validDelaySettings(command.delay)||command.delaySettingsRevision==UINT64_MAX
-  ||outstandingDelay[command.track]||nextDelayTransaction==UINT64_MAX)return false;
+  ||outstandingDelayBank||outstandingDelay[command.track]||nextDelayTransaction==UINT64_MAX)return false;
  if(!delayRequests->canPush()||!loopCommands->canPush())return false;
  command.delayTransaction=nextDelayTransaction+1;
  DelayEditRequest request{command.track,command.requestId,command.generation,command.delayClearEpoch,
@@ -23,6 +23,7 @@ bool Engine::popDelayEdit(DelayEditResult& result) noexcept {
  outstandingDelay[result.track]=false;return true;
 }
 void Engine::cancelDelayEdit(unsigned track) noexcept {
+ if(track<=LoopBank::trackCount)cancelDelayBank();
  if(track<LoopBank::trackCount)delayCancellations[track].fetch_add(1,std::memory_order_release);
  else if(track==LoopBank::trackCount)for(auto& serial:delayCancellations)serial.fetch_add(1,std::memory_order_release);
 }
@@ -36,6 +37,7 @@ void Engine::finishDelayEdit(unsigned id,DelayEditStatus status) noexcept {
  if(delayResults->push(p.completion))p={};
 }
 void Engine::cancelStaleDelayEdits() noexcept {
+ cancelStaleDelayBank();
  for(unsigned id=0;id<LoopBank::trackCount;++id){auto& p=(*pendingDelay)[id];if(!p.active)continue;
   if(p.finished){finishDelayEdit(id,p.completion.status);continue;}
   const auto& r=p.request;const auto info=loops.trackView(id);
@@ -45,6 +47,7 @@ void Engine::cancelStaleDelayEdits() noexcept {
  }
 }
 void Engine::serviceDelayEdits() noexcept {
+ serviceDelayBank();
  // Called after LoopBank adoption, before ordinary FIFO commands. An already
  // committed success is terminal even if a later cancellation arrives now.
  for(unsigned id=0;id<LoopBank::trackCount;++id){auto& p=(*pendingDelay)[id];
@@ -95,6 +98,7 @@ void Engine::cancelAllDelayEdits() noexcept {
  // Stopped prepare temporarily owns the audio endpoints. Keep unread old-
  // generation receipts and message outstanding flags until actually consumed.
  cancelDelayEdit();cancelStaleDelayEdits();DelayEditRequest request;
+ cancelQueuedDelayBank();
  for(unsigned n=0;n<LoopBank::trackCount&&delayRequests->pop(request);++n){
   seenDelayTransaction=std::max(seenDelayTransaction,request.transaction);
   auto& p=(*pendingDelay)[request.track];p={};p.request=request;p.active=true;

@@ -9,11 +9,11 @@ bool DelayStorage::prepareStopped(double sr) noexcept {
 }
 void DelayStorage::releaseStopped() noexcept {
  for(auto& slot:*slots){slot.graph.reset();slot.phase.store(Phase::free,std::memory_order_relaxed);}
- active.fill(nullptr);pending.fill(nullptr);previous.fill(nullptr);remaining.fill(0);
- failed.fill(false);installations.fill(0);cursor=fadeFrames=0;rate=0;
+ active.fill(nullptr);pending.fill(nullptr);previous.fill(nullptr);remaining.fill(0);bankSlots.fill(nullptr);bankActive=false;
+ failed.fill(false);installations.fill(0);cursor=fadeFrames=0;rate=0;bankTempo=120;
 }
 bool DelayStorage::request(unsigned track,const DelaySettings& settings,double bpm) noexcept {
- if(track>=trackCount||!rate||pending[track]||remaining[track]||!std::isfinite(bpm)||bpm<10||bpm>999)return false;
+ if(track>=trackCount||!rate||bankActive||pending[track]||remaining[track]||!std::isfinite(bpm)||bpm<10||bpm>999)return false;
  const auto frames=Delay::requiredStorageFrames(rate,settings);if(!frames)return false;
  const auto bytes=frames*sizeof(std::array<float,2>);std::size_t reserved=0;Slot* available=nullptr;
  for(auto& slot:*slots){
@@ -21,12 +21,13 @@ bool DelayStorage::request(unsigned track,const DelaySettings& settings,double b
   else {if(slot.bytes>budget-reserved)return false;reserved+=slot.bytes;}
  }
  if(!available||bytes>budget-reserved)return false;
- auto& slot=*available;slot.track=track;slot.bytes=bytes;slot.bpm=bpm;slot.settings=settings;
+ auto& slot=*available;slot.track=track;slot.bytes=bytes;slot.bpm=bpm;slot.settings=settings;slot.bankMember=false;
  slot.cancelled.store(false,std::memory_order_relaxed);pending[track]=&slot;failed[track]=false;
  slot.phase.store(Phase::queued,std::memory_order_release);return true;
 }
 void DelayStorage::cancel(unsigned track) noexcept {
  if(track>=trackCount)return;
+ cancelBank();
  if(auto* slot=pending[track])slot->cancelled.store(true,std::memory_order_release);
  pending[track]=nullptr;failed[track]=false;
 }
@@ -50,12 +51,13 @@ bool DelayStorage::setTempo(unsigned track,double bpm) noexcept {
  if(auto* slot=previous[track])(void)slot->graph->set(slot->graph->settings(),bpm);
  return true;
 }
-DelayStorage::Completion DelayStorage::poll() noexcept {
- Completion result;
+DelayStorage::Completion DelayStorage::poll(double bankBpm) noexcept {
+ Completion result;pollBank(bankBpm,result);
  for(auto& slot:*slots){
   const auto phase=slot.phase.load(std::memory_order_acquire);
   if(phase!=Phase::ready&&phase!=Phase::failed)continue;
   const auto id=slot.track;
+  if(slot.bankMember&&bankActive&&bankSlots[id]==&slot)continue;
   if(pending[id]!=&slot){slot.phase.store(Phase::retired,std::memory_order_release);continue;}
   pending[id]=nullptr;
   if(phase==Phase::ready){
@@ -68,11 +70,12 @@ DelayStorage::Completion DelayStorage::poll() noexcept {
 }
 Delay* DelayStorage::graph(unsigned track) noexcept {return track<trackCount&&active[track]?&*active[track]->graph:nullptr;}
 DelayStorage::View DelayStorage::view(unsigned track) const noexcept {
- return track<trackCount?View{active[track]!=nullptr,pending[track]!=nullptr,failed[track],installations[track],remaining[track]!=0}:View{};
+ return track<trackCount?View{active[track]!=nullptr,pending[track]!=nullptr||bankActive,failed[track],installations[track],remaining[track]!=0}:View{};
 }
 void DelayStorage::tick(unsigned track,float left,float right,float& outLeft,float& outRight) noexcept {
- if(track>=trackCount||!active[track]){outLeft=left;outRight=right;return;}
- active[track]->graph->tick(left,right,outLeft,outRight);
+ if(track>=trackCount){outLeft=left;outRight=right;return;}
+ if(auto* current=active[track])current->graph->tick(left,right,outLeft,outRight);
+ else {outLeft=left;outRight=right;}
  if(!remaining[track])return;
  float oldLeft=left,oldRight=right;
  if(auto* old=previous[track])old->graph->tick(left,right,oldLeft,oldRight);

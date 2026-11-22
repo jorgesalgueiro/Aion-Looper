@@ -25,7 +25,7 @@ void LoopBank::shutdown(){
     stopping.store(true,std::memory_order_release);
     if(worker.joinable())worker.join();
     arpStorage->releaseStopped();
-    delayStorage->releaseStopped();pendingDelays={};
+    delayStorage->releaseStopped();pendingDelays={};pendingDelayBank->active=false;bankDelayResult={};
     owned.clear();
     Clip* discarded=nullptr;while(retired.pop(discarded)){}
     result=nullptr;jobState.store(0,std::memory_order_relaxed);
@@ -744,6 +744,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::compressor:
         case LoopAction::drive:
         case LoopAction::delay:
+        case LoopAction::delayBank:
         case LoopAction::signalChain:
         case LoopAction::arpDelay:
         case LoopAction::stopAll:break;
