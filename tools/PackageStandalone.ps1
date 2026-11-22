@@ -1,4 +1,5 @@
 # Package only the already-built Windows Standalone. No build, installer or SDKs.
+param([switch]$Alpha)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $exe = Join-Path $repo 'build/windows/AionLooper_artefacts/Release/Standalone/Aion-Looper.exe'
@@ -17,7 +18,7 @@ $source = New-Item -ItemType Directory -Path (Join-Path $stage 'source') -Force
 Copy-Item -LiteralPath $exe -Destination $app.FullName
 Copy-Item -LiteralPath (Join-Path $repo 'tools/aion.py') -Destination $cli.FullName
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $stage
-foreach ($name in @('BUILDING.md','PARITY.md','VALIDATION.md','LICENSING.md','CLI.md','EQ_MIGRATION.md','COMPRESSOR_MIGRATION.md','MIGRATION_CURRENT.md','DEVELOPMENT_WORKFLOW.md','LOOP_TRACK_BUTTONS.md','REFERENCE_AUDIT.md')) {
+foreach ($name in @('BUILDING.md','PARITY.md','VALIDATION.md','LICENSING.md','CLI.md','EQ_MIGRATION.md','COMPRESSOR_MIGRATION.md','ARP_DELAY_MIGRATION.md','DRIVE.md','DELAY.md','MIGRATION_CURRENT.md','DEVELOPMENT_WORKFLOW.md','LOOP_TRACK_BUTTONS.md','REFERENCE_AUDIT.md')) {
     Copy-Item -LiteralPath (Join-Path $repo "docs/$name") -Destination $docs.FullName
 }
 # Use the same pinned dependency notices as CMake, including bundled ASIO headers.
@@ -45,8 +46,9 @@ $sourceArchive = Join-Path $source.FullName "Aion-Looper-$revision-source.zip"
 & git -C $repo archive --format=zip "--output=$sourceArchive" HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Cannot archive the committed source snapshot.' }
 $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
+$channel = if ($Alpha) { 'alpha' } else { 'test preview' }
 @"
-Aion-Looper $version - Windows x64 Standalone test preview
+Aion-Looper $version - Windows x64 Standalone $channel
 Source commit: $revision
 Tracked local overrides: $changes
 Executable SHA256: $hash
@@ -57,9 +59,12 @@ Start with MASTER at zero for MIDI/control checks. Existing app settings apply.
 Defaults: MIDI notes 46 OD, 47 SUB, 48 SUS. Every positive mode NoteOn toggles;
 NoteOff is not required for these three mode keys. Loop keys retain hold behavior.
 See docs/VALIDATION.md and docs/PARITY.md for tested scope and remaining migration.
-The current EQ preview includes presets, numeric/graph/bandwidth controls and live
-OD/SUB/MULT/scheduled-STOP changes. EQ slider CC Learn follows the selected loop
-tab; Shift-right-click clears, Escape cancels. Other FX and wet SAVE remain pending.
+The current native preview includes loop controls and connected EQ, compressor,
+Arp and drive effects. See docs/PARITY.md for the exact available feature scope.
+Delay remains internal: its GUI/CLI, session persistence and coordinated restore
+are pending. This alpha does not expose the new Delay repeat controls.
+EQ slider CC Learn follows the selected loop tab; Shift-right-click clears,
+Escape cancels. Full application parity and release acceptance remain pending.
 With the app running, use Python 3.8+: python tools/aion.py instances
 Then: python tools/aion.py status (see docs/CLI.md for EQ and loop commands).
 Python is required only for the optional CLI, not to run the app.
@@ -70,7 +75,8 @@ docs/LICENSING.md for outstanding original-asset permissions and release checks.
 Other platforms, drivers and plugin hosts require their separate validation.
 "@ | Set-Content -LiteralPath (Join-Path $stage 'TEST-BUILD.txt') -Encoding utf8
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
-$archive = Join-Path $dist "Aion-Looper-$version-$revision-win64-Standalone.zip"
+$suffix = if ($Alpha) { '-alpha' } else { '' }
+$archive = Join-Path $dist "Aion-Looper-$version-$revision-win64-Standalone$suffix.zip"
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -Force
 Get-FileHash -LiteralPath $archive -Algorithm SHA256 | Format-List
 Write-Output $archive
