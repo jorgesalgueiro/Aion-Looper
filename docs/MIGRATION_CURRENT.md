@@ -11,6 +11,42 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Versioned Delay state — 23 November 2026
+
+Source snapshot `af7f7e1` adds `LoopDelays` version 1 to the existing native
+binary state. It stores all twenty track IDs, original double-precision controls,
+enabled/preset identity and additive Feedback/exact repeat mode/count. Missing
+banks in older native sessions restore original defaults/off. Unknown versions,
+incomplete/duplicate/malformed rows, invalid ranges and inconsistent presets
+reject the whole load before APVTS/MIDI/FX mutation or cancellation.
+
+Validated D intent enters the existing joint restore owner, never an independent
+bank. Immediate saves retain the newest accepted load; old FIFO-clear
+acknowledgements cannot erase it. A newer DEL after adoption still resets its
+own track. D commands and product controls remain disabled.
+
+The public binary-state fixture covers exact roundtrips, 66 malformed-load
+rejections per block size (including a valid pending load), legacy defaults,
+clear/load order, unread/saturated telemetry, stopped/changed-rate prepare and
+two editor-free instances. Initial back-to-back test loads hit the existing
+20ms transition busy rejection; ordinary roundtrips now explicitly drain that
+transition, while a separate zero-frame case proves busy rollback and explicit
+later recovery. No assertion or tolerance was loosened and production admission
+behavior is unchanged. Commands, executed results and limits: [DELAY.md](DELAY.md).
+
+Windows Release: final new state tests passed 2/2 (2.27s); rebuilt related
+Processor regressions passed 8/8 (21.09s) separately. Native WSL Linux Release:
+all ten affected cases passed 10/10 (9.53s). Both Standalone builds succeeded.
+Actual rebuilt Windows WebView2 `NativeUiSmoke.cjs` passed (master zero, no
+product AudioContext); this is compatibility smoke, not enabled D interaction.
+Tracked callback new/delete counts remain zero. No new sanitizer, listening,
+physical-device, Linux WebKit, wrapper or Apple check was run for this slice;
+previous unchanged core DSP/reference/ownership evidence is reused.
+
+NEXT: shared Delay GUI/CLI commands and existing-style control integration, then
+applicable MIDI/interaction and listening acceptance. Do not mark the whole Delay
+feature complete or start the next effect yet. No routine package/push or CPU tuning.
+
 ### Processor joint-effects ownership — 23 November 2026
 
 Source snapshot `0ea9da9` connects the existing Processor FX restore to the

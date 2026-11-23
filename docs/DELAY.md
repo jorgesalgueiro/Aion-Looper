@@ -6,6 +6,91 @@ control. Existing GUI/CLI/session IDs are unchanged; no new UI control is expose
 
 ## Contract and acceptance
 
+### Versioned native persistence — 23 November 2026
+
+Source snapshot `af7f7e1` adds a `LoopDelays` version-1 bank to JUCE binary state.
+Each of twenty `Delay` rows has `track`, `enabled`, `preset`, `repeatMode`
+(`feedback`/`exact`), `repeatCount` (1–10), and the seven original named controls.
+Double values use `max_digits10` strings to preserve original precision through
+XML. Preset indexes retain their existing meaning (0 Custom, 1–9 original).
+This versions D independently, leaving APVTS IDs and every other bank schema
+unchanged. The native format is not an importer for original browser projects.
+
+Missing D banks in pre-D native sessions load default controls with D disabled,
+matching original missing-effect defaults. Present banks require exactly one
+supported version and twenty unique valid IDs/rows, all required fields, finite
+in-range values, valid repeat modes/counts and consistent named presets. Nested
+rows, duplicates, incomplete banks and unsupported versions are rejected. All
+banks validate before MIDI admission, cancellation, settings or APVTS mutation.
+The existing bounded 1 MiB state-size guard remains.
+
+`saveDelays` drains the sole non-audio owner's edit receipts and preserves accepted
+load/clear intent. A validated load publishes its D candidate into the existing
+coordinated FX transaction, retiring obsolete D work through that same owner.
+Older FIFO-clear acknowledgements advance ownership epochs without erasing a
+newer load's candidate. A newer GUI clear already resets its own candidate.
+Missing-bank restore deliberately resets D off rather than retaining an unrelated
+previous session's internal D settings.
+
+`DelayStateProcessorTests.cpp` uses public binary save/load (friend access only
+observes completion and invokes existing message service). It verifies exact
+original decimal/preset/mode/count roundtrips, immediate accepted-intent save,
+66 whole-state rejection cases per block size, preservation of an admitted valid
+load after a malformed load, independent instances, stopped load/prepare,
+8-to-48k prepare, legacy defaults, queued older DEL/newer load, post-adoption DEL,
+and supersession with unread/saturated telemetry. Real callbacks count zero
+C++ heap operations. No new audio-thread code or DSP math is introduced.
+
+Initial tests also reproduced the existing busy refusal when a new bank arrives
+during a previous 20ms owner transition. Ordinary roundtrip cases now drain that
+transition before beginning; a separate real zero-frame admission case keeps the
+audio clock still to prove deterministic busy rejection, unchanged old settings
+and explicit later recovery at both 64/128. This is a documented safety/admission
+limit, not silently retried success. No production admission policy, assertion or
+audio tolerance was weakened to pass the tests.
+
+Executed on that snapshot:
+
+- Windows Release: final new state cases 2/2 (2.27s), followed by the rebuilt
+  joint/Delay/Arp/existing FX-restore cases 8/8 (21.09s). These were separate
+  focused runs, not one invented ten-case run. Standalone rebuilt successfully.
+- Native WSL Linux Release: all ten affected Processor cases passed 10/10
+  (9.53s), with Standalone rebuilt from the committed snapshot.
+- Actual rebuilt Windows Standalone `NativeUiSmoke.cjs` passed: original loop
+  cards, IPC validation/acknowledgements, disabled unported controls and no
+  legacy AudioContext, master volume zero. This is compatibility smoke, not
+  interaction/audition acceptance for the still-disabled D controls. The exact
+  WebView debug launch recipe is retained in the joint-restore checkpoint below;
+  this run's output is `build/windows/delay-state-ui-smoke.log`.
+- No new sanitizer run for this non-audio JUCE state-parser slice. Prior core
+  ownership/DSP sanitizer and unchanged-JS PCM evidence is retained at its
+  recorded scope; no fresh audio model, listening, physical device, Linux
+  WebKit interaction, wrapper, Apple or CPU-tuning acceptance is claimed.
+
+Focused commands (existing configured Windows cache with native tests enabled):
+
+```powershell
+cmake --build build/windows --config Release --target aion_delay_state_processor_tests aion_joint_effects_processor_tests aion_delay_processor_tests aion_arp_processor_tests aion_effects_restore_processor_tests AionLooper_Standalone --parallel 4
+ctest --test-dir build/windows -C Release -R '^native_(delay_state|joint_effects|delay|arp|effects_restore)_processor_(64|128)$' --output-on-failure --no-tests=error
+```
+
+Use the pinned CMake/CTest binaries under `.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin`
+where CMake is not on PATH. Commit the Windows snapshot and sync using
+`tools/SetupWslWorkspace.sh` as documented in DEVELOPMENT_WORKFLOW.md, then:
+
+```sh
+cd /home/jorge/projects/Aion-Looper
+cmake --preset linux -DAION_TEST_NATIVE_PROCESSOR=ON
+cmake --build build/linux --target aion_delay_state_processor_tests aion_joint_effects_processor_tests aion_delay_processor_tests aion_arp_processor_tests aion_effects_restore_processor_tests AionLooper_Standalone -j2
+ctest --test-dir build/linux -R '^native_(delay_state|joint_effects|delay|arp|effects_restore)_processor_(64|128)$' --output-on-failure --no-tests=error
+```
+
+Next: shared product GUI/CLI commands and original-style Delay controls, then
+applicable MIDI/interaction and listening acceptance. The controls remain
+disabled; full Delay feature acceptance, PCM/project-file persistence and
+whole-project/APVTS/audio atomicity are not claimed by this native settings bank.
+Keep prior core PCM/reference/ownership evidence at its documented scope.
+
 ### Processor coordinated restore — 23 November 2026
 
 Source snapshot `0ea9da9` makes the existing Processor FX owner submit the joint

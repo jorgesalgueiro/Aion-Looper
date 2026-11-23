@@ -8,7 +8,7 @@ or Apple acceptance.
 
 | Capability | Foundation status | Release acceptance |
 | --- | --- | --- |
-| D / Delay | Internal worker/chain, exact Engine/settings ownership and Processor joint Arp/D/FX restore/lifecycle with receipt/telemetry fencing; exact 1–10 repeats + Feedback and prepared-owner crossfades | Product GUI/CLI/MIDI and versioned D persistence remain pending. Native lifecycle/race, PCM evidence and limits: [DELAY.md](DELAY.md). Broad CPU tuning deferred by owner until remaining features implemented |
+| D / Delay | Internal worker/chain, exact Engine/settings ownership and Processor joint Arp/D/FX restore/lifecycle with receipt/telemetry fencing; versioned native D state; exact 1–10 repeats + Feedback and prepared-owner crossfades | Product GUI/CLI/MIDI and listening acceptance remain pending. Native state/lifecycle/race, PCM evidence and limits: [DELAY.md](DELAY.md). Broad CPU tuning deferred by owner until remaining features implemented |
 | Original runtime assets | 16 files preserved with SHA256 | Automated byte identity checks |
 | Running-Standalone CLI | Development Python client routes existing native operations to the same session/processor using bounded private local mailboxes; exact-ID outcomes and instance selection | Native 64/128 external-process and real Standalone/WebView checks are recorded in VALIDATION.md; unported engines, remaining session/device setup commands, compiled/bundled CLI and Apple remain separate |
 | Native build formats | CMake targets/platform guards configured | Compile/load/validate each OS+format |
