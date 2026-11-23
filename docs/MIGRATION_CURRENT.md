@@ -11,6 +11,50 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Coordinated core Arp/Delay/effects bank — 23 November 2026
+
+Snapshot `c5a77cb` adds opt-in `EffectsBank::restoreDelays` to the existing Arp
+bank transaction. Arp and D storage now separate readiness/validation from owner
+installation. Both banks validate successfully before either can commit; Q/C,
+T/F/O, the user-ordered chain and all twenty A/D settings then change at one audio
+boundary. D slot/ring-budget preflight runs before publishing Arp jobs. Worker
+failure, cancellation or stale epochs/revisions preserve old owners except the
+cancelling action's own reset/clear. Storage reclaim remains worker-only.
+
+One immutable Arp-bank receipt now carries both revision arrays, the callback
+serial and `includesDelays`. A joint request excludes D edits/banks through unread
+receipt consumption; D cancellation also cancels its enclosing joint transaction.
+Legacy callers default to `restoreDelays=false`, retaining existing behavior and
+session/parameter IDs. No Processor state loader or product command enables it yet.
+
+Windows affected core/reference/ownership checks: 19/19 (77.57s). Final test-only
+MIDI Stop and paused-audible additions: 2/2 (26.42s); unchanged passing suites were
+reused. Connected two-loop PCM retains the original D-only cases and adds A+D,
+AD/DA order changes, real OOM rollback and twenty old-owner callbacks while D is
+ready but the final Arp allocation waits. At 8/48 kHz and 64/128, maximum errors
+are 7.45058e-9 (8k) / 1.49012e-8 (48k), against unchanged 2e-6. Input is paired
+mono and the existing loop downmix/centre-pan path, not full stereo/device proof.
+See [DELAY.md](DELAY.md) for commands, cross-platform results and limits.
+
+Linux Release affected checks passed 19/19 (18.04s); existing Processor tests
+passed 6/6 on Windows (19.99s) and Linux (7.07s), with both Standalone builds.
+The initial sanitizer aggregate timed out at 90.11s (18 other passes), not a pass.
+Admission and all ten coordinated scenarios are now separate 90s tests while
+the original no-argument executable matrix remains available. All assertions,
+callback counts and cases remain. Test driver `f0d5083` passes 11/11 on Windows
+(23.95s), Linux Release (5.49s) and Linux Debug ASan/UBSan/leak (196.33s total,
+each under 90s), with no reported sanitizer errors/suppressions. The other eighteen
+sanitizer cases passed in the original run and were reused; do not describe the
+timed-out run as a pass or invent a single 29/29 run. No native Processor sanitizer,
+new GUI/listening/device or wrapper check was performed. See DELAY.md for scope.
+
+NEXT: have the Processor restore owner submit the joint bank and reconcile its D
+shadow/binding only from the matching receipt plus current generation/epochs and
+callback serial. Clear must win on its own track without discarding the other
+nineteen confirmed originals. Current D-only device lifecycle restore remains
+separate. Then add versioned D persistence and shared GUI/CLI/MIDI/interaction
+acceptance. D remains unavailable in product controls. No package/push or CPU tuning.
+
 ### Internal Delay Processor attachment — 23 November 2026
 
 Source snapshot `f8e79b6` attaches `DelaySettingsOwner` to `AionProcessor` under
@@ -39,9 +83,9 @@ Timer delivery punctuality. Commands, Linux results and fixture corrections are
 in [DELAY.md](DELAY.md). No new Processor sanitizer run was performed; prior
 core/component sanitizer evidence is retained at its recorded scope.
 
-NEXT: one coordinated D + Arp/Q/C/T/F/O/chain session-bank preparation/adoption
-transaction, including failed-load rollback. Current D lifecycle restore is
-independent and does not establish atomic project restore. Then add validated
+The newer core coordinator above supersedes the next core transaction step.
+Current D lifecycle restore remains independent; Processor binding and project
+restore are not established by that core gate. Then add validated
 shared GUI/CLI commands, versioned state/MIDI and actual Delay interaction/audio
 acceptance. No package/push, wrapper/device/listening or broad CPU work here.
 

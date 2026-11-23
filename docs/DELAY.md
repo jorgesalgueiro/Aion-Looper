@@ -157,6 +157,100 @@ when completing product audio acceptance.
 
 ## Reproducible checks
 
+### Coordinated core Arp/Delay/effects commit (23 November 2026)
+
+Snapshot `c5a77cb` extends the existing Arp bank with opt-in D settings/revisions.
+The default flag is false for legacy Arp-only and existing session callers. The
+audio owner holds both ready banks, validates/resets only their new graphs, then
+installs both in the same callback. Q/C/T/F/O/chain metadata follows that same
+commit. Any worker/validation failure cancels both staged banks without touching
+active graphs; cancelled/retired rings stay charged until worker reclamation.
+D's complete slot/budget preflight precedes Arp job publication. Fixed twenty-
+track/forty-slot storage and the existing single worker are reused. No callback
+allocation, full PCM scan, extra worker or new parameter/session ID was added.
+
+The one terminal Arp-bank receipt includes `includesDelays`, both revision arrays,
+clear epochs and its callback serial. D edits/banks are excluded while a joint
+request or unread receipt exists; D cancellation invalidates the whole joint
+request. External accepted FX/chain/D edits cancel pending joint restore.
+This core API is not yet submitted by the product Processor restore owner; it
+does not make current saved projects or GUI/CLI controls Delay-enabled.
+
+The coordinated-bank admission and ten scenario tests cover twenty old + twenty new owners
+in each pool, both readiness orders, both kinds of worker OOM, all-off commit,
+aggregate budget rejection before any worker job, stale final-track revisions,
+independent-D/unread-receipt exclusion, D/Arp cancellation, panic, DEL, prepare,
+synthetic MIDI Stop and same-ID recovery. Paused real allocations prove that
+already-ready sibling banks cannot change settings early. Audio heap guards stay
+enabled. These are ownership tests, not ThreadSanitizer or hardware evidence.
+
+`delay_atomic_bank_audio_contract` retains every previous D-only rate/block case
+and adds independent Arp + D owners scheduled at the exact receipt boundary.
+Actual two-loop Engine PCM is checked through AD and DA order, exact/Feedback,
+off transitions and real OOM rollback while old audio runs continuously. One
+case holds the last Arp allocation with D ready for twenty audible callbacks.
+Waveform identity, lengths, cursors and history remain checked. Maximum error:
+7.45058e-9 at 8 kHz / 1.49012e-8 at 48 kHz, both 64/128, limit unchanged 2e-6.
+Input is paired mono and the original loop downmix/centre-pan path; this is not
+full stereo, browser-engine, listening, physical-device or round-trip-latency proof.
+
+The first new audio oracle incorrectly kept separate stereo outputs after loop
+pan. It now retains the existing full-chain mono downmix before loop pan, as
+already protected in ArpConnectedTests. No product DSP or tolerance changed;
+the original four D-only audio cases are still executed unchanged in scope.
+
+Windows Release affected regressions: 19/19 (77.57s); final test-only synthetic
+MIDI Stop/paused-audible additions passed 2/2 (26.42s), reusing unchanged passing
+normal suites. Durations are functional test times, not performance benchmarks.
+Native WSL Linux Release affected checks passed 19/19 (18.04s). Rebuilt Windows
+and Linux Standalone and existing Processor compatibility checks passed 6/6 each
+(19.99s / 7.07s). Those Processor callers still use the legacy opt-out path; this
+does not claim product submission/binding of the new joint transaction.
+
+The first Linux Debug ASan/UBSan/leak run had 18 passes and one aggregate
+coordinated-test timeout (90.11s; total run 252.49s). It was not a passing run.
+The harness now registers admission plus scenarios 0..9 separately, each retaining
+the same 90s limit and both block sizes. The no-argument executable still runs the
+original complete matrix. Every case, callback count and assertion is retained;
+only test-process boundaries and flushed progress output changed. This makes a
+single stuck scenario identifiable without assuming a CPU cause or loosening an
+audio threshold. Test-driver snapshot `f0d5083`: Windows scenario checks 11/11
+(23.95s), native Linux Release 11/11 (5.49s), Linux Debug ASan/UBSan/leak 11/11
+(196.33s total, each scenario within 90s), with no reported sanitizer errors or
+suppressions. The other eighteen sanitizer checks passed in the first run and
+were not repeated after this test-only partition. These results span runs;
+there was no claimed single 29/29 sanitizer run. The original aggregate timeout
+remains recorded above. No production CPU optimization or runtime gain is inferred.
+
+Build targets for the affected core set:
+
+```text
+aion_effects_delay_bank_tests aion_delay_tests aion_delay_repeat_tests
+aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests
+aion_delay_engine_audio_tests aion_delay_bank_tests aion_delay_bank_audio_tests
+aion_delay_owner_tests aion_arp_storage_tests aion_arp_bank_tests
+aion_arp_preparation_tests aion_arp_owner_tests aion_arp_owner_bank_tests
+aion_arp_connected_tests aion_drive_connected_tests aion_signal_chain_tests
+```
+
+Use these after `--target` in the cache-specific build commands below. Core CTest
+selection (Windows adds `-C Release`):
+
+```sh
+ctest --test-dir build/linux -R '^(delay_.*_contract|original_delay_settings_contract|effects_delay_coordinated_bank(_[0-9]+)?_contract|arp_delay_storage_contract|arp_bank_contract|arp_preparation_contract|arp_owner_contract|arp_owner_bank_contract|arp_connected_contract|drive_connected_contract|signal_chain_connected_contract)$' --output-on-failure --no-tests=error
+```
+
+For Linux sanitizers, regenerate/build the existing `build/drive-sanitized` cache
+with the same targets and regex, then run with `ASAN_OPTIONS=detect_leaks=1
+UBSAN_OPTIONS=halt_on_error=1`. For production compatibility, build Standalone and
+the three Processor targets and run the six-case command below. Do not run the
+unqualified exhaustive core suite or enable deferred wrappers for this slice.
+
+Next: Processor joint-result binding, per-track clear reconciliation and versioned
+project persistence, then the shared product command/UI/CLI/MIDI surface. Neither
+separate successful banks nor this core-only joint gate establish full project
+restore or complete Delay feature acceptance. No routine distributable or push.
+
 ### Internal production Processor attachment (23 November 2026)
 
 Snapshot `f8e79b6` attaches the owner to the existing serialized message service.
