@@ -29,11 +29,15 @@ public:
  // One all-or-nothing bank, mutually exclusive with individual preparations.
  // Admission reserves all needed slots before publishing any worker work.
  bool requestBank(const Bank&) noexcept;
+ enum class BankStatus {none,pending,ready,failed};
+ BankStatus bankStatus() const noexcept;
+ bool prepareBankCommit(std::uint64_t firstFrame) noexcept;
+ void commitBank() noexcept; // Same audio owner, immediately after successful prepare.
  void cancelBank() noexcept;
  void cancel(unsigned track) noexcept; // preserve active PCM/tails/automation
  void clear(unsigned track) noexcept; // cancel + retire, no destruction
  void clearAll() noexcept;
- Completion poll(std::uint64_t firstFrame) noexcept; // adopt at current audio clock
+ Completion poll(std::uint64_t firstFrame,bool deferBank=false) noexcept;
  ArpDelayGraph* graph(unsigned track) noexcept;
  View view(unsigned track) const noexcept;
  // Sole worker only: reclaim retired owners, then prepare at most one request.
@@ -57,6 +61,7 @@ private:
  std::array<Slot*,trackCount> active{},pending{}; // audio owner only
  std::array<Slot*,trackCount> bankSlots{};
  bool bankActive=false;
+ bool bankPrepared=false;
  void pollBank(std::uint64_t firstFrame,Completion&) noexcept;
  std::array<bool,trackCount> failed{};
  std::array<std::uint64_t,trackCount> installations{}; // audio-only actual-adoption serial

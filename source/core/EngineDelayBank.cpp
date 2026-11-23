@@ -4,7 +4,7 @@
 namespace aion {
 bool Engine::enqueueDelayBank(DelayBankRequest request,std::uint64_t& transaction) noexcept {
  if(!request.requestId||!request.generation||request.generation!=generation()||request.transaction
-  ||outstandingDelayBank||nextDelayTransaction==UINT64_MAX)return false;
+  ||coordinatedDelayBank.load(std::memory_order_acquire)||outstandingDelayBank||nextDelayTransaction==UINT64_MAX)return false;
  for(unsigned id=0;id<LoopBank::trackCount;++id)
   if(outstandingDelay[id]||!validDelaySettings(request.settings[id])||request.settingsRevisions[id]==UINT64_MAX)return false;
  if(!delayBankRequests->canPush()||!loopCommands->canPush())return false;
@@ -17,7 +17,7 @@ bool Engine::popDelayBank(DelayBankResult& result) noexcept {
  if(!delayBankResults->pop(result))return false;
  outstandingDelayBank=false;return true;
 }
-void Engine::cancelDelayBank() noexcept {delayBankCancellation.fetch_add(1,std::memory_order_release);}
+void Engine::cancelDelayBank() noexcept {delayBankCancellation.fetch_add(1,std::memory_order_release);if(coordinatedDelayBank.load(std::memory_order_acquire))cancelArpBank();}
 void Engine::finishDelayBank(DelayEditStatus status) noexcept {
  auto& p=*pendingDelayBank;
  if(!p.finished){

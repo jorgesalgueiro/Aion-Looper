@@ -9,6 +9,7 @@ bool LoopBank::requestDelay(unsigned id,const DelaySettings& settings,std::uint6
 }
 void LoopBank::cancelDelay(unsigned id) noexcept {
  if(id>=trackCount)return;
+ if(pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreDelays)cancelArpBank();
  cancelDelayBank();
  delayStorage->cancel(id);pendingDelays[id]={};
 }
@@ -35,7 +36,8 @@ void LoopBank::pollDelays() noexcept {
  for(unsigned id=0;id<trackCount;++id){const auto& p=pendingDelays[id];
   if(p.active&&(p.clearEpoch!=tracks[id].clearEpoch||p.revision!=tracks[id].info.delaySettingsRevision))cancelDelay(id);
  }
- const auto completion=delayStorage->poll(sync.settings.bpm);
+ const bool coordinated=pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreDelays;
+ const auto completion=delayStorage->poll(sync.settings.bpm,coordinated);
  if(pendingDelayBank->active&&(completion.bankInstalled||completion.bankFailed)){
   const auto& bank=*pendingDelayBank;
   if(completion.bankInstalled)for(unsigned id=0;id<trackCount;++id){

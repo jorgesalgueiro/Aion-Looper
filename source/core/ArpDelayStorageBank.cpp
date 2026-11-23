@@ -20,23 +20,29 @@ bool ArpDelayStorage::requestBank(const Bank& settings) noexcept {
   slot.cancelled.store(false,std::memory_order_relaxed);bankSlots[id]=&slot;++outstanding;
   slot.phase.store(Phase::queued,std::memory_order_release);
  }
- bankActive=true;return true;
+ bankPrepared=false;bankActive=true;return true;
 }
 void ArpDelayStorage::cancelBank() noexcept {
  if(!bankActive)return;
  for(auto*& slot:bankSlots){if(slot)slot->cancelled.store(true,std::memory_order_release);slot=nullptr;}
- bankActive=false;
+ bankActive=bankPrepared=false;
 }
-void ArpDelayStorage::pollBank(std::uint64_t firstFrame,Completion& result) noexcept {
- if(!bankActive)return;
+ArpDelayStorage::BankStatus ArpDelayStorage::bankStatus() const noexcept {
+ if(!bankActive)return BankStatus::none;
  bool ready=true,anyFailed=false;
  for(auto* slot:bankSlots)if(slot){
   const auto phase=slot->phase.load(std::memory_order_acquire);
   anyFailed|=phase==Phase::failed;ready&=phase==Phase::ready;
  }
- if(!anyFailed&&!ready)return;
- if(!anyFailed)for(auto* slot:bankSlots)if(slot&&!slot->graph->reset(slot->seed,firstFrame)){anyFailed=true;break;}
- if(anyFailed){cancelBank();result.bankFailed=true;return;}
+ return anyFailed?BankStatus::failed:ready?BankStatus::ready:BankStatus::pending;
+}
+bool ArpDelayStorage::prepareBankCommit(std::uint64_t firstFrame) noexcept {
+ bankPrepared=false;if(bankStatus()!=BankStatus::ready)return false;
+ for(auto* slot:bankSlots)if(slot&&!slot->graph->reset(slot->seed,firstFrame))return false;
+ bankPrepared=true;return true;
+}
+void ArpDelayStorage::commitBank() noexcept {
+ if(!bankActive||!bankPrepared)return;
  // Every replacement is now ready; no old graph/settings were touched above.
  // Retire and install all twenty owners at this one audio callback boundary.
  for(unsigned id=0;id<trackCount;++id){
@@ -44,6 +50,11 @@ void ArpDelayStorage::pollBank(std::uint64_t firstFrame,Completion& result) noex
   active[id]=bankSlots[id];failed[id]=false;
   if(auto* slot=active[id]){--outstanding;++installations[id];slot->phase.store(Phase::active,std::memory_order_release);}
  }
- bankSlots.fill(nullptr);bankActive=false;result.bankInstalled=true;
+ bankSlots.fill(nullptr);bankActive=bankPrepared=false;
+}
+void ArpDelayStorage::pollBank(std::uint64_t firstFrame,Completion& result) noexcept {
+ const auto status=bankStatus();if(status==BankStatus::none||status==BankStatus::pending)return;
+ if(status==BankStatus::failed||!prepareBankCommit(firstFrame)){cancelBank();result.bankFailed=true;return;}
+ commitBank();result.bankInstalled=true;
 }
 }

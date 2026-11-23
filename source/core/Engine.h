@@ -111,6 +111,8 @@ struct ArpBankResult {
     ArpPreparationStatus status=ArpPreparationStatus::failed;
     LoopBank::ArpEpochs clearEpochs{},settingsRevisions{}; // Immutable terminal audio ownership.
     std::uint64_t callbackSerial=0; // Zero for stopped prepare cancellation, otherwise exact producing callback.
+    LoopBank::ArpEpochs delaySettingsRevisions{};
+    bool includesDelays=false;
 };
 struct PreparedArpInspection {bool active=false;ArpModValues targets{};ArpState state{};std::uint64_t frame=0;};
 struct AudioInspection {LoopView track{};std::uint64_t frame=0;float masterPeak=0;unsigned countInFlash=0;};
@@ -335,6 +337,8 @@ private:
     };
     PendingArpBank pendingArpBank{}; // audio only
     bool outstandingArpBank=false; // sole message owner, retained across prepare
+    static_assert(std::atomic<bool>::is_always_lock_free);
+    std::atomic<bool> coordinatedDelayBank{false}; // Includes unread coordinated receipts; cancellation also runs on audio.
     std::atomic<std::uint64_t> arpBankCancellation{0};
     std::unique_ptr<SpscQueue<ArpBankRequest,2>> arpBankRequests=std::make_unique<SpscQueue<ArpBankRequest,2>>();
     std::unique_ptr<SpscQueue<ArpBankResult,2>> arpBankResults=std::make_unique<SpscQueue<ArpBankResult,2>>();

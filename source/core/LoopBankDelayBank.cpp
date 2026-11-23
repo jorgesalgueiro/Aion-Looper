@@ -13,6 +13,7 @@ bool LoopBank::requestDelayBank(const DelayBank& settings,const DelayEpochs& epo
  bankDelayResult={request,transaction,DelayBankStatus::pending};return true;
 }
 void LoopBank::cancelDelayBank() noexcept {
+ if(pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreDelays)cancelArpBank();
  if(!pendingDelayBank->active)return;
  delayStorage->cancelBank();bankDelayResult={pendingDelayBank->request,pendingDelayBank->transaction,DelayBankStatus::cancelled};
  pendingDelayBank->active=false;

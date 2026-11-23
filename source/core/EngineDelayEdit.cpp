@@ -7,7 +7,7 @@ bool Engine::enqueueDelayEdit(LoopCommand command,std::uint64_t& transaction) no
  if(command.action!=LoopAction::delay||command.track>=LoopBank::trackCount||!command.requestId
   ||!command.generation||command.generation!=generation()||command.arpTransaction||command.delayTransaction
   ||!std::isfinite(command.value)||!validDelaySettings(command.delay)||command.delaySettingsRevision==UINT64_MAX
-  ||outstandingDelayBank||outstandingDelay[command.track]||nextDelayTransaction==UINT64_MAX)return false;
+  ||coordinatedDelayBank.load(std::memory_order_acquire)||outstandingDelayBank||outstandingDelay[command.track]||nextDelayTransaction==UINT64_MAX)return false;
  if(!delayRequests->canPush()||!loopCommands->canPush())return false;
  command.delayTransaction=nextDelayTransaction+1;
  DelayEditRequest request{command.track,command.requestId,command.generation,command.delayClearEpoch,

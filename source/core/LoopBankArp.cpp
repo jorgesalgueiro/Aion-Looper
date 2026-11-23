@@ -5,6 +5,7 @@
 namespace aion {
 bool LoopBank::validEffectsBank(const EffectsBank& bank) noexcept {
  for(unsigned id=0;id<trackCount;++id)if(!validEqSettings(bank.equalizers[id])||!validCompressorSettings(bank.compressors[id])||!validSignalChain(bank.chains[id])||!validDriveBank(bank.drives[id]))return false;
+ if(bank.restoreDelays)for(unsigned id=0;id<trackCount;++id)if(!validDelaySettings(bank.delays[id])||bank.delayRevisions[id]==UINT64_MAX)return false;
  return true;
 }
 bool LoopBank::applyArpTempoBank(const ArpBank& settings,const ArpEpochs& epochs,const ArpEpochs& revisions,std::uint32_t request) noexcept {
@@ -28,7 +29,13 @@ bool LoopBank::requestArpBank(const ArpBank& settings,const ArpEpochs& epochs,co
  if(effects&&!validEffectsBank(*effects))return false;
  for(unsigned id=0;id<trackCount;++id)if(pendingArpSettings[id].active||epochs[id]!=tracks[id].clearEpoch||
     revisions[id]!=tracks[id].info.arpSettingsRevision||revisions[id]==UINT64_MAX)return false;
+ if(effects&&effects->restoreDelays){
+  if(pendingDelayBank->active)return false;
+  for(unsigned id=0;id<trackCount;++id)if(pendingDelays[id].active||effects->delayRevisions[id]!=tracks[id].info.delaySettingsRevision)return false;
+  if(!delayStorage->canRequestBank(effects->delays,sync.settings.bpm))return false;
+ }
  if(!arpStorage->requestBank(settings))return false;
+ if(effects&&effects->restoreDelays&&!delayStorage->requestBank(effects->delays,sync.settings.bpm)){arpStorage->cancelBank();return false;}
  pendingArpBank={settings,epochs,revisions,request,true};
  if(effects){pendingArpBank.effects=*effects;pendingArpBank.restoreEffects=true;}
  bankArpResult={request,ArpBankStatus::pending};
@@ -38,6 +45,7 @@ bool LoopBank::requestArpBank(const ArpBank& settings,const ArpEpochs& epochs,co
 }
 void LoopBank::cancelArpBank() noexcept {
  if(!pendingArpBank.active)return;
+ if(pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreDelays)delayStorage->cancelBank();
  arpStorage->cancelBank();bankArpResult={pendingArpBank.request,ArpBankStatus::cancelled};pendingArpBank={};
 }
 bool LoopBank::requestArpStorage(unsigned id,const ArpModValues& values,std::uint32_t seed,std::uint64_t epoch,
@@ -56,10 +64,20 @@ void LoopBank::pollArps() noexcept {
  // LoopBank clients; Engine cancellation adds its independent message revision.
  for(unsigned id=0;id<trackCount;++id){
   if(pendingArpBank.active&&(pendingArpBank.epochs[id]!=tracks[id].clearEpoch||pendingArpBank.revisions[id]!=tracks[id].info.arpSettingsRevision))cancelArpBank();
+  if(pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreDelays&&pendingArpBank.effects.delayRevisions[id]!=tracks[id].info.delaySettingsRevision)cancelArpBank();
   const auto& p=pendingArpSettings[id];
   if(p.active&&(p.clearEpoch!=tracks[id].clearEpoch||p.revision!=tracks[id].info.arpSettingsRevision))cancelArpStorage(id);
  }
- const auto completion=arpStorage->poll(frame);
+ const bool coordinated=pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreDelays;
+ auto completion=arpStorage->poll(frame,coordinated);
+ if(coordinated){
+  const auto a=arpStorage->bankStatus();const auto d=delayStorage->bankStatus();
+  const bool failed=a==ArpDelayStorage::BankStatus::failed||d==DelayStorage::BankStatus::failed;
+  const bool ready=a==ArpDelayStorage::BankStatus::ready&&d==DelayStorage::BankStatus::ready;
+  if(failed||(ready&&(!arpStorage->prepareBankCommit(frame)||!delayStorage->prepareBankCommit(sync.settings.bpm)))){
+   arpStorage->cancelBank();delayStorage->cancelBank();completion.bankFailed=true;
+  }else if(ready){arpStorage->commitBank();delayStorage->commitBank();completion.bankInstalled=true;}
+ }
  if(pendingArpBank.active&&(completion.bankInstalled||completion.bankFailed)){
   if(completion.bankInstalled)for(unsigned id=0;id<trackCount;++id){
    auto& info=tracks[id].info;info.arp=pendingArpBank.settings[id];info.arpRequest=pendingArpBank.request;++info.arpSettingsRevision;
@@ -69,6 +87,9 @@ void LoopBank::pollArps() noexcept {
    // epochs are checked above, and these bounded setters allocate no storage.
    // Disable only the external-edit cancellation guard during this own commit.
    pendingArpBank.restoreEffects=false;
+   if(pendingArpBank.effects.restoreDelays)for(unsigned id=0;id<trackCount;++id){auto& info=tracks[id].info;
+    info.delay=pendingArpBank.effects.delays[id];info.delayRequest=pendingArpBank.request;++info.delaySettingsRevision;
+   }
    for(unsigned id=0;id<trackCount;++id){const auto& fx=pendingArpBank.effects;
     (void)setEqualizer(id,fx.equalizers[id],eqAllParameters,pendingArpBank.request,tracks[id].clearEpoch);
     (void)setCompressor(id,fx.compressors[id],compressorAllParameters,pendingArpBank.request,tracks[id].clearEpoch);

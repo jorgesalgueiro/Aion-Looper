@@ -10,7 +10,7 @@ bool ArpDelayStorage::prepareStopped(double sampleRate) noexcept {
 }
 void ArpDelayStorage::releaseStopped() noexcept {
  for(auto& slot:*slots){slot.graph.reset();slot.phase.store(Phase::free,std::memory_order_relaxed);}
- active.fill(nullptr);pending.fill(nullptr);bankSlots.fill(nullptr);bankActive=false;failed.fill(false);installations.fill(0);
+ active.fill(nullptr);pending.fill(nullptr);bankSlots.fill(nullptr);bankActive=bankPrepared=false;failed.fill(false);installations.fill(0);
  outstanding=workerCursor=0;rate=0;
 }
 bool ArpDelayStorage::request(unsigned track,const ArpModValues& values,std::uint32_t seed,ArpVoicing voicing) noexcept {
@@ -35,8 +35,8 @@ void ArpDelayStorage::clear(unsigned track) noexcept {
  if(auto* slot=active[track]){active[track]=nullptr;slot->phase.store(Phase::retired,std::memory_order_release);}
 }
 void ArpDelayStorage::clearAll() noexcept {for(unsigned id=0;id<trackCount;++id)clear(id);}
-ArpDelayStorage::Completion ArpDelayStorage::poll(std::uint64_t firstFrame) noexcept {
- Completion result;pollBank(firstFrame,result);if(!outstanding)return result;
+ArpDelayStorage::Completion ArpDelayStorage::poll(std::uint64_t firstFrame,bool deferBank) noexcept {
+ Completion result;if(!deferBank)pollBank(firstFrame,result);if(!outstanding)return result;
  for(auto& slot:*slots){
   const auto phase=slot.phase.load(std::memory_order_acquire);
   if(phase!=Phase::ready&&phase!=Phase::failed)continue;

@@ -24,13 +24,18 @@ public:
  // pending preparation per track; old owner survives cancellation or failure.
  bool request(unsigned track,const DelaySettings&,double bpm) noexcept;
  bool requestBank(const Bank&,double bpm) noexcept;
+ bool canRequestBank(const Bank&,double bpm) const noexcept;
+ enum class BankStatus {none,pending,ready,failed};
+ BankStatus bankStatus() const noexcept;
+ bool prepareBankCommit(double bpm=0) noexcept;
+ void commitBank() noexcept; // Same audio owner, immediately after successful prepare.
  void cancelBank() noexcept;
  void cancel(unsigned track) noexcept;
  void clear(unsigned track) noexcept;
  void clearAll() noexcept;
  void reset(unsigned track,bool fadeIn=false) noexcept; // cancel, clear history, retain active settings/storage
  bool setTempo(unsigned track,double bpm) noexcept; // both pinned transition owners
- Completion poll(double bankBpm=0) noexcept; // zero retains the bank's admitted tempo
+ Completion poll(double bankBpm=0,bool deferBank=false) noexcept;
  bool hasOwner(unsigned track) const noexcept {return track<trackCount&&(active[track]||previous[track]);}
  Delay* graph(unsigned track) noexcept; // control/inspection borrow until poll/clear/prepare; render through tick
  // Audio-only: crossfade prepared replacements for 20ms, retaining both owners.
@@ -53,6 +58,8 @@ private:
  std::array<Slot*,trackCount> active{},pending{},previous{};
  std::array<Slot*,trackCount> bankSlots{};
  bool bankActive=false;
+ bool bankPrepared=false;
+ bool collectBankSlots(const Bank&,double,std::array<Slot*,trackCount>&) const noexcept;
  void pollBank(double bpm,Completion&) noexcept;
  std::array<unsigned,trackCount> remaining{};
  std::array<bool,trackCount> failed{};

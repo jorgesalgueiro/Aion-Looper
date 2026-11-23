@@ -9,7 +9,7 @@ bool DelayStorage::prepareStopped(double sr) noexcept {
 }
 void DelayStorage::releaseStopped() noexcept {
  for(auto& slot:*slots){slot.graph.reset();slot.phase.store(Phase::free,std::memory_order_relaxed);}
- active.fill(nullptr);pending.fill(nullptr);previous.fill(nullptr);remaining.fill(0);bankSlots.fill(nullptr);bankActive=false;
+ active.fill(nullptr);pending.fill(nullptr);previous.fill(nullptr);remaining.fill(0);bankSlots.fill(nullptr);bankActive=bankPrepared=false;
  failed.fill(false);installations.fill(0);cursor=fadeFrames=0;rate=0;bankTempo=120;
 }
 bool DelayStorage::request(unsigned track,const DelaySettings& settings,double bpm) noexcept {
@@ -51,8 +51,8 @@ bool DelayStorage::setTempo(unsigned track,double bpm) noexcept {
  if(auto* slot=previous[track])(void)slot->graph->set(slot->graph->settings(),bpm);
  return true;
 }
-DelayStorage::Completion DelayStorage::poll(double bankBpm) noexcept {
- Completion result;pollBank(bankBpm,result);
+DelayStorage::Completion DelayStorage::poll(double bankBpm,bool deferBank) noexcept {
+ Completion result;if(!deferBank)pollBank(bankBpm,result);
  for(auto& slot:*slots){
   const auto phase=slot.phase.load(std::memory_order_acquire);
   if(phase!=Phase::ready&&phase!=Phase::failed)continue;

@@ -111,6 +111,9 @@ public:
         std::array<CompressorSettings,trackCount> compressors{};
         std::array<SignalChain,trackCount> chains{};
         DriveBanks drives=defaultDriveBanks();
+        DelayStorage::Bank delays{};
+        ArpEpochs delayRevisions{};
+        bool restoreDelays=false; // Opt-in; historical Arp-only/effects callers retain D.
         bool operator==(const EffectsBank&) const noexcept=default;
     };
     static bool validEffectsBank(const EffectsBank&) noexcept;

@@ -4,14 +4,17 @@ namespace aion {
 bool Engine::enqueueArpBank(ArpBankRequest request) noexcept {
  if(outstandingArpBank||!request.requestId||!request.generation||request.generation!=generation())return false;
  if((request.tempoOnly&&request.restoreEffects)||(request.restoreEffects&&!LoopBank::validEffectsBank(request.effects)))return false;
+ const bool delays=request.restoreEffects&&request.effects.restoreDelays;
+ if(delays){if(outstandingDelayBank)return false;for(bool pending:outstandingDelay)if(pending)return false;}
  for(unsigned id=0;id<LoopBank::trackCount;++id)if(outstandingArp[id]||!validArpRenderSettings(request.settings[id]))return false;
  request.cancellation=arpBankCancellation.load(std::memory_order_acquire);
- if(!arpBankRequests->push(request))return false;
+ coordinatedDelayBank.store(delays,std::memory_order_release);
+ if(!arpBankRequests->push(request)){coordinatedDelayBank.store(false,std::memory_order_release);return false;}
  outstandingArpBank=true;return true;
 }
 bool Engine::popArpBank(ArpBankResult& result) noexcept {
  if(!arpBankResults->pop(result))return false;
- outstandingArpBank=false;return true;
+ outstandingArpBank=false;coordinatedDelayBank.store(false,std::memory_order_release);return true;
 }
 void Engine::cancelArpBank() noexcept {arpBankCancellation.fetch_add(1,std::memory_order_release);}
 void Engine::finishArpBank(ArpPreparationStatus status) noexcept {
@@ -22,7 +25,8 @@ void Engine::finishArpBank(ArpPreparationStatus status) noexcept {
   const auto& r=pendingArpBank.request;
   auto& completion=pendingArpBank.completion;completion.requestId=r.requestId;completion.generation=r.generation;completion.status=status;
   completion.callbackSerial=activeCallbackSerial;
-  for(unsigned id=0;id<LoopBank::trackCount;++id){const auto view=loops.trackView(id);completion.clearEpochs[id]=view.clearEpoch;completion.settingsRevisions[id]=view.arpSettingsRevision;}
+  completion.includesDelays=r.restoreEffects&&r.effects.restoreDelays;
+  for(unsigned id=0;id<LoopBank::trackCount;++id){const auto view=loops.trackView(id);completion.clearEpochs[id]=view.clearEpoch;completion.settingsRevisions[id]=view.arpSettingsRevision;completion.delaySettingsRevisions[id]=view.delaySettingsRevision;}
   pendingArpBank.finished=true;pendingArpBank.status=status;
  }
  if(arpBankResults->push(pendingArpBank.completion))pendingArpBank={};
@@ -33,6 +37,7 @@ void Engine::cancelStaleArpBank() noexcept {
  const auto& r=pendingArpBank.request;
  bool stale=r.generation!=generation()||r.cancellation!=arpBankCancellation.load(std::memory_order_acquire);
  for(unsigned id=0;id<LoopBank::trackCount;++id){const auto info=loops.trackView(id);stale|=r.clearEpochs[id]!=info.clearEpoch||r.settingsRevisions[id]!=info.arpSettingsRevision;}
+ if(r.restoreEffects&&r.effects.restoreDelays)for(unsigned id=0;id<LoopBank::trackCount;++id)stale|=r.effects.delayRevisions[id]!=loops.trackView(id).delaySettingsRevision;
  if(stale){loops.cancelArpBank();finishArpBank(ArpPreparationStatus::cancelled);}
 }
 void Engine::serviceArpBank() noexcept {
@@ -49,6 +54,7 @@ void Engine::serviceArpBank() noexcept {
  if(r.generation!=generation()||r.cancellation!=arpBankCancellation.load(std::memory_order_acquire)){finishArpBank(ArpPreparationStatus::cancelled);return;}
  for(unsigned id=0;id<LoopBank::trackCount;++id){const auto info=loops.trackView(id);
   if(r.clearEpochs[id]!=info.clearEpoch||r.settingsRevisions[id]!=info.arpSettingsRevision||r.settingsRevisions[id]==UINT64_MAX){finishArpBank(ArpPreparationStatus::stale);return;}
+  if(r.restoreEffects&&r.effects.restoreDelays&&r.effects.delayRevisions[id]!=info.delaySettingsRevision){finishArpBank(ArpPreparationStatus::stale);return;}
  }
  if(r.tempoOnly){finishArpBank(loops.applyArpTempoBank(r.settings,r.clearEpochs,r.settingsRevisions,r.requestId)?ArpPreparationStatus::ready:ArpPreparationStatus::stale);return;}
  if(!loops.requestArpBank(r.settings,r.clearEpochs,r.settingsRevisions,r.requestId,r.restoreEffects?&r.effects:nullptr)){finishArpBank(ArpPreparationStatus::busy);return;}
