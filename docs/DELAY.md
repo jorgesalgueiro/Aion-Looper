@@ -23,12 +23,22 @@ Windows builds and full `TestDelayUi.ps1 -Blocks 64,128` passed. The fixture
 retains prior capture/PCM, repeat 1/2/3/10, preset/range/Sync, MIDI and reload
 assertions and adds actual focused-selector/dependent-control checks. Native
 CLI/frontend/bridge gates passed 4/4 (49.01s); strengthened frontend owner and
-production-send cleanup tests passed directly. Linux results pending.
+production-send cleanup tests passed directly. Snapshot `56299ee` built Linux
+Standalone and the native command target; the same four affected Linux checks
+passed (28.20s), including external Python CLI at both block sizes.
 
 ```powershell
 cmake --build build/windows --config Release --target aion_mouse_host AionLooper_Standalone aion_delay_command_tests --parallel 4
 ctest --test-dir build/windows -C Release -R '^(native_delay_commands_(64|128)|native_frontend_commands|native_bridge_lifecycle)$' --output-on-failure --no-tests=error
 tools/TestDelayUi.ps1 -Blocks 64,128
+```
+
+After committing/syncing with SetupWslWorkspace.sh, Linux commands from
+`/home/jorge/projects/Aion-Looper`:
+
+```sh
+cmake --build build/linux --target AionLooper_Standalone aion_delay_command_tests --parallel 2
+ctest --test-dir build/linux -R '^(native_delay_commands_(64|128)|native_frontend_commands|native_bridge_lifecycle)$' --output-on-failure --no-tests=error
 ```
 
 Logs: `build/delay-repeat-focus-before.log` (retained failure),

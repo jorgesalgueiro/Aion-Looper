@@ -13,6 +13,9 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ### Delay repeat selector synchronization repair — 23 November 2026
 
+Implementation checkpoint: `56299ee` (also records the owner's quality-first
+Delay clarification in AGENTS.md and the development guidance).
+
 Confirmed bug: with Exact count 3 focused, the shared native command accepted
 count 2 but the DOM remained at 3. `build/delay-repeat-focus-before.log` retains
 the actual 64-sample failure. Feedback/Exact had the same focus-only exclusion.
@@ -31,12 +34,21 @@ passed at 64/128, including focused count/mode native changes, existing rapid
 1/2/3/10 choices, presets/ranges/Sync, MIDI, reload, nonzero playback and immutable
 clip identity. Four affected Windows frontend/bridge/native external CLI tests
 passed (49.01s). Final frontend tests also execute the actual production send
-function's early-return/rejection/receipt paths and pass. Linux checks pending.
+function's early-return/rejection/receipt paths and pass. Linux Standalone and
+command target builds succeeded from the committed native-storage snapshot;
+the same four Linux frontend/bridge/CLI gates passed (28.20s), including both
+block sizes. No DSP rerun or new sanitizer claim: audio implementation is unchanged
+and prior scoped native/audio/ownership evidence is retained.
 Original preserved resources, reference checkout and ASCII logo are unchanged.
 
-NEXT: finish native Delay acceptance under the quality-first contract and resume
-the remaining loop effects in roadmap order. Physical multi-controller/device,
-listening and release coverage remain separate; browser PCM identity is not a
+NEXT: begin B / convolution reverb as the next unported loop-effect slice. Inspect
+the original six controls (volume, mix, duration, decay, damp, predelay), room/
+preset behavior and impulse preparation before defining native quality/storage
+acceptance. B remains disabled until its native end-to-end slice is ready. Keep
+it an independently reorderable chain stage, sharing GUI/CLI state and DSP.
+The current Delay development scope has no known blocking failure in its executed
+checks; discrete-selector MIDI, physical multi-controller/device, listening and
+release coverage remain explicit separate work. Browser PCM identity is not a
 Delay gate. No routine package/push or broad CPU profiling.
 
 ### Owner clarification: Delay quality over original sound — 23 November 2026
