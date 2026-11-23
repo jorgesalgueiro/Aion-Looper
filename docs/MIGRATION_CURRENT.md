@@ -13,8 +13,9 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ### Delay stereo quality slice — 23 November 2026
 
-Source/test snapshots `1d43d93` and `aa4c25a` add independent stereo audio verification; they
-does not change product DSP/parameters/UI/assets or introduce another effect.
+Source/test snapshots `1d43d93` and `aa4c25a` add independent stereo audio
+verification. They do not change product DSP/parameters/UI/assets or introduce
+another effect.
 Previous connected and Engine cases remain. Two isolated dry captures recover
 conditioned left/right PCM before the original final mono merger. Independent
 fractional-read/wet-pan/loop-pan math checks unequal channels, five loop-pan
