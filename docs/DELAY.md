@@ -35,7 +35,11 @@ timed out at 60.08s (3/4 overall, 87.27s); this was not a passing sanitizer run.
 The new stereo matrix is now registered separately per rate/block, preserving
 all assertions/cases and the same 60s per-test limit. Original no-argument test
 executables again run the unchanged legacy matrix; `--stereo RATE BLOCK` runs
-both new repeat modes. Final split Windows/Linux/sanitizer results are pending.
+both new repeat modes. Split Windows Release passed 12/12 (12.60s); final native
+WSL Linux Release passed 12/12 (5.23s). Final core-only Debug ASan/UBSan with
+leak detection passed 12/12 (98.40s), with no reported sanitizer errors or
+suppressions. Every split case stayed under the unchanged 60s limit (longest
+new LoopBank case 16.08s). This fixes test batching, not product CPU performance.
 
 An additional actual OfflineAudioContext test executes byte-checked unchanged
 `_createDelay`, `_addAutoPanToWet`, `_addPanControl` methods from the independent
@@ -67,6 +71,21 @@ ctest --test-dir build/windows-core -C Release -R '^(delay_(loopbank_stereo_.*|e
 tools/TestArpDelayWebAudio.ps1 -DelayStereo # retained strict fractional failure
 tools/TestArpDelayWebAudio.ps1 -DelayStereo -IntegerOnly # isolated integer subset
 ```
+
+Native WSL reproduction, from `/home/jorge/projects/Aion-Looper`, after the
+committed Windows snapshot is synced with SetupWslWorkspace.sh:
+
+```sh
+cmake --build build/linux --target aion_delay_connected_tests aion_delay_engine_audio_tests aion_delay_tests --parallel 2
+ctest --test-dir build/linux -R '^(delay_(loopbank_stereo_.*|engine_stereo_.*|loopbank_connected_contract|engine_audio_contract|component_contract)|original_delay_settings_contract)$' --output-on-failure --no-tests=error
+cmake --build build/drive-sanitized --target aion_delay_connected_tests aion_delay_engine_audio_tests aion_delay_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(delay_(loopbank_stereo_.*|engine_stereo_.*|loopbank_connected_contract|engine_audio_contract|component_contract)|original_delay_settings_contract)$' --output-on-failure --no-tests=error
+```
+
+The existing sanitizer cache was checked: Debug, plugin builds OFF,
+`-fsanitize=address,undefined -fno-omit-frame-pointer` and address/undefined
+linker instrumentation. This is core-only coverage, not ThreadSanitizer or a
+sanitized JUCE/driver run. No dependency configuration upgrade was made.
 
 Browser logs: `build/delay-stereo-browser.log`,
 `build/delay-stereo-browser-diagnostic.log`,

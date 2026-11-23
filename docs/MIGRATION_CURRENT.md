@@ -13,7 +13,7 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ### Delay stereo quality slice — 23 November 2026
 
-Source/test snapshot `1d43d93` adds independent stereo audio verification; it
+Source/test snapshots `1d43d93` and `aa4c25a` add independent stereo audio verification; they
 does not change product DSP/parameters/UI/assets or introduce another effect.
 Previous connected and Engine cases remain. Two isolated dry captures recover
 conditioned left/right PCM before the original final mono merger. Independent
@@ -25,8 +25,17 @@ zero tracked callback heap. The existing `2e-6` error threshold is unchanged.
 
 Windows connected gate passed (9.85s); final Engine gate passed (2.84s), maximum
 new stereo Engine error `1.01877e-8`. Component/original JS settings passed 2/2
-(0.45s). Native WSL Linux four selected gates passed (5.11s). Sanitizer results
-are pending. Test-only changes do not need a product Standalone/GUI/CLI rebuild.
+(0.45s). Initial native WSL Linux four selected gates passed (5.11s).
+The first combined sanitizer run timed out the enlarged LoopBank matrix at
+60.08s (3/4 overall); it is retained as a failed run. `aa4c25a` registers the
+additional stereo cases separately per rate/block, retaining every case,
+assertion and original 60s watchdog. Final split results: Windows Release
+12/12 (12.60s), native WSL Linux Release 12/12 (5.23s), core-only Debug
+ASan/UBSan/leak 12/12 (98.40s), no reported sanitizer errors or suppressions.
+Longest new sanitized LoopBank case: 16.08s. The final Windows explicit-header
+cleanup compiled successfully; it does not change tested behavior. This is
+fixture batching, not a product CPU optimization. Test-only changes do not need
+a product Standalone/GUI/CLI rebuild.
 
 Actual WebView2 OfflineAudioContext, using byte-checked unchanged reference
 factories: explicit integer-delay subset passed 60 stereo/pan cases, 983,040
