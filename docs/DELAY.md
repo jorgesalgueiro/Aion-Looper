@@ -6,6 +6,90 @@ control. Existing GUI/CLI/session IDs are unchanged; no new UI control is expose
 
 ## Contract and acceptance
 
+### Processor coordinated restore — 23 November 2026
+
+Source snapshot `0ea9da9` makes the existing Processor FX owner submit the joint
+Arp/D/Q/C/T/F/O/chain bank, including device-lifecycle D restoration. Its retained
+D candidate, before-epochs/revisions and exact Arp receipt identify one admitted
+transaction. `DelaySettingsOwner::acceptEffectsRestore` validates all twenty
+tracks before changing any record. Generation and callback-serial fencing reject
+stale telemetry; matching knob values alone cannot bind a newer joint revision.
+Later clears reset only their own tracks, and proven newer owned post-clear edits
+remain intact. No second consumer drains the Arp receipt queue.
+
+Superseding accepted loads keep their new shadows while obsolete receipts retire.
+Failed ordinary loads restore confirmed settings without retrying allocation on
+each Timer tick. A failed changed-rate lifecycle restore retains explicit D intent
+for a later prepare. Ready-bank ordering before STOP/DEL is preserved; a still-
+preparing joint bank cancels on audio. The first regression run exposed premature
+message-side D cancellation disrupting this ordering; it was fixed before retesting.
+The old host-load test's cancelled D status became a newer successful joint
+receipt: its replacement checks unchanged saved/native values, bound state and
+exact matching joint request ID. Cancellation-only cases remain. No numeric
+tolerance or DSP assertion was weakened.
+
+Executed verification:
+
+- Windows Release: eight native Processor cases passed, 20.46s; extended core
+  owner contract passed, 0.69s; Standalone rebuilt.
+- Native WSL Linux Release: the owner contract plus eight native Processor cases
+  passed 9/9, 8.02s; Standalone rebuilt from that committed Windows snapshot.
+- Linux Debug ASan/UBSan, leak detection: extended owner contract passed 1/1,
+  0.74s, with no reported sanitizer error or suppression. This is core-owner
+  sanitizer coverage, not a sanitized JUCE Processor run.
+- Actual Windows Standalone WebView2 `NativeUiSmoke.cjs` passed: existing ASCII
+  cards, bridge, acknowledgement/validation and disabled unported controls,
+  master volume zero, no product AudioContext. This is separate from the native
+  injected race fixture and does not expose or audition D.
+
+`JointEffectsProcessorTests.cpp` uses the production Processor and actual 64/128
+callbacks: exact receipt matching, same-value revision protection, stale/fresh
+snapshots, clear after adoption, paused real ring allocation and superseding
+intent, real allocation failure/rollback/no retry, prepare recovery and actual
+message-Timer service with no editor. Tracked callback new/delete counts are zero.
+The extended core-owner regression also covers malformed last-track evidence,
+all-or-none confirmation, post-clear edit ownership and generation rejection.
+Existing unchanged-JS/core PCM and storage evidence below is reused because DSP
+and the core bank protocol did not change. No fresh listening/device, Linux
+WebKit interaction, wrapper, Apple or broad CPU test was performed.
+
+Reproduction (PowerShell; use the pinned CMake/CTest executables on Windows):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_delay_owner_tests --parallel 4
+ctest --test-dir build/windows-core -C Release -R '^delay_settings_owner_contract$' --output-on-failure --no-tests=error
+cmake --build build/windows --config Release --target aion_joint_effects_processor_tests aion_delay_processor_tests aion_arp_processor_tests aion_effects_restore_processor_tests AionLooper_Standalone --parallel 4
+ctest --test-dir build/windows -C Release -R '^native_(joint_effects|delay|arp|effects_restore)_processor_(64|128)$' --output-on-failure --no-tests=error
+wsl -d Ubuntu --exec bash /mnt/d/Jorge/Documents/Codex/Aion-Looper/tools/SetupWslWorkspace.sh /mnt/d/Jorge/Documents/Codex/Aion-Looper
+```
+
+In the clean native WSL snapshot:
+
+```sh
+cd /home/jorge/projects/Aion-Looper
+cmake --preset linux -DAION_TEST_NATIVE_PROCESSOR=ON
+cmake --build build/linux --target aion_delay_owner_tests aion_joint_effects_processor_tests aion_delay_processor_tests aion_arp_processor_tests aion_effects_restore_processor_tests AionLooper_Standalone -j2
+ctest --test-dir build/linux -R '^(delay_settings_owner_contract|native_(joint_effects|delay|arp|effects_restore)_processor_(64|128))$' --output-on-failure --no-tests=error
+cmake -S . -B build/drive-sanitized
+cmake --build build/drive-sanitized --target aion_delay_owner_tests -j2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^delay_settings_owner_contract$' --output-on-failure --no-tests=error
+```
+
+The sanitizer command reuses the existing core-only Debug ASan/UBSan cache; it
+does not enable plugins. For UI smoke, launch the rebuilt Windows Standalone
+with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` set to
+`--remote-debugging-address=127.0.0.1 --remote-debugging-port=9234 --disable-background-timer-throttling --disable-renderer-backgrounding`,
+then run `node tests/NativeUiSmoke.cjs`. Reserve a free debug port and close only
+the test-owned app afterwards. Build/UI logs are under `build/windows/joint-effects-*`;
+Linux build logs use `build/linux/joint-owner-*`.
+
+Next: versioned D persistence and shared GUI/CLI commands, followed by applicable
+MIDI/interaction and listening acceptance. Existing host state preserves internal
+D intent but does not yet serialize D fields. Existing stopped Q/C/drive prepare
+initialization is unchanged; no full APVTS/PCM-project atomicity claim is made.
+D stays disabled in product controls. No package, push, wrapper or dependency
+change. Earlier checkpoints below retain historical scope and former next steps.
+
 Owner request, 21 November: support **both exact repeat counts and Feedback**.
 Native settings now have additive `repeatMode` (`feedback`/`exact`) and integer
 `repeatCount` (1–10). Original values, ranges and presets keep their Feedback
@@ -246,7 +330,7 @@ UBSAN_OPTIONS=halt_on_error=1`. For production compatibility, build Standalone a
 the three Processor targets and run the six-case command below. Do not run the
 unqualified exhaustive core suite or enable deferred wrappers for this slice.
 
-Next: Processor joint-result binding, per-track clear reconciliation and versioned
+Next at that core checkpoint (binding/clear work now implemented above): versioned
 project persistence, then the shared product command/UI/CLI/MIDI surface. Neither
 separate successful banks nor this core-only joint gate establish full project
 restore or complete Delay feature acceptance. No routine distributable or push.
@@ -529,7 +613,8 @@ Earlier component evidence, source snapshot `e75c210`:
 No product UI, CLI, connected Engine, device, host or listening test was run for
 this internal component. No distributable produced or remote push performed.
 
-Complete Processor command/result ownership and coordinated session-bank restore, then
+The newer coordinated-restore checkpoint above supersedes this historical next step:
+complete Processor command/result ownership and coordinated session-bank restore, then
 shared GUI/CLI commands, MIDI Learn, versioned persistence and editor lifecycle.
 Retain the connected Engine 64/128 PCM gates, then run actual GUI/CLI interaction
 and listening acceptance. The Processor must cancel D via its independent path

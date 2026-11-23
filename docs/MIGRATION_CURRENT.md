@@ -11,6 +11,44 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Processor joint-effects ownership — 23 November 2026
+
+Source snapshot `0ea9da9` connects the existing Processor FX restore to the
+coordinated Arp/D bank. Delay confirms only the exact admitted receipt and a
+current-generation snapshot at or after its callback serial, with matching
+per-track epochs/revisions/settings. Equal values alone cannot confirm a newer
+transaction. A later clear resets its own track without losing the other
+nineteen originals. Superseding loads retain their newest intent; allocation
+failure preserves the old bank without a Timer allocation retry loop.
+
+Changed-rate lifecycle restore now uses this same enclosing owner, replacing
+the independent D-only bank. A ready bank retains its ordering before subsequent
+STOP/DEL; audio cancels a still-preparing bank. The stopped prepare path retires
+unread joint facts before changing generation. Existing stopped Q/C/drive
+initialization is unchanged; this is not whole-project/APVTS/PCM atomic restore.
+
+Windows: eight native Processor cases passed at 64/128 (20.46s), the extended
+Delay-owner contract passed (0.69s), Standalone built, and actual WebView2
+`NativeUiSmoke.cjs` passed with master volume zero and no product AudioContext.
+The new Processor fixture covers stale telemetry, same-value revision fencing,
+clear after adoption, paused-allocation supersession, real allocation failure,
+prepare recovery and actual message-Timer service with no editor. All tracked
+callback new/delete counts remain zero. Cross-platform results and commands are
+recorded in [DELAY.md](DELAY.md).
+
+Linux Release: the owner contract and eight native Processor cases passed 9/9
+(8.02s), with Standalone rebuilt. Linux Debug ASan/UBSan/leak: extended owner
+contract passed 1/1 (0.74s), no reported sanitizer errors/suppressions. This is
+core-owner sanitizer coverage, not a sanitized JUCE Processor run. Previous
+unchanged-JS/connected PCM/storage gates below remain reused evidence; no DSP
+math changed. Linux WebKit interaction, listening, devices and wrappers were
+not tested in this slice.
+
+NEXT: versioned D persistence, then shared GUI/CLI commands and interaction/MIDI
+acceptance. D remains disabled in product controls. No package/push or broad CPU
+tuning. The core checkpoint below is retained historical evidence; its former
+Processor-integration next step is now implemented.
+
 ### Coordinated core Arp/Delay/effects bank — 23 November 2026
 
 Snapshot `c5a77cb` adds opt-in `EffectsBank::restoreDelays` to the existing Arp
@@ -25,7 +63,8 @@ One immutable Arp-bank receipt now carries both revision arrays, the callback
 serial and `includesDelays`. A joint request excludes D edits/banks through unread
 receipt consumption; D cancellation also cancels its enclosing joint transaction.
 Legacy callers default to `restoreDelays=false`, retaining existing behavior and
-session/parameter IDs. No Processor state loader or product command enables it yet.
+session/parameter IDs. At that checkpoint no Processor state loader or product
+command enabled it; the newer Processor checkpoint above supersedes that limit.
 
 Windows affected core/reference/ownership checks: 19/19 (77.57s). Final test-only
 MIDI Stop and paused-audible additions: 2/2 (26.42s); unchanged passing suites were
@@ -48,7 +87,7 @@ sanitizer cases passed in the original run and were reused; do not describe the
 timed-out run as a pass or invent a single 29/29 run. No native Processor sanitizer,
 new GUI/listening/device or wrapper check was performed. See DELAY.md for scope.
 
-NEXT: have the Processor restore owner submit the joint bank and reconcile its D
+Next at that checkpoint (now implemented above): have the Processor restore owner submit the joint bank and reconcile its D
 shadow/binding only from the matching receipt plus current generation/epochs and
 callback serial. Clear must win on its own track without discarding the other
 nineteen confirmed originals. Current D-only device lifecycle restore remains
