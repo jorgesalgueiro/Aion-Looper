@@ -1,4 +1,4 @@
-param([int[]] $Blocks = @(64,128))
+param([int[]] $Blocks = @(64,128),[switch] $MidiOnly)
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 $hostPath=Join-Path $repo 'build/windows/Release/aion_mouse_host.exe'
@@ -17,7 +17,8 @@ foreach($block in $Blocks){
   $preview=Start-Process -FilePath $hostPath -ArgumentList "$block" -WindowStyle Hidden -PassThru
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments
   $env:WEBVIEW2_USER_DATA_FOLDER=$savedProfile
-  & 'C:/Program Files/nodejs/node.exe' (Join-Path $repo 'tests/DelayUi.cjs') $block
+  $testScript=if($MidiOnly){'tests/DelayMidiUi.cjs'}else{'tests/DelayUi.cjs'}
+  & 'C:/Program Files/nodejs/node.exe' (Join-Path $repo $testScript) $block
   if($LASTEXITCODE -ne 0){throw "Delay UI failed at $block samples."}
  }finally{
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments
