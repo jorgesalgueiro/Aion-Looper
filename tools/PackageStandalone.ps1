@@ -61,13 +61,17 @@ Defaults: MIDI notes 46 OD, 47 SUB, 48 SUS. Every positive mode NoteOn toggles;
 NoteOff is not required for these three mode keys. Loop keys retain hold behavior.
 See docs/VALIDATION.md and docs/PARITY.md for tested scope and remaining migration.
 The current native preview includes loop controls and connected EQ, compressor,
-Arp and drive effects. See docs/PARITY.md for the exact available feature scope.
-Delay remains internal: its GUI/CLI, session persistence and coordinated restore
-are pending. This alpha does not expose the new Delay repeat controls.
-EQ slider CC Learn follows the selected loop tab; Shift-right-click clears,
-Escape cancels. Full application parity and release acceptance remain pending.
+Arp, distortion/overdrive/fuzz and Delay effects. Delay includes GUI/CLI controls,
+Feedback and exact 1-10 repeats, presets, settings persistence and coordinated
+restore. Focused repeat selectors follow accepted native/CLI changes.
+Unported effects, including B / convolution reverb, remain unavailable.
+See docs/PARITY.md for the exact development feature scope and validation limits.
+Effect slider CC Learn follows the selected loop tab; Shift-right-click clears,
+Escape cancels. The MIDI setup offers any-channel or channel-specific Learn for
+overlapping controls from multiple inputs; physical controller-pair validation
+remains pending. Full application parity and release acceptance remain pending.
 With the app running, use Python 3.8+: python tools/aion.py instances
-Then: python tools/aion.py status (see docs/CLI.md for EQ and loop commands).
+Then: python tools/aion.py status (see docs/CLI.md for effect and loop commands).
 Python is required only for the optional CLI, not to run the app.
 The source/ ZIP contains this exact committed project snapshot; pinned dependency
 source locations and build commands are in CMakeLists.txt and docs/BUILDING.md.
