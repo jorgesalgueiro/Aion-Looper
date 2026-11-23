@@ -128,6 +128,9 @@ int main(int argc,char** argv){
  check(!failBytes&&Access::failed(*f.processor)&&Access::shadow(*f.processor)==saved&&!f.processor->inspectAudioThread(0).track.delay.enabled,"failed changed-rate allocation retains explicit prior intent without claiming restored audio");
  const auto failedRevision=f.processor->inspectAudioThread(0).track.delaySettingsRevision;f.fade();
  check(f.processor->inspectAudioThread(0).track.delaySettingsRevision==failedRevision&&!Access::pending(*f.processor),"failed restore does not spin automatic allocation retries");
+ check(!static_cast<bool>(f.processor->request({juce::JSON::parse(R"({"operation":"delay","action":"get","track":0})")})["delayReady"]),"retained failed intent cannot claim active audio readiness");
+ auto unrelated=juce::JSON::parse(R"({"operation":"delay","action":"enable","enabled":false,"track":19})");unrelated.getDynamicObject()->setProperty("generation",static_cast<int>(f.processor->inspectCallbackClockAudioThread().generation));unrelated.getDynamicObject()->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis()+4000));
+ check(f.processor->request({unrelated})["ok"],"explicit unaffected-track control after failed restore");f.settle();check(Access::failed(*f.processor)&&Access::shadow(*f.processor)[0]==saved[0],"another track's GUI edit cannot discard retained failed intent");
  check(f.barrier("clear",0)["ok"],"clear after failed restore");f.settle();
  check(Access::shadow(*f.processor)[0]==aion::DelaySettings{},"clear overrides retained failed-restore intent");
  f.processor->prepareToPlay(96000,static_cast<int>(block));f.settle();

@@ -19,7 +19,7 @@ void AionProcessor::delaySnapshot(juce::DynamicObject& object,unsigned track){
  object.setProperty("delayBusy",restore||record.pending||settling||pendingDelayClears[track].request!=0);
  object.setProperty("delayPending",restore||record.pending);
  object.setProperty("delayRequestId",static_cast<juce::int64>(record.requestId));
- object.setProperty("delayReady",delayOwner.bound()&&!restore&&!record.pending&&!pendingDelayClears[track].request&&record.status==aion::DelayEditStatus::ready);
+ object.setProperty("delayReady",delayOwner.bound()&&!restore&&!record.pending&&!pendingDelayClears[track].request&&record.status==aion::DelayEditStatus::ready&&(!delayRestoreFailed||delaySettings[track]==record.committed));
 }
 bool AionProcessor::delayRequest(const juce::var& request,juce::DynamicObject& result){
  const auto fail=[&](const char* why){result.setProperty("error",why);return false;};std::lock_guard guard(midiSettingsMutex);
@@ -52,6 +52,6 @@ bool AionProcessor::delayRequest(const juce::var& request,juce::DynamicObject& r
   accepted=delayOwner.repeats(track,mode.toString()=="exact"?aion::DelayRepeatMode::exact:aion::DelayRepeatMode::feedback,static_cast<unsigned>(static_cast<int>(count)),requestId);
  }else return fail("Unknown Delay action");
  if(!accepted)return fail("Invalid Delay settings or command queue unavailable");
- delaySettings[track]=*delayOwner.intent(track);delayRestoreFailed=false;nextRequest=requestId;
+ delaySettings[track]=*delayOwner.intent(track);nextRequest=requestId;
  result.setProperty("queued",true);result.setProperty("requestId",static_cast<juce::int64>(requestId));delaySnapshot(result,track);return true;
 }

@@ -14,7 +14,7 @@ foreach($block in $Blocks){
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-address=127.0.0.1 --remote-debugging-port=9235 --disable-background-timer-throttling --disable-renderer-backgrounding'
   $env:AION_MOUSE_TEST_RUN=[guid]::NewGuid().ToString('N')
   $env:WEBVIEW2_USER_DATA_FOLDER=Join-Path $repo "build/delay-mouse-profile-$block-$($env:AION_MOUSE_TEST_RUN)"
-  $preview=Start-Process -FilePath $hostPath -ArgumentList "$block" -WindowStyle Hidden -PassThru
+  $preview=Start-Process -FilePath $hostPath -ArgumentList "$block --steady-start" -WindowStyle Hidden -PassThru
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments
   $env:WEBVIEW2_USER_DATA_FOLDER=$savedProfile
   $testScript=if($MidiOnly){'tests/DelayMidiUi.cjs'}else{'tests/DelayUi.cjs'}

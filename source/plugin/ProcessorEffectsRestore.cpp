@@ -6,7 +6,10 @@ bool AionProcessor::serviceEffectsRestore(){
     // request producer. The original settings owner is the sole Arp receipt consumer.
     for(unsigned n=0;n<8&&engine.popView(latest);++n){} // Bounded Timer service also owns closed-editor Arp edits/clears.
     bool retainedDelayFailure=false;
-    if(delayRestoreFailed)for(unsigned id=0;id<delaySettings.size();++id)retainedDelayFailure|=delaySettings[id]!=delayOwner.track(id)->committed;
+    if(delayRestoreFailed){bool pending=false;
+        for(unsigned id=0;id<delaySettings.size();++id){retainedDelayFailure|=delaySettings[id]!=delayOwner.track(id)->committed;pending|=delayOwner.track(id)->pending;}
+        if(!retainedDelayFailure&&!pending)delayRestoreFailed=false;
+    }
     delayOwner.suspendMidi(retainedDelayFailure||effectsRestore.active||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending);
     serviceDelay();
     arpOwner.service(latest);
