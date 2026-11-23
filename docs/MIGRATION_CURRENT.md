@@ -11,6 +11,40 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Internal Delay Processor attachment — 23 November 2026
+
+Source snapshot `f8e79b6` attaches `DelaySettingsOwner` to `AionProcessor` under
+the existing non-audio intent mutex. Its existing Timer/request service drains
+receipts with no editor. Confirmed shadows survive same-rate prepare; changed-
+rate D-only lifecycle restoration uses the existing bounded bank and exact result.
+Failure retains explicit prior intent without repeatedly allocating on Timer;
+clear overrides that intent so a later prepare cannot resurrect it. Release,
+destruction and validated host restore cancel pending D through its independent
+path. Invalid or queue-rejected requests do not cancel accepted work.
+
+Validated loop admission and clear metadata now share the non-audio mutex with
+stopped prepare. Accepted DEL intent survives prepare even before its audio
+command runs. No lock, owner parsing, allocation or timer work was added to
+`processBlock`. D still has no product RPC/GUI/CLI/session field; a native-only
+friend injects test commands without opening an unfinished user-facing API.
+
+Windows production Delay/Arp/effects-restore checks pass 6/6 (19.59s), 64/128;
+final added full-FIFO/host-state cases pass Delay 2/2 (0.46s). Actual Windows
+Standalone `NativeUiSmoke.cjs` passes after rebuilding `windows-dev`'s target,
+with master zero and background-test browser flags. Native WSL Linux Release
+Standalone builds and all six selected Processor checks pass (6.46s), with strict
+JUCE assertion/leak rejection. Native tests invoke the
+production Timer callback directly with no editor; they do not measure JUCE
+Timer delivery punctuality. Commands, Linux results and fixture corrections are
+in [DELAY.md](DELAY.md). No new Processor sanitizer run was performed; prior
+core/component sanitizer evidence is retained at its recorded scope.
+
+NEXT: one coordinated D + Arp/Q/C/T/F/O/chain session-bank preparation/adoption
+transaction, including failed-load rollback. Current D lifecycle restore is
+independent and does not establish atomic project restore. Then add validated
+shared GUI/CLI commands, versioned state/MIDI and actual Delay interaction/audio
+acceptance. No package/push, wrapper/device/listening or broad CPU work here.
+
 ### Delay message-owner adapter — 23 November 2026
 
 Source snapshot `c4c986e` adds `DelaySettingsOwner`, the non-audio adapter for
@@ -32,9 +66,8 @@ out because it used zero-sample callbacks to dispatch ordinary commands; the
 fixture now dispatches in a normal callback, then tests zero-frame receipt polling.
 No product code or acceptance assertions changed to hide that failure.
 
-STILL INTERNAL: this adapter is not yet attached to `AionProcessor`. Next wire
-it under the existing non-audio intent mutex, with closed-editor service and
-priority-purge/reprepare cancellation. Coordinate D with the existing Arp-owned
+The newer Processor checkpoint above supersedes this adapter-only stage.
+Coordinate D with the existing Arp-owned
 Q/C/A/T/F/O/chain session restore before exposing GUI/CLI or serializing enabled
 D settings. Independent successful D and Arp banks do not prove atomic whole-
 session restore. No DSP, UI assets, reference, parameter IDs or dependencies

@@ -157,11 +157,78 @@ when completing product audio acceptance.
 
 ## Reproducible checks
 
+### Internal production Processor attachment (23 November 2026)
+
+Snapshot `f8e79b6` attaches the owner to the existing serialized message service.
+No-editor Timer/request service consumes D results, preserving exact confirmed
+shadows. Stopped prepare drains unread ready facts/clears first. A changed-rate
+reset restores D through its existing bank, with failure explicit and no automatic
+allocation retry loop. This is a D-only lifecycle operation, not a coordinated
+project-state load. No Delay RPC, GUI, CLI or serialization schema is exposed.
+
+Ordinary loop admission and clear intent are atomic to prepare under the existing
+non-audio mutex. Cancellation follows successful validation/admission, including
+queue-independent cancellation of a future D FIFO head. Rejected barriers leave
+pending work intact. DEL accepted before a prepare resets its shadow even when
+the ordinary audio command has not run. Clear after a failed lifecycle restore
+also discards retained intent. Release/destruction and validated state load cancel
+obsolete D commands; no second receipt consumer or callback lock was introduced.
+
+`aion_delay_processor_tests` injects commands through a native-only friend; it
+invokes the production Timer callback with no editor, rather than mocking DSP or
+creating a product test RPC. At 64/128 it checks two instances, exact decimals,
+native targets, DEL/panic/future-head cancellation, queued DEL/prepare, unread
+ready settings, 8/48/96 kHz prepare, release, invalid/full-FIFO barriers, malformed/
+validated host-state cancellation and failed ring allocation without retries or
+clear resurrection. Actual `processBlock` calls retain heap-operation guards.
+This fixture does not compare new PCM or prove actual Timer scheduling/listening.
+Existing Engine/component PCM and previous sanitizer evidence retain their scope.
+
+Windows Release: Delay + existing Arp/effects-restore checks passed 6/6 (19.59s).
+Final test-only full-FIFO/host-state additions passed Delay 2/2 (0.46s); unchanged
+passing Arp/effects cases were reused after those additions. Rebuilt Standalone
+passed actual `NativeUiSmoke.cjs` with master zero, no product AudioContext and
+unported SAVE disabled. No new UI/bridge code or preserved asset changed.
+Native WSL Linux Release rebuilt Standalone and the three affected Processor
+targets; all six strict native tests pass (6.46s), including the final test
+additions. No JUCE assertion/leak failure was reported. No new Processor sanitizer,
+actual Linux editor interaction, listening/device or wrapper test was run. Prior
+core sanitizers remain evidence for those components, not this new attachment.
+No package, push, version/dependency upgrade or CPU profiling was performed.
+
+Fixture corrections retained every assertion: the initial fixed ten-block wait
+was shorter than D's 20ms crossfade at 48 kHz/64 samples, so waits now render the
+actual rate-derived transition duration. MSVC's pinned xmemory adds 32-byte
+alignment bookkeeping to a large vector allocation; OOM injection now targets
+that exact operator-new size (including its Debug variant) rather than the user
+payload. Neither correction changes DSP timing, acceptance limits or product code.
+
+Build/check against the existing native caches (core-only caches cannot build
+these JUCE targets):
+
+```powershell
+& $cmake --build build/windows --config Release --target aion_delay_processor_tests aion_arp_processor_tests aion_effects_restore_processor_tests AionLooper_Standalone --parallel 4
+& $ctest --test-dir build/windows -C Release -R '^native_(delay|arp|effects_restore)_processor_(64|128)$' --output-on-failure --no-tests=error
+```
+
+```sh
+cd /home/jorge/projects/Aion-Looper
+cmake --preset linux -DAION_TEST_NATIVE_PROCESSOR=ON
+cmake --build build/linux --target aion_delay_processor_tests aion_arp_processor_tests aion_effects_restore_processor_tests AionLooper_Standalone --parallel 2
+ctest --test-dir build/linux -R '^native_(delay|arp|effects_restore)_processor_(64|128)$' --output-on-failure --no-tests=error
+```
+
+Enable `-DAION_TEST_NATIVE_PROCESSOR=ON` in the Windows cache if absent. These
+tests fail on JUCE assertions/leaks and do not build/install deferred wrappers.
+The next step is coordinated D + existing Arp/effects-bank preparation/adoption
+with all-or-nothing failure/cancellation. Separate successful banks do not prove
+that contract. Shared GUI/CLI/state/MIDI and product sound acceptance follow it.
+
 ### Exact message-owned settings (23 November 2026)
 
 `DelaySettingsOwner` (`c4c986e`) is the sole non-audio D producer/receipt consumer
-for an Engine. The enclosing Processor must serialize it with the existing
-intent lock; it is not yet attached to the product. It supports control/preset/
+for an Engine. At that earlier adapter-only checkpoint it was not attached to
+the Processor; the newer section above supersedes that limitation. It supports control/preset/
 enable/repeat candidates and D-only banks, with committed settings kept distinct
 from pending intent. Only exact terminal ownership receipts commit settings;
 global loop acknowledgement IDs and stale snapshots are not success evidence.
