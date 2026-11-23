@@ -73,6 +73,7 @@ AionProcessor::AionProcessor(ExportDestination destination,OutputLatencyReader l
 AionProcessor::~AionProcessor(){
     retainMessageOwnershipForDestruction();
     preparedGeneration.store(0,std::memory_order_release);
+    engine.cancelDelayEdit();
     midiDeviceChanges.reset();stopTimer();exportLifetime.reset();exportWriter.removeAllJobs(true,-1);exportChooser.reset();
 }
 bool AionProcessor::updateMidi(aion::MidiSettings next){
@@ -175,7 +176,7 @@ void AionProcessor::invalidateDeviceClock() noexcept {
     if(deviceClockOwner)deviceClockOwner->advance();
     deviceClockOwner=nullptr;deviceClockEpoch=0;
 }
-void AionProcessor::releaseResources(){preparedGeneration.store(0,std::memory_order_release);invalidateDeviceClock();}
+void AionProcessor::releaseResources(){preparedGeneration.store(0,std::memory_order_release);engine.cancelDelayEdit();invalidateDeviceClock();}
 void AionProcessor::prepareToPlay(double rate, int) {
     preparedGeneration.store(0,std::memory_order_release);
     invalidateDeviceClock();
@@ -191,9 +192,13 @@ void AionProcessor::prepareToPlay(double rate, int) {
     {std::lock_guard guard(midiSettingsMutex);
      // Stopped lifecycle only. Keep native reset and accepted FX intent atomic
      // to the message Timer, including a device-thread prepare with no editor.
+     for(unsigned n=0;n<8&&engine.popView(latest);++n){}
+     serviceDelay(); // Capture unread ready facts/clears before the generation changes.
      arpOwner.service(latest);
      if(arpOwner.bound()&&!arpRestorePending&&!effectsRestore.active)for(unsigned id=0;id<arpSettings.size();++id)if(!arpOwner.track(id)->pending)arpSettings[id]=arpOwner.track(id)->committed;
      engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
+     bool delayedClear=false;for(auto& clear:pendingDelayClears){delayedClear|=clear.request!=0;clear={};}
+     delayRestoreActive=false;delayRestorePending=delayedClear||delaySettings!=aion::DelaySettingsOwner::Bank{};delayRestoreFailed=false;
      engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareDriveBank(driveSettings);driveRestorePending=false;drivePending.fill(0);driveClearing.fill(false);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);
      auto renderIntent=arpSettings;for(auto& s:renderIntent)s.fresh=false;
      // Fresh classification alone needs no audio bank at first prepare. Keep a
@@ -422,6 +427,7 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             arpSettings=restoredArps;arpRestorePending=true;
             driveSettings=restoredDrives;driveRestorePending=true;drivePending.fill(0);driveClearing.fill(false);
             ++effectsIntent;engine.cancelArpPreparation(); // Host thread publishes cancellation only, never consumes or enqueues.
+            engine.cancelDelayEdit(); // D remains internal; discard obsolete pending edits without a second result consumer.
             parameters.replaceState(state);
             arpTiming=readArpTiming();arpTempoSeen=++arpTempoIntent; // Restore explicit original BPMs, not an incidental APVTS notification.
         }
@@ -629,6 +635,9 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation()))return fail("Audio generation changed");
         engine.cancelStutter(static_cast<unsigned>(static_cast<int>(id)));result->setProperty("ok",true);
     } else if (operation == "loop") {
+        // Keep validated admission and clear intent atomic to stopped host
+        // prepare. This is the existing non-audio recursive owner mutex.
+        std::lock_guard loopGuard(midiSettingsMutex);
         {std::lock_guard guard(midiSettingsMutex);const auto cleanup=request.getProperty("action",{}).toString();
          if((eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending)&&cleanup!="stopAll"&&cleanup!="clear"&&cleanup!="clearAll")return fail("Wait for pending EQ state restore");}
         const auto expiration = request.getProperty("expiresAt", {});
@@ -658,6 +667,10 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
                                 static_cast<std::uint32_t>(static_cast<int>(generation)), 0, actionName=="multiply"?(inputAvailable(*this)?1.0f:0.0f):(actionName=="startDelay"||actionName=="clearMergedSource")?number:static_cast<double>(static_cast<float>(number))}))
             return fail("Audio generation changed or command queue is full");
         lastOrdinaryRequest = nextRequest = requestId;
+        // Cancel independently of a future D FIFO head, but only after the
+        // complete barrier request was validated and admitted successfully.
+        if(actionName=="stopAll")engine.cancelDelayEdit();
+        else if(actionName=="clearAll"||actionName=="clear")delayCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")equalizerCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")compressorCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")driveCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);

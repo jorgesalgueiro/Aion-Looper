@@ -5,6 +5,7 @@ bool AionProcessor::serviceEffectsRestore(){
     // setters publish FX intent/cancellation under that mutex, never a second FX
     // request producer. The original settings owner is the sole Arp receipt consumer.
     for(unsigned n=0;n<8&&engine.popView(latest);++n){} // Bounded Timer service also owns closed-editor Arp edits/clears.
+    serviceDelay();
     arpOwner.service(latest);
     serviceArpTempo(false); // Retire maintenance before a new FX restore can own the bank receipt.
     if(!arpOwner.bound()){

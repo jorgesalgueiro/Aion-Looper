@@ -3,6 +3,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include "core/Engine.h"
 #include "core/ArpSettingsOwner.h"
+#include "core/DelaySettingsOwner.h"
 #include "core/CallbackAudibleTime.h"
 #include "plugin/Vst3ProgramRouting.h"
 #include "plugin/LoopMeterClearDispatcher.h"
@@ -73,6 +74,7 @@ public:
     juce::var request(const juce::Array<juce::var>&); // Message thread only.
     juce::AudioProcessorValueTreeState parameters;
 private:
+    friend struct AionDelayProcessorTestAccess; // Native test access only; no RPC or product control.
     OutputLatencyReader outputLatencyReader; // Never invoked in processBlock or IPC.
     ProcessorClockReader processorClockReader=nullptr;
     aion::DeviceCallbackBinding* controlledDeviceClockOwner=nullptr; // Immutable controlled IO seam; never IPC.
@@ -146,6 +148,18 @@ private:
     std::uint32_t lastEffectsRequest=0;
     std::uint32_t lastOrdinaryRequest=0; // Arp preparation/bank IDs are not ordinary FIFO acknowledgements.
     bool serviceEffectsRestore();
+    aion::DelaySettingsOwner delayOwner{engine}; // Sole non-audio D producer/result consumer.
+    aion::DelaySettingsOwner::Bank delaySettings{}; // Confirmed settings / prepare-time restore intent.
+    bool delayRestorePending=false,delayRestoreActive=false,delayRestoreFailed=false;
+    std::uint32_t delayRestoreRequest=0,delayRestoreGeneration=0;
+    std::uint32_t delayShadowGeneration=0;
+    aion::LoopBank::DelayEpochs delayShadowEpochs{};
+    struct PendingDelayClear {std::uint32_t request=0,generation=0;std::uint64_t epoch=0;};
+    std::array<PendingDelayClear,aion::LoopBank::trackCount> pendingDelayClears{};
+    // Called with midiSettingsMutex held, never by processBlock. D lifecycle
+    // restore is internal; it is not a coordinated project/effects-bank import.
+    void serviceDelay();
+    void delayCleared(unsigned track,bool all,std::uint32_t request);
     aion::ArpSettingsOwner arpOwner{engine,true}; // Sole consumer; fresh product instances select loose once.
     aion::ArpSettingsOwner::Bank arpSettings=[]{aion::ArpSettingsOwner::Bank b{};for(auto& s:b)s.fresh=true;return b;}(); // Exact accepted intent.
     bool arpRestorePending=false;
