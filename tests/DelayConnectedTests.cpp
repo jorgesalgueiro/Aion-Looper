@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <new>
+#include <numbers>
+#include <vector>
 namespace {
 thread_local bool watched=false;thread_local unsigned operations=0;
 void check(bool value,const char* why){if(!value){std::cerr<<why<<'\n';std::exit(1);}}
@@ -116,4 +118,67 @@ static void run(double rate,unsigned block){
  info=wet->view()[0];check(info.delay==DelaySettings{}&&info.clearEpoch!=0&&!wet->delayStorageView(0).active&&!wet->delayStorageView(0).pending,"DEL invalidates prepared work and resets D");
  std::cout<<"PASS LoopBank D "<<rate<<" Hz / "<<block<<" frames, max PCM error "<<error<<'\n';
 }
-int main(){for(double rate:{8000.,48000.})for(unsigned block:{64u,128u})run(rate,block);}
+// Independent first-echo oracle. Neither Delay/DelayStorage nor the production
+// panner is called here. Feedback=0 (or exact count=1) deliberately isolates
+// fractional reads, wet-only stereo panning and the original loop downmix/pan.
+static Stereo stereoPan(Stereo input,double pan){
+ if(pan<=0){const double angle=(pan+1)*std::numbers::pi/2;
+  return {static_cast<float>(input.left+input.right*std::cos(angle)),static_cast<float>(input.right*std::sin(angle))};}
+ const double angle=pan*std::numbers::pi/2;
+ return {static_cast<float>(input.left*std::cos(angle)),static_cast<float>(input.right+input.left*std::sin(angle))};
+}
+static Stereo echo(const std::vector<Stereo>& input,unsigned frame,double delay){
+ const auto whole=static_cast<unsigned>(delay);const double fraction=delay-whole;
+ const auto get=[&](unsigned age){return frame>=age?input[frame-age]:Stereo{};};
+ const auto a=get(whole),b=get(whole+1);
+ return {static_cast<float>(a.left+(b.left-a.left)*fraction),static_cast<float>(a.right+(b.right-a.right)*fraction)};
+}
+static void stereo(double rate,unsigned block,bool exact){
+ auto left=std::make_unique<LoopBank>(),right=std::make_unique<LoopBank>(),wet=std::make_unique<LoopBank>();
+ for(auto* bank:{left.get(),right.get(),wet.get()}){bank->prepare(16384,0,rate);bank->setAutoPlay(false);check(bank->apply(LoopAction::record,0),"stereo capture");}
+ for(unsigned n=0;n<4096;++n){
+  const float l=static_cast<float>(.08*std::sin(n*.031)+.03*std::cos(n*.071));
+  const float r=static_cast<float>(.05*std::cos(n*.047)-.02*std::sin(n*.083));
+  left->tick({l,l});right->tick({r,r});wet->tick({l,r});
+ }
+ for(auto* bank:{left.get(),right.get(),wet.get()}){check(bank->apply(LoopAction::finish,0),"stereo finish");bank->completeOfflineEdits();bank->beginBlock();}
+ DelaySettings settings;settings.enabled=true;settings.values={.01017,0,3000,.63,5,1,0};
+ if(exact)check(setDelayRepeats(settings,DelayRepeatMode::exact,1),"stereo exact one echo");
+ const auto before=wet->view()[0];
+ check(wet->requestDelay(0,settings,before.clearEpoch,before.delaySettingsRevision,1),"stereo prepared request");
+ const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+ while(wet->view()[0].delayRequest!=1){
+  {AudioScope scope;wet->beginBlock();}check(std::chrono::steady_clock::now()<deadline,"stereo owner deadline");std::this_thread::sleep_for(std::chrono::milliseconds(1));
+ }
+ // Public timeline reset gives a known oscillator/history origin and ends the
+ // prepared-owner fade; no private DSP state or fixture snapshot is injected.
+ std::vector<Stereo> input(16384);double maximum=0,audible=0;
+ constexpr float centre=.7071067811865475f;
+ for(float pan:{0.f,2.f,5.f,8.f,10.f}){
+  {AudioScope scope;for(auto* bank:{left.get(),right.get(),wet.get()}){bank->resetTimeline();check(bank->apply(LoopAction::play,0),"stereo playback");}check(wet->apply(LoopAction::pan,0,pan),"stereo loop pan");}
+  const double angle=pan*std::numbers::pi/20;
+  for(unsigned base=0;base<input.size();base+=block){AudioScope scope;left->beginBlock();right->beginBlock();wet->beginBlock();
+   for(unsigned i=0;i<block;++i){const unsigned n=base+i;
+    // Two separate mono captures recover each conditioned source channel before
+    // the loop's final stereo->mono merger. Unequal/anti-correlated input is not
+    // reconstructible from a single already-downmixed dry render.
+    input[n]={left->tick({}).left/centre,right->tick({}).left/centre};
+    const auto delayed=echo(input,n,settings.values[0]*rate);
+    const auto panned=stereoPan(delayed,std::sin(2*std::numbers::pi*settings.values[4]*n/rate)*settings.values[5]);
+    const double mono=((1-settings.values[3])*(input[n].left+input[n].right)+settings.values[3]*(panned.left+panned.right))*.5;
+    const auto actual=wet->tick({});
+    const double expectedLeft=pan==10?0:mono*std::cos(angle),expectedRight=pan==0?0:mono*std::sin(angle);
+    maximum=std::max({maximum,std::abs(actual.left-expectedLeft),std::abs(actual.right-expectedRight)});
+    audible=std::max(audible,std::abs(mono));
+    check(std::isfinite(actual.left)&&std::isfinite(actual.right),"finite stereo Delay output");
+    if(pan==0)check(actual.right==0,"hard-left loop pan remains silent on right");
+    if(pan==10)check(actual.left==0,"hard-right loop pan remains silent on left");
+   }
+  }
+  const auto after=wet->view()[0];check(after.length==before.length&&after.waveformId==before.waveformId&&after.undoCount==before.undoCount,"stereo processing preserves immutable PCM/history");
+  {AudioScope scope;for(auto* bank:{left.get(),right.get(),wet.get()})check(bank->apply(LoopAction::stopImmediate,0),"stereo stop");}
+ }
+ check(maximum<2.e-6&&audible>.01,"independent moving wet-pan/fractional-echo/loop-pan PCM");
+ std::cout<<"PASS stereo LoopBank D "<<rate<<" Hz / "<<block<<" / "<<(exact?"exact1":"feedback0")<<", max error "<<maximum<<'\n';
+}
+int main(){for(double rate:{8000.,48000.})for(unsigned block:{64u,128u}){run(rate,block);for(bool exact:{false,true})stereo(rate,block,exact);}}

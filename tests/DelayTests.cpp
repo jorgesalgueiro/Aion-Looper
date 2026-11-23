@@ -6,6 +6,8 @@
 #include <iostream>
 #include <limits>
 #include <new>
+#include <numbers>
+#include <string>
 #include <string_view>
 namespace {
 bool watched=false,failAllocation=false;unsigned operations=0;
@@ -30,6 +32,18 @@ static void catalog(){
  std::cout<<"]}\n";
 }
 int main(int argc,char** argv){
+ // Test-only bridge for the unchanged browser factory's first-echo/pan oracle.
+ // Stream actual Float32 browser input; never construct an AudioContext in product.
+ if(argc==9&&std::string_view(argv[1])=="stereo"){
+  DelaySettings s;s.enabled=true;s.values={std::stod(argv[3]),0,3000,std::stod(argv[4]),std::stod(argv[5]),std::stod(argv[6]),0};
+  if(std::stoi(argv[7]))check(setDelayRepeats(s,DelayRepeatMode::exact,1),"browser exact1 settings");
+  const double pan=std::stod(argv[8]),angle=pan*std::numbers::pi/20;
+  Delay d;check(d.prepare(std::stod(argv[2]),s),"browser stereo prepare");
+  std::cout.precision(17);float inLeft,inRight;
+  while(std::cin>>inLeft>>inRight){float l,r;{Guard guard;d.tick(inLeft,inRight,l,r);}
+   const float mono=(l+r)*.5f;std::cout<<(pan==10?0:mono*std::cos(angle))<<' '<<(pan==0?0:mono*std::sin(angle))<<'\n';
+  }return 0;
+ }
  if(argc==2&&std::string_view(argv[1])=="midi"){unsigned p=0,cc=0;std::cout.precision(17);while(std::cin>>p>>cc){if(p>=6||cc>127)return 1;std::cout<<aion::delayMidiValue(p,cc)<<'\n';}return 0;}
  if(argc==2&&std::string_view(argv[1])=="catalog"){catalog();return 0;}
  DelaySettings settings;

@@ -1,5 +1,5 @@
 # Actual original worklet in an owned hardware-free development host.
-param([switch]$Modulation,[switch]$Graph,[switch]$Presets,[switch]$Tempo)
+param([switch]$Modulation,[switch]$Graph,[switch]$Presets,[switch]$Tempo,[switch]$DelayStereo,[switch]$IntegerOnly)
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 if(Get-NetTCPConnection -LocalPort 9239 -State Listen -ErrorAction SilentlyContinue){throw 'Arp Delay test port 9239 is in use.'}
@@ -13,12 +13,13 @@ try {
     $preview=Start-Process -FilePath (Join-Path $repo 'build/windows/Release/aion_effects_browser_host.exe') -WindowStyle Hidden -PassThru
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments
     $env:WEBVIEW2_USER_DATA_FOLDER=$savedProfile
-    $script=if($Graph -or $Presets -or $Tempo){'tests/ArpGraphWebAudio.cjs'}elseif($Modulation){'tests/ArpModulationWebAudio.cjs'}else{'tests/ArpDelayWebAudio.cjs'}
+    $script=if($DelayStereo){'tests/DelayStereoWebAudio.cjs'}elseif($Graph -or $Presets -or $Tempo){'tests/ArpGraphWebAudio.cjs'}elseif($Modulation){'tests/ArpModulationWebAudio.cjs'}else{'tests/ArpDelayWebAudio.cjs'}
     [string[]]$extra=@()
+    if($IntegerOnly){if(!$DelayStereo){throw '-IntegerOnly requires -DelayStereo'};$extra+='--integer-only'}
     if($Presets){$extra+= '--presets'}
     if($Tempo){$extra+= @('--tempo','--save',(Join-Path $repo 'build/arp-tempo-browser-fixtures.json'))}
     & node (Join-Path $repo $script) @extra
-    if($LASTEXITCODE -ne 0){throw 'Original Arp Delay browser sound comparison failed.'}
+    if($LASTEXITCODE -ne 0){throw 'Original delay browser sound comparison failed.'}
 } finally {
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$savedArguments
     $env:WEBVIEW2_USER_DATA_FOLDER=$savedProfile

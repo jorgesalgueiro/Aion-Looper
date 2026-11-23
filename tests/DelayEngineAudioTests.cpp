@@ -6,7 +6,9 @@
 #include <cstdlib>
 #include <iostream>
 #include <new>
+#include <numbers>
 #include <thread>
+#include <vector>
 namespace {
 thread_local bool watched=false;thread_local unsigned operations=0;
 void check(bool value,const char* why){if(!value){std::cerr<<why<<'\n';std::exit(1);}}
@@ -97,4 +99,61 @@ static void run(double rate,unsigned block){
  check(error<2.e-6&&audible>1.e-3,"nonzero actual Engine audio matches independently scheduled Delay");
  std::cout<<"PASS Engine Delay PCM "<<rate<<" Hz / "<<block<<", maximum error "<<error<<", audible change "<<audible<<'\n';
 }
-int main(){for(double rate:{8000.,48000.})for(unsigned block:{64u,128u})run(rate,block);}
+// Actual Engine callback stereo oracle, independent of Delay/DelayStorage and
+// panStereo. The companion LoopBank fixture retains all five loop-pan positions.
+static void stereo(double rate,unsigned block,bool exact){
+ auto left=std::make_unique<Engine>(),right=std::make_unique<Engine>(),wet=std::make_unique<Engine>();
+ std::array<float,128> ll{},lr{},rl{},rr{},wl{},wr{};
+ float* l[]{ll.data(),lr.data()},*r[]{rl.data(),rr.data()},*w[]{wl.data(),wr.data()};
+ for(auto* engine:{left.get(),right.get(),wet.get()}){engine->prepare(rate,16384);engine->setMonitoring(false);engine->setAutoPlay(false);check(engine->enqueue({0,1})&&engine->enqueueLoop({LoopAction::record,0,1,engine->generation()}),"stereo Engine capture");}
+ const auto render=[&](bool capture){const auto begin=wet->clock();
+  for(unsigned i=0;i<block;++i){const auto n=begin+i;
+   const float a=capture?static_cast<float>(.08*std::sin(n*.031)+.03*std::cos(n*.071)):0;
+   const float b=capture?static_cast<float>(.05*std::cos(n*.047)-.02*std::sin(n*.083)):0;
+   ll[i]=lr[i]=wl[i]=a;rl[i]=rr[i]=wr[i]=b;
+  }
+  {AudioScope scope;left->process(l,2,block);right->process(r,2,block);wet->process(w,2,block);}
+  check(left->clock()==wet->clock()&&right->clock()==wet->clock(),"stereo Engine clocks");return begin;
+ };
+ for(unsigned n=0;n<4096/block;++n)render(true);
+ for(auto* engine:{left.get(),right.get(),wet.get()})check(engine->enqueueLoop({LoopAction::finish,0,2,engine->generation()}),"stereo Engine finish");
+ const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);
+ do{render(false);check(std::chrono::steady_clock::now()<deadline,"stereo Engine finalization deadline");std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+ while(left->inspectAudioThread().track.state!=LoopState::stopped||right->inspectAudioThread().track.state!=LoopState::stopped||wet->inspectAudioThread().track.state!=LoopState::stopped);
+ DelaySettings settings;settings.enabled=true;settings.values={.01017,0,3000,.63,exact?3.7:5.,exact?.7:1.,0};
+ if(exact)check(setDelayRepeats(settings,DelayRepeatMode::exact,1),"stereo Engine exact1");
+ const auto before=wet->inspectAudioThread().track;
+ LoopCommand command{LoopAction::delay,0,3,wet->generation(),wet->clock()+17};command.delay=settings;command.delayClearEpoch=before.clearEpoch;command.delaySettingsRevision=before.delaySettingsRevision;
+ std::uint64_t transaction=0;check(wet->enqueueDelayEdit(command,transaction),"stereo Engine D request");
+ std::uint64_t adopted=0;
+ while(!adopted){render(false);DelayEditResult result;
+  if(wet->popDelayEdit(result)){check(result.status==DelayEditStatus::ready&&result.transaction==transaction,"stereo Engine exact adoption receipt");adopted=result.frame;}
+  check(std::chrono::steady_clock::now()<deadline,"stereo Engine adoption deadline");std::this_thread::sleep_for(std::chrono::milliseconds(1));
+ }
+ const float pan=exact?8.f:2.f;
+ check(wet->enqueueLoop({LoopAction::pan,0,4,wet->generation(),0,pan}),"stereo Engine pan");
+ for(unsigned n=0;n<static_cast<unsigned>(rate*.1)/block+1;++n)render(false);
+ for(auto* engine:{left.get(),right.get(),wet.get()})check(engine->enqueueLoop({LoopAction::play,0,5,engine->generation()}),"stereo Engine play");
+ std::vector<Stereo> source(16384);double maximum=0,audible=0;
+ constexpr float centre=.7071067811865475f;
+ const double delay=settings.values[0]*rate,loopAngle=pan*std::numbers::pi/20;
+ const unsigned whole=static_cast<unsigned>(delay);const double fraction=delay-whole;
+ for(unsigned base=0;base<source.size();base+=block){const auto begin=render(false);AudioScope scope;
+  for(unsigned i=0;i<block;++i){const unsigned n=base+i;source[n]={ll[i]/centre,rl[i]/centre};
+   check(std::isfinite(wl[i])&&std::isfinite(wr[i]),"finite stereo Engine PCM (NaN cannot evade maximum-error reduction)");
+   const auto a=n>=whole?source[n-whole]:Stereo{},b=n>whole?source[n-whole-1]:Stereo{};
+   const double dl=a.left+(b.left-a.left)*fraction,dr=a.right+(b.right-a.right)*fraction;
+   const double position=std::sin(2*std::numbers::pi*settings.values[4]*static_cast<double>(begin+i-adopted)/rate)*settings.values[5];
+   const double angle=(position<=0?position+1:position)*std::numbers::pi/2;
+   const double pl=position<=0?dl+dr*std::cos(angle):dl*std::cos(angle);
+   const double pr=position<=0?dr*std::sin(angle):dr+dl*std::sin(angle);
+   const double mono=((1-settings.values[3])*(source[n].left+source[n].right)+settings.values[3]*(pl+pr))*.5;
+   maximum=std::max({maximum,std::abs(wl[i]-mono*std::cos(loopAngle)),std::abs(wr[i]-mono*std::sin(loopAngle))});
+   audible=std::max(audible,std::max(std::abs(double(wl[i])),std::abs(double(wr[i]))));
+  }
+ }
+ check(maximum<2.e-6&&audible>.01,"independent actual Engine stereo echo/auto-pan/loop-pan PCM");
+ const auto after=wet->inspectAudioThread().track;check(after.length==before.length&&after.waveformId==before.waveformId&&after.undoCount==before.undoCount,"stereo Engine PCM/history immutable");
+ std::cout<<"PASS Engine stereo D "<<rate<<" Hz / "<<block<<" / "<<(exact?"exact1":"feedback0")<<", max error "<<maximum<<'\n';
+}
+int main(){for(double rate:{8000.,48000.})for(unsigned block:{64u,128u}){run(rate,block);for(bool exact:{false,true})stereo(rate,block,exact);}}

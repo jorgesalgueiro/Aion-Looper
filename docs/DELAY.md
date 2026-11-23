@@ -7,6 +7,65 @@ are unchanged. Older checkpoints below retain their original narrower scope.
 
 ## Contract and acceptance
 
+### Independent stereo/pan acceptance — 23 November 2026
+
+This slice closes the identical-channel/centre-pan limitation of the earlier
+native audio fixtures. No product DSP, settings, IDs, GUI, reference assets or
+sound model changed. Original connected/Engine cases remain intact. Added:
+
+- Two isolated conditioned-channel captures reconstruct the pre-merger stereo
+  input; the oracle does not call Delay, DelayStorage or panStereo. Fractional
+  first-echo interpolation, wet-only equal-power panning, final original mono
+  merger and loop-pan gains are predicted mathematically.
+- Feedback=0 and native exact count=1, unequal left/right waveforms, five loop
+  positions (0/2/5/8/10), hard-left/right exact silence, moving wet pan and
+  unchanged immutable PCM/history at 8/48 kHz and 64/128 tick grouping.
+- Actual Engine callbacks cover both blocks/rates with offset-17 admission,
+  receipt-owned oscillator origin, settled noncentre loop pan, speed 5/depth 1
+  and speed 3.7/depth .7. Explicit finite-output checks prevent NaN escaping a
+  maximum-error reduction; tracked callback heap operations remain zero.
+
+Windows `delay_loopbank_connected_contract` passed (9.85s). Final strengthened
+`delay_engine_audio_contract` passed (2.84s); maximum new Engine error was
+`1.01877e-8`, retaining the existing `2e-6` threshold. Component and original JS
+settings checks passed 2/2 (0.45s). Linux/sanitizer results are pending.
+
+An additional actual OfflineAudioContext test executes byte-checked unchanged
+`_createDelay`, `_addAutoPanToWet`, `_addPanControl` methods from the independent
+reference, feeding exactly the browser's Float32 input into a test-only native
+probe. **Its default strict fractional comparison currently fails**: at 8 kHz,
+time .05017, left-only input, loop pan 0, feedback 0, maximum error is
+`5.906564183533192e-6` at frame 401, above the unchanged `2e-6` assertion.
+Both failed runs are retained; no tolerance/assertion/reference/DSP was changed.
+
+PCM diagnosis recovers a browser interpolation fraction about `.359375` at that
+frame; the requested native delay is `401.36` frames. This is consistent with
+Chromium's Float32 vector read-coordinate arithmetic in its
+[official Delay SIMD source](https://raw.githubusercontent.com/chromium/chromium/main/third_party/blink/renderer/platform/audio/cpu/x86/delay_sse2.cc).
+The native analytic fractional-timing checks pass. Do not degrade that approved
+double-precision model to manufacture browser bit identity, and do not report
+the strict browser fractional comparison as passing. `-IntegerOnly` is a
+separate diagnostic using exactly representable .0625 seconds to isolate pan/
+routing; it does not replace or delete the default failing fractional case.
+It covers left-only, right-only and unequal stereo, five loop positions,
+dry+wet and full wet, static/moving wet pan and both native first-echo modes.
+
+Windows reproduction (pinned CMake/CTest binaries):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_delay_connected_tests aion_delay_engine_audio_tests aion_delay_tests --parallel 4
+ctest --test-dir build/windows-core -C Release -R '^(delay_loopbank_connected_contract|delay_engine_audio_contract|delay_component_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
+tools/TestArpDelayWebAudio.ps1 -DelayStereo # retained strict fractional failure
+tools/TestArpDelayWebAudio.ps1 -DelayStereo -IntegerOnly # isolated integer subset
+```
+
+Browser logs: `build/delay-stereo-browser.log`,
+`build/delay-stereo-browser-diagnostic.log`,
+`build/delay-stereo-browser-integer.log`; exact failed input/PCM:
+`build/delay-stereo-failure.json`. Existing effects browser host is reused; no
+product AudioContext or new dependency. This is not full feedback/filter/time-
+transition browser parity, listening, hardware, Linux WebKit or release acceptance.
+
 ### Six original MIDI sliders — 23 November 2026
 
 Source checkpoints `4c2680f` / `f624b24`, fixture follow-up `4f7bb09`:
