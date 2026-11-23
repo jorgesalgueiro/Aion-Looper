@@ -75,6 +75,7 @@ public:
     juce::AudioProcessorValueTreeState parameters;
 private:
     friend struct AionDelayProcessorTestAccess; // Native test access only; no RPC or product control.
+    friend struct AionJointEffectsProcessorTestAccess;
     OutputLatencyReader outputLatencyReader; // Never invoked in processBlock or IPC.
     ProcessorClockReader processorClockReader=nullptr;
     aion::DeviceCallbackBinding* controlledDeviceClockOwner=nullptr; // Immutable controlled IO seam; never IPC.
@@ -140,9 +141,12 @@ private:
     std::array<bool,aion::LoopBank::trackCount> eqClearing{};
     struct EffectsRestore {
         aion::ArpBankResult terminal{};
+        aion::DelaySettingsOwner::Bank delays{};
+        aion::LoopBank::DelayEpochs delayEpochs{},delayRevisions{};
         std::uint64_t intent=0;
         std::uint32_t request=0,generation=0;
         bool active=false,completed=false;
+        bool retainDelayOnFailure=false;
     } effectsRestore{}; // Non-audio, under midiSettingsMutex; sole message result consumer.
     std::uint64_t effectsIntent=0;
     std::uint32_t lastEffectsRequest=0;
@@ -150,14 +154,13 @@ private:
     bool serviceEffectsRestore();
     aion::DelaySettingsOwner delayOwner{engine}; // Sole non-audio D producer/result consumer.
     aion::DelaySettingsOwner::Bank delaySettings{}; // Confirmed settings / prepare-time restore intent.
-    bool delayRestorePending=false,delayRestoreActive=false,delayRestoreFailed=false;
-    std::uint32_t delayRestoreRequest=0,delayRestoreGeneration=0;
+    bool delayRestorePending=false,delayRestoreFailed=false;
     std::uint32_t delayShadowGeneration=0;
     aion::LoopBank::DelayEpochs delayShadowEpochs{};
     struct PendingDelayClear {std::uint32_t request=0,generation=0;std::uint64_t epoch=0;};
     std::array<PendingDelayClear,aion::LoopBank::trackCount> pendingDelayClears{};
-    // Called with midiSettingsMutex held, never by processBlock. D lifecycle
-    // restore is internal; it is not a coordinated project/effects-bank import.
+    // Called with midiSettingsMutex held, never by processBlock. Restore
+    // submission belongs exclusively to serviceEffectsRestore.
     void serviceDelay();
     void delayCleared(unsigned track,bool all,std::uint32_t request);
     aion::ArpSettingsOwner arpOwner{engine,true}; // Sole consumer; fresh product instances select loose once.

@@ -32,29 +32,40 @@ bool AionProcessor::serviceEffectsRestore(){
             // A closed consumer may still have old snapshots at the same sample
             // frame. Fence with the producing callback serial, not global IDs.
             if(latest.generation!=result.generation||latest.callbackClock.serial<result.callbackSerial)return false;
+            if(result.status==aion::ArpPreparationStatus::ready){
+                if(!delayOwner.acceptEffectsRestore(latest,effectsRestore.delays,result,effectsRestore.delayEpochs,effectsRestore.delayRevisions))return false;
+            }
             if(effectsRestore.intent==effectsIntent){
                 for(unsigned i=0;i<eqSettings.size();++i){
                     eqSettings[i]=latest.tracks[i].equalizer;compressorSettings[i]=latest.tracks[i].compressor;chainSettings[i]=latest.tracks[i].signalChain;
                     driveSettings[i]=latest.tracks[i].drives;
                     arpSettings[i]=arpOwner.track(i)->committed;
+                    const bool retain=effectsRestore.retainDelayOnFailure&&(result.status==aion::ArpPreparationStatus::failed||result.status==aion::ArpPreparationStatus::busy);
+                    if(!retain&&!pendingDelayClears[i].request)delaySettings[i]=delayOwner.track(i)->committed;
                 }
+                delayRestorePending=false;delayRestoreFailed=result.status!=aion::ArpPreparationStatus::ready;
                 eqRestorePending=compressorRestorePending=chainRestorePending=arpRestorePending=driveRestorePending=false;
             }
             effectsRestore={};
         }
     }
-    if(!(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending)){
+    if(!(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending)){
         for(unsigned i=0;i<arpSettings.size();++i)if(!arpOwner.track(i)->pending)arpSettings[i]=arpOwner.track(i)->committed;
         return true;
     }
     if(!meterPrepared()||latest.generation!=engine.generation()||nextRequest==UINT32_MAX)return false;
+    if(!delayOwner.bound())return false;
     // This is an ordering fence, never evidence of successful settings. All
     // these IDs belong to the ordinary FIFO. An earlier bank ID is already
     // covered by its exact terminal receipt and must not strand the next load.
     if(latest.lastRequestId<lastOrdinaryRequest)return false;
-    const aion::LoopBank::EffectsBank effects{eqSettings,compressorSettings,chainSettings,driveSettings};
+    aion::LoopBank::EffectsBank effects{eqSettings,compressorSettings,chainSettings,driveSettings};
+    effects.restoreDelays=true;effects.delays=delaySettings;
+    for(unsigned id=0;id<delaySettings.size();++id)effects.delayRevisions[id]=delayOwner.track(id)->revision;
     if(!arpOwner.restore(arpSettings,nextRequest+1,&effects))return false;
     lastEffectsRequest=++nextRequest;
     effectsRestore={};effectsRestore.active=true;effectsRestore.request=nextRequest;effectsRestore.generation=engine.generation();effectsRestore.intent=effectsIntent;
+    effectsRestore.delays=delaySettings;effectsRestore.delayRevisions=effects.delayRevisions;effectsRestore.retainDelayOnFailure=delayRestorePending;
+    for(unsigned id=0;id<delaySettings.size();++id)effectsRestore.delayEpochs[id]=delayOwner.track(id)->clearEpoch;
     return false;
 }

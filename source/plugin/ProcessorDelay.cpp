@@ -2,16 +2,22 @@
 #include "plugin/Processor.h"
 void AionProcessor::delayCleared(unsigned track,bool all,std::uint32_t request){
  std::lock_guard guard(midiSettingsMutex);
- delayOwner.cancel(all?aion::LoopBank::trackCount:track);
+ // An admitted FX bank is serviced before ordinary audio commands. Preserve
+ // that ordering: a ready bank may commit before DEL; a still-preparing bank
+ // is cancelled by DEL on audio. There cannot be a competing owned D edit.
+ if(!effectsRestore.active)delayOwner.cancel(all?aion::LoopBank::trackCount:track);
  for(unsigned id=0;id<delaySettings.size();++id)if(all||id==track){
   delaySettings[id]={};pendingDelayClears[id]={request,engine.generation(),delayOwner.track(id)->clearEpoch};
  }
 }
 void AionProcessor::serviceDelay(){
  // Sole serialized non-audio service, reached by Timer and ordinary requests.
- // No browser, CLI or session field exposes D until coordinated restore exists.
+ // No browser, CLI or session field exposes D yet.
  delayOwner.service(latest);
  if(!delayOwner.bound()){
+  // Equal knob values do not prove ownership of a newer joint revision.
+  // Only the enclosing matched receipt may bind this generation's transaction.
+  if(effectsRestore.active&&effectsRestore.generation==engine.generation())return;
   if(latest.generation!=engine.generation())return;
   aion::DelaySettingsOwner::Bank known{};
   for(unsigned id=0;id<known.size();++id){const auto& confirmed=delayOwner.track(id)->committed;
@@ -30,28 +36,15 @@ void AionProcessor::serviceDelay(){
  }else for(unsigned id=0;id<delaySettings.size();++id){const auto epoch=delayOwner.track(id)->clearEpoch;
   if(epoch>delayShadowEpochs[id]){delaySettings[id]={};delayShadowEpochs[id]=epoch;}
  }
- if(delayRestoreActive){
-  if(delayOwner.restoring())return;
-  const auto& receipt=delayOwner.restoreReceipt();
-  if(receipt.requestId!=delayRestoreRequest||receipt.generation!=delayRestoreGeneration)return;
-  delayRestoreActive=false;delayRestorePending=false;
-  delayRestoreFailed=receipt.status!=aion::DelayEditStatus::ready;
-  // OOM/budget failure after a changed-rate reset retains the confirmed prior
-  // intent for an explicit later prepare, without spinning allocations on Timer.
-  // Clear/panic cancellation must instead retain the actual surviving bank.
-  if(receipt.status==aion::DelayEditStatus::failed||receipt.status==aion::DelayEditStatus::busy)return;
-  for(unsigned id=0;id<delaySettings.size();++id)if(!pendingDelayClears[id].request)delaySettings[id]=delayOwner.track(id)->committed;
- }
+ // Accepted whole-bank intent is protected until its exact joint receipt.
+ // In particular, never submit a competing D-only lifecycle bank.
+ if(effectsRestore.active||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending)return;
  if(delayRestorePending){
   bool matches=true;
   for(unsigned id=0;id<delaySettings.size();++id)matches&=delaySettings[id]==delayOwner.track(id)->committed;
   if(matches){delayRestorePending=false;delayRestoreFailed=false;}
   else {
-   if(!meterPrepared()||latest.generation!=engine.generation()||nextRequest==UINT32_MAX)return;
-   // Internal lifecycle-only restore. Product state loading must eventually use
-   // one coordinated D/Arp/effects transaction, not two independent successes.
-   if(!delayOwner.restore(delaySettings,nextRequest+1))return;
-   delayRestoreRequest=++nextRequest;delayRestoreGeneration=engine.generation();delayRestoreActive=true;return;
+   return; // The enclosing FX owner prepares both banks together.
   }
  }
  if(!delayRestoreFailed)for(unsigned id=0;id<delaySettings.size();++id)

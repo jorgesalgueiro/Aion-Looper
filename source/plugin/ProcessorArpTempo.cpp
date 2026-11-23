@@ -21,7 +21,7 @@ void AionProcessor::serviceArpTempo(bool submit){
   arpTempo={}; // A MIDI revision race retries the latest uncommitted timing intent.
  }
  if(!submit||arpTempoSeen==arpTempoIntent||!arpOwner.bound()||!meterPrepared()||latest.generation!=engine.generation()
-    ||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||effectsRestore.active||arpOwner.restoring())return;
+    ||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending||effectsRestore.active||arpOwner.restoring())return;
  bool enabled=false;for(unsigned id=0;id<arpSettings.size();++id){const auto* track=arpOwner.track(id);
   if(track->pending)return; // In particular, do not consume a tempo change while the first enable is preparing.
   enabled|=track->committed.controls.enabled;

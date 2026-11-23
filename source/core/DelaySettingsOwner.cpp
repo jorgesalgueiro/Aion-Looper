@@ -46,6 +46,25 @@ bool DelaySettingsOwner::restore(const Bank& candidate,std::uint32_t request,std
  return true;
 }
 void DelaySettingsOwner::cancel(unsigned id) noexcept {engine.cancelDelayEdit(id);}
+bool DelaySettingsOwner::acceptEffectsRestore(const EngineView& view,const Bank& candidate,const ArpBankResult& receipt,
+ const LoopBank::DelayEpochs& epochs,const LoopBank::DelayEpochs& revisions) noexcept {
+ if(bank.active||!receipt.requestId||!receipt.includesDelays||receipt.status!=ArpPreparationStatus::ready
+  ||receipt.generation!=engine.generation()||view.generation!=receipt.generation
+  ||view.callbackClock.generation!=receipt.generation||!receipt.callbackSerial||view.callbackClock.serial<receipt.callbackSerial)return false;
+ for(unsigned id=0;id<records.size();++id){const auto& audio=view.tracks[id];const auto& record=records[id];
+  if(record.pending||!validDelaySettings(candidate[id])||revisions[id]==UINT64_MAX||receipt.clearEpochs[id]!=epochs[id]
+   ||receipt.delaySettingsRevisions[id]!=revisions[id]+1||audio.clearEpoch<epochs[id])return false;
+  if(audio.clearEpoch==epochs[id]){if(audio.delaySettingsRevision!=receipt.delaySettingsRevisions[id]||audio.delay!=candidate[id])return false;}
+  else if(audio.delaySettingsRevision==0){if(audio.delay!=DelaySettings{})return false;}
+  else if(record.clearEpoch!=audio.clearEpoch||record.revision!=audio.delaySettingsRevision||record.committed!=audio.delay)return false;
+ }
+ for(unsigned id=0;id<records.size();++id){auto& record=records[id];const auto& audio=view.tracks[id];
+  if(audio.clearEpoch==epochs[id])record={candidate[id],audio.clearEpoch,audio.delaySettingsRevision,receipt.requestId,DelayEditStatus::ready,false};
+  else if(audio.delaySettingsRevision==0)record={DelaySettings{},audio.clearEpoch,0,receipt.requestId,DelayEditStatus::cancelled,false};
+  // A proven newer post-clear owner keeps its exact values and receipt.
+ }
+ generation=receipt.generation;attached=true;return true;
+}
 void DelaySettingsOwner::serviceBank() noexcept {
  DelayBankResult result;if(!engine.popDelayBank(result))return;
  if(!bank.active||result.requestId!=bank.request||result.generation!=bank.generation||result.transaction!=bank.transaction){attached=false;return;}

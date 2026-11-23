@@ -24,6 +24,11 @@ public:
  bool enable(unsigned track,bool enabled,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool repeats(unsigned track,DelayRepeatMode,unsigned count,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool restore(const Bank&,std::uint32_t request,std::uint64_t frame=0) noexcept;
+ // Enclosing sole restore owner must first match this Arp receipt to its own
+ // admitted request/candidate. Validate the entire fact + fresh view before
+ // rebinding D; never consume the Arp queue here or infer unknown originals.
+ bool acceptEffectsRestore(const EngineView&,const Bank&,const ArpBankResult&,
+                           const LoopBank::DelayEpochs&,const LoopBank::DelayEpochs&) noexcept;
  void cancel(unsigned track=LoopBank::trackCount) noexcept;
  bool bound() const noexcept{return attached&&generation==engine.generation();}
  bool restoring() const noexcept{return bank.active;}

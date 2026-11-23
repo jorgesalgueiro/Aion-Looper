@@ -101,4 +101,28 @@ static void generations(unsigned block){
  auto mismatched=f.latest;++mismatched.tracks[19].delaySettingsRevision;f.owner.service(mismatched);
  check(!f.owner.bound()&&!f.owner.enable(0,true,33),"unexplained external revision detaches instead of guessing");
 }
-int main(){for(unsigned block:{64u,128u}){controls(block);banks(block);generations(block);std::cout<<"PASS Delay settings owner "<<block<<": exact receipts/precision, intent rollback, bank atomicity, clear, OOM, FIFO and generation recovery\n";}}
+static void coordinated(unsigned block){
+ Fixture f(block);const auto before=f.bank();auto target=before;target[0].enabled=target[19].enabled=true;target[0].values[0]=.012345678901;
+ target[19].repeatMode=DelayRepeatMode::exact;target[19].repeatCount=2;
+ ArpBankRequest request;request.requestId=80;request.generation=f.engine->generation();request.restoreEffects=true;request.effects.restoreDelays=true;request.effects.delays=target;
+ for(unsigned id=0;id<20;++id){const auto info=f.engine->inspectAudioThread(id).track;request.settings[id]=info.arp;request.clearEpochs[id]=info.clearEpoch;request.settingsRevisions[id]=info.arpSettingsRevision;request.effects.delayRevisions[id]=info.delaySettingsRevision;}
+ check(f.engine->enqueueArpBank(request),"enclosing coordinated request");ArpBankResult receipt;bool terminal=false;
+ for(unsigned n=0;n<2000&&!terminal;++n){f.pump();f.drain();terminal=f.engine->popArpBank(receipt);if(!terminal)std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+ check(terminal&&receipt.status==ArpPreparationStatus::ready&&receipt.includesDelays,"real joint terminal receipt");
+ f.owner.service(f.latest);check(!f.owner.bound(),"unexplained joint revision waits for enclosing proof");
+ check(!f.owner.acceptEffectsRestore(f.initial,target,receipt,request.clearEpochs,request.effects.delayRevisions)&&f.bank()==before,"old snapshot cannot accept coordinated originals");
+ auto forged=receipt;++forged.delaySettingsRevisions[19];
+ check(!f.owner.acceptEffectsRestore(f.latest,target,forged,request.clearEpochs,request.effects.delayRevisions)&&f.bank()==before,"invalid final revision rejects entire bind without mutation");
+ auto invalid=target;invalid[19].values[3]=NAN;
+ check(!f.owner.acceptEffectsRestore(f.latest,invalid,receipt,request.clearEpochs,request.effects.delayRevisions)&&f.bank()==before,"invalid final candidate rejects entire bind");
+ f.command(LoopAction::clear,19);f.owner.service(f.latest);
+ check(f.owner.acceptEffectsRestore(f.latest,target,receipt,request.clearEpochs,request.effects.delayRevisions),"fresh receipt and later clear reconcile together");
+ auto expected=target;expected[19]={};check(f.owner.bound()&&f.bank()==expected&&f.owner.track(19)->status==DelayEditStatus::cancelled,"clear wins only its track while nineteen joint originals survive");
+ check(f.owner.track(0)->requestId==receipt.requestId&&f.owner.track(0)->revision==receipt.delaySettingsRevisions[0],"D owner retains exact enclosing acknowledgement");
+ check(f.owner.set(19,0,.23,82),"fresh owned edit after clear");f.done(19);const auto fresh=f.owner.track(19)->committed;
+ check(f.owner.acceptEffectsRestore(f.latest,target,receipt,request.clearEpochs,request.effects.delayRevisions)
+  &&f.owner.track(19)->committed==fresh&&f.owner.track(19)->requestId==82,"late enclosing fact cannot overwrite a proven newer post-clear edit");
+ f.engine->prepare(48000,16384);f.pump();f.service();const auto preserved=f.bank();
+ check(!f.owner.acceptEffectsRestore(f.latest,target,receipt,request.clearEpochs,request.effects.delayRevisions)&&f.bank()==preserved,"obsolete generation receipt cannot bind current audio");
+}
+int main(){for(unsigned block:{64u,128u}){controls(block);banks(block);generations(block);coordinated(block);std::cout<<"PASS Delay settings owner "<<block<<": exact receipts/precision, intent rollback, bank atomicity, clear, OOM, FIFO and generation recovery\n";}}

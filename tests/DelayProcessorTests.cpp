@@ -12,7 +12,7 @@ thread_local bool watch=false;thread_local unsigned operations=0;
 std::atomic<std::size_t> failBytes{0};
 void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
 }
-void* operator new(std::size_t n){if(watch)++operations;auto expected=n;if(failBytes.compare_exchange_strong(expected,0))throw std::bad_alloc();if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
+void* operator new(std::size_t n){if(watch)++operations;auto expected=n;if(n&&failBytes.compare_exchange_strong(expected,0))throw std::bad_alloc();if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
 void operator delete(void* p)noexcept{if(watch&&p)++operations;std::free(p);}
 void* operator new[](std::size_t n){return ::operator new(n);}
 void operator delete[](void* p)noexcept{::operator delete(p);}
@@ -33,7 +33,7 @@ struct AionDelayProcessorTestAccess {
   p.nextRequest=request;return true;
  }
  static bool pending(AionProcessor& p){std::lock_guard guard(p.midiSettingsMutex);
-  bool result=p.delayRestorePending||p.delayRestoreActive;
+  bool result=p.delayRestorePending||p.effectsRestore.active;
   for(unsigned id=0;id<20;++id)result|=p.delayOwner.track(id)->pending;
   return result;
  }
@@ -105,7 +105,10 @@ int main(int argc,char** argv){
  check(Access::set(*f.processor,0,3,.77,UINT64_MAX),"future edit before host state load");f.pump();
  f.processor->setStateInformation("bad",3);f.service();check(Access::record(*f.processor,0).pending,"invalid state load cannot cancel accepted D intent");
  juce::MemoryBlock state;f.processor->getStateInformation(state);f.processor->setStateInformation(state.getData(),static_cast<int>(state.getSize()));f.settle();f.fade();
- check(Access::record(*f.processor,0).status==aion::DelayEditStatus::cancelled&&Access::shadow(*f.processor)==saved,"validated host restore cancels obsolete D edit without a second receipt consumer");
+ if(Access::shadow(*f.processor)!=saved)std::cerr<<"host load shadow mismatch; D status="<<static_cast<unsigned>(Access::record(*f.processor,0).status)<<'\n';
+ check(Access::record(*f.processor,0).status==aion::DelayEditStatus::ready&&Access::bound(*f.processor)&&Access::shadow(*f.processor)==saved
+  &&f.processor->inspectAudioThread(0).track.delay==saved[0]&&Access::record(*f.processor,0).requestId==f.processor->inspectAudioThread(0).track.arpRequest,
+  "validated host restore cancels obsolete candidate and confirms unchanged D through the newer exact joint receipt");
  check(Access::shadow(*f.processor)==saved,"cancelled invalid-barrier candidate preserves prior shadow");
  f.processor->prepareToPlay(96000,static_cast<int>(block));
  check(Access::shadow(*f.processor)==saved&&Access::pending(*f.processor),"prepare retains confirmed intent and schedules restoration");

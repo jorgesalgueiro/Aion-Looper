@@ -193,12 +193,11 @@ void AionProcessor::prepareToPlay(double rate, int) {
      // Stopped lifecycle only. Keep native reset and accepted FX intent atomic
      // to the message Timer, including a device-thread prepare with no editor.
      for(unsigned n=0;n<8&&engine.popView(latest);++n){}
-     serviceDelay(); // Capture unread ready facts/clears before the generation changes.
-     arpOwner.service(latest);
+     (void)serviceEffectsRestore(); // Retire unread joint facts before changing generation; preparedGeneration=0 prevents new submission.
      if(arpOwner.bound()&&!arpRestorePending&&!effectsRestore.active)for(unsigned id=0;id<arpSettings.size();++id)if(!arpOwner.track(id)->pending)arpSettings[id]=arpOwner.track(id)->committed;
      engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
      bool delayedClear=false;for(auto& clear:pendingDelayClears){delayedClear|=clear.request!=0;clear={};}
-     delayRestoreActive=false;delayRestorePending=delayedClear||delaySettings!=aion::DelaySettingsOwner::Bank{};delayRestoreFailed=false;
+     delayRestorePending=delayedClear||delaySettings!=aion::DelaySettingsOwner::Bank{};delayRestoreFailed=false;
      engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareDriveBank(driveSettings);driveRestorePending=false;drivePending.fill(0);driveClearing.fill(false);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);
      auto renderIntent=arpSettings;for(auto& s:renderIntent)s.fresh=false;
      // Fresh classification alone needs no audio bank at first prepare. Keep a
@@ -669,7 +668,7 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         lastOrdinaryRequest = nextRequest = requestId;
         // Cancel independently of a future D FIFO head, but only after the
         // complete barrier request was validated and admitted successfully.
-        if(actionName=="stopAll")engine.cancelDelayEdit();
+        if(actionName=="stopAll"&&!effectsRestore.active)engine.cancelDelayEdit();
         else if(actionName=="clearAll"||actionName=="clear")delayCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")equalizerCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")compressorCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);

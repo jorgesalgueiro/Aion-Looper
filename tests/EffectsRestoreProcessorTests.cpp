@@ -26,8 +26,9 @@ int main(int argc,char** argv){
  };
  const auto a=saved(3,-30,"CQ"),b=saved(8,-24,"QC"),c=saved(-3,-12,"CQA");
  auto load=[&](const juce::MemoryBlock& bytes){p->setStateInformation(bytes.getData(),static_cast<int>(bytes.getSize()));};
- auto matches=[&](int gain,int threshold,const char* order){
+ unsigned matchStage=0;auto matches=[&](int gain,int threshold,const char* order){++matchStage;
   for(unsigned id=0;id<20;++id){const auto info=p->inspectAudioThread(id).track;
+   if(!(info.equalizer.enabled&&info.equalizer.values[4]==gain&&info.compressor.enabled&&info.compressor.values[0]==threshold&&info.signalChain.text()==order))std::cerr<<"FX stage="<<matchStage<<" track="<<id<<" EQ="<<info.equalizer.values[4]<<" C="<<info.compressor.values[0]<<" chain="<<info.signalChain.text()<<'\n';
    check(info.equalizer.enabled&&info.equalizer.values[4]==gain&&info.compressor.enabled&&info.compressor.values[0]==threshold&&info.signalChain.text()==order,"all twenty native FX records match");
    check(info.eqRequest==info.compressorRequest&&info.eqRequest==info.chainRequest&&info.eqRequest==info.arpRequest,"one exact bank identity across Q/C/chain/A");}
  };
