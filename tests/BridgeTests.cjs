@@ -47,7 +47,12 @@ const document=(session,crypto={randomUUID:()=>session})=>{
  current.complete({promiseId:precisePacket.resultId,result:{ok:true,_aionSession:'old-document',arp:'not JSON'}});assert.equal(current.timers.size,1,'Stale precision payload cannot affect current request');
  current.complete({promiseId:precisePacket.resultId,result:{ok:true,_aionSession:'current-document',arp:encoded,tracks:[{arp:encoded},{arp:{values:{time:.4}}}]}});
  const preciseReply=await precise;assert.equal(preciseReply.arp.values.amplitude,exactValue);assert.equal(preciseReply.tracks[0].arp.values.amplitude,exactValue);assert.equal(preciseReply.tracks[1].arp.values.time,.4,'Legacy object Arp remains supported');
+ const delayValue=.12345678901234566,delayEncoded=JSON.stringify({values:{time:delayValue}});
+ const preciseDelay=current.api.request({operation:'delay',action:'get',track:0}),delayPacket=current.outgoing.at(-1);
+ current.complete({promiseId:delayPacket.resultId,result:{ok:true,_aionSession:'current-document',delay:delayEncoded,tracks:[{delay:delayEncoded}]}});
+ const delayReply=await preciseDelay;assert.equal(delayReply.delay.values.time,delayValue);assert.equal(delayReply.tracks[0].delay.values.time,delayValue);
  const malformed=current.api.request({operation:'snapshot'}),bad=current.outgoing.at(-1);current.complete({promiseId:bad.resultId,result:{_aionSession:'current-document',arp:'not JSON'}});await assert.rejects(malformed,/Invalid native Arp payload/);assert.equal(current.timers.size,0,'Malformed exact payload releases its slot immediately');
+ const malformedDelay=current.api.request({operation:'delay'}),badDelay=current.outgoing.at(-1);current.complete({promiseId:badDelay.resultId,result:{_aionSession:'current-document',delay:'not JSON'}});await assert.rejects(malformedDelay,/Invalid native Arp payload/);assert.equal(current.timers.size,0,'Malformed Delay exact payload releases its slot immediately');
  // Older WebKit paths keep correlation when randomUUID is unavailable.
  for(const crypto of [{getRandomValues:values=>{values.fill(0x1234abcd);return values;}},{}]){
   const fallback=document('fallback',crypto),first=fallback.api.request({operation:'hello'}),packet=fallback.outgoing[0],token=packet.params[0]._aionSession;assert.equal(typeof token,'string');assert(token.length>0&&token.length<=128);fallback.complete({promiseId:packet.resultId,result:{ok:true,_aionSession:token}});assert.equal((await first).ok,true);

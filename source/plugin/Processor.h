@@ -177,6 +177,8 @@ private:
     static bool readArps(const juce::ValueTree&,aion::ArpSettingsOwner::Bank&);
     void saveDelays(juce::ValueTree&);
     static bool readDelays(const juce::ValueTree&,aion::DelaySettingsOwner::Bank&);
+    void delaySnapshot(juce::DynamicObject&,unsigned);
+    bool delayRequest(const juce::var&,juce::DynamicObject&);
     void arpSnapshot(juce::DynamicObject&,unsigned);
     bool arpRequest(const juce::var&,juce::DynamicObject&);
     void serviceEqualizer();

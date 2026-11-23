@@ -22,6 +22,7 @@ public:
  bool set(unsigned track,unsigned parameter,double value,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool preset(unsigned track,unsigned preset,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool enable(unsigned track,bool enabled,std::uint32_t request,std::uint64_t frame=0) noexcept;
+ bool reset(unsigned track,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool repeats(unsigned track,DelayRepeatMode,unsigned count,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool restore(const Bank&,std::uint32_t request,std::uint64_t frame=0) noexcept;
  // Enclosing sole restore owner must first match this Arp receipt to its own

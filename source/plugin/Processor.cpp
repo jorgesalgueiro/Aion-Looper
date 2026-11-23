@@ -571,10 +571,13 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
             driveSnapshot(*object,static_cast<unsigned>(trackIndex));
             chainSnapshot(*object,static_cast<unsigned>(trackIndex));
             arpSnapshot(*object,static_cast<unsigned>(trackIndex));
+            delaySnapshot(*object,static_cast<unsigned>(trackIndex));
             object->setProperty("finalizationFailed", t.finalizationFailed); object->setProperty("solo", t.solo); object->setProperty("muted", t.muted); object->setProperty("peak", t.peak);
             tracks.add(juce::var(object));
         }
         result->setProperty("tracks", juce::var(tracks));
+    } else if(operation=="delay") {
+        result->setProperty("ok",delayRequest(request,*result));
     } else if(operation=="arp") {
         result->setProperty("ok",arpRequest(request,*result));
     } else if(operation=="signalChain") {

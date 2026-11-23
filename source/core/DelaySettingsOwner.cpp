@@ -33,6 +33,10 @@ bool DelaySettingsOwner::repeats(unsigned id,DelayRepeatMode mode,unsigned count
  if(id>=records.size())return false;
  auto candidate=records[id].committed;return setDelayRepeats(candidate,mode,count)&&submit(id,candidate,request,frame);
 }
+bool DelaySettingsOwner::reset(unsigned id,std::uint32_t request,std::uint64_t frame) noexcept {
+ if(id>=records.size())return false;
+ DelaySettings candidate;candidate.enabled=records[id].committed.enabled;return submit(id,candidate,request,frame);
+}
 bool DelaySettingsOwner::restore(const Bank& candidate,std::uint32_t request,std::uint64_t frame) noexcept {
  if(!bound()||bank.active||!request)return false;
  DelayBankRequest command;command.settings=candidate;command.requestId=request;command.generation=generation;command.frame=frame;

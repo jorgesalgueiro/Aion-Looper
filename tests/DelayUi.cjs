@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Actual editor/CDP gestures and production synthetic PCM; no hardware claim.
+const assert=require('node:assert/strict'),wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
+(async()=>{
+ assert(process.env.AION_MOUSE_TEST_RUN,'Use tools/TestDelayUi.ps1');let target;
+ for(let n=0;n<100;++n){try{target=(await(await fetch('http://127.0.0.1:9235/json')).json()).find(t=>t.url.includes('juce.backend'));}catch{}if(target)break;await wait(100);}assert(target);
+ socket=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{socket.addEventListener('open',r,{once:true});socket.addEventListener('error',j,{once:true});});
+ let serial=0;const replies=new Map(),errors=[];socket.addEventListener('message',e=>{const r=JSON.parse(e.data);if(r.method==='Runtime.exceptionThrown')errors.push(r.params.exceptionDetails);replies.get(r.id)?.(r);});
+ const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++serial,timer=setTimeout(()=>{replies.delete(id);reject(Error(method+' timeout'));},12000);replies.set(id,r=>{clearTimeout(timer);replies.delete(id);r.error?reject(Error(JSON.stringify(r.error))):resolve(r.result);});socket.send(JSON.stringify({id,method,params}));});
+ const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
+ const rpc=r=>evaluate(`AionNative.request(${JSON.stringify(r)})`),snapshot=()=>rpc({operation:'snapshot'});
+ const until=async(predicate,label)=>{let s;for(let n=0;n<160;++n){s=await snapshot();if(predicate(s))return s;await wait(50);}assert.fail(label+': '+JSON.stringify({delay:s?.tracks[0]?.delay,pending:s?.tracks[0]?.delayPending,errors}));};
+ const click=async selector=>{await evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'})`);await wait(150);const r=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {x:r.x+r.width/2,y:r.y+r.height/2,disabled:e.disabled,hit:e.contains(hit),cover:hit?.outerHTML.slice(0,180)};})()`);assert(!r.disabled&&r.hit,selector+' blocked '+JSON.stringify(r));const down=call('Input.dispatchMouseEvent',{type:'mousePressed',x:r.x,y:r.y,button:'left',clickCount:1});await wait(20);const up=call('Input.dispatchMouseEvent',{type:'mouseReleased',x:r.x,y:r.y,button:'left',clickCount:1});await Promise.all([down,up]);};
+ const key=async(key,code,vk)=>{await call('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:vk});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:vk});};
+ const focus=async selector=>{for(let n=0;n<100;++n){if(await evaluate(`!!document.querySelector(${JSON.stringify(selector)})&&!document.querySelector(${JSON.stringify(selector)}).disabled`))break;await wait(20);}await evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);assert(await evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`),selector+' focus');};
+ await call('Runtime.enable');for(let n=0;n<100;++n){if(await evaluate(`!!document.querySelector('#native-delay-enabled')&&typeof window.AionNative?.request==='function'`))break;await wait(100);}
+ await until(s=>s.audioReady&&s.inputAvailable,'audio active');
+ for(const [id,value] of [['masterGain',1],['inputMonitor',0],['syncMode',0],['autoPlayAfterRecord',0],['metronomeVolume',0]])assert((await rpc({operation:'setParameter',id,value})).ok);
+ await click('#loop-action-0');await until(s=>s.tracks[0].state==='recording','record');await wait(300);await click('#loop-action-0');await until(s=>s.tracks[0].state==='stopped','capture');await click('#loop-action-0');
+ const take=await until(s=>s.tracks[0].state==='playing'&&s.outputPeak>.01,'nonzero playback');
+ await click('#loop-0-delay');await until(s=>s.tracks[0].delay.enabled&&s.tracks[0].delayReady&&s.outputPeak>.001,'async Delay row enable');await click('#loop-0-delay + span');
+ assert(await evaluate(`document.querySelector('#native-delay-title').textContent.includes('Loop 1')`));
+ await focus('#native-delay-mode');await key('End','End',35);await key('Tab','Tab',9);await until(s=>s.tracks[0].delay.repeatMode==='exact'&&s.tracks[0].delayReady,'trusted exact selector');
+ for(const count of [1,2,3]){await focus('#native-delay-count');await key('Home','Home',36);for(let n=1;n<count;++n)await key('ArrowDown','ArrowDown',40);await key('Tab','Tab',9);await until(s=>s.tracks[0].delay.repeatCount===count&&s.tracks[0].delayReady,'trusted exact count '+count);}
+ await focus('#native-delay-mode');await key('Home','Home',36);await key('Tab','Tab',9);await until(s=>s.tracks[0].delay.repeatMode==='feedback'&&s.tracks[0].delayReady,'Feedback selector');
+ await focus('#delayRepetitions');await key('Home','Home',36);await key('ArrowRight','ArrowRight',39);await key('Tab','Tab',9);await until(s=>s.tracks[0].delay.values.repetitions===1&&s.tracks[0].delayReady,'trusted feedback range');
+ const precise=.12345678901234566,s=await snapshot();const receipt=await rpc({operation:'delay',track:0,action:'set',parameter:'time',value:precise,generation:s.generation,expiresAt:Date.now()+3000});assert(receipt.ok);
+ await until(s=>s.tracks[0].delayReady&&s.tracks[0].delayRequestId===receipt.requestId&&s.tracks[0].delay.values.time===precise,'exact precision over real bridge');
+ await click('#native-delay-reset');await until(s=>s.tracks[0].delayReady&&s.tracks[0].delay.enabled&&s.tracks[0].delay.values.time===.375,'Reset preserves enabled');
+ await focus('#sel_delay');await key('End','End',35);await key('Tab','Tab',9);await until(s=>s.tracks[0].delay.preset==='rhythmic'&&s.tracks[0].delayReady,'original preset selector');
+ const beforeReload=await snapshot();assert.equal(beforeReload.tracks[0].waveformId,take.tracks[0].waveformId);assert.equal(beforeReload.tracks[0].state,'playing');
+ await call('Page.reload',{ignoreCache:true});await wait(500);await until(s=>s.tracks[0].delay.preset==='rhythmic'&&s.tracks[0].delay.enabled&&s.outputPeak>.001,'reload retains native Delay and playback');
+ await click('#loop-0-delay');const end=await until(s=>!s.tracks[0].delay.enabled&&s.tracks[0].delayReady,'bypass after reload');assert.equal(end.tracks[0].waveformId,take.tracks[0].waveformId);assert(!await evaluate(`!!window.state?.audioContext`));assert.deepEqual(errors,[]);
+ console.log('PASS actual Delay UI '+process.argv[2]+': row/panel enable, original preset, Feedback/exact 1/2/3, reset, precision, reload/bypass; continuing native nonzero PCM and unchanged clip');
+})().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>socket?.close());
