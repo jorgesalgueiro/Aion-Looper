@@ -15,7 +15,8 @@ bool numeric(const juce::var& v,double& out){if(!(v.isInt()||v.isInt64()||v.isDo
 void AionProcessor::delaySnapshot(juce::DynamicObject& object,unsigned track){
  std::lock_guard guard(midiSettingsMutex);object.setProperty("delay",value(delaySettings[track]));const auto& record=*delayOwner.track(track);
  const bool restore=eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending||effectsRestore.active;
- object.setProperty("delayBusy",restore||record.pending||pendingDelayClears[track].request!=0);
+ const bool settling=latest.tracks[track].delayTransitioning||latest.tracks[track].delaySettingsRevision<record.revision;
+ object.setProperty("delayBusy",restore||record.pending||settling||pendingDelayClears[track].request!=0);
  object.setProperty("delayPending",restore||record.pending);
  object.setProperty("delayRequestId",static_cast<juce::int64>(record.requestId));
  object.setProperty("delayReady",delayOwner.bound()&&!restore&&!record.pending&&!pendingDelayClears[track].request&&record.status==aion::DelayEditStatus::ready);
@@ -29,7 +30,7 @@ bool AionProcessor::delayRequest(const juce::var& request,juce::DynamicObject& r
  if(!numeric(request.getProperty("expiresAt",{}),expires)||expires<now||expires>now+5000)return fail("Delay command expired");
  const auto generation=request.getProperty("generation",{});
  if(!generation.isInt()||static_cast<int>(generation)!=static_cast<int>(engine.generation())||latest.generation!=engine.generation()||!meterPrepared()||!delayOwner.bound())return fail("Audio generation changed");
- if(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending||effectsRestore.active||pendingDelayClears[track].request||delayOwner.track(track)->pending)return fail("Wait for Delay restore/edit/clear acknowledgement");
+ if(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending||effectsRestore.active||pendingDelayClears[track].request||delayOwner.track(track)->pending||latest.tracks[track].delayTransitioning||latest.tracks[track].delaySettingsRevision<delayOwner.track(track)->revision)return fail("Wait for Delay restore/edit/clear/transition acknowledgement");
  if(nextRequest==UINT32_MAX)return fail("Delay request IDs exhausted");
  const auto requestId=nextRequest+1;bool accepted=false;
  if(action=="toggle"||action=="enable"){

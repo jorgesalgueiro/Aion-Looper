@@ -58,6 +58,7 @@ struct LoopView {
     DelaySettings delay{};
     std::uint64_t delaySettingsRevision=0;
     std::uint32_t delayRequest=0;
+    bool delayTransitioning=false; // Audio-owned readiness only; never persisted.
 };
 // Audio owns capture blocks/state; the worker borrows pinned takes and owns immutable clips.
 // Capture storage is allocated in prepare; clip allocation/deletion stays off the callback.
@@ -207,7 +208,7 @@ public:
     bool meterGraphCurrent(std::uint32_t generation,unsigned id,std::uint32_t ticket) const noexcept {return meterGraphEvents->owns(generation,id,ticket);}
     std::uint32_t meterGraphTicket(unsigned id) const noexcept {return id<trackCount?meterGraphTickets[id]:0;}
     std::uint64_t meterGraphFrame(unsigned id) const noexcept {return id<trackCount?meterGraphFrames[id]:0;}
-    LoopView trackView(std::uint32_t id) const noexcept {if(id>=trackCount)return {};auto v=tracks[id].info;v.clearEpoch=tracks[id].clearEpoch;v.sourceRevision=tracks[id].sourceRevision;v.waveformId=tracks[id].clip?tracks[id].clip->waveformId:0;return v;}
+    LoopView trackView(std::uint32_t id) const noexcept {if(id>=trackCount)return {};auto v=tracks[id].info;v.clearEpoch=tracks[id].clearEpoch;v.sourceRevision=tracks[id].sourceRevision;v.waveformId=tracks[id].clip?tracks[id].clip->waveformId:0;v.delayTransitioning=delayStorage->view(id).transitioning;return v;}
     std::uint32_t capacity() const noexcept { return totalBlocks * blockFrames; }
     std::uint32_t available() const noexcept;
     int nextUndo() const noexcept { return undoSize?undoOrder[undoSize-1]:-1; }

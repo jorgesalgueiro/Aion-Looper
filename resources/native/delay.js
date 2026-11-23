@@ -13,7 +13,7 @@
   const reset=document.createElement('button');reset.type='button';reset.textContent='Reset';reset.id='native-delay-reset';reset.addEventListener('click',()=>send('reset'));preset.after(reset);
   preset.addEventListener('change',()=>{if(preset.value)send('preset',{preset:preset.value});});enabled.addEventListener('change',()=>send('toggle'));
   sync.addEventListener('change',()=>send('set',{parameter:'sync',value:sync.checked?1:0}));
-  const repeats=()=>send('repeats',{repeatMode:mode.value,repeatCount:Number(count.value)});
+  const repeats=()=>send('repeats',{repeatMode:mode.value,repeatCount:Number(count.value)},'delay:repeats');
   mode.addEventListener('change',repeats);count.addEventListener('change',repeats);
   for(const [name,label,min,max,step] of fields){const row=document.createElement('div');row.className='slider-container';row.style.cssText='display:flex;align-items:center;gap:4px;margin-bottom:20px';
    const text=document.createElement('label'),input=document.createElement('input'),value=document.createElement('span');input.id='delay'+name[0].toUpperCase()+name.slice(1);text.htmlFor=input.id;text.textContent=label;text.style.cssText='font-size:10px;width:54px';
