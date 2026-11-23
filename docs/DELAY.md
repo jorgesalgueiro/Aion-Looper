@@ -1,11 +1,112 @@
 # D / Delay implementation checkpoint
 
 Owner priority (21 November 2026): remaining loop features precede broad CPU
-tuning. D now has a **development GUI/CLI preview**; MIDI Learn, listening/device
+tuning. D now has a **development GUI/CLI/MIDI slider preview**; listening/device
 and full release acceptance remain separate. Existing IDs and preserved UI assets
 are unchanged. Older checkpoints below retain their original narrower scope.
 
 ## Contract and acceptance
+
+### Six original MIDI sliders — 23 November 2026
+
+Source checkpoints `4c2680f` / `f624b24`, fixture follow-up `4f7bb09`:
+continuous CC targets 147–152 append Time, Reps, Damp, Mix, Pan Speed and Pan
+Depth. Existing target IDs are untouched. MIDI schema 8 writes 153 bindings;
+versions 1–7 still load. The v7 regression retains PC0, mixer and final drive
+bindings with channel filters, initializing only the six new slots as unassigned.
+Sync/bypass and the native repeat selectors remain unmapped. Reps updates its
+original Feedback value even while exact mode is selected; it never changes the
+exact tap count. See [CLI.md](CLI.md) for shared Learn/cancellation commands.
+
+CC handling calls the existing native setter at the event's sample offset, with
+no allocation or graph recreation. It retains prepared mode/count and the last
+command ID, including zero on a fresh track; only the explicit MIDI path permits
+that zero ID. A heap-allocated SPSC queue has 511 usable exact-original receipts.
+Capacity is checked before DSP mutation, with rejection counted in MIDI status.
+The sole non-audio owner consumes receipts with generation/epoch/revision proof,
+updates native state for immediate save and rejects obsolete pre-clear facts.
+
+An atomic generation publication admits MIDI only while that owner is bound.
+Joint restore and unresolved retained failed-restore intent suspend admission
+until proof/recovery; owner destruction revokes it. No second receipt consumer,
+audio lock, callback allocation, file access or unbounded retry is introduced.
+The final failure-path regression prevents a GUI edit on another track from
+clearing global failure state and discarding retained intent. Unapplied retained
+settings cannot report `delayReady=true`; failure clears only after confirmed
+settings match and pending edits have retired. Explicit retry/clear still owns
+recovery; the Timer does not repeatedly allocate a failed bank.
+
+Executed evidence:
+
+- Windows unchanged-JS oracle: 12,768 exact values from the unchanged original
+  handler/setter and six original ranges, all 16 channels and repeated/zero/
+  nonmonotonic values. Preserved methods are checked against the independent
+  reference. No reference/preserved UI/logo file changed.
+- Nonzero stereo Engine comparison: six offset-17 controls against scheduled
+  shared-owner edits, at 8/48 kHz and 64/128, unchanged `<=1e-6` PCM limit and exact
+  original settings through the existing loop downmix/pan output path, not an
+  independent full-stereo/browser/driver fidelity claim. Includes unread-MIDI/clear, fresh epoch and suspend/resume
+  checks. Initial comparison failed because independently prepared graphs began
+  processing live audio at different times; both owners are now prepared with
+  empty history before paired playback. No tolerance or assertion was relaxed.
+- Windows new MIDI tests passed at both blocks, including all CCs/channels,
+  same-block Learn after its consumed first packet, immediate save, full receipt
+  saturation/recovery, channel filtering, joint proof, unread MIDI across changed-
+  rate prepare, and v7 compatibility. Final affected MIDI/lifecycle/state/joint
+  checks passed 8/8 (24.09s), with Standalone rebuilt. Earlier broad compatibility
+  checks passed 13/13 (104.70s), including core owner/PCM, external CLI, Arp,
+  drive and legacy MIDI processor checks; these are separate runs.
+- Native WSL Linux Release: broad checks passed 18/18 (61.91s), including original
+  JS, PCM, frontend/bridge and native cases; final retained-intent/rate/compatibility
+  follow-up passed 8/8 (22.73s). Standalone rebuilt from the committed snapshot.
+- Linux core-only Debug ASan/UBSan with leak detection: PCM, original MIDI oracle
+  and owner checks passed 3/3 (9.41s), no reported sanitizer errors/suppressions.
+  This is not a sanitized JUCE Processor run.
+- Windows actual editor: full Delay workflow plus MIDI checks passed at 64 and
+  separately at 128, with nonzero synthetic native playback and unchanged clip.
+  Final focused `-MidiOnly` run passed both blocks together: right-click Learn,
+  first-packet consumption/same-block CC, actual focused slider, selected loop 20,
+  same-effect and old-Arp-target conflicts, Escape, reload and Shift-clear.
+  Tracked callback new/delete counts remain zero. No listening/physical device,
+  Linux WebKit, Apple or deferred-wrapper result is inferred from these checks.
+
+Fixture failures remain recorded. The original 150ms DOM check ran before the
+editor's fresh snapshot arrived; traced test snapshot round trips were 218–407ms,
+and the slider subsequently updated correctly. The fixture now requires fresh
+editor value/binding evidence before checking the focused DOM. It retains the
+150ms post-evidence check and tightens numeric tolerance to the actual half-step
+`0.005`. This replaces an implementation-timing assumption with causal UI proof;
+it is not a latency/CPU improvement claim. Early cold-start attempts also timed
+out before any control action. The helper now reuses the existing test host's
+`--steady-start`, observes DOMContentLoaded and actual controls before focus
+emulation. Explicit Page.reload tests remain; no production visibility policy
+changed and failed startup attempts are not passes.
+
+Reproduction (existing configured Windows native-test cache; pinned CMake/CTest):
+
+```powershell
+cmake --build build/windows --config Release --target aion_delay_midi_processor_tests aion_delay_midi_audio_tests aion_delay_tests aion_delay_owner_tests aion_delay_processor_tests aion_delay_state_processor_tests aion_joint_effects_processor_tests aion_delay_command_tests aion_arp_processor_tests aion_drive_processor_tests aion_midi_processor_tests AionLooper_Standalone aion_mouse_host --parallel 4
+ctest --test-dir build/windows -C Release -R '^(native_delay_midi_(64|128)|js_native_delay_midi|delay_midi_audio_contract|delay_settings_owner_contract|native_delay_commands_(64|128)|native_(delay|delay_state|joint_effects|arp|drive)_processor_(64|128)|native_midi_processor|native_frontend_commands|native_bridge_lifecycle)$' --output-on-failure --no-tests=error
+./tools/TestDelayUi.ps1 -MidiOnly
+./tools/TestDelayUi.ps1
+```
+
+Use `--preset linux -DAION_TEST_NATIVE_PROCESSOR=ON`, `build/linux`, `-j2` and
+the same compiled targets/regex in the native WSL checkout after committing and
+syncing via SetupWslWorkspace.sh. Omit the Windows-only mouse host/UI script.
+For the existing core-only `build/drive-sanitized` cache, build
+`aion_delay_midi_audio_tests aion_delay_owner_tests aion_delay_tests` and run:
+
+```sh
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(delay_midi_audio_contract|delay_settings_owner_contract|js_native_delay_midi)$' --output-on-failure --no-tests=error
+```
+
+Logs use `build/windows/delay-midi-*` (final focused editor:
+`delay-midi-editor-accepted.log`; full 64: `delay-midi-ui-final.log`, isolated
+128: `delay-midi-ui-128-ready.log`), `build/linux/delay-midi-*` and
+`build/drive-sanitized/delay-midi-*`. No new package, remote push, dependency
+upgrade or broad CPU tuning. Next: remaining D lifecycle/quality/listening and
+available controller acceptance before promoting the whole feature.
 
 ### Shared Delay controls — 23 November 2026
 

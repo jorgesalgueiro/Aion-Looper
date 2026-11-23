@@ -87,7 +87,28 @@ crossfade readiness. It never retries an admitted failed action automatically.
 Queue/budget/allocation failure or cancellation leaves prior confirmed settings;
 inspect `delayBusy`, `delayPending`, `delayReady` and `delayRequestId` in `status`.
 Accepted intent is included in immediate native settings saves; stored loop PCM
-is still temporary. Delay MIDI Learn and listening/device acceptance remain pending.
+is still temporary. Physical-controller and listening/device acceptance remain pending.
+
+Right-click the six original Delay sliders to learn a continuous CC;
+Shift-right-click clears it and Escape/10s cancels learning. Targets 147–152
+are Time, Reps, Damp, Mix, Pan Speed and Pan Depth. They follow the selected loop
+tab, as EQ/Arp/drive bindings do. For example:
+
+```sh
+python tools/aion.py midi enable --data '{"enabled":true}'
+python tools/aion.py midi eqTrack --data '{"track":0}'
+python tools/aion.py midi learn --data '{"target":150}'
+python tools/aion.py midi cancelLearn --data '{"target":150}'
+```
+
+Send a CC after `learn` to assign Mix. The first packet is consumed by Learn;
+subsequent values, including zero and same-block messages, apply at their sample
+offsets. Existing channel/conflict rules apply. MIDI schema 8 preserves older
+IDs/states and appends these six slots. Sync, bypass, mode and count selectors
+remain unmapped; Reps controls the stored Feedback value, not the exact tap count.
+D MIDI pauses while its owner/restore proof is unavailable, and unresolved
+failed-restore intent must be resolved by explicit recovery/clear. Receipt-queue
+saturation rejects before changing DSP; `midi.rejected` reports rejection.
 
 Arp Delay now has development GUI/CLI access to its original controls and eight
 presets. Commands operate on the same persistent per-loop native graph:

@@ -11,6 +11,49 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Delay continuous MIDI Learn — 23 November 2026
+
+Source `4c2680f`, fixture/compatibility follow-up `4f7bb09`, retained-intent fix
+`f624b24`: six original D sliders append CC targets 147–152, leaving every older
+ID unchanged. MIDI schema 8 writes 153 slots and reads versions 1–7; v7 retains
+its PC0, mixer/drive bindings and channel filters, with new slots unassigned.
+GUI right-click Learn, Shift-clear, Escape and existing CLI `midi` commands share
+the same mapping engine and selected-loop tab. Sync/bypass/repeat selectors are
+not mapped by this six-slider slice. Physical controllers remain untested here.
+
+Audio applies controls at MIDI sample offsets with no allocation, preserving
+prepared D mode/count/storage. A fixed 511-usable-receipt queue rejects before
+mutation on saturation; the sole Delay owner consumes exact original values and
+revisions, including immediate save and clear/reset epochs. Generation-bound
+admission pauses D MIDI until owner binding and joint-restore confirmation.
+Unresolved retained restore failures stay paused; a control on another track
+cannot discard that retained intent or falsely report active audio readiness.
+
+Unchanged-JS comparison passed 12,768 original values. Nonzero stereo Engine
+comparison passes six offset-17 controls at 8/48 kHz and 64/128, unchanged 1e-6
+limit, with clear/suspend recovery and zero tracked callback new/delete. Windows
+native MIDI tests cover all CCs/channels, same-block Learn, bounded overflow,
+channel filtering, generation changes and legacy state. Full results, fixture
+failure diagnoses and exact commands are in [DELAY.md](DELAY.md).
+
+Windows broad compatibility: 13/13 (104.70s); final affected retained-intent/
+MIDI/state/joint/lifecycle cases: 8/8 (24.09s). Linux broad: 18/18 (61.91s);
+final follow-up: 8/8 (22.73s). Core-only ASan/UBSan/leak: 3/3 (9.41s), no
+reported sanitizer errors/suppressions; no sanitized JUCE Processor claim.
+Both Standalone builds succeeded. Actual Windows editor full workflows passed
+at 64 and separately at 128; final focused MIDI run passed both blocks together.
+The fixture now waits for a fresh editor snapshot before asserting the focused
+DOM, rather than mistaking native admission for display completion. Numeric
+tolerance tightened to the 0.005 slider half-step. Early startup timeouts are
+recorded; the helper reuses `--steady-start` and document readiness without
+changing production visibility policy. No physical-device, Linux WebKit,
+Apple/wrapper or new broad CPU validation was performed.
+
+NEXT: remaining D lifecycle/quality and listening acceptance; document/verify
+physical-controller behavior when hardware is available. Do not promote D as
+release-complete or begin another effect with known acceptance failures. Broad
+CPU tuning, deferred wrappers, Apple and routine packages/pushes remain out of scope.
+
 ### Shared Delay GUI/CLI preview — 23 November 2026
 
 Snapshots `921788e` and `4018039` expose the existing D owner through shared

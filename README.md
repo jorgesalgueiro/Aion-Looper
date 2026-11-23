@@ -50,7 +50,8 @@ workspace, playable with a mouse, keyboard, MIDI controller or command line.
 - **Create space with Delay.** D has its original controls and presets, plus
   Feedback or exact 1–10 repeats. Use the panel or CLI, arrange D anywhere in
   the FX chain, and retain its settings in native state. This is a development
-  preview; Delay MIDI Learn and listening acceptance remain pending.
+  preview. Right-click its six sliders to learn MIDI CCs for the selected loop;
+  physical-controller and listening acceptance remain pending.
 - **Control the running app from a terminal.** The development CLI shares the
   Standalone's session, devices and native command layer.
 

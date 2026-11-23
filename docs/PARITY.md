@@ -8,7 +8,7 @@ or Apple acceptance.
 
 | Capability | Foundation status | Release acceptance |
 | --- | --- | --- |
-| D / Delay | Development shared GUI/CLI preview: original controls/presets, Feedback/exact 1–10, reset/bypass; exact receipts and transition readiness, versioned settings, worker/chain and joint restore/lifecycle | MIDI Learn and listening/device/release acceptance remain pending. Native command/state/lifecycle/race, PCM evidence and limits: [DELAY.md](DELAY.md). Broad CPU tuning deferred by owner until remaining features implemented |
+| D / Delay | Development shared GUI/CLI preview: original controls/presets, Feedback/exact 1–10, reset/bypass; six original CC slider Learn targets 147–152, exact bounded receipts, transition readiness, versioned settings and joint restore/lifecycle | Discrete selectors remain unmapped; physical-controller and listening/device/release acceptance pending. Native command/MIDI/state/lifecycle/race, PCM evidence and limits: [DELAY.md](DELAY.md). Broad CPU tuning deferred until remaining features implemented |
 | Original runtime assets | 16 files preserved with SHA256 | Automated byte identity checks |
 | Running-Standalone CLI | Development Python client routes existing native operations to the same session/processor using bounded private local mailboxes; exact-ID outcomes and instance selection | Native 64/128 external-process and real Standalone/WebView checks are recorded in VALIDATION.md; unported engines, remaining session/device setup commands, compiled/bundled CLI and Apple remain separate |
 | Native build formats | CMake targets/platform guards configured | Compile/load/validate each OS+format |
