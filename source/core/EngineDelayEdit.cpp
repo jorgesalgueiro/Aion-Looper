@@ -3,6 +3,13 @@
 #include <algorithm>
 #include <cmath>
 namespace aion {
+bool Engine::applyDelayMidi(unsigned track,unsigned slider,unsigned cc) noexcept {
+ if(track>=LoopBank::trackCount||slider>=delayMidiControls.size()||cc>127||!generation()||delayMidiGeneration.load(std::memory_order_acquire)!=generation()
+  ||coordinatedDelayBank.load(std::memory_order_acquire)||pendingArpBank.active||pendingDelayBank->active||(*pendingDelay)[track].active||!delayMidiResults->canPush())return false;
+ const auto old=loops.trackView(track);auto settings=old.delay;const auto parameter=delayMidiControls[slider];const double value=delayMidiValue(slider,cc);
+ if(!setDelayControl(settings,parameter,value)||!loops.setDelay(track,settings,old.clearEpoch,old.delaySettingsRevision,old.delayRequest,true))return false;
+ (void)delayMidiResults->push({track,parameter,value,generation(),old.clearEpoch,old.delaySettingsRevision,old.delaySettingsRevision+1});return true;
+}
 bool Engine::enqueueDelayEdit(LoopCommand command,std::uint64_t& transaction) noexcept {
  if(command.action!=LoopAction::delay||command.track>=LoopBank::trackCount||!command.requestId
   ||!command.generation||command.generation!=generation()||command.arpTransaction||command.delayTransaction

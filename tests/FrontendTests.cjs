@@ -1120,4 +1120,8 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  arp.forEach((name,i)=>assert.equal(scope.window.AionMidiSliderTarget('arpDelay'+name[0].toUpperCase()+name.slice(1)),124+i));
  assert.equal(scope.window.AionMidiSliderTarget('arpDelaySync'),-1);assert.equal(scope.window.AionMidiSliderTarget('arpDelayStay'),-1);
  console.log('PASS: compressor 117..123 and Arp 124..132 slider IDs preserve existing targets; Arp flags stay unmapped');
+ const delay=['time','repetitions','damp','mix','panSpeed','panDepth'];
+ delay.forEach((name,i)=>assert.equal(scope.window.AionMidiSliderTarget('delay'+name[0].toUpperCase()+name.slice(1)),147+i));
+ for(const id of ['delaySync','native-delay-enabled','native-delay-mode','native-delay-count'])assert.equal(scope.window.AionMidiSliderTarget(id),-1);
+ console.log('PASS: Delay continuous targets 147..152 append without reassigning IDs; Sync/bypass/repeat selectors stay unmapped');
 }

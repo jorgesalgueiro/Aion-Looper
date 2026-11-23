@@ -13,6 +13,10 @@ inline constexpr std::array<DelayControl,7> delayControls{{
  {"panSpeed",0,0,5,.1},{"panDepth",.8,0,1,.1},{"sync",0,0,1,1}
 }};
 using DelayValues=std::array<double,7>;
+inline constexpr std::array<unsigned,6> delayMidiControls{0,1,2,3,4,5};
+constexpr double delayMidiValue(unsigned slider,unsigned cc) noexcept {
+ const auto& p=delayControls[delayMidiControls[slider]];return p.minimum+(cc/127.0)*(p.maximum-p.minimum);
+}
 constexpr DelayValues delayDefaults() noexcept {
  DelayValues v{};for(unsigned p=0;p<v.size();++p)v[p]=delayControls[p].initial;return v;
 }

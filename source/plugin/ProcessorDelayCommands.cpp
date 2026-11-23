@@ -52,6 +52,6 @@ bool AionProcessor::delayRequest(const juce::var& request,juce::DynamicObject& r
   accepted=delayOwner.repeats(track,mode.toString()=="exact"?aion::DelayRepeatMode::exact:aion::DelayRepeatMode::feedback,static_cast<unsigned>(static_cast<int>(count)),requestId);
  }else return fail("Unknown Delay action");
  if(!accepted)return fail("Invalid Delay settings or command queue unavailable");
- delaySettings[track]=*delayOwner.intent(track);nextRequest=requestId;
+ delaySettings[track]=*delayOwner.intent(track);delayRestoreFailed=false;nextRequest=requestId;
  result.setProperty("queued",true);result.setProperty("requestId",static_cast<juce::int64>(requestId));delaySnapshot(result,track);return true;
 }

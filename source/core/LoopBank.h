@@ -85,7 +85,7 @@ public:
     bool setDrives(std::uint32_t,const DriveBank&,std::uint32_t request,std::uint64_t clearEpoch,bool checkEpoch=true,std::uint32_t mask=allDriveFields) noexcept;
     // Internal audio-owner D integration; product bridge/CLI/state remain gated.
     bool requestDelay(unsigned,const DelaySettings&,std::uint64_t clearEpoch,std::uint64_t revision,std::uint32_t request) noexcept;
-    bool setDelay(unsigned,const DelaySettings&,std::uint64_t clearEpoch,std::uint64_t revision,std::uint32_t request) noexcept;
+    bool setDelay(unsigned,const DelaySettings&,std::uint64_t clearEpoch,std::uint64_t revision,std::uint32_t request,bool midi=false) noexcept;
     void cancelDelay(unsigned) noexcept;
     DelayStorage::View delayStorageView(unsigned id) const noexcept {return delayStorage->view(id);}
     using DelayBank=DelayStorage::Bank;

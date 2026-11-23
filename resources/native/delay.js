@@ -30,7 +30,7 @@
    update(){const s=current(),track=equalizer.selectedTrack(),settings=s?.tracks[track]?.delay;if(!alive||!settings)return;
     module.querySelector('#native-delay-title').textContent=`Loop ${track+1} — DELAY (D)`;enabled.checked=settings.enabled;preset.value=settings.preset;sync.checked=!!settings.values.sync;
     if(document.activeElement!==mode)mode.value=settings.repeatMode;if(document.activeElement!==count)count.value=String(settings.repeatCount);count.disabled=settings.repeatMode!=='exact';
-    for(const c of controls){c.edit.update(settings.values[c.name],false);c.input.disabled=c.name==='repetitions'&&settings.repeatMode==='exact';c.value.textContent=settings.values[c.name].toFixed(2);}
+    for(const c of controls){c.edit.update(settings.values[c.name],!!s.midi?.bindings[147+window.AionMidiDelayParameters.indexOf(c.name)]);c.input.disabled=c.name==='repetitions'&&settings.repeatMode==='exact';c.value.textContent=settings.values[c.name].toFixed(2);}
     for(const t of toggles){t.input.checked=!!s.tracks[t.track].delay?.enabled;t.input.disabled=!s.audioReady;}
    }
   };

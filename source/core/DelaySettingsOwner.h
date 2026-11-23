@@ -17,8 +17,10 @@ class DelaySettingsOwner {
 public:
  using Bank=LoopBank::DelayBank;
  explicit DelaySettingsOwner(Engine& backend) noexcept:engine(backend){}
+ ~DelaySettingsOwner(){engine.delayMidiOwner(0);} // Engine outlives its sole non-audio owner.
  bool bind(const EngineView&,const Bank& known=Bank{}) noexcept;
  void service(const EngineView&) noexcept;
+ void suspendMidi(bool suspended) noexcept {midiSuspended=suspended;engine.delayMidiOwner(bound()&&!midiSuspended?generation:0);}
  bool set(unsigned track,unsigned parameter,double value,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool preset(unsigned track,unsigned preset,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool enable(unsigned track,bool enabled,std::uint32_t request,std::uint64_t frame=0) noexcept;
@@ -47,5 +49,6 @@ private:
  DelayBankResult bankReceipt{};
  std::uint32_t generation=0;
  bool attached=false;
+ bool midiSuspended=false;
 };
 }

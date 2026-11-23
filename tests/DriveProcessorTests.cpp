@@ -48,7 +48,7 @@ int main(int argc,char** argv){
   check(static_cast<int>(state["midi"]["bindings"][static_cast<int>(aion::MidiSettings::driveBase+i)])==aion::midiBinding(2,11+i),"Learned binding persists");
  }
  // v6's 133 slots remain unchanged; v7 appends fourteen empty bindings.
- p->getStateInformation(saved);xml=juce::AudioProcessor::getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));auto* mappings=xml->getChildByName("MidiSettings");check(mappings->getIntAttribute("version")==7,"MIDI schema v7");mappings->setAttribute("version",6);
+ p->getStateInformation(saved);xml=juce::AudioProcessor::getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));auto* mappings=xml->getChildByName("MidiSettings");check(mappings->getIntAttribute("version")==8,"MIDI schema v8 retains v6/7 compatibility");mappings->setAttribute("version",6);
  for(unsigned i=aion::MidiSettings::driveBase;i<aion::MidiSettings::bindingCount;++i)mappings->removeAttribute("binding"+juce::String(i));juce::AudioProcessor::copyXmlToBinary(*xml,bad);p->setStateInformation(bad.getData(),static_cast<int>(bad.getSize()));
  for(unsigned n=0;n<100;++n){state=process();std::this_thread::sleep_for(std::chrono::milliseconds(1));}
  for(unsigned i=aion::MidiSettings::driveBase;i<aion::MidiSettings::bindingCount;++i)check(static_cast<int>(state["midi"]["bindings"][static_cast<int>(i)])==0,"v6 appends unassigned drive mappings");

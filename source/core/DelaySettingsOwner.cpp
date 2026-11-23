@@ -6,7 +6,7 @@ bool DelaySettingsOwner::bind(const EngineView& view,const Bank& known) noexcept
  for(unsigned id=0;id<records.size();++id)
   if(records[id].pending||!validDelaySettings(known[id])||known[id]!=view.tracks[id].delay)return false;
  for(unsigned id=0;id<records.size();++id)records[id]={known[id],view.tracks[id].clearEpoch,view.tracks[id].delaySettingsRevision,0,DelayEditStatus::ready,false};
- generation=view.generation;attached=true;return true;
+ generation=view.generation;attached=true;suspendMidi(midiSuspended);return true;
 }
 bool DelaySettingsOwner::submit(unsigned id,const DelaySettings& candidate,std::uint32_t request,std::uint64_t frame) noexcept {
  if(!bound()||bank.active||id>=records.size()||records[id].pending||!request||!validDelaySettings(candidate))return false;
@@ -67,7 +67,7 @@ bool DelaySettingsOwner::acceptEffectsRestore(const EngineView& view,const Bank&
   else if(audio.delaySettingsRevision==0)record={DelaySettings{},audio.clearEpoch,0,receipt.requestId,DelayEditStatus::cancelled,false};
   // A proven newer post-clear owner keeps its exact values and receipt.
  }
- generation=receipt.generation;attached=true;return true;
+ generation=receipt.generation;attached=true;suspendMidi(midiSuspended);return true;
 }
 void DelaySettingsOwner::serviceBank() noexcept {
  DelayBankResult result;if(!engine.popDelayBank(result))return;
@@ -102,9 +102,18 @@ void DelaySettingsOwner::service(const EngineView& view) noexcept {
   record.status=committed?DelayEditStatus::ready:result.status==DelayEditStatus::ready?DelayEditStatus::cancelled:result.status;
   record.pending=false;pending[result.track]={};
  }
+ DelayMidiReceipt midi;
+ for(unsigned n=0;n<511&&engine.popDelayMidi(midi);++n){
+  if(midi.generation!=generation||midi.track>=records.size())continue;
+  auto& record=records[midi.track];if(midi.epoch<record.clearEpoch)continue;
+  if(midi.epoch!=record.clearEpoch||midi.before!=record.revision||midi.revision!=midi.before+1){attached=false;continue;}
+  if(!setDelayControl(record.committed,midi.parameter,midi.value)){attached=false;continue;}
+  record.revision=midi.revision;
+ }
  if(attached&&view.generation==generation)for(unsigned id=0;id<records.size();++id){const auto& record=records[id];const auto& audio=view.tracks[id];
   if(record.pending||audio.clearEpoch!=record.clearEpoch||audio.delaySettingsRevision<record.revision)continue;
   if(audio.delaySettingsRevision!=record.revision||audio.delay!=record.committed){attached=false;break;}
  }
+ suspendMidi(midiSuspended);
 }
 }

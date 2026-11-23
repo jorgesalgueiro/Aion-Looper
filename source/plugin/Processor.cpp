@@ -394,7 +394,7 @@ void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
     std::lock_guard stateGuard(midiSettingsMutex);
     auto state=parameters.copyState();juce::ValueTree stored("MidiSettings");
     {std::lock_guard guard(midiSettingsMutex);stored.setProperty("enabled",midiSettings.enabled,nullptr);
-     stored.setProperty("version",7,nullptr);stored.setProperty("eqTrack",static_cast<int>(midiSettings.eqTrack),nullptr);
+     stored.setProperty("version",8,nullptr);stored.setProperty("eqTrack",static_cast<int>(midiSettings.eqTrack),nullptr);
      for(unsigned i=0;i<aion::MidiSettings::bindingCount;++i)stored.setProperty("binding"+juce::String(i),static_cast<int>(midiSettings.bindings[i]),nullptr);}
     state.removeChild(state.getChildWithName("MidiSettings"),nullptr);state.appendChild(stored,nullptr);
     saveEqualizers(state);
@@ -413,14 +413,15 @@ void AionProcessor::setStateInformation(const void* data, int size) {
         aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
         if(stored.isValid()){
             const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
-            const auto version=stored.getProperty("version",1).toString();if(version!="1"&&version!="2"&&version!="3"&&version!="4"&&version!="5"&&version!="6"&&version!="7")return;
-            const unsigned count=version=="7"?aion::MidiSettings::bindingCount:version=="6"?aion::MidiSettings::driveBase:version=="5"?aion::MidiSettings::arpBase:version=="4"?aion::MidiSettings::compressorBase:version=="3"?aion::MidiSettings::eqBase:version=="2"?aion::MidiSettings::muteBase:aion::MidiSettings::volumeBase;
+            const auto version=stored.getProperty("version",1).toString();if(version!="1"&&version!="2"&&version!="3"&&version!="4"&&version!="5"&&version!="6"&&version!="7"&&version!="8")return;
+            const unsigned count=version=="8"?aion::MidiSettings::bindingCount:version=="7"?aion::MidiSettings::delayBase:version=="6"?aion::MidiSettings::driveBase:version=="5"?aion::MidiSettings::arpBase:version=="4"?aion::MidiSettings::compressorBase:version=="3"?aion::MidiSettings::eqBase:version=="2"?aion::MidiSettings::muteBase:aion::MidiSettings::volumeBase;
             for(unsigned i=0;i<count;++i){const auto value=stored.getProperty("binding"+juce::String(i)).toString();if(value.isEmpty()||!value.containsOnly("0123456789")||value.getLargeIntValue()>65535)return;next.bindings[i]=static_cast<std::uint16_t>(value.getIntValue());}
-            if(version=="4"||version=="5"||version=="6"||version=="7") {const auto value=stored.getProperty("eqTrack").toString();if(value.isEmpty()||value.length()>2||!value.containsOnly("0123456789")||value.getIntValue()>=static_cast<int>(aion::LoopBank::trackCount))return;next.eqTrack=static_cast<unsigned>(value.getIntValue());}
+            if(version=="4"||version=="5"||version=="6"||version=="7"||version=="8") {const auto value=stored.getProperty("eqTrack").toString();if(value.isEmpty()||value.length()>2||!value.containsOnly("0123456789")||value.getIntValue()>=static_cast<int>(aion::LoopBank::trackCount))return;next.eqTrack=static_cast<unsigned>(value.getIntValue());}
         }
         {
             std::lock_guard guard(midiSettingsMutex);next.learnToken=midiSettings.learnToken+1;
             if(!updateMidi(next))return;
+            delayOwner.suspendMidi(true); // Keep joint revision proof exclusive until its enclosing owner confirms.
             eqSettings=restoredEq;eqRestorePending=true;eqPending.fill(0);eqClearing.fill(false);
             compressorSettings=restoredCompressor;compressorRestorePending=true;compressorPending.fill(0);compressorClearing.fill(false);
             chainSettings=restoredChains;chainRestorePending=true;chainPending.fill(0);chainClearing.fill(false);

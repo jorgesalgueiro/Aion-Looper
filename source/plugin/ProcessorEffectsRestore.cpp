@@ -5,6 +5,9 @@ bool AionProcessor::serviceEffectsRestore(){
     // setters publish FX intent/cancellation under that mutex, never a second FX
     // request producer. The original settings owner is the sole Arp receipt consumer.
     for(unsigned n=0;n<8&&engine.popView(latest);++n){} // Bounded Timer service also owns closed-editor Arp edits/clears.
+    bool retainedDelayFailure=false;
+    if(delayRestoreFailed)for(unsigned id=0;id<delaySettings.size();++id)retainedDelayFailure|=delaySettings[id]!=delayOwner.track(id)->committed;
+    delayOwner.suspendMidi(retainedDelayFailure||effectsRestore.active||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending);
     serviceDelay();
     arpOwner.service(latest);
     serviceArpTempo(false); // Retire maintenance before a new FX restore can own the bank receipt.
@@ -50,6 +53,7 @@ bool AionProcessor::serviceEffectsRestore(){
         }
     }
     if(!(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending)){
+        delayOwner.suspendMidi(retainedDelayFailure);
         for(unsigned i=0;i<arpSettings.size();++i)if(!arpOwner.track(i)->pending)arpSettings[i]=arpOwner.track(i)->committed;
         return true;
     }

@@ -30,6 +30,7 @@ static void catalog(){
  std::cout<<"]}\n";
 }
 int main(int argc,char** argv){
+ if(argc==2&&std::string_view(argv[1])=="midi"){unsigned p=0,cc=0;std::cout.precision(17);while(std::cin>>p>>cc){if(p>=6||cc>127)return 1;std::cout<<aion::delayMidiValue(p,cc)<<'\n';}return 0;}
  if(argc==2&&std::string_view(argv[1])=="catalog"){catalog();return 0;}
  DelaySettings settings;
  check(validDelaySettings(settings)&&!settings.enabled&&!settings.preset,"disabled defaults");

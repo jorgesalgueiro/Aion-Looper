@@ -13,8 +13,9 @@ void LoopBank::cancelDelay(unsigned id) noexcept {
  cancelDelayBank();
  delayStorage->cancel(id);pendingDelays[id]={};
 }
-bool LoopBank::setDelay(unsigned id,const DelaySettings& settings,std::uint64_t epoch,std::uint64_t revision,std::uint32_t request) noexcept {
- if(id>=trackCount||!request||!validDelaySettings(settings)||epoch!=tracks[id].clearEpoch
+bool LoopBank::setDelay(unsigned id,const DelaySettings& settings,std::uint64_t epoch,std::uint64_t revision,std::uint32_t request,bool midi) noexcept {
+ // MIDI retains the last command identity, including zero on a fresh track.
+ if(id>=trackCount||(!request&&!midi)||!validDelaySettings(settings)||epoch!=tracks[id].clearEpoch
   ||revision!=tracks[id].info.delaySettingsRevision||revision==UINT64_MAX)return false;
  auto* graph=delayStorage->graph(id);
  if(graph){
