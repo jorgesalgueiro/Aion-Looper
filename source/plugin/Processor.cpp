@@ -402,13 +402,14 @@ void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
     saveDrives(state);
     saveChains(state);
     saveArps(state);
+    saveDelays(state);
     if (auto xml = state.createXml()) copyXmlToBinary(*xml, data);
 }
 void AionProcessor::setStateInformation(const void* data, int size) {
     if (size <= 0 || size > 1024 * 1024) return;
     if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName("AionState")) {
-        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;CompressorBank restoredCompressor;ChainBank restoredChains;DriveBanks restoredDrives;aion::ArpSettingsOwner::Bank restoredArps;
-        if(!readEqualizers(state,restoredEq)||!readCompressors(state,restoredCompressor)||!readChains(state,restoredChains)||!readArps(state,restoredArps)||!readDrives(state,restoredDrives))return;
+        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;CompressorBank restoredCompressor;ChainBank restoredChains;DriveBanks restoredDrives;aion::ArpSettingsOwner::Bank restoredArps;aion::DelaySettingsOwner::Bank restoredDelays;
+        if(!readEqualizers(state,restoredEq)||!readCompressors(state,restoredCompressor)||!readChains(state,restoredChains)||!readArps(state,restoredArps)||!readDrives(state,restoredDrives)||!readDelays(state,restoredDelays))return;
         aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
         if(stored.isValid()){
             const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
@@ -425,8 +426,9 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             chainSettings=restoredChains;chainRestorePending=true;chainPending.fill(0);chainClearing.fill(false);
             arpSettings=restoredArps;arpRestorePending=true;
             driveSettings=restoredDrives;driveRestorePending=true;drivePending.fill(0);driveClearing.fill(false);
+            delaySettings=restoredDelays;delayRestorePending=delayRestoreFailed=false;pendingDelayClears.fill({});
             ++effectsIntent;engine.cancelArpPreparation(); // Host thread publishes cancellation only, never consumes or enqueues.
-            engine.cancelDelayEdit(); // D remains internal; discard obsolete pending edits without a second result consumer.
+            engine.cancelDelayEdit(); // Cancel obsolete D work; the sole joint owner submits the validated bank.
             parameters.replaceState(state);
             arpTiming=readArpTiming();arpTempoSeen=++arpTempoIntent; // Restore explicit original BPMs, not an incidental APVTS notification.
         }

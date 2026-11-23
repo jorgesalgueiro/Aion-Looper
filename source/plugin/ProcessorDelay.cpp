@@ -12,7 +12,7 @@ void AionProcessor::delayCleared(unsigned track,bool all,std::uint32_t request){
 }
 void AionProcessor::serviceDelay(){
  // Sole serialized non-audio service, reached by Timer and ordinary requests.
- // No browser, CLI or session field exposes D yet.
+ // Product commands remain disabled; versioned state uses this same owner.
  delayOwner.service(latest);
  if(!delayOwner.bound()){
   // Equal knob values do not prove ownership of a newer joint revision.
@@ -34,7 +34,10 @@ void AionProcessor::serviceDelay(){
   delayShadowGeneration=engine.generation();
   for(unsigned id=0;id<delaySettings.size();++id)delayShadowEpochs[id]=delayOwner.track(id)->clearEpoch;
  }else for(unsigned id=0;id<delaySettings.size();++id){const auto epoch=delayOwner.track(id)->clearEpoch;
-  if(epoch>delayShadowEpochs[id]){delaySettings[id]={};delayShadowEpochs[id]=epoch;}
+  // A validated newer load follows older FIFO clears. Its candidate survives
+  // their acknowledgements; a newer GUI clear already reset that candidate.
+  const bool restoreIntent=eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending;
+  if(epoch>delayShadowEpochs[id]){if(!restoreIntent)delaySettings[id]={};delayShadowEpochs[id]=epoch;}
  }
  // Accepted whole-bank intent is protected until its exact joint receipt.
  // In particular, never submit a competing D-only lifecycle bank.
