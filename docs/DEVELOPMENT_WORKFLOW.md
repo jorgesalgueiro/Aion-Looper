@@ -1,5 +1,12 @@
 # Development workflow
 
+Owner requirement, 23 November 2026: multiple MIDI hardware controllers must work
+simultaneously, including FCB1010 + M-Audio Oxygen 49. Preserve independent input
+enabling and plan device-aware routing/Learn or explicit channel filtering so
+overlapping messages can be assigned predictably. Include simultaneous streams,
+saved assignments and disconnect/reconnect in acceptance. Current merged-stream
+mapping and physical-device validation limits are recorded in MIGRATION_CURRENT.md.
+
 Owner priority, 21 November 2026: implement remaining loop features before broad
 CPU tuning. Keep processing bounded and allocation-free, prepare storage off
 audio and cache derived coefficients when building each feature. Run focused

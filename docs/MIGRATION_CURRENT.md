@@ -11,6 +11,18 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Owner requirement: simultaneous MIDI controllers — 23 November 2026
+
+Support multiple hardware MIDI inputs concurrently, explicitly including an
+FCB1010 and M-Audio Oxygen 49 together. This applies throughout the remaining
+looper/effect/synth migration. Standalone already enables inputs independently;
+the current processor receives a merged stream and bindings identify message
+kind/number/channel, without device identity. Independent device-aware Learn/
+routing and a usable way to resolve overlapping controller messages remain work;
+do not claim these are implemented or that both physical units passed testing.
+Acceptance must cover concurrent performance/control messages, saved routing/
+mappings and one device being disconnected without disabling the other input.
+
 ### Delay continuous MIDI Learn — 23 November 2026
 
 Source `4c2680f`, fixture/compatibility follow-up `4f7bb09`, retained-intent fix
