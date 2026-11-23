@@ -3,8 +3,11 @@
 #include "core/ArpSettings.h"
 #include <atomic>
 #include <chrono>
+#include <charconv>
 #include <cstdlib>
 #include <iostream>
+#include <new>
+#include <string_view>
 #include <thread>
 namespace {
 thread_local bool watch=false;thread_local unsigned heapOperations=0;
@@ -96,4 +99,13 @@ static void admission(unsigned block){Fixture f(block);auto r=f.request(1,1);r.e
  ArpBankResult coordinated;check(f.engine->popArpBank(coordinated)&&coordinated.status==ArpPreparationStatus::ready&&coordinated.includesDelays,"consume exact coordinated receipt");
  check(f.engine->enqueueDelayBank(d,transaction),"independent D recovers only after coordinated receipt consumption");f.pump();f.pump();check(f.engine->popDelayBank(result),"consume fresh independent D receipt");
 }
-int main(){for(unsigned block:{64u,128u}){admission(block);for(unsigned action=0;action<=9;++action)run(block,action);}}
+int main(int argc,char** argv){
+ std::cout<<std::unitbuf;unsigned action=0;const bool admissionOnly=argc==2&&std::string_view(argv[1])=="--admission";
+ check(argc<=2,"optional scenario or --admission only");
+ if(argc==2&&!admissionOnly){const auto text=std::string_view(argv[1]);const auto parsed=std::from_chars(text.data(),text.data()+text.size(),action);check(parsed.ec==std::errc{}&&parsed.ptr==text.data()+text.size()&&action<=9,"scenario must be 0..9");}
+ for(unsigned block:{64u,128u}){
+  if(argc==1||admissionOnly)admission(block);
+  if(argc==1)for(unsigned scenario=0;scenario<=9;++scenario)run(block,scenario);
+  else if(!admissionOnly)run(block,action);
+ }
+}
