@@ -40,13 +40,52 @@ so schema 8, 153 target IDs and all legacy state readers remain unchanged.
 Audio adds one bounded channel check; it retains the existing fixed overlap scan,
 queues and cancellation/held-action ownership. No new audio storage or locks.
 
-Verification in progress: Windows Standalone/test-host builds succeeded; production
-MIDI lifecycle tests passed, both extended Delay MIDI processor cases passed, and
-frontend commands passed. Actual WebView2 tests passed at 64/128 using real key
-selection and right-click Learn, interleaved channel-1/16 packets and editor reload.
-The initial Windows JS test invocation could not spawn its absent probe in
-`build/windows`; rebuilding/rerunning that probe in the core cache is pending.
-Linux, exact stereo PCM and external CLI final results will be recorded below.
+Windows Standalone/test-host builds succeeded. `native_delay_midi_64/128` passed
+(10.26/10.56s), `native_frontend_commands` passed (5.78s), retained
+`native_midi_processor` passed (4.64s), and external `native_delay_commands_64/128`
+passed (15.09/16.35s), including channel Learn and invalid-filter rollback through
+the real Python client/mailbox. Actual WebView2 tests passed at 64/128 using real
+key selection and right-click Learn, interleaved channel-1/16 packets and reload.
+Core `--midi` passed, including added preassigned/provisional channel-1 volume
+and channel-16 pan sharing CC11: exact nonzero stereo PCM against the retained
+scheduled-control oracle, at both block sizes, with zero tracked callback heap.
+Unchanged-JS MIDI comparison passed 16,384 default messages plus 4,256 mixer
+messages (maximum error 5.914e-8), and retained Learn/hold/release/focus/PC gates.
+The initial CTest JS invocation failed to spawn its absent `build/windows` probe;
+the actual comparison above ran successfully with the rebuilt core-cache probe.
+Committed source `6d5601c` was synced with the non-destructive WSL helper.
+Linux Standalone and affected targets built successfully. Focused core `--midi`
+and the unchanged-JS oracle passed with the same exact PCM/error limits above;
+the seven selected CTest MIDI/CLI/frontend/reference cases passed (44.41s).
+The optional `xvfb-run` invocation could not start because it is not installed;
+the successful suite used the existing WSL environment directly. No Linux
+WebKit interaction, physical devices, sanitizers or deferred wrappers were tested
+in this slice; existing broader evidence is unchanged.
+
+Executed Windows commands (from repository root; CMake/CTest use the pinned
+`.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin` tools):
+
+```powershell
+cmake --build build/windows --config Release --target aion_delay_midi_processor_tests aion_midi_processor_tests aion_mouse_host AionLooper_Standalone -j 6
+cmake --build build/windows --config Release --target aion_delay_command_tests -j 6
+ctest --test-dir build/windows -C Release -R '^(native_delay_midi_(64|128)|native_frontend_commands|js_native_midi)$' --output-on-failure
+ctest --test-dir build/windows -C Release -R '^native_midi_processor$' --output-on-failure
+ctest --test-dir build/windows -C Release -R '^native_delay_commands_(64|128)$' --output-on-failure
+cmake --build build/windows-core --config Release --target aion_core_tests aion_midi_probe -j 6
+build/windows-core/Release/aion_core_tests.exe --midi
+node tests/MidiParity.cjs build/windows-core/Release/aion_midi_probe.exe
+tools/TestDelayUi.ps1 -MidiOnly -Blocks 64,128
+```
+
+Executed WSL commands (build/tests run in `/home/jorge/projects/Aion-Looper`):
+
+```sh
+bash /mnt/d/Jorge/Documents/Codex/Aion-Looper/tools/SetupWslWorkspace.sh /mnt/d/Jorge/Documents/Codex/Aion-Looper
+cmake --build build/linux --target aion_core_tests aion_midi_probe aion_delay_midi_processor_tests aion_midi_processor_tests aion_delay_command_tests AionLooper_Standalone --parallel 2
+./build/linux/aion_core_tests --midi
+node tests/MidiParity.cjs ./build/linux/aion_midi_probe
+ctest --test-dir build/linux -R '^(native_delay_midi_(64|128)|native_delay_commands_(64|128)|native_midi_processor|native_frontend_commands|js_native_midi)$' --output-on-failure
+```
 
 Limits/next step: messages carry channel but no device identity. Set the FCB1010
 and Oxygen to different channels for overlapping controls. Verify both physical
