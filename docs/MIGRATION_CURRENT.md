@@ -11,6 +11,42 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Delay stereo quality slice — 23 November 2026
+
+Source/test snapshot `1d43d93` adds independent stereo audio verification; it
+does not change product DSP/parameters/UI/assets or introduce another effect.
+Previous connected and Engine cases remain. Two isolated dry captures recover
+conditioned left/right PCM before the original final mono merger. Independent
+fractional-read/wet-pan/loop-pan math checks unequal channels, five loop-pan
+positions, hard-left/right silence and immutable source/history. Actual Engine
+callbacks cover 8/48 kHz, 64/128, offset-17 prepared admission and receipt-owned
+oscillator age, Feedback=0 and exact1, maximum/intermediate wet speed/depth and
+zero tracked callback heap. The existing `2e-6` error threshold is unchanged.
+
+Windows connected gate passed (9.85s); final Engine gate passed (2.84s), maximum
+new stereo Engine error `1.01877e-8`. Component/original JS settings passed 2/2
+(0.45s). Native WSL Linux four selected gates passed (5.11s). Sanitizer results
+are pending. Test-only changes do not need a product Standalone/GUI/CLI rebuild.
+
+Actual WebView2 OfflineAudioContext, using byte-checked unchanged reference
+factories: explicit integer-delay subset passed 60 stereo/pan cases, 983,040
+stereo frames, maximum error `3.273100349573954e-7`. **The default strict
+fractional browser diagnostic still fails** at 8 kHz/.05017 seconds, maximum
+`5.906564183533192e-6` above unchanged `2e-6`. Measured browser fraction is about
+.359375 versus requested native .36, consistent with Float32 browser read-index
+rounding; native independently follows the requested high-precision timing.
+No DSP/reference/assertion/tolerance was changed to manufacture a pass. The
+fractional case, its failure and exact PCM remain; `-IntegerOnly` is an additional
+isolating diagnostic, not a replacement or full browser-parity claim.
+
+Exact reproduction, logs, primary-source explanation and scope are in
+[DELAY.md](DELAY.md#independent-stereopan-acceptance--23-november-2026).
+NEXT: retain the fractional numerical difference as explicit reference/quality
+acceptance work; do not claim full browser PCM identity or promote D as release
+complete. Remaining D listening/device/lifecycle acceptance and simultaneous
+physical-controller checks are still open. No package/push, new effect, broad
+CPU tuning or deferred-wrapper build in this slice.
+
 ### Owner requirement: simultaneous MIDI controllers — 23 November 2026
 
 Support multiple hardware MIDI inputs concurrently, explicitly including an

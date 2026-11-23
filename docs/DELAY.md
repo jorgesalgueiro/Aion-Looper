@@ -28,7 +28,14 @@ sound model changed. Original connected/Engine cases remain intact. Added:
 Windows `delay_loopbank_connected_contract` passed (9.85s). Final strengthened
 `delay_engine_audio_contract` passed (2.84s); maximum new Engine error was
 `1.01877e-8`, retaining the existing `2e-6` threshold. Component and original JS
-settings checks passed 2/2 (0.45s). Linux/sanitizer results are pending.
+settings checks passed 2/2 (0.45s). Native WSL Linux Release passed the four
+combined gates (5.11s). The first Debug ASan/UBSan/leak run passed component,
+Engine and original settings checks but the enlarged combined LoopBank matrix
+timed out at 60.08s (3/4 overall, 87.27s); this was not a passing sanitizer run.
+The new stereo matrix is now registered separately per rate/block, preserving
+all assertions/cases and the same 60s per-test limit. Original no-argument test
+executables again run the unchanged legacy matrix; `--stereo RATE BLOCK` runs
+both new repeat modes. Final split Windows/Linux/sanitizer results are pending.
 
 An additional actual OfflineAudioContext test executes byte-checked unchanged
 `_createDelay`, `_addAutoPanToWet`, `_addPanControl` methods from the independent
@@ -47,14 +54,16 @@ double-precision model to manufacture browser bit identity, and do not report
 the strict browser fractional comparison as passing. `-IntegerOnly` is a
 separate diagnostic using exactly representable .0625 seconds to isolate pan/
 routing; it does not replace or delete the default failing fractional case.
-It covers left-only, right-only and unequal stereo, five loop positions,
+The integer subset passed 60 cases / 983,040 stereo frames with maximum error
+`3.273100349573954e-7` on WebView2 `Edg/157.0.4341.60`. It covers left-only,
+right-only and unequal stereo, five loop positions,
 dry+wet and full wet, static/moving wet pan and both native first-echo modes.
 
 Windows reproduction (pinned CMake/CTest binaries):
 
 ```powershell
 cmake --build build/windows-core --config Release --target aion_delay_connected_tests aion_delay_engine_audio_tests aion_delay_tests --parallel 4
-ctest --test-dir build/windows-core -C Release -R '^(delay_loopbank_connected_contract|delay_engine_audio_contract|delay_component_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
+ctest --test-dir build/windows-core -C Release -R '^(delay_(loopbank_stereo_.*|engine_stereo_.*|loopbank_connected_contract|engine_audio_contract|component_contract)|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 tools/TestArpDelayWebAudio.ps1 -DelayStereo # retained strict fractional failure
 tools/TestArpDelayWebAudio.ps1 -DelayStereo -IntegerOnly # isolated integer subset
 ```

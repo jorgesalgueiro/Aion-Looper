@@ -99,6 +99,16 @@ if(BUILD_TESTING)
     target_link_libraries(aion_delay_engine_audio_tests PRIVATE aion_core)
     add_test(NAME delay_engine_audio_contract COMMAND aion_delay_engine_audio_tests)
     set_tests_properties(delay_engine_audio_contract PROPERTIES TIMEOUT 60)
+    # Keep the unchanged legacy cases and split the additional stereo matrix by
+    # rate/block. Debug sanitizers must retain the same 60s per-test watchdog;
+    # no PCM cases, numerical tolerances or ownership assertions are removed.
+    foreach(delay_rate 8000 48000)
+        foreach(delay_block 64 128)
+            add_test(NAME delay_loopbank_stereo_${delay_rate}_${delay_block} COMMAND aion_delay_connected_tests --stereo ${delay_rate} ${delay_block})
+            add_test(NAME delay_engine_stereo_${delay_rate}_${delay_block} COMMAND aion_delay_engine_audio_tests --stereo ${delay_rate} ${delay_block})
+            set_tests_properties(delay_loopbank_stereo_${delay_rate}_${delay_block} delay_engine_stereo_${delay_rate}_${delay_block} PROPERTIES TIMEOUT 60)
+        endforeach()
+    endforeach()
     add_executable(aion_delay_bank_tests tests/DelayBankTests.cpp)
     target_link_libraries(aion_delay_bank_tests PRIVATE aion_core)
     add_test(NAME delay_atomic_bank_contract COMMAND aion_delay_bank_tests)

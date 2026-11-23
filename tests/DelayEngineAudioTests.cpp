@@ -7,6 +7,8 @@
 #include <iostream>
 #include <new>
 #include <numbers>
+#include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 namespace {
@@ -156,4 +158,13 @@ static void stereo(double rate,unsigned block,bool exact){
  const auto after=wet->inspectAudioThread().track;check(after.length==before.length&&after.waveformId==before.waveformId&&after.undoCount==before.undoCount,"stereo Engine PCM/history immutable");
  std::cout<<"PASS Engine stereo D "<<rate<<" Hz / "<<block<<" / "<<(exact?"exact1":"feedback0")<<", max error "<<maximum<<'\n';
 }
-int main(){for(double rate:{8000.,48000.})for(unsigned block:{64u,128u}){run(rate,block);for(bool exact:{false,true})stereo(rate,block,exact);}}
+int main(int argc,char** argv){
+ if(argc==4&&std::string_view(argv[1])=="--stereo"){
+  const double rate=std::stod(argv[2]);const auto block=static_cast<unsigned>(std::stoul(argv[3]));
+  check((rate==8000||rate==48000)&&(block==64||block==128),"stereo Engine fixture rate/block");
+  for(bool exact:{false,true})stereo(rate,block,exact);
+  return 0;
+ }
+ check(argc==1,"Engine fixture arguments");
+ for(double rate:{8000.,48000.})for(unsigned block:{64u,128u})run(rate,block);
+}
