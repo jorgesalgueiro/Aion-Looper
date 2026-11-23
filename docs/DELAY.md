@@ -157,6 +157,42 @@ when completing product audio acceptance.
 
 ## Reproducible checks
 
+### Exact message-owned settings (23 November 2026)
+
+`DelaySettingsOwner` (`c4c986e`) is the sole non-audio D producer/receipt consumer
+for an Engine. The enclosing Processor must serialize it with the existing
+intent lock; it is not yet attached to the product. It supports control/preset/
+enable/repeat candidates and D-only banks, with committed settings kept distinct
+from pending intent. Only exact terminal ownership receipts commit settings;
+global loop acknowledgement IDs and stale snapshots are not success evidence.
+
+Clear after unread ready resets only that track; other bank members keep their
+confirmed values. A late cancellation does not erase a completed edit. Old ready
+values survive reprepare as historical facts while binding is invalidated until
+known settings are verified against current audio. Failures/queue rejection keep
+prior originals; unexplained external revisions detach rather than guess. No
+JSON, parsing, allocation or new DSP path is added to processing.
+
+`delay_settings_owner_contract` uses the real worker/Engine at 64/128 for decimal
+precision, legacy-preset/Feedback semantics, exact mode replacement, cancellation/
+request-ID reuse, full-FIFO rollback, OOM and recovery, twenty-track bank exclusion,
+clear/unread receipts and same-/changed-rate binding. Audio callbacks retain heap
+guards. The build commands below include `aion_delay_owner_tests`; the existing D
+CTest regex selects it. Windows D/reference 10/10 passed (18.07s), native WSL
+Linux Release 10/10 (2.76s), Linux Debug ASan/UBSan/leak 10/10 (24.64s), with no
+reported sanitizer errors or suppressions. These durations are not benchmarks.
+
+The initial fixture failed by waiting for an ordinary enable command using only
+zero-sample callbacks. Those callbacks intentionally do not drain ordinary UI
+commands. Dispatch now uses one nonzero callback before zero-frame receipt polling;
+all original failure/cancellation assertions remain. This is a fixture correction,
+not a production transport change. Existing PCM comparisons remain at their
+unchanged limits; owner tests do not add listening/browser/device evidence.
+
+Next: attach under Processor lifetime/intent ownership and coordinate with its
+existing Arp-backed effects restore. GUI/CLI/MIDI/persistence and product/editor
+acceptance remain pending. No routine wrapper build, package or remote push.
+
 ### Atomic D-only bank acceptance (22 November 2026)
 
 `enqueueDelayBank` admits one bank plus a small ordered FIFO marker, without
@@ -207,7 +243,7 @@ Windows, existing core cache (PowerShell):
 $cmake = '.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
 $ctest = '.toolchain/vs2022/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe'
 & $cmake -S . -B build/windows-core
-& $cmake --build build/windows-core --config Release --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests aion_delay_bank_tests aion_delay_bank_audio_tests --parallel 4
+& $cmake --build build/windows-core --config Release --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests aion_delay_bank_tests aion_delay_bank_audio_tests aion_delay_owner_tests --parallel 4
 & $ctest --test-dir build/windows-core -C Release -R '^(delay_.*_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 ```
 
@@ -216,11 +252,11 @@ Linux, after committing the Windows snapshot and using `SetupWslWorkspace.sh`:
 ```sh
 cd /home/jorge/projects/Aion-Looper
 cmake -S . -B build/linux
-cmake --build build/linux --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests aion_delay_bank_tests aion_delay_bank_audio_tests --parallel 2
+cmake --build build/linux --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests aion_delay_bank_tests aion_delay_bank_audio_tests aion_delay_owner_tests --parallel 4
 ctest --test-dir build/linux -R '^(delay_.*_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 # Existing ASan/UBSan Debug cache, plugin builds disabled:
 cmake -S . -B build/drive-sanitized
-cmake --build build/drive-sanitized --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests aion_delay_bank_tests aion_delay_bank_audio_tests --parallel 2
+cmake --build build/drive-sanitized --target aion_delay_tests aion_delay_repeat_tests aion_delay_storage_tests aion_delay_connected_tests aion_delay_engine_tests aion_delay_engine_audio_tests aion_delay_bank_tests aion_delay_bank_audio_tests aion_delay_owner_tests --parallel 2
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(delay_.*_contract|original_delay_settings_contract)$' --output-on-failure --no-tests=error
 ```
 

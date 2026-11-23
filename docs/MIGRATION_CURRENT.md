@@ -11,6 +11,35 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Delay message-owner adapter — 23 November 2026
+
+Source snapshot `c4c986e` adds `DelaySettingsOwner`, the non-audio adapter for
+Processor integration. It owns all D request/result traffic for one Engine,
+separates accepted pending intent from confirmed settings, and commits only an
+exact request/generation/transaction/epoch/revision receipt. Original presets,
+double values and additive repeat settings are retained without DSP duplication.
+Failed/busy/cancelled edits keep confirmed settings. Single edits and twenty-track
+banks share exclusion; an unread bank followed by DEL updates the other nineteen
+confirmed tracks while only the cleared track resets. Old telemetry cannot roll
+back confirmed revisions/clear epochs; reprepare requires an explicit verified
+known-state bind. Old ready receipts remain facts, not claims of current audio.
+
+Windows focused Delay/reference checks pass 10/10 (18.07s), native WSL Linux
+Release 10/10 (2.76s), Linux ASan/UBSan/leak 10/10 (24.64s), with no reported
+sanitizer errors/suppressions. Commands/limits are in [DELAY.md](DELAY.md).
+The first new fixture timed
+out because it used zero-sample callbacks to dispatch ordinary commands; the
+fixture now dispatches in a normal callback, then tests zero-frame receipt polling.
+No product code or acceptance assertions changed to hide that failure.
+
+STILL INTERNAL: this adapter is not yet attached to `AionProcessor`. Next wire
+it under the existing non-audio intent mutex, with closed-editor service and
+priority-purge/reprepare cancellation. Coordinate D with the existing Arp-owned
+Q/C/A/T/F/O/chain session restore before exposing GUI/CLI or serializing enabled
+D settings. Independent successful D and Arp banks do not prove atomic whole-
+session restore. No DSP, UI assets, reference, parameter IDs or dependencies
+changed. No new package, push, hardware/listening or broad CPU work this session.
+
 ### Atomic D-only bank transactions — 22 November 2026
 
 Source snapshot `401ce58` adds a bounded twenty-track Delay bank through storage,
