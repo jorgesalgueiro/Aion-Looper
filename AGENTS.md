@@ -1,3 +1,17 @@
+# Owner Delay quality clarification — 23 November 2026
+
+For D / Delay, prefer a better-quality native effect over reproducing the
+Ascii-Looper sound. Exact original Delay PCM/browser rounding, filter topology
+and transition sound are not acceptance gates. Keep the useful original controls,
+ASCII interface, parameter/action IDs and saved-state compatibility; preserve
+Feedback and exact repeat modes. Judge native DSP by accurate timing, musical
+sound, stable feedback/damping, smooth edits, stereo correctness, bounded work
+and safe ownership. Keep meaningful native audio/state/GUI/CLI/MIDI regressions.
+Retain historical browser comparison results honestly as optional diagnostics;
+do not spend routine migration time matching them or treat numerical differences
+as blockers. Listening/device/release checks remain explicit, not claimed passed.
+This overrides older original-sound parity requirements for D only.
+
 # Owner priority update — 21 November 2026
 
 Resume remaining loop features in roadmap order. Defer broad CPU profiling and

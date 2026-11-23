@@ -206,11 +206,14 @@
             await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,resolve,reject,deadline:Date.now()+4000};});
         }
         async function sendDelay(track,settings){
-            if(!enabled())return;
-            error='';const generation=snapshot.generation;
-            const reply=await rpc({operation:'delay',track,...settings,generation,expiresAt:Date.now()+3000});
-            if(!reply.ok)throw Error(reply.error||'Delay command rejected');
-            await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,delayTrack:track,resolve,reject,deadline:Date.now()+4000};});
+            delay.commandStarted(settings);
+            try {
+                if(!enabled())return;
+                error='';const generation=snapshot.generation;
+                const reply=await rpc({operation:'delay',track,...settings,generation,expiresAt:Date.now()+3000});
+                if(!reply.ok)throw Error(reply.error||'Delay command rejected');
+                await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,delayTrack:track,resolve,reject,deadline:Date.now()+4000};});
+            } finally {delay.commandSettled(settings);}
         }
         async function sendArp(track,settings){
             if(!enabled())return;

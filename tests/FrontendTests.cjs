@@ -3,6 +3,40 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const root=path.resolve(__dirname,'..');
+// Repeat selectors synchronize with CLI/presets after exact GUI completion,
+// without treating focus as ownership or letting older callbacks retire a newer
+// coalesced choice. Queue cancellation/expiry must not leave an eternal shadow.
+{const scope={window:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'resources/native/delay.js'),'utf8'),scope);
+ let time=0;const state={generation:7,tracks:[{clearEpoch:2},{clearEpoch:3}]};
+ const owner=new scope.window.AionDelayRepeatIntent({now:()=>time});
+ assert(!owner.owns(0,state));const a={repeatMode:'exact',repeatCount:2},b={repeatMode:'exact',repeatCount:10};
+ owner.choose(0,state,a);assert(owner.owns(0,state));time=3000;assert(owner.owns(0,state));time=3001;assert(!owner.owns(0,state),'unsent expiry uses the queue deadline boundary');owner.start(a);assert(!owner.owns(0,state),'obsolete dispatch cannot revive expired intent');
+ owner.choose(0,state,a);owner.start(a);time+=9000;assert(owner.owns(0,state),'in-flight lifetime belongs to existing native reply/receipt deadlines');
+ owner.choose(0,state,b);owner.settle(a);assert(owner.owns(0,state),'old success/error cannot drop newer rapid selection');owner.start(b);owner.settle(b);assert(!owner.owns(0,state),'success or rejection releases local shadow');
+ owner.choose(0,state,a);assert(!owner.owns(1,state),'changing selected loop releases display ownership');owner.start(a);assert(!owner.owns(0,state),'old-track callback cannot revive ownership');
+ owner.choose(0,state,a);owner.start(a);assert(!owner.owns(0,{...state,generation:8}),'audio reprepare invalidates local intent');
+ owner.choose(0,state,a);assert(!owner.owns(0,{...state,tracks:[{clearEpoch:3},state.tracks[1]]}),'DEL/reset epoch invalidates local intent');
+ owner.choose(0,state,a);owner.clear();owner.settle(a);assert(!owner.owns(0,state),'editor closure clears intent');
+ console.log('PASS: Delay repeat GUI intent preserves rapid choices and releases on completion, rejection, expiry, track/generation/clear and editor close');}
+// Exercise the production send function too: every early return/error/receipt
+// outcome must release only its own repeat selection in the finally path.
+(async()=>{
+ const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const from=source.indexOf('        async function sendDelay('),to=source.indexOf('        async function sendArp(',from);assert(from>=0&&to>from);
+ for(const outcome of ['disabled','transport','rejected','receipt-error','success']){
+  const calls=[],request={action:'repeats',repeatMode:'exact',repeatCount:3};
+  const context={delay:{commandStarted:r=>{assert.equal(r,request);calls.push('start');},commandSettled:r=>{assert.equal(r,request);calls.push('settle');}},enabled:()=>outcome!=='disabled',snapshot:{generation:7},error:'',pending:null,rpc:async()=>{if(outcome==='transport')throw Error('transport');return {ok:outcome!=='rejected',error:'rejected',requestId:101};}};
+  const send=vm.runInNewContext(source.slice(from,to)+'\nsendDelay',context);
+  const result=send(0,request).then(()=>null,e=>e);
+  if(outcome==='receipt-error'||outcome==='success'){
+   for(let n=0;n<10&&!context.pending;++n)await Promise.resolve();assert(context.pending,'production receipt wait established');assert.equal(context.pending.id,101);assert.equal(context.pending.delayTrack,0);
+   if(outcome==='success')context.pending.resolve();else context.pending.reject(Error('receipt-error'));
+  }
+  const error=await result;if(['transport','rejected','receipt-error'].includes(outcome))assert.equal(error?.message,outcome);else assert.equal(error,null);
+  assert.deepEqual(calls,['start','settle'],outcome+' releases its GUI intent');
+ }
+ console.log('PASS: production Delay send releases repeat ownership on disabled audio, transport rejection, native rejection and receipt success/error');
+})().catch(error=>{console.error(error);process.exitCode=1;});
 // Run the actual production acknowledgment block. A CLI/other controller can
 // advance the global request ID before this editor observes its own outcome.
 {

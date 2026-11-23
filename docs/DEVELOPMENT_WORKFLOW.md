@@ -1,5 +1,15 @@
 # Development workflow
 
+Owner clarification, 23 November 2026: D / Delay should prioritize better native
+sound quality over reproducing Ascii-Looper. Exact browser PCM, rounding and
+internal filter/transition behavior are not Delay completion gates. Preserve its
+interface, useful controls, IDs, saved settings and Feedback/exact repeat modes.
+Use native timing, stereo, feedback stability, smooth-edit, real-time ownership
+and shared GUI/CLI/MIDI acceptance. Historical browser diagnostics remain
+recorded but are optional; do not chase their numerical differences routinely.
+Report listening/device/release limits separately. Other feature contracts are
+unchanged by this Delay-specific clarification.
+
 Owner requirement, 23 November 2026: multiple MIDI hardware controllers must work
 simultaneously, including FCB1010 + M-Audio Oxygen 49. Preserve independent input
 enabling and plan device-aware routing/Learn or explicit channel filtering so

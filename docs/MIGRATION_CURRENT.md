@@ -11,6 +11,49 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Delay repeat selector synchronization repair — 23 November 2026
+
+Confirmed bug: with Exact count 3 focused, the shared native command accepted
+count 2 but the DOM remained at 3. `build/delay-repeat-focus-before.log` retains
+the actual 64-sample failure. Feedback/Exact had the same focus-only exclusion.
+
+Native state now refreshes focused selectors. Only the latest queued/in-flight
+local repeat gesture temporarily owns their values, preserving rapid selections
+through coalescing/older acknowledgements. Payload identity fences completion;
+the existing send path releases ownership in `finally` on success, rejected
+RPC/receipt or disabled audio. Unsent intent expires on the existing three-second
+queue deadline; selected-track/generation/clear changes and pagehide invalidate it.
+Dependent Reps/count enablement follows the displayed mode. No new DSP, timers,
+audio-thread work, parameters, commands or state schema; shared CLI is unchanged.
+
+Windows Standalone/test host builds succeeded. Full actual editor workflow
+passed at 64/128, including focused count/mode native changes, existing rapid
+1/2/3/10 choices, presets/ranges/Sync, MIDI, reload, nonzero playback and immutable
+clip identity. Four affected Windows frontend/bridge/native external CLI tests
+passed (49.01s). Final frontend tests also execute the actual production send
+function's early-return/rejection/receipt paths and pass. Linux checks pending.
+Original preserved resources, reference checkout and ASCII logo are unchanged.
+
+NEXT: finish native Delay acceptance under the quality-first contract and resume
+the remaining loop effects in roadmap order. Physical multi-controller/device,
+listening and release coverage remain separate; browser PCM identity is not a
+Delay gate. No routine package/push or broad CPU profiling.
+
+### Owner clarification: Delay quality over original sound — 23 November 2026
+
+The owner explicitly prefers a better-quality native Delay over an identical
+Ascii-Looper Delay. Exact original browser PCM/rounding/filter/transition sound
+is no longer a D acceptance gate. Preserve interface/controls/IDs/state and both
+Feedback/exact repeat workflows; assess sound quality, accurate timing, stereo,
+stable feedback/damping, smooth edits and real-time ownership. The independently
+verified native fractional read remains unchanged. The strict browser fractional
+comparison below is a retained optional diagnostic, not a defect or blocker
+under this clarified contract. Do not keep rerunning or trying to match it.
+NEXT: finish practical native Delay quality/lifecycle acceptance and proceed in
+roadmap order. Keep listening/device/release limits explicit; they do not make
+browser identity a gate again. No DSP change or audio-suite rerun is needed for
+this acceptance-policy correction.
+
 ### Delay stereo quality slice — 23 November 2026
 
 Source/test snapshots `1d43d93` and `aa4c25a` add independent stereo audio
@@ -51,11 +94,12 @@ isolating diagnostic, not a replacement or full browser-parity claim.
 
 Exact reproduction, logs, primary-source explanation and scope are in
 [DELAY.md](DELAY.md#independent-stereopan-acceptance--23-november-2026).
-NEXT: retain the fractional numerical difference as explicit reference/quality
-acceptance work; do not claim full browser PCM identity or promote D as release
-complete. Remaining D listening/device/lifecycle acceptance and simultaneous
-physical-controller checks are still open. No package/push, new effect, broad
-CPU tuning or deferred-wrapper build in this slice.
+The owner's clarification above supersedes the former NEXT step to resolve the
+fractional browser difference. It remains recorded, with no browser PCM identity
+claim, but is not a native Delay acceptance blocker. Remaining D listening/
+device/lifecycle acceptance and simultaneous physical-controller checks retain
+their separate scope. No package/push, broad CPU tuning or deferred-wrapper
+build was performed in this verification slice.
 
 ### Owner requirement: simultaneous MIDI controllers — 23 November 2026
 

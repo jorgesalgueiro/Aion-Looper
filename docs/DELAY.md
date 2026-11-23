@@ -7,6 +7,53 @@ are unchanged. Older checkpoints below retain their original narrower scope.
 
 ## Contract and acceptance
 
+### Focused repeat controls — 23 November 2026
+
+The Feedback/Exact and exact-count selectors previously ignored native updates
+for as long as they retained focus. Real-editor regression reproduced a shared
+native count-2 receipt with a still-displayed count 3. The repair uses one small
+message-thread intent record instead of focus as ownership. The latest local
+queued/in-flight gesture owns mode/count until its exact send completes; an old
+completion cannot clear a newer rapid choice. `finally` releases the record for
+native/transport/receipt rejection and disabled audio as well as success.
+Queued expiry uses the existing 3s lifetime; track/generation/clear/editor changes
+invalidate ownership. No new audio/DSP/state/CLI implementation or timers.
+
+Windows builds and full `TestDelayUi.ps1 -Blocks 64,128` passed. The fixture
+retains prior capture/PCM, repeat 1/2/3/10, preset/range/Sync, MIDI and reload
+assertions and adds actual focused-selector/dependent-control checks. Native
+CLI/frontend/bridge gates passed 4/4 (49.01s); strengthened frontend owner and
+production-send cleanup tests passed directly. Linux results pending.
+
+```powershell
+cmake --build build/windows --config Release --target aion_mouse_host AionLooper_Standalone aion_delay_command_tests --parallel 4
+ctest --test-dir build/windows -C Release -R '^(native_delay_commands_(64|128)|native_frontend_commands|native_bridge_lifecycle)$' --output-on-failure --no-tests=error
+tools/TestDelayUi.ps1 -Blocks 64,128
+```
+
+Logs: `build/delay-repeat-focus-before.log` (retained failure),
+`build/delay-repeat-focus-after.log` (both block sizes),
+`build/delay-repeat-frontend-final.log`. Native audio acceptance from the earlier
+stereo/ownership work is reused because DSP is unchanged. No physical driver,
+Linux WebKit, hardware-controller, listening, wrapper or release claim.
+
+### Owner decision: quality first — 23 November 2026
+
+The goal is a better-quality native Delay, not a replica of Ascii-Looper's
+sound. Exact original PCM, browser rounding, feedback-filter internals and
+restart transitions are not acceptance requirements. Preserve the ASCII controls,
+parameter/action IDs, saved settings, GUI/CLI access, MIDI integration and both
+Feedback and exact-repeat workflows.
+
+Acceptance is accurate echo timing, useful musical response, stable feedback
+and damping, smooth parameter/mode changes, correct stereo/pan behavior,
+predictable reset/bypass, persistence and bounded allocation-free processing.
+Listening, devices and release validation must still be reported honestly.
+The native precision verified below is retained. Browser comparisons are
+optional historical diagnostics; their fractional-rounding mismatch is not a
+product defect or a reason to delay remaining migration work. Do not weaken
+native safety/audio regressions or alter historical results to claim a pass.
+
 ### Independent stereo/pan acceptance — 23 November 2026
 
 This slice closes the identical-channel/centre-pan limitation of the earlier
