@@ -306,6 +306,10 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert((await evaluate(`AionNative.request({operation:'setParameter',id:'metronomeEnabled',value:0})`)).ok);
  await evaluate(`document.getElementById('metronomeVol').value='0';document.getElementById('metronomeVol').dispatchEvent(new Event('input',{bubbles:true}));document.activeElement?.blur();`);
  const metroWait=async predicate=>{let value;for(let n=0;n<100;++n){value=await evaluate(`AionNative.request({operation:'snapshot'})`);if(predicate(value))return value;await delay(25);}assert.fail('Metronome snapshot '+JSON.stringify(value));};
+ // A direct test RPC can observe accepted native state before the editor's
+ // independent snapshot arrives. Check the actual UI state separately; keep
+ // the original 100ms post-observation colour assertion below unchanged.
+ const metroUiWait=async on=>{for(let n=0;n<100;++n){if(await evaluate(`document.getElementById('metronomeBtn').getAttribute('aria-pressed')===${JSON.stringify(String(on))}`))return;await delay(25);}assert.fail('Metronome UI did not observe '+(on?'ON':'OFF'));};
  await metroWait(s=>s.metronomeVolume===0);
  for(const [id,value] of [['metronomeEnabled',0.5],['metronomeVolume',-0.1],['metronomeVolume',2.01],['metronomeVolume','bad']])assert(!(await evaluate(`AionNative.request(${JSON.stringify({operation:'setParameter',id,value})})`)).ok,'Invalid metronome control rejected');
  assert(await evaluate(`!document.getElementById('metronomeBtn').disabled&&!document.getElementById('metronomeVol').disabled`));
@@ -314,14 +318,14 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  await call('Input.dispatchKeyEvent',{type:'keyDown',code:'KeyN',key:'n',windowsVirtualKeyCode:78});
  await call('Input.dispatchKeyEvent',{type:'keyUp',code:'KeyN',key:'n',windowsVirtualKeyCode:78});await metroWait(s=>!s.metronomeEnabled);
  // All same-turn clicks must toggle the native value, not an old snapshot.
- await evaluate(`document.getElementById('metronomeBtn').click();document.getElementById('metronomeBtn').click();document.getElementById('metronomeBtn').click();`);await metroWait(s=>s.metronomeEnabled);
+ await evaluate(`document.getElementById('metronomeBtn').click();document.getElementById('metronomeBtn').click();document.getElementById('metronomeBtn').click();`);await metroWait(s=>s.metronomeEnabled);await metroUiWait(true);
  await evaluate(`document.querySelector('#loop-0 .track-name').focus()`);
  await call('Input.dispatchKeyEvent',{type:'keyDown',code:'KeyN',key:'n',windowsVirtualKeyCode:78});
  await call('Input.dispatchKeyEvent',{type:'keyUp',code:'KeyN',key:'n',windowsVirtualKeyCode:78});await delay(100);
  assert((await evaluate(`AionNative.request({operation:'snapshot'})`)).metronomeEnabled,'Typing N never toggles the metronome');
  await evaluate(`document.activeElement.blur();document.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyN',key:'n',repeat:true,bubbles:true}))`);await delay(100);
  assert((await evaluate(`AionNative.request({operation:'snapshot'})`)).metronomeEnabled,'Held N does not repeat');
- await evaluate(`document.getElementById('metronomeBtn').click()`);await metroWait(s=>!s.metronomeEnabled&&!s.metronomeFlash);
+ await evaluate(`document.getElementById('metronomeBtn').click()`);await metroWait(s=>!s.metronomeEnabled&&!s.metronomeFlash);await metroUiWait(false);
  await delay(100);assert.equal(await evaluate(`document.getElementById('metronomeBtn').style.backgroundColor`),'transparent','Disabled flash clears');
  assert.equal((await evaluate(`AionNative.request({operation:'snapshot'})`)).lastRequestId,metroBefore.lastRequestId,'Metronome never sends loop transport actions');
  await evaluate(`document.getElementById('metronomeVol').value='0.5';document.getElementById('metronomeVol').dispatchEvent(new Event('input',{bubbles:true}));`);await metroWait(s=>s.metronomeVolume===0.5);

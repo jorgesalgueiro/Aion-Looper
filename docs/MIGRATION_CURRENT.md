@@ -11,6 +11,41 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Requested Windows Standalone alpha — 23 November 2026
+
+Owner requested commit/push and an alpha package. All preceding local work was
+pushed to origin/main; packaging manifest checkpoint `a156e21` corrects the stale
+claim that Delay GUI/CLI/repeats were unavailable. The alpha includes Standalone,
+optional Python CLI, current docs/notices and an exact committed Git source ZIP.
+Archive naming: `dist/Aion-Looper-0.4.3-<revision>-win64-Standalone-alpha.zip`,
+with a sibling SHA-256 file. No installer, plugin or Linux package was requested.
+
+The committed Windows Standalone was built and packaged, then extracted into a
+new verification directory. Packaged executable and CLI hashes matched their
+build/source files; the embedded source included the repeat-selector repair;
+manifest revision/hash and absence of test hosts/plugin binaries were checked.
+Executable SHA-256:
+`53C217312E824147103E1CF8C587F41745B91F758EAE58CE2ACB56727B1BD85D`.
+
+Two unchanged extracted-app smoke attempts failed the existing `Disabled flash
+clears` assertion: native OFF was observed but the UI button still showed green
+at the 100ms check. Logs `build/alpha-package-smoke.log` and
+`build/alpha-package-smoke-retry.log` retain both failures. Native test RPCs and
+the editor's independent snapshot delivery are different observations. The
+fixture now separately observes actual button `aria-pressed` ON/OFF before the
+original unchanged 100ms colour assertion. It retains every prior assertion and
+adds UI-state checks; no app, audio, timer threshold or metronome DSP changed.
+
+Final full smoke on the extracted executable passed:
+`build/alpha-package-smoke-ready.log`. Scope: actual WebView2, 20 original cards,
+IPC/parameter/expired-command checks, audio-owner acknowledgement, MIDI/control/
+name/reload checks, disabled unported controls, no legacy AudioContext, MASTER
+zero, 44.1kHz device counters. It does not establish physical capture, driver
+latency, controller-pair, listening, plugin or release acceptance. The final
+package is regenerated with this test/handoff source; verify its executable
+hash against the same tested binary. Outstanding licensing/release checks remain
+in the package's TEST-BUILD manifest and LICENSING.md.
+
 ### Delay repeat selector synchronization repair — 23 November 2026
 
 Implementation checkpoint: `56299ee` (also records the owner's quality-first
