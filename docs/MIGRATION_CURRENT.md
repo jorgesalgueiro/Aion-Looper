@@ -18,10 +18,41 @@ FCB1010 and M-Audio Oxygen 49 together. This applies throughout the remaining
 looper/effect/synth migration. Standalone already enables inputs independently;
 the current processor receives a merged stream and bindings identify message
 kind/number/channel, without device identity. Independent device-aware Learn/
-routing and a usable way to resolve overlapping controller messages remain work;
-do not claim these are implemented or that both physical units passed testing.
+routing remain work; channel-scoped Learn below provides collision resolution
+when controllers send on distinct channels. Neither physical unit was tested here.
 Acceptance must cover concurrent performance/control messages, saved routing/
 mappings and one device being disconnected without disabling the other input.
+
+### Channel-scoped Learn — 23 November 2026
+
+Small acceptance slice for concurrent controllers: keep independent input enabling,
+add an exact-channel Learn option through the shared GUI/CLI request, consume only
+the matching Learn packet, preserve other-channel performance and same-block
+provisional CC movement, reject omni/channel overlaps and preserve saved bindings.
+This extends the original any-channel Learn workflow; it does not change DSP.
+
+The native MIDI panel now has **Next Learn: Any channel / Channel 1–16**. This is
+a temporary editor preference affecting subsequent Learn gestures only. CLI:
+`python tools/aion.py midi learn --data '{"target":150,"channel":16}'`.
+An omitted/zero channel retains omni semantics; typed invalid filters reject
+without changing accepted intent. Packed binding channels were already persisted,
+so schema 8, 153 target IDs and all legacy state readers remain unchanged.
+Audio adds one bounded channel check; it retains the existing fixed overlap scan,
+queues and cancellation/held-action ownership. No new audio storage or locks.
+
+Verification in progress: Windows Standalone/test-host builds succeeded; production
+MIDI lifecycle tests passed, both extended Delay MIDI processor cases passed, and
+frontend commands passed. Actual WebView2 tests passed at 64/128 using real key
+selection and right-click Learn, interleaved channel-1/16 packets and editor reload.
+The initial Windows JS test invocation could not spawn its absent probe in
+`build/windows`; rebuilding/rerunning that probe in the core cache is pending.
+Linux, exact stereo PCM and external CLI final results will be recorded below.
+
+Limits/next step: messages carry channel but no device identity. Set the FCB1010
+and Oxygen to different channels for overlapping controls. Verify both physical
+units together, saved device enabling and disconnect/reconnect; synthetic channel
+streams cannot establish those results. Continue remaining loop features after
+this scoped acceptance; retain device-aware routing as pending.
 
 ### Delay continuous MIDI Learn — 23 November 2026
 

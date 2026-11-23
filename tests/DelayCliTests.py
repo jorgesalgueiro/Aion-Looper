@@ -31,3 +31,15 @@ assert cli('delay', '20', 'off')['applied']
 assert cli('delay', '20', 'toggle')['applied']
 assert cli('delay', '20', 'off')['applied']
 print('PASS external Delay CLI: exact receipts, preset, precision, Feedback/exact 1/2/3/10, rollback, reset/bypass and expanded track isolation')
+for channel, target in ((1, 147), (16, 150)):
+    assert cli('midi', 'learn', '--data', json.dumps({'target': target, 'channel': channel}))['ok']
+    s = cli('status')['midi']
+    assert s['learnTarget'] == target and s['learnChannel'] == channel
+    assert not cli('midi', 'learn', '--data', '{"target":148,"channel":17}', code=1)['ok']
+    s = cli('status')['midi']
+    assert s['learnTarget'] == target and s['learnChannel'] == channel
+    assert cli('midi', 'cancelLearn')['ok']
+assert cli('midi', 'learn', '--data', '{"target":147}')['ok']
+assert cli('status')['midi']['learnChannel'] == 0
+assert cli('midi', 'cancelLearn')['ok']
+print('PASS external MIDI CLI: channel-scoped Learn, invalid-filter rollback, cancellation and legacy omni default')

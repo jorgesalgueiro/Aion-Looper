@@ -3,7 +3,7 @@
 #include <cmath>
 namespace aion {
 bool MidiController::valid(const MidiSettings& s) noexcept {
-    if(s.eqTrack>=LoopBank::trackCount||s.learnTarget < -1||s.learnTarget>=static_cast<int>(MidiSettings::bindingCount)||(s.learnTarget>=20&&s.learnTarget<30)||s.modeOverride < -1||s.modeOverride>2)return false;
+    if(s.learnChannel>16||s.eqTrack>=LoopBank::trackCount||s.learnTarget < -1||s.learnTarget>=static_cast<int>(MidiSettings::bindingCount)||(s.learnTarget>=20&&s.learnTarget<30)||s.modeOverride < -1||s.modeOverride>2)return false;
     for(unsigned i=0;i<MidiSettings::bindingCount;++i){const auto b=s.bindings[i];if(!b)continue;
         const unsigned kind=b&3,number=(b>>2)&127,channel=b>>9;
         if(!kind||channel>16||(i>=20&&i<30)||(MidiSettings::continuous(static_cast<int>(i))&&kind!=2)||(kind==2&&(number==120||number==123)))return false;
@@ -49,7 +49,7 @@ void MidiController::begin(Dispatch& d) noexcept {
         const bool transportChanged=!std::equal(next.bindings.begin(),next.bindings.begin()+MidiSettings::volumeBase,settings.bindings.begin());
         if(next.enabled!=settings.enabled||transportChanged)cancel(d);
         else {
-            if(next.bindings!=settings.bindings||next.learnToken!=settings.learnToken||next.learnTarget!=settings.learnTarget||next.learnGeneration!=settings.learnGeneration)cancelLearn();
+            if(next.bindings!=settings.bindings||next.learnToken!=settings.learnToken||next.learnTarget!=settings.learnTarget||next.learnGeneration!=settings.learnGeneration||next.learnChannel!=settings.learnChannel)cancelLearn();
             for(unsigned i=MidiSettings::muteBase;i<MidiSettings::bindingCount;++i)if(next.bindings[i]!=settings.bindings[i])programPulses[i]={};
             for(auto& p:presses)if(p.active&&p.buttonOnly&&next.bindings[MidiSettings::muteBase+p.track]!=settings.bindings[MidiSettings::muteBase+p.track]){
                 // Reassignment retires only this MUTE owner. CC still needs zero.
@@ -144,25 +144,26 @@ void MidiController::event(const MidiEvent& e,Dispatch& d) noexcept {
     if(learnRelease){tick(d);for(auto& p:presses)if(p.active&&p.key==key)release(p,d);}
     // Continuous CC learn accepts zero and consumes the event; Note/PC keep
     // their transport mappings while a slider waits for CC, as in the original.
-    if(MidiSettings::continuous(settings.learnTarget)&&kind==2){
+    const bool learnChannelMatches=!settings.learnChannel||settings.learnChannel==channel;
+    if(learnChannelMatches&&MidiSettings::continuous(settings.learnTarget)&&kind==2){
         if(!learnCaptured){
-            if(learned.push({settings.learnTarget,midiBinding(2,e.data1),settings.learnToken,d.generation,learnCancellation.load(std::memory_order_relaxed)})){
+            if(learned.push({settings.learnTarget,midiBinding(2,e.data1,settings.learnChannel),settings.learnToken,d.generation,learnCancellation.load(std::memory_order_relaxed)})){
                 learnCaptured=true;
-                // Learning is omni: reject any overlapping channel assignment,
+                // Reject overlapping omni/exact-channel assignments,
                 // without mutating the persisted configuration on audio.
                 bool overlap=false;
                 for(unsigned i=0;i<MidiSettings::bindingCount;++i)if(i!=static_cast<unsigned>(settings.learnTarget)){
-                    const auto b=settings.bindings[i];if((b&3)==2&&((b>>2)&127)==e.data1){overlap=true;break;}
+                    const auto b=settings.bindings[i];if((b&3)==2&&((b>>2)&127)==e.data1&&(!(b>>9)||!settings.learnChannel||(b>>9)==settings.learnChannel)){overlap=true;break;}
                 }
-                if(!overlap){provisionalTarget=settings.learnTarget;provisionalBinding=midiBinding(2,e.data1);}
+                if(!overlap){provisionalTarget=settings.learnTarget;provisionalBinding=midiBinding(2,e.data1,settings.learnChannel);}
             }
             return; // Only the learn packet is consumed for a valid assignment.
         }
         if(provisionalTarget<0)return; // Await rejection; never trigger the conflicting button.
         if(((provisionalBinding>>2)&127)==e.data1){continuous(provisionalTarget,e.data2,d);return;}
     }
-    if(settings.learnTarget>=0&&!MidiSettings::continuous(settings.learnTarget)&&down){
-        if(!learnCaptured&&learned.push({settings.learnTarget,midiBinding(kind,e.data1),settings.learnToken,d.generation,learnCancellation.load(std::memory_order_relaxed)}))learnCaptured=true;
+    if(learnChannelMatches&&settings.learnTarget>=0&&!MidiSettings::continuous(settings.learnTarget)&&down){
+        if(!learnCaptured&&learned.push({settings.learnTarget,midiBinding(kind,e.data1,settings.learnChannel),settings.learnToken,d.generation,learnCancellation.load(std::memory_order_relaxed)}))learnCaptured=true;
         return;
     }
     const int continuousTarget=kind==2?ccTargets[(channel-1)*128+e.data1]:-1;

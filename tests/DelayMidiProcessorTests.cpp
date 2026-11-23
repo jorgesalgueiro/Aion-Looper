@@ -46,5 +46,27 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const int blo
  p->copyXmlToBinary(*x,saved);p->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));settle();s=snapshot();
  check(static_cast<int>(s["midi"]["bindings"][19])==aion::midiBinding(3,0,2)&&static_cast<int>(s["midi"]["bindings"][33])==aion::midiBinding(2,42,16)&&static_cast<int>(s["midi"]["bindings"][146])==aion::midiBinding(2,40,7),"v7 retains PC0/mixer/final drive IDs and channel filters");
  for(int j=147;j<153;++j)check(static_cast<int>(s["midi"]["bindings"][j])==0,"v7 initializes appended targets unassigned");
+ // Two concurrently merged controllers may reuse CC/note/PC numbers on
+ // distinct channels. Learn must leave the other controller running, including
+ // provisional movement before the message owner acknowledges the binding.
+ check(request(R"({"operation":"midiConfig","action":"learn","target":147,"channel":1})")["ok"],"channel 1 Learn admitted");pump();
+ cc(16,99,0);pump();s=snapshot();check(static_cast<int>(s["midi"]["learnTarget"])==147&&static_cast<int>(s["midi"]["learnChannel"])==1,"wrong-channel packet cannot capture Learn");
+ cc(1,99,0,17);cc(16,99,127,18);cc(1,99,64,19);pump();s=snapshot();pump();s=snapshot();
+ check(static_cast<int>(s["midi"]["bindings"][147])==aion::midiBinding(2,99,1)&&p->inspectAudioThread(19).track.delay.values[0]==aion::delayMidiValue(0,64),"exact-channel provisional CC ignores foreign stream");
+ check(request(R"({"operation":"midiConfig","action":"learn","target":150,"channel":16})")["ok"],"channel 16 Learn admitted");pump();
+ cc(1,99,32);pump();s=snapshot();check(static_cast<int>(s["midi"]["learnTarget"])==150&&p->inspectAudioThread(19).track.delay.values[0]==aion::delayMidiValue(0,32),"other assigned stream keeps working while Learn waits");
+ cc(16,99,0,17);cc(1,99,127,18);cc(16,99,64,19);pump();s=snapshot();pump();s=snapshot();
+ check(static_cast<int>(s["midi"]["bindings"][150])==aion::midiBinding(2,99,16)&&p->inspectAudioThread(19).track.delay.values[0]==4&&p->inspectAudioThread(19).track.delay.values[3]==64/127.0,"disjoint channel assignments and same-block movement are independent");
+ check(request(R"({"operation":"midiConfig","action":"learn","target":148})")["ok"],"legacy omitted channel keeps omni");pump();cc(2,99,12);pump();s=snapshot();pump();s=snapshot();check(static_cast<int>(s["midi"]["bindings"][148])==0&&static_cast<int>(s["midi"]["learnTarget"])==-1,"omni conflicts with either exact-channel binding");
+ for(const char* invalid:{R"({"operation":"midiConfig","action":"learn","target":148,"channel":17})",R"({"operation":"midiConfig","action":"learn","target":148,"channel":-1})",R"({"operation":"midiConfig","action":"learn","target":148,"channel":"1"})",R"({"operation":"midiConfig","action":"learn","target":148,"channel":1.5})",R"({"operation":"midiConfig","action":"learn","target":148,"channel":null})"})check(!static_cast<bool>(request(invalid)["ok"]),"malformed filter rejected atomically");
+ // Notes and PC pulses share this filter rather than a second Learn path.
+ for(int kind:{1,3})for(int channel:{1,16}){
+  const int target=73+(kind==3?2:0)+(channel==16?1:0);auto r=juce::JSON::parse(R"({"operation":"midiConfig","action":"learn"})");r.getDynamicObject()->setProperty("target",target);r.getDynamicObject()->setProperty("channel",channel);check(p->request({r})["ok"],"button channel Learn");pump();
+  auto message=kind==1?juce::MidiMessage::noteOn(channel==1?16:1,99,static_cast<juce::uint8>(100)):juce::MidiMessage::programChange(channel==1?16:1,99);midi.addEvent(message,17);pump();s=snapshot();check(static_cast<int>(s["midi"]["learnTarget"])==target,"wrong-channel Note/PC leaves Learn armed");
+  message=kind==1?juce::MidiMessage::noteOn(channel,99,static_cast<juce::uint8>(100)):juce::MidiMessage::programChange(channel,99);midi.addEvent(message,17);pump();s=snapshot();pump();s=snapshot();check(static_cast<int>(s["midi"]["bindings"][target])==aion::midiBinding(static_cast<unsigned>(kind),99,static_cast<unsigned>(channel)),"Note/PC captures requested channel");
+ }
+ p->getStateInformation(saved);x=p->getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));check(x->getChildByName("MidiSettings")->getIntAttribute("version")==8,"channel Learn retains schema and IDs");p->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));settle();s=snapshot();
+ check(static_cast<int>(s["midi"]["bindings"][147])==aion::midiBinding(2,99,1)&&static_cast<int>(s["midi"]["bindings"][150])==aion::midiBinding(2,99,16),"channel assignments survive host save/restore");
+ cc(1,99,0,17);cc(16,99,127,18);pump();s=snapshot();check(p->inspectAudioThread(19).track.delay.values[0]==aion::delayMidiValue(0,0)&&p->inspectAudioThread(19).track.delay.values[3]==1,"restored concurrent controls remain independent");
  check(p->getActiveEditor()==nullptr,"MIDI and persistence work without editor");std::cout<<"PASS native Delay MIDI "<<block<<": all CC/channel originals, same-block learn, bounded receipt saturation/recovery, joint gate, v7 migration; zero callback heap\n";
 }

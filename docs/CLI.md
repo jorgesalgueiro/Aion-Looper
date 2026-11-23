@@ -26,6 +26,28 @@ python tools/aion.py midi clear --data '{"target":0}'
 python tools/aion.py midi save
 ```
 
+Use several controllers together by enabling their inputs in the native MIDI
+panel. When controls overlap, configure each controller to send on a different
+MIDI channel. The panel's **Next Learn** selector and the optional CLI `channel`
+field select which channel may complete the next Learn. `0` (or omission) means
+any channel; `1`–`16` stores an exact channel in the binding. The selector does
+not alter a Learn already in progress. Existing mappings retain their channels.
+
+```sh
+python tools/aion.py midi learn --data '{"target":147,"channel":1}'
+# Move the first controller's Delay Time knob, then:
+python tools/aion.py midi learn --data '{"target":150,"channel":16}'
+# Move the second controller's Delay Mix knob (it may use the same CC number).
+python tools/aion.py midi save
+```
+
+Other channels continue controlling their existing mappings while Learn waits.
+An any-channel binding conflicts with that same message on every channel;
+disjoint exact-channel bindings can coexist. Save/restore uses the existing
+versioned mapping format. The next-Learn selector is a temporary editor choice.
+Identical messages on the same channel cannot yet be separated by device name.
+FCB1010/Oxygen 49 physical coexistence and disconnect/reconnect tests are pending.
+
 The JSON quoting above is valid in PowerShell and Bash. Named track arguments
 are **1..20**. Loop actions and values use the native handler's conventions;
 for example `loop volume 1 0.8`, `loop pan 1 3`, `loop undo 1`, `loop redo 1`,

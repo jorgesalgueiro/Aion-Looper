@@ -13,6 +13,7 @@ struct MidiSettings {
     std::uint32_t revision=0,learnToken=0,learnGeneration=0;
     int learnTarget=-1,modeOverride=-1;
     unsigned eqTrack=0; // Original effect bindings follow the selected loop tab.
+    unsigned learnChannel=0; // Transient Learn filter: 0 = any, 1..16 = exact channel.
 };
 struct MidiEvent {std::uint32_t offset=0;std::uint8_t status=0,data1=0,data2=0,size=0;};
 struct MidiLearnResult {int target=-1;std::uint16_t binding=0;std::uint32_t token=0,generation=0,cancellation=0;};

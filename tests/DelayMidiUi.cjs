@@ -33,5 +33,14 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  await click('#delayTime','right');await until(s=>s.midi.learnTarget===147,'minimal cancel learn');await key('Escape','Escape',27);await until(s=>s.midi.learnTarget===-1,'minimal Escape');
  await call('Page.reload',{ignoreCache:true});await wait(500);await until(s=>s.midi.bindings[150]!==0,'mapping retained across editor reload');
  await inject([[176,20,127,3,17]]);await until(s=>s.tracks[0].delay.values.mix===1,'mapped CC after reload');await click('#loop-0-delay + span');await click('#delayMix','right',8);await until(s=>s.midi.bindings[150]===0,'minimal mapping removal');
- assert.deepEqual(errors,[]);console.log('PASS focused Delay MIDI editor '+process.argv[2]+': same-block Learn, actual slider, conflict, Escape, reload and Shift-clear');
+ // Use real keyboard selection in the native setup, then real right-click Learn.
+ const chooseChannel=async channel=>{await focus('#native-midi-learn-channel');await key('Home','Home',36);for(let i=0;i<channel;++i)await key('ArrowDown','ArrowDown',40);assert.equal(await evaluate(`Number(document.querySelector('#native-midi-learn-channel').value)`),channel);};
+ await chooseChannel(1);await click('#delayTime','right');await until(s=>s.midi.learnTarget===147&&s.midi.learnChannel===1,'GUI channel 1 Learn');
+ await inject([[191,99,127,3,17]]);await until(s=>s.midi.learnTarget===147&&s.midi.bindings[147]===0,'foreign channel leaves GUI Learn waiting');
+ await inject([[176,99,0,3,17],[191,99,127,3,18],[176,99,64,3,19]]);await until(s=>s.midi.bindings[147]===(2|(99<<2)|(1<<9)),'GUI captures channel 1');
+ await chooseChannel(16);await click('#delayMix','right');await until(s=>s.midi.learnTarget===150&&s.midi.learnChannel===16,'GUI channel 16 Learn');
+ await inject([[191,99,0,3,17],[176,99,127,3,18],[191,99,64,3,19]]);await until(s=>s.midi.bindings[150]===(2|(99<<2)|(16<<9))&&s.tracks[0].delay.values.time===4&&s.tracks[0].delay.values.mix===64/127,'GUI independent interleaved controllers');
+ await call('Page.reload',{ignoreCache:true});await wait(500);await until(s=>s.midi.bindings[147]===(2|(99<<2)|(1<<9))&&s.midi.bindings[150]===(2|(99<<2)|(16<<9)),'both channel assignments survive editor reload');
+ await inject([[176,99,0,3,17],[191,99,127,3,18]]);await until(s=>s.tracks[0].delay.values.time===.01&&s.tracks[0].delay.values.mix===1,'both controllers work after editor reload');
+ assert.deepEqual(errors,[]);console.log('PASS focused Delay MIDI editor '+process.argv[2]+': same-block Learn, actual slider, conflict, Escape, reload, Shift-clear and concurrent channel-scoped Learn');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>socket?.close());

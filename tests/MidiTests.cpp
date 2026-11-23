@@ -22,6 +22,7 @@ struct Fixture {
 };
 }
 void midiTests(){
+ {MidiSettings settings;settings.learnChannel=17;check(!MidiController::valid(settings),"out-of-range Learn channel rejected before queue admission");}
  {
   auto bank=std::make_unique<LoopBank>();bank->prepare(32768,240,8000);auto controller=std::make_unique<MidiController>();
   struct Probe {int target=-1;unsigned track=0;} probe;
@@ -364,17 +365,19 @@ void midiTests(){
   settings.learnTarget=-1;++settings.learnToken;settings.revision=++f.revision;check(f.engine->configureMidi(settings),"cancel rejected learn");f.send(191,13,127);check(f.latest.tracks[1].volume==2,"prior channel-specific control survives rejected learn");
  }
  std::vector<float> expressionReference;
- for(const unsigned block:{64u,128u})for(const unsigned controlMode:{0u,1u,2u}){
+ // Retain all original cases; add channel-1 volume/channel-16 pan sharing CC11,
+ // both preassigned and provisionally learned, against the same exact PCM oracle.
+ for(const unsigned block:{64u,128u})for(const unsigned controlMode:{0u,1u,2u,3u,4u}){
   const bool midiControls=controlMode!=0;
   Fixture f(block);f.command(A::record);
   for(unsigned n=0;n<1024;n+=block){float l[128],r[128];for(unsigned i=0;i<block;++i){l[i]=0.4f*std::sin((n+i)*0.11f);r[i]=0.2f*std::cos((n+i)*0.093f);}float* input[]={l,r};watch=true;f.engine->process(input,2,block);watch=false;}
   f.command(A::finish);f.wait();
-  MidiSettings settings;settings.enabled=true;settings.bindings[33]=midiBinding(2,11);settings.bindings[53]=midiBinding(2,12);if(controlMode==2){settings.bindings[33]=0;settings.learnTarget=33;settings.learnToken=37;settings.learnGeneration=f.engine->generation();}
+  MidiSettings settings;settings.enabled=true;settings.bindings[33]=midiBinding(2,11);settings.bindings[53]=midiBinding(2,12);if(controlMode>=3){settings.bindings[33]=midiBinding(2,11,1);settings.bindings[53]=midiBinding(2,11,16);settings.learnChannel=1;}if(controlMode==2||controlMode==3){settings.bindings[33]=0;settings.learnTarget=33;settings.learnToken=37;settings.learnGeneration=f.engine->generation();}
   settings.revision=++f.revision;check(f.engine->configureMidi(settings),"CC PCM comparison config");f.process(0);
   const auto origin=f.engine->clock();
   const std::array<MidiEvent,8> sequence{{{17,176,11,0,3},{257,176,11,127,3},{402,176,12,0,3},{630,176,12,64,3},{755,176,12,127,3},{1023,176,11,70,3},{1157,176,11,60,3},{1281,176,12,33,3}}};
   if(!midiControls)for(const auto& e:sequence)check(f.engine->enqueueLoop({e.data1==11?A::volume:A::pan,0,++f.request,f.engine->generation(),origin+e.offset,e.data1==11?2*e.data2/127.0:std::floor(10*e.data2/127.0)}),"scheduled direct expression parameter");
-  std::vector<float> pcm;for(unsigned n=0;n<2048;n+=block){std::array<MidiEvent,9> events{};unsigned count=0;if(controlMode==2&&n==0)events[count++]={0,176,11,0,3};if(midiControls)for(auto e:sequence)if(e.offset>=n&&e.offset<n+block){e.offset-=n;events[count++]=e;}
+  std::vector<float> pcm;for(unsigned n=0;n<2048;n+=block){std::array<MidiEvent,9> events{};unsigned count=0;if((controlMode==2||controlMode==3)&&n==0)events[count++]={0,176,11,0,3};if(midiControls)for(auto e:sequence)if(e.offset>=n&&e.offset<n+block){e.offset-=n;if(controlMode>=3&&e.data1==12){e.status=191;e.data1=11;}events[count++]=e;}
    float l[128]{},r[128]{};float* audio[]={l,r};watch=true;f.engine->process(audio,2,block,{events.data(),count});watch=false;for(unsigned i=0;i<block;++i){pcm.push_back(l[i]);pcm.push_back(r[i]);}}
   if(expressionReference.empty()){expressionReference=pcm;check(std::any_of(pcm.begin(),pcm.end(),[](float v){return std::abs(v)>0.01f;}),"expression PCM oracle must contain audible signal");}
   else check(expressionReference==pcm,"MIDI expression renders exact stereo PCM versus scheduled UI parameters at 64/128");
