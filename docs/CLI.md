@@ -57,6 +57,38 @@ persist in native state and keep working without an editor. Existing channel
 filters/conflict rules apply; physical controller verification remains separate.
 CC120/123 retain the existing native panic behavior and cannot be learned as EQ.
 
+Delay (D) has development GUI/CLI access to the same native per-loop owner:
+
+```sh
+python tools/aion.py delay 1 preset --preset dub
+python tools/aion.py delay 1 on
+python tools/aion.py delay 1 repeats --mode exact --count 3
+python tools/aion.py delay 1 repeats --mode feedback --count 3
+python tools/aion.py delay 1 set --parameter repetitions --value 6
+python tools/aion.py delay 1 set --parameter time --value 0.375
+python tools/aion.py delay 1 get
+python tools/aion.py delay 1 reset
+python tools/aion.py delay 1 off
+```
+
+Use `python3` on Linux where required. Tracks are 1..20. `toggle` also works.
+Original parameters: `time`, `repetitions`, `damp`, `mix`, `panSpeed`, `panDepth`,
+`sync` (0 or 1). Presets: `default`, `slapback`, `dotted8th`, `dub`, `infinite`,
+`ping-pong`, `short-ambience`, `tape-echo`, `rhythmic`. Manual edits select Custom.
+Presets restore Feedback mode; `reset` restores defaults and Feedback/count 1,
+preserving enabled/bypass. Feedback uses the original Reps decay control;
+Exact selects 1–10 feed-forward echoes with a fixed taper and short damping tail.
+The count is retained while Feedback is selected. The GUI uses the original
+Delay sliders/presets plus the requested repeat mode/count selectors.
+
+Mutations wait for the exact D receipt; an unrelated transport ID cannot prove
+success. Before admission, CLI waits for pending restore/edit/clear and owner
+crossfade readiness. It never retries an admitted failed action automatically.
+Queue/budget/allocation failure or cancellation leaves prior confirmed settings;
+inspect `delayBusy`, `delayPending`, `delayReady` and `delayRequestId` in `status`.
+Accepted intent is included in immediate native settings saves; stored loop PCM
+is still temporary. Delay MIDI Learn and listening/device acceptance remain pending.
+
 Arp Delay now has development GUI/CLI access to its original controls and eight
 presets. Commands operate on the same persistent per-loop native graph:
 

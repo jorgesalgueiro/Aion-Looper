@@ -1,10 +1,94 @@
 # D / Delay implementation checkpoint
 
 Owner priority (21 November 2026): remaining loop features precede broad CPU
-tuning. This is **internal native audio/control integration**, not an enabled product
-control. Existing GUI/CLI/session IDs are unchanged; no new UI control is exposed.
+tuning. D now has a **development GUI/CLI preview**; MIDI Learn, listening/device
+and full release acceptance remain separate. Existing IDs and preserved UI assets
+are unchanged. Older checkpoints below retain their original narrower scope.
 
 ## Contract and acceptance
+
+### Shared Delay controls — 23 November 2026
+
+Snapshots `921788e` / `4018039` connect `operation: delay` and the running-app
+`delay` CLI command to `DelaySettingsOwner`. Original Time/Reps/Damp/Mix/Pan/Sync
+controls, nine presets, bypass/toggle and reset share one native DSP/settings
+implementation and versioned persistence. The original-style D panel and main/
+LIVE row toggles are enabled. Added repeat selectors expose Feedback and exact
+1–10; reset preserves enabled/bypass while restoring default controls and
+Feedback/count 1. No product AudioContext or new DSP model is introduced.
+
+Commands validate track, generation, bounded deadline, action, strict value types
+and ranges before admission. One edit per track stays outstanding until the
+exact receipt is consumed; snapshots report `delayRequestId`, `delayPending`,
+`delayReady` and `delayBusy`. Accepted intent is saved immediately; rejection,
+cancellation and preparation failure roll back to confirmed settings. GUI/CLI
+never use a larger global acknowledgement as success or retry an admitted action.
+Tagged WebView Delay fields use the existing 17-digit JSON transport technique
+to retain original double precision, with document-token/lifecycle guards intact.
+
+The extended actual UI test exposed rapid repeat-count edits racing the 20ms
+owner crossfade. Unsent repeat edits now coalesce; audio-owned transition
+readiness is included in the existing bounded track snapshot. GUI/CLI wait for
+it before the next admission. A revision fence also handles a receipt arriving
+before its corresponding snapshot. Raw mutations reject while that readiness
+is stale/busy; core admission limits, crossfades and failure rollback are unchanged.
+No callback timers, allocations or locks are added.
+
+Public native command tests cover exact receipts, expanded-track isolation,
+double precision/immediate state save, reset/bypass, invalid/expired commands,
+and an external Python process using the actual mailbox and production Processor.
+The UI fixture uses actual CDP pointer/key input with production synthetic PCM,
+not a control mock. Original reference resources and the user's logo are untouched.
+Commands and semantics are documented in [CLI.md](CLI.md).
+
+Executed final snapshot checks:
+
+- Windows Release: native commands/external CLI plus state/joint/lifecycle/Arp/
+  FX restore passed 12/12 at 64/128 (47.47s); Standalone and hardware-free mouse
+  host rebuilt. Direct Node frontend and extended bridge lifecycle tests passed.
+- Native WSL Linux Release: the same twelve cases plus frontend/bridge passed
+  14/14 (27.28s); Standalone rebuilt from `4018039` in native WSL storage.
+- Actual Windows editor at both 64/128: `tools/TestDelayUi.ps1` passed all original
+  Delay ranges, Sync, preset, Feedback/exact 1/2/3/10, reset, exact bridge precision,
+  reload/bypass and continuing nonzero synthetic native PCM with unchanged clip
+  identity. Runtime exception collection remains active through reload. This is
+  synthetic production audio and real CDP input, not physical-driver/listening proof.
+  Log: `build/windows/delay-transition-ui.log`.
+- Actual rebuilt Windows Standalone `NativeUiSmoke.cjs` passed, master volume
+  zero, original card/bridge/lifecycle guards intact and no legacy AudioContext.
+  An earlier run alongside the editor test failed the existing 100ms metronome
+  flash-colour assertion; the final isolated run passed the unmodified check.
+  No metronome code or threshold was changed; do not claim the concurrent failure
+  passed or a proven cause. Logs: `delay-command-smoke.log` (failure) and
+  `delay-transition-smoke.log` (pass), both under `build/windows`.
+- Tracked C++ callback allocations/deallocations remain zero. No new sanitizer,
+  broad CPU profile, physical controller, Linux WebKit, Apple or wrapper run.
+  Existing original-JS/connected PCM/storage/sanitizer evidence below is reused;
+  this slice changes commands/readiness, not DSP math or tolerances.
+
+Reproduce (pinned Windows CMake/CTest, configured native-test cache):
+
+```powershell
+cmake --build build/windows --config Release --target aion_delay_command_tests aion_delay_state_processor_tests aion_joint_effects_processor_tests aion_delay_processor_tests aion_arp_processor_tests aion_effects_restore_processor_tests AionLooper_Standalone aion_mouse_host --parallel 4
+ctest --test-dir build/windows -C Release -R '^(native_delay_commands_(64|128)|native_(delay_state|joint_effects|delay|arp|effects_restore)_processor_(64|128))$' --output-on-failure --no-tests=error
+node tests/FrontendTests.cjs
+node tests/BridgeTests.cjs
+./tools/TestDelayUi.ps1
+```
+
+After committing/syncing with SetupWslWorkspace.sh as documented in
+DEVELOPMENT_WORKFLOW.md:
+
+```sh
+cd /home/jorge/projects/Aion-Looper
+cmake --preset linux -DAION_TEST_NATIVE_PROCESSOR=ON
+cmake --build build/linux --target aion_delay_command_tests aion_delay_state_processor_tests aion_joint_effects_processor_tests aion_delay_processor_tests aion_arp_processor_tests aion_effects_restore_processor_tests AionLooper_Standalone -j2
+ctest --test-dir build/linux -R '^(native_delay_commands_(64|128)|native_(delay_state|joint_effects|delay|arp|effects_restore)_processor_(64|128)|native_frontend_commands|native_bridge_lifecycle)$' --output-on-failure --no-tests=error
+```
+
+Next: D MIDI Learn through the shared owner and listening acceptance, retaining
+existing PCM/reference/ownership gates. No physical controller/driver, Linux
+WebKit, Apple or deferred-wrapper claim; no routine package/push or broad CPU tuning.
 
 ### Versioned native persistence — 23 November 2026
 

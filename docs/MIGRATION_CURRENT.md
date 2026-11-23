@@ -11,6 +11,42 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Shared Delay GUI/CLI preview — 23 November 2026
+
+Snapshots `921788e` and `4018039` expose the existing D owner through shared
+native commands and the running-app CLI. Original-style main/LIVE toggles and
+the Delay panel now cover bypass, nine presets, all original ranges/Sync, reset,
+Feedback and exact 1–10 repeats. Native settings persistence remains version 1.
+Tagged WebView D settings use round-trip precision like Arp; command completion
+requires the exact D receipt, not a global transport ID.
+
+The extended UI test caught rapid repeat changes reaching a still-crossfading
+owner. Unsent repeats now coalesce and GUI/CLI wait on audio-published readiness;
+revision fencing prevents an unread snapshot from reporting false readiness.
+Storage/crossfade limits and failure rollback are unchanged. No callback
+allocation, lock, timer or DSP math was added. The earlier UI-only reload failure
+was an off-screen hit target: the fixture now re-observes visibility before real
+pointer input, retaining its disabled/hit assertions.
+
+Final Windows native Processor/CLI tests: 12/12, 47.47s. Native WSL Linux:
+14/14, 27.28s, including frontend/bridge plus the twelve native cases. Both
+Standalone builds succeeded; tracked callback new/delete counts remain zero.
+Windows frontend/bridge scripts also passed directly. Exact commands, UI results
+and current limits are in [DELAY.md](DELAY.md); usage is in [CLI.md](CLI.md).
+`tools/TestDelayUi.ps1` passed at both 64/128 with all original ranges/Sync,
+presets, Feedback/exact 1/2/3/10, reset, round-trip precision, reload/bypass,
+continuing nonzero synthetic PCM and unchanged clip identity; no runtime exceptions.
+Actual Standalone `NativeUiSmoke.cjs` also passed in isolation, master zero/no
+AudioContext. An earlier concurrent run failed its existing 100ms metronome
+flash-colour assertion; the final unmodified check passed. No metronome code or
+test threshold changed. Keep that first failure recorded, without inventing a cause.
+
+NEXT: D MIDI Learn through this same owner, listening/quality acceptance and
+remaining relevant lifecycle/physical-device checks. Do not mark all Delay
+acceptance complete or begin the next effect yet. Linux WebKit interaction,
+Apple/wrappers, new sanitizer and broad CPU tuning were not run for this slice.
+No package/push requested. Earlier disabled-control checkpoints below are history.
+
 ### Versioned Delay state — 23 November 2026
 
 Source snapshot `af7f7e1` adds `LoopDelays` version 1 to the existing native

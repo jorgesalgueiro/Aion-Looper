@@ -47,6 +47,10 @@ workspace, playable with a mouse, keyboard, MIDI controller or command line.
   separate native models, antialiasing, smoothed controls and the original presets.
   Arrange them in your own FX order, blend dry/wet, and control them from the
   original panels, MIDI Learn or CLI. See [the drive guide](docs/DRIVE.md).
+- **Create space with Delay.** D has its original controls and presets, plus
+  Feedback or exact 1–10 repeats. Use the panel or CLI, arrange D anywhere in
+  the FX chain, and retain its settings in native state. This is a development
+  preview; Delay MIDI Learn and listening acceptance remain pending.
 - **Control the running app from a terminal.** The development CLI shares the
   Standalone's session, devices and native command layer.
 
