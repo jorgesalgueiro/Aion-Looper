@@ -11,6 +11,23 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Owner direction — unify Reverb controls, 24 November 2026
+
+One future **B / Reverb** effect replaces separate new-workspace B/V buttons.
+Presets select Convolution or Machine; an explicit engine toggle restores each
+engine's last settings. Preserve existing convolution presets/IDs (even `plate`),
+Machine preset identity and legacy B/V state/order. Do not remove V parsing or
+collapse old B+V chains: versioned lossless handling still needs implementation.
+Original Machine is a modulated-feedback convolution network; a true native
+plate backend is not yet selected/implemented. Full UI/CLI/persistence/MIDI and
+safe prepared engine-switch acceptance are in REVERB.md. This is an adopted
+product plan, not a working mode selector; current app/DSP/state remain unchanged.
+
+NEXT: continue bounded convolution graph ownership within that unified effect
+design, retaining room for engine-specific prepared state and identity. No need
+to discard or rewrite the verified stereo convolution processor. Choose/research
+and credit the Machine/plate implementation before exposing its presets/toggle.
+
 ### B / prepared stereo wet processor — 24 November 2026
 
 Internal `Reverb` now composes stereo distributed convolution, 0..250ms

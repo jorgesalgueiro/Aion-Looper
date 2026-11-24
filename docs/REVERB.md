@@ -1,5 +1,47 @@
 # B / convolution reverb migration
 
+## Owner-approved unified Reverb direction — 24 November 2026
+
+Combine the future convolution and machine/plate-facing controls into **one
+Reverb effect**, retaining **B** as the visible letter rather than adding a
+second V button for new workspaces. This is a product plan change, not an
+implemented second engine or permission to expose a nonfunctional toggle.
+
+- One Reverb panel has an explicit **Convolution / Machine** engine toggle.
+  Plate-oriented native models may use a descriptive label once the actual
+  model is selected and verified; the original Machine is a modulated-feedback
+  convolution network, not proof of a physical plate implementation.
+- Presets carry their engine selection. Choosing a preset selects that engine
+  and its parameter set; manual switching restores the other engine's last
+  settings. Keep separate per-engine values, preset identity and controls rather
+  than mapping unlike Decay/Duration/Feedback/Warp ranges by guesswork.
+- Preserve existing convolution preset names/IDs/values, including `plate` and
+  `bright-plate`. Their names alone must not change their engine. Original
+  Machine presets retain their own identity and values in a distinct preset
+  family; display grouping can distinguish the two families in one selector.
+- Keep legacy B/V codes, order, independent active flags and saved settings
+  readable. Do not remove V from the parser or silently collapse an older chain
+  containing both effects: two independently ordered stages are not equivalent
+  to one selected engine. Retain that data until lossless versioned conversion
+  and its legacy presentation are implemented and tested.
+- Switching engines must use prepared, memory-admitted DSP and a bounded
+  crossfade/retirement path. Do not allocate, rebuild an IR or destroy a kernel
+  on audio. Retain each engine's settings, not a second audio renderer kept alive
+  indefinitely without a resource decision.
+- GUI and running-app CLI use the same engine-selection command/state;
+  persistence and MIDI mapping retain stable IDs and explicit engine ownership.
+  No new command, state field or mapping is advertised until connected.
+- Keep all author/source/license credits for both selected implementations and
+  any imported presets/IRs. The machine/plate backend remains to be selected,
+  credited, implemented and validated under the native-quality owner policy.
+
+Acceptance adds preset-driven selection, manual switching and round-trip per-
+engine settings, save/reload/editor reopen, rapid/cancelled switches, OOM,
+legacy B-only/V-only/B+V preservation and sample-rate/block-size changes at
+64/128. User reorderable chains remain user reorderable. Existing verified
+convolution DSP and current application behavior stay unchanged in this planning
+update. Both product reverb controls remain unavailable in the present preview.
+
 Current scope: settings/IR preparation, uniform/non-uniform convolution and the
 prepared stereo wet processor below are internal components. B remains disabled
 in the product until graph ownership and shared GUI/CLI/state/MIDI integration

@@ -1,5 +1,12 @@
 # Development workflow
 
+Owner direction, 24 November 2026: one future B / Reverb panel combines
+convolution and Machine/plate-facing modes. Presets select the engine; a manual
+toggle retains each engine's settings. Preserve legacy B/V IDs, state and chain
+order until a tested lossless migration exists, including chains using both.
+Keep current convolution DSP; do not expose an unimplemented second mode. See
+REVERB.md for the unified design and added acceptance criteria.
+
 Owner emphasis, 24 November 2026: give clear credit to every reused code source.
 Maintain `CREDITS.md`, original copyright headers, pinned source/provenance and
 full license notices with each imported/adapted component, coefficient table,
