@@ -11,6 +11,34 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / prepared stereo wet processor — 24 November 2026
+
+Internal `Reverb` now composes stereo distributed convolution, 0..250ms
+fractional pre-delay with constant-sum 20ms read-head fades, wet-only Q=.5
+Nyquist-safe TPT damping, linear dry/wet mix and post-mix volume. Gains/enable/
+derived damping smooth over 10ms; coefficients cache when stationary. Controls
+and route order credit Ascii-Looper; existing AudioFFT/Ooura notices unchanged.
+No new third-party code, dependencies, IDs/schema, preserved UI or app controls.
+
+Worker preparation atomically owns both channel kernels plus pre-delay storage;
+all 40 tested allocation/cancel sites preserve complete old running stereo PCM.
+Audio `set` rejects Duration/Decay shape changes (worker replacement required).
+Reset invalidates pre-delay history without scanning storage, clears fixed filter/
+kernel state and never allocates. Settled bypass is exact dry and clears old tails;
+reenabling ramps fresh wet audio. Ordinary playback restarts must retain memory.
+
+Windows focused stereo processor 1/1 passed (1.14s), including 72 rate/delay/block
+combinations + in-place, all 17 presets, generated 8/48kHz IR audio, independent
+direct-form/FIR oracle within unchanged `3e-6`, live sample-indexed edits, bypass
+tail erasure, stereo isolation/swapped buffers, reset and sample-rate replacement.
+Initial expanded probe peak `1.19209e-07`; final Linux/sanitizer evidence pending
+this snapshot. See REVERB.md for exact commands/controls/ownership limits.
+
+B stays disabled pending bounded whole-graph memory admission/worker adoption/
+retirement and shared product GUI/CLI/state/MIDI integration. No Standalone/UI,
+listening, device, CPU/deadline or release claim. No push or package. NEXT is
+per-loop prepared graph ownership before exposing any B controls.
+
 ### B / distributed non-uniform tail and visible credits — 24 November 2026
 
 Internal `NonUniformConvolver` now uses a 128-frame partitioned head for the first

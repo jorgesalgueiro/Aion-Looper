@@ -1,5 +1,10 @@
 # B / convolution reverb migration
 
+Current scope: settings/IR preparation, uniform/non-uniform convolution and the
+prepared stereo wet processor below are internal components. B remains disabled
+in the product until graph ownership and shared GUI/CLI/state/MIDI integration
+meet their gates. No listening/device/release acceptance is implied.
+
 ## Offline preparation foundation — 24 November 2026
 
 This is an internal component stage, **not a working product reverb**. B remains
@@ -249,6 +254,91 @@ cmake -S . -B build/drive-sanitized
 cmake --build build/drive-sanitized --target aion_nonuniform_convolution_tests aion_convolution_tests --parallel 2
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(nonuniform_convolution_contract|convolution_kernel_contract)$' --output-on-failure --no-tests=error
 ```
+
+### Prepared stereo wet processor — 24 November 2026
+
+`Reverb` composes two non-uniform convolvers with stereo pre-delay, wet-only
+damping, linear dry/wet mix and post-mix volume. This retains the original
+`_createReverb` control/routing order (credited to Jorge Salgueiro/Ascii-Looper),
+without copying browser filter code. AudioFFT/Ooura credits and notices remain;
+no new third-party source/dependency or preserved UI asset changes. Native
+smoothing/crossfades/TPT state follow Aion's existing Delay approach, with the
+bilinear Q=.5 coefficients independently checked in direct form.
+
+Acceptance is actual stereo audio against direct fractional-delay/sparse-FIR and
+direct-form low-pass equations at absolute `3e-6`, plus independently generated
+dense IR audio, original control order, sample-indexed live edit/block consistency,
+zero callback new/free, fixed reset, and complete failed-preparation rollback.
+Steady values are latched at preparation, so there is no initial gain ramp.
+
+- Volume/Mix/enable use 10ms one-pole smoothing. Damp's derived TPT coefficient
+  uses the same smoothing; `tan` is cached on accepted Damp changes, with the
+  normal steady-state filter denominator cached outside per-frame recomputation.
+- Damp remains stored at 500..20000 Hz. Only the derived frequency is bounded
+  to `.45 * sampleRate`, keeping low-rate processing finite/stable. Q=.5 gives
+  a non-resonant wet-only low-pass. No claim of browser filter PCM identity.
+- Pre-delay supports exact zero through .25s, fractional linear reads and two
+  read heads with a 20ms constant-sum fade. Edits during a fade update the latest
+  desired position; after the current fade it starts the latest pending fade.
+  There is no unbounded queue, read-position jump or equal-power DC gain bump.
+- A settled bypass is exact dry and stops wet computation. After its enable ramp
+  reaches zero, convolution/filter history and pre-delay validity are reset before
+  the call returns or another chunk starts. Reenable fades in a fresh wet path;
+  old bypassed tails cannot reappear. Ordinary PLAY/RTRG/history restarts must not
+  reset this persistent processor. A mix of zero keeps processing wet history.
+- The maximum pre-delay ring is 96,002 stereo frames / 768,016 storage bytes
+  at 384kHz, in addition to two convolvers and fixed scratch/state. Reset only
+  invalidates ring indices/counts; it never clears that ring on audio. Numerical
+  input/output is finite and limited only beyond +/-1e6; tiny filter states below
+  1e-24 are cleared, matching the existing native Delay protection policy.
+
+`prepare(rate, settings, leftIR, rightIR, cancellation)` is worker-only. Both IRs
+must contain exactly `floor(rate * Duration)` frames; coefficient validation is
+provided by convolution preparation. No raw IR pointer survives preparation.
+Both channels and the ring publish together only after success. All candidate
+allocations (40 for the tested two-tail graph), including the second-channel FFT
+and final ring, can fail/cancel without changing the old stereo running state.
+The outer graph-owner publication/late-cancellation fence is still future work.
+
+Audio-owner `set` changes Volume/Mix/Damp/Pre-delay/enable/metadata without new/free.
+Duration or Decay changes reject atomically and require a new worker-prepared
+processor. Rejected controls/calls do not mutate state. Calls accept 0..4096
+frames, four equal-length spans, disjoint or exactly aligned in-place input/output
+(including swapped channels); output channels must be distinct, and partial
+overlap is outside the contract. Two-channel scratch is captured before outputs
+are overwritten. No locks/I/O/logging or IR-size rebuild/copy/clear is introduced
+on the callback.
+
+The fixture checks eight rates (8–384kHz), zero/fractional/maximum pre-delay,
+64/128/irregular blocks (72 combinations plus in-place replay), stereo isolation,
+swapped outputs, all 17 preset settings, generated dense IRs at 8/48kHz, analytic
+gain/mix/bypass ramps, rapid pre-delay DC continuity, sample-offset edits including
+bypass reversal, late-tail bypass erasure, destructive reset, new sample-rate
+preparation, invalid spans/controls and every allocation/cancel site. There is no
+product UI/CLI/MIDI feature or new saved schema here, so no disconnected controls
+are exposed and no actual UI/host/device claim is made.
+
+Focused commands:
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_reverb_tests --parallel 4
+ctest --test-dir build/windows-core -C Release -R '^reverb_stereo_processor_contract$' --output-on-failure --no-tests=error
+```
+
+After committing and the documented WSL snapshot sync:
+
+```sh
+cmake --build build/linux --target aion_reverb_tests --parallel 2
+ctest --test-dir build/linux -R '^reverb_stereo_processor_contract$' --output-on-failure --no-tests=error
+cmake -S . -B build/drive-sanitized
+cmake --build build/drive-sanitized --target aion_reverb_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^reverb_stereo_processor_contract$' --output-on-failure --no-tests=error
+```
+
+Next: complete graph memory admission, bounded per-loop worker request/adoption/
+retirement with cancellation and history lifetime fencing, then shared product
+GUI/CLI/persistence/MIDI and live transition acceptance. These tests are not
+twenty-track CPU/deadline, physical latency, listening or release certification.
 
 ### Earlier preparation verification
 

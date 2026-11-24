@@ -16,6 +16,18 @@ This index accompanies, rather than substitutes for, the full license notices.
 | **Google / Chromium and Blink contributors** | Adapted compressor, AudioParam timeline behavior, resampling coefficients and phase conventions | [Compressor notice and pinned source](third_party/notices/WebAudio-Compressor-BSD.txt), [Chromium notice](third_party/notices/Chromium-BSD.txt), [resampling notice and pinned source](third_party/notices/WebAudio-Resampling-BSD.txt). BSD-style terms retained in source/notices; no Chromium runtime is introduced by these DSP adaptations. |
 | **Advanced Micro Devices contributors — AOCL LibM** | Portable scalar adaptation of the compressor logarithm, retaining source constants/arithmetic order | [Pinned source, changes and BSD notice](third_party/notices/AMD-Compressor-Log10-BSD.txt); revision `5760c0a6a5c650aaeaee81d5d83592fc2da66207`. |
 
+The internal stereo reverb follows Ascii-Looper's `_createReverb` control/routing
+order (pre-delay, convolution, wet damping, dry/wet mix, output volume). Its
+native smoothing, crossfades and Q=.5 TPT filter use Aion's existing Delay
+approach and bilinear-transform equations, not copied WebAudio filter code.
+Convolution continues to use the credited AudioFFT/Ooura sources above.
+
+The internal stereo reverb follows Ascii-Looper's `_createReverb` control/routing
+order (pre-delay, convolution, wet damping, dry/wet mix, output volume). Its
+native smoothing, crossfades and Q=.5 TPT filter use Aion's existing Delay
+approach and bilinear-transform equations, not copied WebAudio filter code.
+Convolution continues to use the credited AudioFFT/Ooura sources above.
+
 ## Optional components and platform dependencies
 
 These are not all active effects or enabled plugin formats. Retain their own
