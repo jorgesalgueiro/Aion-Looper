@@ -149,6 +149,8 @@ ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build
 The generated-IR tests compare actual convolution output, unlike the earlier
 immutable-reads-only checks. They cover eight rates, both channels at 64/128,
 an independent short direct FIR oracle, a 65,537-frame dense tail, ring wrap,
+an isolated `1e-8` final tap checked at `1e-13` to detect trimming, silent IRs,
+successful replacement and zero/nonzero recovery,
 all allocation failure sites, early/allocation-triggered cancellation, repeated
 maximum-size resets, numerical input protection and invalid calls. Lock freedom
 is source-audited, not proved by the new/delete instrumentation. Live worker

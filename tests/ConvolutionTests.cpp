@@ -89,6 +89,23 @@ int main() {
             render(conv, out, out, block); compare(out, expected);
         }
     }
+    // A tiny isolated late coefficient needs its own stricter oracle: the
+    // ordinary-audio absolute tolerance must not hide near-zero IR trimming.
+    for (unsigned block : {64u, 128u}) {
+        std::vector<float> ir(1025), in(2304), out(in.size());
+        ir.back() = 1.e-8f; in[0] = 1;
+        PartitionedConvolver conv; check(conv.prepare(ir), "quiet tail prepare");
+        render(conv, in, out, block);
+        for (std::size_t i = 0; i < out.size(); ++i)
+            check(std::abs(out[i] - (i == 1024 ? 1.e-8f : 0.f)) < 1.e-13f, "quiet final IR tap is never trimmed");
+        std::fill(ir.begin(), ir.end(), 0.f);
+        check(conv.prepare(ir), "silent replacement IR");
+        render(conv, in, out, block);
+        for (auto v : out) check(v == 0, "zero IR and replacement emit exact silence");
+        ir[0] = .7f; ir.back() = -.3f;
+        check(conv.prepare(ir), "nonzero replacement after silence");
+        render(conv, in, out, block); compare(out, direct(in, ir));
+    }
     // Two independent channels with unequal IR/input; swapping channels must
     // swap results, and right silence must never leak the left channel.
     for (unsigned block : {64u, 128u}) {
