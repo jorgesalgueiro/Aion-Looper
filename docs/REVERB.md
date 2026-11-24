@@ -224,6 +224,17 @@ graph preparation/adoption/retirement, and shared GUI/CLI/MIDI/state integration
 pass their own gates. No live swaps, product sound, listening, hardware or release
 claim is made by these component tests.
 
+Source `8555fb3` results: Windows Release 2/2 (1.48s), native WSL Linux Release
+2/2 (1.32s), core-only Debug ASan/UBSan/leak 2/2 (29.12s), with no reported
+sanitizer errors/suppressions. Non-uniform peak independent PCM error
+`5.93611e-08`; retained uniform contract peak `6.81991e-08` after adding boundary
+cases. Nine uniform and 19 non-uniform allocation sites exercised, plus
+cancellation at every site. The sanitizer cache retains plugin OFF, Debug,
+address/undefined instrumentation and frame pointers. Times are test wall times,
+not a kernel speed comparison or callback deadline measurement. Package helper
+PowerShell syntax and diff checks passed. No new package, app/UI/device/DAW test
+or push was performed. Original assets/reference and upstream FFT bytes unchanged.
+
 ```powershell
 cmake --build build/windows-core --config Release --target aion_nonuniform_convolution_tests aion_convolution_tests --parallel 4
 ctest --test-dir build/windows-core -C Release -R '^(nonuniform_convolution_contract|convolution_kernel_contract)$' --output-on-failure --no-tests=error

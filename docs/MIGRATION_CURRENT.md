@@ -26,7 +26,13 @@ the old uniform checks/tolerances, adds split boundaries, 19 non-uniform OOM
 sites (uniform still nine), cancellation at every allocation with partial old
 tail history, and bounded tail-work counts at 64/128. Independent peak PCM error:
 non-uniform `5.93611e-08`, uniform `6.81991e-08`, both below unchanged `3e-6`.
-Linux/sanitizer validation pending this source snapshot; see REVERB.md commands.
+Source `8555fb3`: native WSL Linux Release 2/2 passed (1.32s); core-only Debug
+ASan/UBSan/leak 2/2 passed (29.12s), no reported sanitizer errors/suppressions.
+Both old/new contracts ran with their expanded checks and unchanged tolerances.
+Sanitizer Debug/address+undefined/frame-pointer/plugin-OFF cache flags confirmed
+unchanged. Package helper PowerShell parser check passed; diff check clean and
+preserved UI/reference/upstream AudioFFT files unchanged. No Standalone/UI or
+device test was required/run for this unconnected core slice. See REVERB.md.
 
 Owner's attribution emphasis is recorded in DEVELOPMENT_WORKFLOW.md. New root
 CREDITS.md names authors/code use/source revisions/licenses/modifications and
