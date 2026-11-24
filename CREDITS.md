@@ -22,12 +22,6 @@ native smoothing, crossfades and Q=.5 TPT filter use Aion's existing Delay
 approach and bilinear-transform equations, not copied WebAudio filter code.
 Convolution continues to use the credited AudioFFT/Ooura sources above.
 
-The internal stereo reverb follows Ascii-Looper's `_createReverb` control/routing
-order (pre-delay, convolution, wet damping, dry/wet mix, output volume). Its
-native smoothing, crossfades and Q=.5 TPT filter use Aion's existing Delay
-approach and bilinear-transform equations, not copied WebAudio filter code.
-Convolution continues to use the credited AudioFFT/Ooura sources above.
-
 ## Optional components and platform dependencies
 
 These are not all active effects or enabled plugin formats. Retain their own

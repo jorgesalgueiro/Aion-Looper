@@ -318,6 +318,16 @@ preparation, invalid spans/controls and every allocation/cancel site. There is n
 product UI/CLI/MIDI feature or new saved schema here, so no disconnected controls
 are exposed and no actual UI/host/device claim is made.
 
+Source `ccaa80c` executed results: Windows Release 1/1 (1.14s), native WSL Linux
+Release 1/1 (0.78s), core-only Debug ASan/UBSan/leak 1/1 (25.02s), no reported
+sanitizer errors or suppressions. Both Release probes report peak PCM error
+`1.19209e-07`, below the unchanged `3e-6` tolerance, with all 40 candidate
+allocation/cancel sites covered. Existing Debug/address+undefined/frame-pointer
+and plugin-OFF flags were confirmed unchanged. Timings are test wall times, not
+deadline/physical latency results. UI/reference and upstream FFT bytes unchanged.
+The documentation-only follow-up removes a repeated credits paragraph and records
+these results; it does not rerun unchanged passing audio suites.
+
 Focused commands:
 
 ```powershell

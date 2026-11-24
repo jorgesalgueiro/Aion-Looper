@@ -31,8 +31,14 @@ Windows focused stereo processor 1/1 passed (1.14s), including 72 rate/delay/blo
 combinations + in-place, all 17 presets, generated 8/48kHz IR audio, independent
 direct-form/FIR oracle within unchanged `3e-6`, live sample-indexed edits, bypass
 tail erasure, stereo isolation/swapped buffers, reset and sample-rate replacement.
-Initial expanded probe peak `1.19209e-07`; final Linux/sanitizer evidence pending
-this snapshot. See REVERB.md for exact commands/controls/ownership limits.
+Source `ccaa80c`: final Windows and native WSL Linux probes both report peak
+`1.19209e-07`. Linux Release 1/1 passed (0.78s), core-only Debug ASan/UBSan/leak
+1/1 passed (25.02s), no reported sanitizer errors/suppressions. Debug,
+address+undefined/frame-pointer and plugin-OFF cache flags were confirmed intact.
+These are test wall times, not callback deadline/latency measurements. Diff checks
+passed and preserved UI/reference/upstream FFT sources unchanged. Credits index
+deduplicated in documentation-only follow-up; no passing audio suites repeated
+for that cosmetic edit. See REVERB.md for exact commands/ownership limits.
 
 B stays disabled pending bounded whole-graph memory admission/worker adoption/
 retirement and shared product GUI/CLI/state/MIDI integration. No Standalone/UI,
