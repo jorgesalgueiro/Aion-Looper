@@ -11,6 +11,33 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / distributed non-uniform tail and visible credits — 24 November 2026
+
+Internal `NonUniformConvolver` now uses a 128-frame partitioned head for the first
+1024 IR samples and a delayed 1024-frame tail. Tail latency matches the IR offset,
+so the complete kernel remains zero-latency. Past-partition products are spread
+over consumed samples; FFTs run once per completed tail partition. Fixed scratch,
+transactional worker preparation and valid-history resets retain old state on
+OOM/cancel/invalid input. It reuses the already pinned AudioFFT/Ooura sources;
+no dependency or third-party source changes. No product B controls enabled.
+
+Windows Release focused kernels 2/2 passed (1.48s). Expanded shared fixture keeps
+the old uniform checks/tolerances, adds split boundaries, 19 non-uniform OOM
+sites (uniform still nine), cancellation at every allocation with partial old
+tail history, and bounded tail-work counts at 64/128. Independent peak PCM error:
+non-uniform `5.93611e-08`, uniform `6.81991e-08`, both below unchanged `3e-6`.
+Linux/sanitizer validation pending this source snapshot; see REVERB.md commands.
+
+Owner's attribution emphasis is recorded in DEVELOPMENT_WORKFLOW.md. New root
+CREDITS.md names authors/code use/source revisions/licenses/modifications and
+separates inspiration from copied code, linked from README/licensing and included
+by install/package rules. Full original notices remain. No package generated.
+
+NEXT: complete the prepared stereo wet processor (pre-delay/damping/mix/gain),
+then bounded per-loop graph ownership and shared GUI/CLI/state/MIDI integration.
+Whole-graph memory admission, twenty-track deadlines, listening/devices and live
+transition acceptance remain pending. No push/package/production claim.
+
 ### B / convolution kernel and community reuse — 24 November 2026
 
 New internal zero-latency `PartitionedConvolver` reuses unmodified MIT AudioFFT

@@ -1,5 +1,10 @@
 # Licensing and provenance
 
+The human-readable [credits index](../CREDITS.md) names reused code and its
+authors, distinguishes adaptations from research references, and ships with
+installations/packages alongside the full notices. Update it whenever code,
+coefficients, presets, IR material or Faust implementations are reused.
+
 The project owner has selected **AGPL-3.0-only** for project-owned Aion-Looper
 code. See the repository's [LICENSE](../LICENSE) for the GNU Affero General
 Public License version 3. This grant covers code the owner has authority to

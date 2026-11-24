@@ -235,6 +235,9 @@ the shortest steps that reproduce it.
 
 ## Credits and licensing
 
+See [Credits](CREDITS.md) for the people and projects whose code powers
+Aion-Looper, with source revisions, adaptations and license notices.
+
 Aion-Looper continues Jorge Salgueiro's Ascii-Looper, preserving its visual identity
 and using its original behavior as the reference for the native migration.
 

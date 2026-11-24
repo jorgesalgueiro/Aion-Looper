@@ -177,6 +177,68 @@ latency measurements. Normal source hashes match Windows, committed Git blobs
 and the native WSL checkout; explicit `-text` attributes preserve upstream bytes.
 No app/GUI/device/listening/DAW/build/package/push validation is implied.
 
+### Non-uniform long-tail stage — 24 November 2026
+
+`NonUniformConvolver` now composes the verified 128-frame head with a 1024-frame
+tail. The head covers IR samples 0..1023. The remaining coefficients use a
+1024-frame-latency tail kernel: its latency exactly accounts for their IR offset,
+so the total convolution still has **zero algorithmic latency**. No IR trimming,
+renormalization, resampling or control/preset changes. Both parts keep using the
+unmodified, credited HiFi-LoFi AudioFFT / Takuya Ooura backend. No new dependency.
+The two-stage partition concept was studied in HiFi-LoFi FFTConvolver; its engine
+implementation was not copied. See [credits](../CREDITS.md) for the distinction.
+
+Observable acceptance retains the exact same independent direct-FIR/impulse
+oracles and tolerances (`3e-6` ordinary PCM, `1e-13` isolated quiet final tap),
+adds 1023/1024/1025 and 2047/2048/2049 IR boundaries, and exercises both kernels
+from the same contract fixture. All previous uniform checks remain. OOM and
+cancellation now begin with an old multi-partition tail and partial tail input;
+cancellation is injected at every candidate allocation, including after head
+preparation. Successful publication owns the whole candidate, never a new head
+paired with an old tail. Reset invalidates history and clears fixed scratch;
+prepare/destruction still belong exclusively off audio.
+
+The tail's past spectra stay immutable during an input partition. After consuming
+`f` of its 1024 frames, it has multiplied `ceil(validPartitions * f / 1024)` old
+partitions. Only the current partition's product and a forward/inverse FFT occur
+at completion. This distributes multiply work across short callbacks instead of
+performing a full-tail burst. Internal audio-owner `lastTailWork()` counts only
+tail products/transforms; it is not cross-thread telemetry or a CPU measurement.
+An aligned 64/128-frame regression warms 64 dense tail partitions, checks the
+per-call product bound and two transforms exactly once per 1024 frames, and
+requires multiply work on calls between FFT boundaries. The process loop copies
+at most 128 input samples to fixed scratch before overwriting in-place output.
+Rejected calls preserve both history and work diagnostics.
+
+Maximum admitted IR remains 1,920,000 frames; process calls remain bounded to
+4096. At that limit the tail has 1874 partitions (1025 bins each). Four tail
+spectra arrays hold 30,733,600 bytes; four head arrays add 16,512 bytes, plus
+fixed state/FFT scratch, allocator overhead and any retained raw IRs. Stereo and
+old/candidate overlap are additional. Larger partitions reduce processing
+frequency, **not order-of-magnitude memory use**. The future graph pool must
+admit the complete storage footprint. This is not twenty-track CPU/deadline or
+physical latency acceptance; broad profiling remains deferred by owner policy.
+
+B stays disabled until a complete wet path (pre-delay/damping/mix/gain), bounded
+graph preparation/adoption/retirement, and shared GUI/CLI/MIDI/state integration
+pass their own gates. No live swaps, product sound, listening, hardware or release
+claim is made by these component tests.
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_nonuniform_convolution_tests aion_convolution_tests --parallel 4
+ctest --test-dir build/windows-core -C Release -R '^(nonuniform_convolution_contract|convolution_kernel_contract)$' --output-on-failure --no-tests=error
+```
+
+After a coherent local commit and documented WSL snapshot sync:
+
+```sh
+cmake --build build/linux --target aion_nonuniform_convolution_tests aion_convolution_tests --parallel 2
+ctest --test-dir build/linux -R '^(nonuniform_convolution_contract|convolution_kernel_contract)$' --output-on-failure --no-tests=error
+cmake -S . -B build/drive-sanitized
+cmake --build build/drive-sanitized --target aion_nonuniform_convolution_tests aion_convolution_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(nonuniform_convolution_contract|convolution_kernel_contract)$' --output-on-failure --no-tests=error
+```
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

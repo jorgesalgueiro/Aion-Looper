@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/PartitionedConvolver.h"
+#include "core/NonUniformConvolver.h"
 #include "core/ReverbImpulse.h"
 #include <algorithm>
 #include <array>
@@ -15,6 +16,7 @@ bool watching = false;
 unsigned heap = 0;
 int failAfter = -1;
 std::atomic<bool>* cancelOnAllocation = nullptr;
+int cancelAfter = -1;
 double peakError = 0;
 void check(bool ok, const char* why) {
     if (!ok) { std::cerr << why << '\n'; std::exit(1); }
@@ -29,7 +31,7 @@ void* operator new(std::size_t n) {
     if (failAfter == 0) throw std::bad_alloc();
     if (failAfter > 0) --failAfter;
     if (auto* p = std::malloc(n ? n : 1)) {
-        if (cancelOnAllocation) cancelOnAllocation->store(true);
+        if (cancelOnAllocation && (cancelAfter < 0 || cancelAfter-- == 0)) cancelOnAllocation->store(true);
         return p;
     }
     throw std::bad_alloc();
@@ -39,7 +41,11 @@ void operator delete(void* p) noexcept { if (watching && p) ++heap; std::free(p)
 void operator delete[](void* p) noexcept { ::operator delete(p); }
 void operator delete(void* p, std::size_t) noexcept { ::operator delete(p); }
 void operator delete[](void* p, std::size_t) noexcept { ::operator delete(p); }
-using aion::PartitionedConvolver;
+#if AION_TEST_NON_UNIFORM
+using Convolver = aion::NonUniformConvolver;
+#else
+using Convolver = aion::PartitionedConvolver;
+#endif
 
 static std::vector<double> direct(const std::vector<float>& in, const std::vector<float>& ir) {
     std::vector<double> out(in.size());
@@ -59,7 +65,7 @@ static void compare(std::span<const float> actual, std::span<const double> expec
         }
     }
 }
-static void render(PartitionedConvolver& conv, std::span<const float> in,
+static void render(Convolver& conv, std::span<const float> in,
                    std::span<float> out, unsigned block) {
     std::size_t offset = 0, call = 0;
     constexpr std::array<unsigned, 8> sizes{1, 63, 128, 3, 257, 64, 0, 511};
@@ -71,17 +77,17 @@ static void render(PartitionedConvolver& conv, std::span<const float> in,
     }
 }
 int main() {
-    check(PartitionedConvolver::latencyFrames() == 0, "zero declared algorithmic latency");
+    check(Convolver::latencyFrames() == 0, "zero declared algorithmic latency");
     // Independent time-domain oracle, partition edges, aliasing, empty calls,
     // irregular host boundaries and ring wraps, with no hidden gain/trim.
-    for (unsigned length : {1u, 2u, 127u, 128u, 129u, 255u, 256u, 257u, 1025u}) {
+    for (unsigned length : {1u, 2u, 127u, 128u, 129u, 255u, 256u, 257u, 1023u, 1024u, 1025u, 2047u, 2048u, 2049u}) {
         std::vector<float> ir(length), in(4099), out(in.size());
         for (unsigned i = 0; i < length; ++i) ir[i] = static_cast<float>(.03 * std::cos(i * .71));
         ir.back() = 1.e-8f; // retain quiet late coefficients
         for (unsigned i = 0; i < 1703; ++i) in[i] = static_cast<float>(.6 * std::sin(i * .17));
         const auto expected = direct(in, ir);
         for (unsigned block : {1u, 64u, 128u, 257u, 4096u, 0u}) {
-            PartitionedConvolver conv;
+            Convolver conv;
             check(conv.prepare(ir), "prepare direct oracle");
             render(conv, in, out, block); compare(out, expected);
             { Guard guard; conv.reset(); conv.reset(); }
@@ -94,7 +100,7 @@ int main() {
     for (unsigned block : {64u, 128u}) {
         std::vector<float> ir(1025), in(2304), out(in.size());
         ir.back() = 1.e-8f; in[0] = 1;
-        PartitionedConvolver conv; check(conv.prepare(ir), "quiet tail prepare");
+        Convolver conv; check(conv.prepare(ir), "quiet tail prepare");
         render(conv, in, out, block);
         for (std::size_t i = 0; i < out.size(); ++i)
             check(std::abs(out[i] - (i == 1024 ? 1.e-8f : 0.f)) < 1.e-13f, "quiet final IR tap is never trimmed");
@@ -112,7 +118,7 @@ int main() {
         const std::vector<float> leftIr{.2f, -.1f, .3f}, rightIr{-.4f, .2f};
         std::vector<float> left(2048), right(2048), l(2048), r(2048);
         left[0] = 1; right[7] = -.5f;
-        PartitionedConvolver a, b;
+        Convolver a, b;
         check(a.prepare(leftIr) && b.prepare(rightIr), "stereo prepare");
         render(a, left, l, block); render(b, right, r, block);
         compare(l, direct(left, leftIr)); compare(r, direct(right, rightIr));
@@ -128,7 +134,7 @@ int main() {
         aion::ReverbImpulse ir;
         check(ir.prepare(rate, settings, 42), "generated IR");
         for (unsigned c = 0; c < 2; ++c) for (unsigned block : {64u, 128u}) {
-            PartitionedConvolver conv;
+            Convolver conv;
             const auto coefficients = ir.channel(c);
             check(conv.prepare(coefficients), "generated IR kernel");
             std::vector<float> in(coefficients.size() + 512), out(in.size());
@@ -152,17 +158,17 @@ int main() {
         const auto second = ir.size() + 193;
         in[0] = 1; in[second] = -.7f;
         for (std::size_t i = 0; i < ir.size(); ++i) { expected[i] += ir[i]; expected[second + i] -= static_cast<double>(.7f) * ir[i]; }
-        PartitionedConvolver conv; check(conv.prepare(ir), "long kernel");
+        Convolver conv; check(conv.prepare(ir), "long kernel");
         render(conv, in, out, 64); compare(out, expected);
     }
     // Every allocation failure must retain exact running history, including
     // partial input. Candidate cleanup stays off audio and must survive ASan.
     unsigned allocationFailures = 0;
-    const std::vector<float> ir(513, .001f), replacement(1025, .002f);
+    const std::vector<float> ir(3073, .001f), replacement(8193, .002f);
     for (int failure = 0; failure < 32; ++failure) {
-        PartitionedConvolver a, b;
+        Convolver a, b;
         check(a.prepare(ir) && b.prepare(ir), "OOM baseline");
-        std::array<float, 63> prefix{}; prefix[0] = 1;
+        std::array<float, 1535> prefix{}; prefix[0] = 1;
         auto other = prefix;
         { Guard guard; check(a.process(prefix, prefix) && b.process(other, other), "OOM history prefix"); }
         failAfter = failure; const bool accepted = a.prepare(replacement); failAfter = -1;
@@ -173,8 +179,24 @@ int main() {
         check(x == y, "OOM preserves complete running convolution state");
     }
     check(allocationFailures >= 8 && allocationFailures < 32, "all candidate allocation sites exercised");
+    // Cancellation injected at every candidate allocation, including after a
+    // fully prepared head. Failed outer publication must preserve tail history.
+    for (unsigned site = 0; site < allocationFailures; ++site) {
+        Convolver a, b;
+        check(a.prepare(ir) && b.prepare(ir), "staged cancellation baseline");
+        std::array<float, 1075> prefix{}; prefix[0] = .5f;
+        auto other = prefix;
+        { Guard guard; check(a.process(prefix, prefix) && b.process(other, other), "staged cancellation partial tail"); }
+        std::atomic<bool> flag{false}; cancelAfter = static_cast<int>(site); cancelOnAllocation = &flag;
+        const bool accepted = a.prepare(replacement, &flag);
+        cancelOnAllocation = nullptr; cancelAfter = -1;
+        check(!accepted && flag.load(), "cancellation at every allocation rejects outer publication");
+        std::array<float, 3072> x{}, y{};
+        { Guard guard; check(a.process(x, x) && b.process(y, y), "staged cancellation resume"); }
+        check(x == y && a.impulseFrames() == ir.size(), "staged cancellation preserves head/tail running state");
+    }
     {
-        PartitionedConvolver a, b;
+        Convolver a, b;
         check(a.prepare(ir) && b.prepare(ir), "cancel baseline");
         std::array<float, 11> prefix{}; prefix[0] = 1;
         auto other = prefix;
@@ -184,14 +206,14 @@ int main() {
         flag.store(false); cancelOnAllocation = &flag;
         const auto accepted = a.prepare(replacement, &flag); cancelOnAllocation = nullptr;
         check(!accepted, "allocation-time cancellation rejects candidate");
-        std::vector<float> invalid{NAN}, huge(PartitionedConvolver::maximumImpulseFrames + 1);
+        std::vector<float> invalid{NAN}, huge(Convolver::maximumImpulseFrames + 1);
         check(!a.prepare(invalid) && !a.prepare(huge) && !a.prepare({}), "invalid IRs rejected");
         std::array<float, 2048> x{}, y{};
         { Guard guard; check(a.process(x, x) && b.process(y, y), "cancel continue history"); }
         check(x == y && a.impulseFrames() == ir.size(), "cancellation/validation preserve running state");
     }
     {
-        PartitionedConvolver conv;
+        Convolver conv;
         std::array<float, 2> in{.1f, .2f}, out{4, 5};
         { Guard guard; conv.reset(); check(!conv.process(in, out) && out[0] == 4, "unprepared reject"); }
         check(conv.prepare(std::array<float, 1>{1}), "identity IR");
@@ -219,13 +241,38 @@ int main() {
     // Maximum permitted preparation/reset without scanning two million history
     // samples on reset. This is a bound test, not a long-tail CPU benchmark.
     {
-        std::vector<float> maxIr(PartitionedConvolver::maximumImpulseFrames); maxIr.back() = .25f;
-        PartitionedConvolver conv; check(conv.prepare(maxIr), "maximum IR preparation");
+        std::vector<float> maxIr(Convolver::maximumImpulseFrames); maxIr.back() = .25f;
+        Convolver conv; check(conv.prepare(maxIr), "maximum IR preparation");
         for (unsigned i = 0; i < 1000; ++i) { Guard guard; conv.reset(); }
         std::array<float, 64> in{}, out{}; in[0] = 1;
         { Guard guard; check(conv.process(in, out), "maximum IR first callback"); }
         for (auto v : out) check(v == 0, "maximum delayed IR has no early output");
     }
+#if AION_TEST_NON_UNIFORM
+    // Counts verify bounded work distribution, not CPU/driver latency. With 64
+    // dense tail partitions, each aligned 64-frame call schedules <=4 old
+    // partition products, plus the current product at each 1024-frame boundary.
+    for (unsigned block : {64u, 128u}) {
+        std::vector<float> workIr(1024 + 64 * 1024, .001f);
+        Convolver conv; check(conv.prepare(workIr), "work-distribution graph");
+        std::array<float, 128> in{}, out{}; in[0] = 1;
+        bool observedDistributedWork = false;
+        for (unsigned frame = 0; frame < 70 * 1024; frame += block) {
+            { Guard guard; check(conv.process(std::span<const float>(in).first(block), std::span<float>(out).first(block)), "work distribution process"); }
+            in.fill(0);
+            const auto work = conv.lastTailWork();
+            check(work.partitionProducts <= (63 * block + 1023) / 1024 + 1, "no full-tail multiply burst");
+            check(work.transforms == ((frame + block) % 1024 == 0 ? 2u : 0u), "tail FFT runs once per complete partition");
+            if (frame > 64 * 1024 && work.partitionProducts > 0 && work.transforms == 0) observedDistributedWork = true;
+        }
+        check(observedDistributedWork, "tail products spread between transform boundaries");
+        const auto before = conv.lastTailWork();
+        { Guard guard; check(!conv.process(in, std::span<float>(out).first(1)), "bad callback rejected before scheduling"); }
+        check(conv.lastTailWork().partitionProducts == before.partitionProducts && conv.lastTailWork().transforms == before.transforms, "rejection preserves scheduling diagnostic");
+        { Guard guard; conv.reset(); }
+        check(conv.lastTailWork().partitionProducts == 0 && conv.lastTailWork().transforms == 0, "reset clears work diagnostic");
+    }
+#endif
     std::cout << "Convolution kernel passed: direct FIR, stereo, 8 rates, 64/128/variable/in-place, reset, cancellation, "
               << allocationFailures << " OOM sites; peak PCM error=" << peakError << '\n';
 }

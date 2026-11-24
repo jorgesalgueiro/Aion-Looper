@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// FFT arithmetic: HiFi-LoFi AudioFFT / Takuya Ooura. Pinned sources, MIT license
+// and Ooura attribution: third_party/audiofft/README.md. Aion owns this history
+// and transactional preparation layer; no upstream convolver source is copied.
 #include "PartitionedConvolver.h"
 #include "AudioFFT.h"
 #include <algorithm>

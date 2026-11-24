@@ -1,5 +1,12 @@
 # Development workflow
 
+Owner emphasis, 24 November 2026: give clear credit to every reused code source.
+Maintain `CREDITS.md`, original copyright headers, pinned source/provenance and
+full license notices with each imported/adapted component, coefficient table,
+preset, IR asset or Faust implementation. Record modifications and distinguish
+copied code from research/inspiration. Carry credits/notices into distributions;
+do not replace upstream attribution with Aion's SPDX license.
+
 Owner clarification, 23 November 2026: D / Delay should prioritize better native
 sound quality over reproducing Ascii-Looper. Exact browser PCM, rounding and
 internal filter/transition behavior are not Delay completion gates. Preserve its

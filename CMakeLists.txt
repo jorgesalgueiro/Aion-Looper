@@ -46,6 +46,7 @@ target_include_directories(aion_audiofft PUBLIC third_party/audiofft)
 # Pinned portable Ooura path only: no FFTW/Accelerate runtime or planner locks.
 target_compile_definitions(aion_audiofft PRIVATE AUDIOFFT_OOURA)
 target_sources(aion_core PRIVATE source/core/PartitionedConvolver.cpp)
+target_sources(aion_core PRIVATE source/core/NonUniformConvolver.cpp)
 target_link_libraries(aion_core PRIVATE aion_audiofft)
 target_sources(aion_core PRIVATE source/core/LoopBankDrive.cpp)
 target_sources(aion_core PRIVATE source/core/LoopBankDelay.cpp)
@@ -81,6 +82,11 @@ else()
     target_compile_options(aion_core PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 if(BUILD_TESTING)
+    add_executable(aion_nonuniform_convolution_tests tests/ConvolutionTests.cpp)
+    target_compile_definitions(aion_nonuniform_convolution_tests PRIVATE AION_TEST_NON_UNIFORM=1)
+    target_link_libraries(aion_nonuniform_convolution_tests PRIVATE aion_core)
+    add_test(NAME nonuniform_convolution_contract COMMAND aion_nonuniform_convolution_tests)
+    set_tests_properties(nonuniform_convolution_contract PROPERTIES TIMEOUT 60)
     add_executable(aion_convolution_tests tests/ConvolutionTests.cpp)
     target_link_libraries(aion_convolution_tests PRIVATE aion_core)
     add_test(NAME convolution_kernel_contract COMMAND aion_convolution_tests)
@@ -734,7 +740,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Required for a WebKit view in plugin hosts, not just standalone apps.
     juce_link_with_embedded_linux_subprocess(AionLooper)
 endif()
-install(FILES README.md docs/ARCHITECTURE.md docs/MIGRATION_BLUEPRINT.md docs/BUILDING.md docs/PARITY.md
+install(FILES README.md CREDITS.md docs/ARCHITECTURE.md docs/MIGRATION_BLUEPRINT.md docs/BUILDING.md docs/PARITY.md
     docs/LICENSING.md docs/VALIDATION.md docs/SDKS.md docs/REFERENCE_AUDIT.md docs/COMPRESSOR_MIGRATION.md DESTINATION share/doc/Aion-Looper)
 # Primary source notices accompany local preview packages; the full release inventory
 # remains a separate gate documented in LICENSING.md.
