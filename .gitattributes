@@ -1,3 +1,7 @@
 * text=auto eol=lf
 # Preserve original assets byte-for-byte, including their existing whitespace.
 resources/ui/** -text
+# Preserve pinned upstream bytes and their recorded SHA-256 across platforms.
+third_party/audiofft/AudioFFT.cpp -text
+third_party/audiofft/AudioFFT.h -text
+third_party/audiofft/COPYING.txt -text
