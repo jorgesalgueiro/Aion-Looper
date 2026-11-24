@@ -11,6 +11,28 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / reverb offline preparation foundation — 24 November 2026
+
+Started the next loop effect. New native settings retain six original controls,
+eight room mappings and 17 room-first presets. The unchanged original handlers
+match 93 settings/routing cases against the independent reference. Offline IR
+preparation provides deterministic stereo noise, a fully responsive Decay range,
+smooth zero endpoints, weighted DC removal and unit channel energy. IR-key reuse
+avoids new/free for unchanged shape or live-only controls. Replacement validation,
+either-channel OOM and cancellation retain the complete old PCM/metadata.
+
+This stage is internal: B stays disabled, with no new product GUI/CLI/MIDI/state
+or callback processing. The test catalogue is not a Standalone command. Maximum
+raw IR storage is bounded to 15,360,000 bytes (384kHz/5s), excluding future FFT/
+owner storage and old+candidate overlap. Cancellation checks every 1024 samples
+do not replace future generation/adoption fences. No dependency/version change.
+
+Windows initial tests passed; final strengthened Windows/Linux/sanitizer checks
+are pending. Read [REVERB.md](REVERB.md) for the exact contract, commands, backend
+research, scope and next step. NEXT: audited convolution kernel with independent
+PCM/latency/reset/RT tests, then bounded per-loop ownership and shared product
+GUI/CLI/persistence/MIDI integration. No placeholder B controls or new package.
+
 ### Requested Windows Standalone alpha — 23 November 2026
 
 Owner requested commit/push and an alpha package. All preceding local work was
