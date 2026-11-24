@@ -29,7 +29,14 @@ stereo isolation, 64/128/variable/in-place blocks, long tail/ring wrap and reset
 The first extreme-input fixture demanded exact float FFT zeros next to a 1e6
 impulse; it failed, then was replaced by bit-exact manually sanitised input plus
 exact all-nonfinite silence/finite-output checks. No DSP or FIR tolerance changed.
-Linux and sanitizer validation pending this source snapshot; see REVERB.md.
+Native WSL Linux Release 3/3 passed (1.09s); core-only Debug ASan/UBSan/leak
+3/3 passed (14.72s), with no reported errors/suppressions. Review added an
+isolated `1e-8` tail checked within `1e-13`, silent IR and successful replacement
+checks. Final expanded kernel at `ca61094` passed Windows 1/1 (0.56s), Linux 1/1
+(0.52s), sanitizer 1/1 (13.67s). Windows/Linux probe peaks match. Unchanged
+preparation/settings suites were not repeated for the test-only expansion.
+Pinned AudioFFT bytes/hashes also match the native WSL checkout; Git attributes
+explicitly preserve them. See REVERB.md for exact commands and acceptance limits.
 
 B remains disabled: no product controls, GUI/CLI/MIDI/state/routing change. This
 uniform primitive is not twenty-track CPU acceptance; NEXT use a non-uniform tail

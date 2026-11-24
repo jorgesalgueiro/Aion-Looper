@@ -164,6 +164,19 @@ fed manually sanitised PCM and separately requires all-nonfinite input to emit
 exact silence and extreme output to remain finite. No DSP or ordinary-audio
 `3e-6` direct-FIR tolerance was changed.
 
+Executed results: Windows Release 3/3 (0.89s), native WSL Linux Release 3/3
+(1.09s), core-only Debug ASan/UBSan/leak 3/3 (14.72s), no reported sanitizer
+errors or suppressions. The final expanded quiet-tail/replacement fixture at
+`ca61094` passed Windows 1/1 (0.56s), Linux 1/1 (0.52s), sanitizer 1/1 (13.67s).
+The unchanged preparation/settings tests were not rerun for that test-only
+expansion. Both Release probes report nine OOM sites and peak ordinary PCM
+error `5.61065e-08`. Sanitizer cache flags remain Debug,
+`-fsanitize=address,undefined -fno-omit-frame-pointer`, matching linker flags,
+plugin OFF. These timings are test wall times, not callback deadline or physical
+latency measurements. Normal source hashes match Windows, committed Git blobs
+and the native WSL checkout; explicit `-text` attributes preserve upstream bytes.
+No app/GUI/device/listening/DAW/build/package/push validation is implied.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL
