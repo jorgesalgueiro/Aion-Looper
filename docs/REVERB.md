@@ -77,21 +77,34 @@ shared GUI/CLI/MIDI access. Current presets, IDs, logo and other effects remain.
 
 ### Verification
 
-Windows Release initial two checks passed (0.84s); cache/whole-PCM rollback
-follow-up passed 2/2 (0.43s). The fixture covers all controls/presets/rooms,
+Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL
+Linux Release 2/2 passed (0.57s), core-only Debug ASan/UBSan/leak 2/2 passed
+(1.59s), no reported sanitizer errors or suppressions. Initial Windows checks
+(0.84s) and cache/rollback follow-up (0.43s) also passed. The fixture covers all controls/presets/rooms,
 precision/validation, eight rates, same-seed PCM, unit energy, DC rejection,
 zero edges, stereo correlation, monotonic Decay distribution, max rate/duration,
 both allocation failures and cancellation before/during allocation. 64/128 cases
 are immutable coefficient reads, **not audio callbacks or convolution proof**.
-Linux/sanitizer and final strengthened test results are pending.
+The first Makefile sanitizer build could not find the new target; regenerating
+that existing cache fixed the invocation before its tests ran. Flags were
+confirmed unchanged: Debug, plugin builds OFF, address/undefined instrumentation
+and frame pointers. This is not ThreadSanitizer or a sanitized JUCE DSP run.
 
 ```powershell
 cmake --build build/windows-core --config Release --target aion_reverb_preparation_tests --parallel 4
 ctest --test-dir build/windows-core -C Release -R '^(reverb_preparation_contract|original_reverb_settings_contract)$' --output-on-failure --no-tests=error
 ```
 
-After committing/syncing via SetupWslWorkspace.sh, use the same target/regex in
-native WSL `build/linux`, and core-only Debug `build/drive-sanitized` with
-`ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1`. No actual UI/device,
+After committing/syncing via SetupWslWorkspace.sh, run from the native WSL root:
+
+```sh
+cmake --build build/linux --target aion_reverb_preparation_tests --parallel 2
+ctest --test-dir build/linux -R '^(reverb_preparation_contract|original_reverb_settings_contract)$' --output-on-failure --no-tests=error
+cmake -S . -B build/drive-sanitized # preserve the existing core-only sanitizer cache
+cmake --build build/drive-sanitized --target aion_reverb_preparation_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(reverb_preparation_contract|original_reverb_settings_contract)$' --output-on-failure --no-tests=error
+```
+
+No actual UI/device,
 listening, DAW, sustained performance or release claim. Do not package this stage
 as a working B feature or rerun unrelated passing suites routinely.

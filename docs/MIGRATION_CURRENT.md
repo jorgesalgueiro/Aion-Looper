@@ -27,8 +27,13 @@ raw IR storage is bounded to 15,360,000 bytes (384kHz/5s), excluding future FFT/
 owner storage and old+candidate overlap. Cancellation checks every 1024 samples
 do not replace future generation/adoption fences. No dependency/version change.
 
-Windows initial tests passed; final strengthened Windows/Linux/sanitizer checks
-are pending. Read [REVERB.md](REVERB.md) for the exact contract, commands, backend
+Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL
+Linux Release 2/2 passed (0.57s), core-only Debug ASan/UBSan/leak 2/2 passed
+(1.59s), no reported sanitizer errors/suppressions. The first Makefile sanitizer
+build needed explicit cache regeneration to discover the new target; original
+Debug/address+undefined/frame-pointer/plugin-OFF settings were preserved and
+checked. These are preparation/property/settings tests, not actual convolution
+or 64/128 callback acceptance. Read [REVERB.md](REVERB.md) for contract, commands, backend
 research, scope and next step. NEXT: audited convolution kernel with independent
 PCM/latency/reset/RT tests, then bounded per-loop ownership and shared product
 GUI/CLI/persistence/MIDI integration. No placeholder B controls or new package.
