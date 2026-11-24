@@ -11,6 +11,28 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / scalar-compatible convolution render seam — 24 November 2026
+
+New direct 128-tap head + prepared delayed 128/1024-frame stages replace repeated
+partial head FFTs in NonUniformConvolver. Zero algorithmic latency; original
+uniform kernel retained. `tick` on kernel/stereo Reverb/ReverbStorage shares the
+bounded process/lifecycle path. Source AudioFFT/Ooura bytes/credits unchanged;
+direct FIR/history is Aion code. No Engine, transport, chain-order, UI or IDs edit.
+
+Retained Windows kernel/processor/pool 3/3 passed (3.91s) after layout change,
+then new streaming test 1/1 passed (0.32s). It requires bit-exact scalar versus
+64/128 kernel/wet/owner PCM at sample-indexed controls, bypass sleep/wake, swap,
+reset and cancelled-result recovery, plus partition-boundary-only FFT counts and
+zero audio new/delete. Existing PCM tolerances and 40/42 OOM-site protections
+remain; new storage formulas retain measured payload admission. Final full
+affected Windows/Linux/sanitizer evidence pending this snapshot. See REVERB.md.
+
+NEXT: actual LoopBank worker/render/lifecycle binding using the tested scalar
+entry points, then coordinated bank/state restore and shared GUI/CLI/MIDI access.
+No naive one-sample partial FFT adapter or hidden buffering latency is needed.
+Keep B disabled, V/legacy data intact and unified engine switch pending Machine
+implementation. No push/package, physical/device, whole-chain CPU or release claim.
+
 ### B / bounded convolution ownership pool — 24 November 2026
 
 Internal `ReverbStorage` adds 20-track/40-slot off-audio IR+stereo DSP preparation

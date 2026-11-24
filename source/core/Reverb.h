@@ -26,6 +26,7 @@ public:
     bool set(const ReverbSettings&) noexcept;
     bool process(std::span<const float> left, std::span<const float> right,
                  std::span<float> outLeft, std::span<float> outRight) noexcept;
+    bool tick(float left, float right, float& outLeft, float& outRight) noexcept;
     // Destructive reset: constant-sized convolution/filter clearing and O(1)
     // predelay invalidation. Ordinary playback restarts must not call reset.
     void reset() noexcept;

@@ -39,6 +39,7 @@ public:
     bool setEnabled(unsigned track, bool enabled) noexcept;
     bool process(unsigned track, std::span<const float> left, std::span<const float> right,
                  std::span<float> outLeft, std::span<float> outRight) noexcept;
+    bool tick(unsigned track, float left, float right, float& outLeft, float& outRight) noexcept;
     View view(unsigned track) const noexcept;
     const Reverb* graph(unsigned track) const noexcept; // audio-only borrow, never mutate/retain across lifecycle calls
     std::size_t reservedBytes() const noexcept; // audio-only conservative reservation, not RSS

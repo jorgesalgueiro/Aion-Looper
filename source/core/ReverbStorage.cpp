@@ -147,6 +147,10 @@ bool ReverbStorage::process(unsigned id, std::span<const float> left, std::span<
 ReverbStorage::View ReverbStorage::view(unsigned id) const noexcept {
     return id < trackCount ? View{active[id] != nullptr, pending[id] != nullptr, failed[id], remaining[id] != 0, installations[id], active[id] ? active[id]->seed : 0} : View{};
 }
+bool ReverbStorage::tick(unsigned id, float left, float right, float& outLeft, float& outRight) noexcept {
+    return process(id, std::span<const float>(&left, 1), std::span<const float>(&right, 1),
+                   std::span<float>(&outLeft, 1), std::span<float>(&outRight, 1));
+}
 const Reverb* ReverbStorage::graph(unsigned id) const noexcept {
     return id < trackCount && active[id] ? &*active[id]->graph : nullptr;
 }

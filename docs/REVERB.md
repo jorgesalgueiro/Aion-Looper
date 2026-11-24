@@ -494,6 +494,63 @@ render seam while preserving sample-accurate events, capture/routing dependencie
 chain order and existing transition state. Do not silently add buffering latency.
 This is an integration architecture prerequisite, not broad deferred CPU tuning.
 
+### Scalar-compatible render seam — 24 November 2026
+
+`NonUniformConvolver` now uses an immediate **128-tap direct FIR** head, a
+128-frame delayed FFT stage for IR samples 128..1023, and the existing 1024-frame
+delayed stage for the remaining IR. Each delayed stage's buffering exactly
+matches its IR offset. Total algorithmic latency remains zero. AudioFFT/Ooura
+sources and notices are unchanged; the direct FIR loop/history is Aion's own
+code. The old uniform `PartitionedConvolver` and its regressions are retained.
+
+This resolves the kernel side of Engine's per-sample `loops.tick` integration
+constraint without changing Engine transport, capture or user chain ordering.
+New bounded `tick` entry points on the non-uniform kernel, stereo `Reverb` and
+`ReverbStorage` share their existing `process` implementation and lifecycle.
+No new GUI/CLI commands, state IDs or available Machine mode are implied.
+
+Acceptance retains all previous direct-FIR/impulse PCM tolerances (`3e-6`, plus
+the isolated `1e-13` quiet-tail check), 40 stereo-preparation and 42 ownership OOM
+sites, cancellation and memory-reservation checks. A separate streaming fixture
+adds bit-exact scalar versus 64/128 processing (kernel also 257), sample-offset
+live edits, bypass sleep/wake, prepared replacement, reset, cancellation/clear,
+new-result recovery and zero C++ new/delete on scalar calls at 8/48kHz.
+
+`lastDirectProducts`, `lastNearWork` and the retained `lastTailWork` are
+audio-owner diagnostics only. They verify <=128 direct products per scalar call,
+bounded distributed spectrum products, **two transforms per completed 128-frame
+near partition and two per 1024-frame far partition**. Partial/scalar calls do
+not recompute FFTs. Short IRs fitting the direct head use no FFT at all. This is
+an operation-scheduling check, not a callback deadline or twenty-track CPU claim.
+
+Reset invalidates the direct history with a saturating validity count and resets
+fixed stage buffers; no IR-sized scan/new/free. Candidate preparation retains
+the old complete state on failure/cancel. Byte reservations now account for the
+actual direct/near/far layout and vector-prefix allowances; the measured-payload
+<= admitted-reservation gate remains unchanged. No allocation coverage was
+removed to accommodate the internal layout change: the long stereo graph still
+has 40 allocation sites and the pool worker has 42 including temporary IRs.
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_reverb_streaming_tests aion_nonuniform_convolution_tests aion_reverb_tests aion_reverb_storage_tests --parallel 4
+ctest --test-dir build/windows-core -C Release -R '^(reverb_streaming_contract|nonuniform_convolution_contract|reverb_storage_contract|reverb_stereo_processor_contract)$' --output-on-failure --no-tests=error
+```
+
+After the documented committed-snapshot WSL sync:
+
+```sh
+cmake --build build/linux --target aion_reverb_streaming_tests aion_nonuniform_convolution_tests aion_reverb_tests aion_reverb_storage_tests --parallel 2
+ctest --test-dir build/linux -R '^(reverb_streaming_contract|nonuniform_convolution_contract|reverb_storage_contract|reverb_stereo_processor_contract)$' --output-on-failure --no-tests=error
+cmake -S . -B build/drive-sanitized
+cmake --build build/drive-sanitized --target aion_reverb_streaming_tests aion_nonuniform_convolution_tests aion_reverb_tests aion_reverb_storage_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(reverb_streaming_contract|nonuniform_convolution_contract|reverb_storage_contract|reverb_stereo_processor_contract)$' --output-on-failure --no-tests=error
+```
+
+Next is actual LoopBank worker/render/destructive-lifecycle binding and coherent
+bank/state restore, then shared product GUI/CLI/MIDI/persistence. The scalar
+seam is tested in components, not yet called by the production Engine. B stays
+disabled; no physical/listening/DAW/Standalone UI or release acceptance is claimed.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

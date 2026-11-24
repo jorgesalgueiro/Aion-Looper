@@ -160,6 +160,10 @@ bool Reverb::process(std::span<const float> left, std::span<const float> right,
     state->process(left, right, outLeft, outRight); return true;
 }
 void Reverb::reset() noexcept { if (state) state->reset(); }
+bool Reverb::tick(float left, float right, float& outLeft, float& outRight) noexcept {
+    return process(std::span<const float>(&left, 1), std::span<const float>(&right, 1),
+                   std::span<float>(&outLeft, 1), std::span<float>(&outRight, 1));
+}
 ReverbSettings Reverb::settings() const noexcept { return state ? state->target : ReverbSettings{}; }
 double Reverb::sampleRate() const noexcept { return state ? state->rate : 0.; }
 std::size_t Reverb::predelayStorageFrames() const noexcept { return state ? state->predelay.size() : 0; }

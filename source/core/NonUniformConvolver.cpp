@@ -12,13 +12,14 @@
 
 namespace aion {
 namespace {
-constexpr auto p = NonUniformConvolver::tailPartitionFrames;
-constexpr auto bins = p + 1;
-using Spectrum = std::array<float, bins>;
+constexpr auto headFrames = NonUniformConvolver::directHeadFrames;
+constexpr auto tailFrames = NonUniformConvolver::tailPartitionFrames;
 bool cancelled(const std::atomic<bool>* flag) noexcept {
     return flag && flag->load(std::memory_order_relaxed);
 }
-struct Tail {
+template<std::size_t p> struct Tail {
+    static constexpr auto bins = p + 1;
+    using Spectrum = std::array<float, bins>;
     audiofft::AudioFFT fft;
     std::vector<Spectrum> hr, hi, xr, xi;
     std::array<float, 2 * p> input{}, result{};
@@ -85,25 +86,45 @@ struct Tail {
         }
     }
 };
+template<std::size_t p> std::size_t tailPreparationBytes(std::size_t frames) noexcept {
+    static_assert(p == 128 || p == 1024);
+    using Stage = Tail<p>;
+    // Pinned Ooura: double transform/twiddles and 2+floor(sqrt(2*p)) ints.
+    // Include implementation-object allowance and all seven vector prefixes.
+    constexpr std::size_t ints = p == 128 ? 18 : 47;
+    constexpr std::size_t fftPayload = 2 * p * 12 + ints * sizeof(int) + 256;
+    return sizeof(Stage) + 4 * ((frames + p - 1) / p) * sizeof(typename Stage::Spectrum) + fftPayload + 7 * 64;
+}
 }
 struct NonUniformConvolver::State {
-    PartitionedConvolver head;
-    std::unique_ptr<Tail> tail;
-    std::array<float, PartitionedConvolver::partitionFrames> scratch{};
-    std::size_t frames = 0;
-    TailWork work{};
+    std::array<float, headFrames> coefficients{}, history{}, scratch{};
+    std::unique_ptr<Tail<headFrames>> near;
+    std::unique_ptr<Tail<tailFrames>> tail;
+    std::size_t frames = 0, directCount = 0, write = 0, valid = 0;
+    TailWork work{}, nearWork{};
+    std::size_t directProducts = 0;
+    float direct(float value) noexcept {
+        history[write] = std::isfinite(value) ? std::clamp(value, -1.e6f, 1.e6f) : 0.f;
+        valid = std::min(valid + 1, directCount);
+        double sum = 0;
+        auto at = write;
+        const auto* taps = coefficients.data(); const auto* samples = history.data();
+        for (std::size_t i = 0; i < valid; ++i) {
+            sum += static_cast<double>(taps[i]) * samples[at];
+            at = at == 0 ? headFrames - 1 : at - 1;
+        }
+        directProducts += valid;
+        if (++write == headFrames) write = 0;
+        return static_cast<float>(sum);
+    }
 };
 NonUniformConvolver::NonUniformConvolver() noexcept = default;
 NonUniformConvolver::~NonUniformConvolver() = default;
 std::size_t NonUniformConvolver::preparationBytes(std::size_t frames) noexcept {
     if (!frames || frames > maximumImpulseFrames) return 0;
-    auto bytes = sizeof(State) + PartitionedConvolver::preparationBytes(std::min(p, frames));
-    if (frames > p) {
-        // Pinned Ooura FFT(2048): double transform/twiddles, 47 integer work
-        // entries, and a conservative implementation-object allowance.
-        constexpr std::size_t fftPayload = 2048 * 12 + 47 * sizeof(int) + 256;
-        bytes += sizeof(Tail) + 4 * ((frames - p + p - 1) / p) * sizeof(Spectrum) + fftPayload + 7 * 64;
-    }
+    auto bytes = sizeof(State);
+    if (frames > headFrames) bytes += tailPreparationBytes<headFrames>(std::min(frames, tailFrames) - headFrames);
+    if (frames > tailFrames) bytes += tailPreparationBytes<tailFrames>(frames - tailFrames);
     return bytes;
 }
 bool NonUniformConvolver::prepare(std::span<const float> ir, const std::atomic<bool>* flag) noexcept {
@@ -114,10 +135,15 @@ bool NonUniformConvolver::prepare(std::span<const float> ir, const std::atomic<b
     }
     try {
         auto next = std::make_unique<State>();
-        if (!next->head.prepare(ir.first(std::min(p, ir.size())), flag)) return false;
-        if (ir.size() > p) {
-            next->tail = std::make_unique<Tail>();
-            if (!next->tail->prepare(ir.subspan(p), flag)) return false;
+        next->directCount = std::min(headFrames, ir.size());
+        std::copy_n(ir.data(), next->directCount, next->coefficients.data());
+        if (ir.size() > headFrames) {
+            next->near = std::make_unique<Tail<headFrames>>();
+            if (!next->near->prepare(ir.subspan(headFrames, std::min(ir.size(), tailFrames) - headFrames), flag)) return false;
+        }
+        if (ir.size() > tailFrames) {
+            next->tail = std::make_unique<Tail<tailFrames>>();
+            if (!next->tail->prepare(ir.subspan(tailFrames), flag)) return false;
         }
         next->frames = ir.size();
         if (cancelled(flag)) return false;
@@ -127,24 +153,37 @@ bool NonUniformConvolver::prepare(std::span<const float> ir, const std::atomic<b
 }
 bool NonUniformConvolver::process(std::span<const float> in, std::span<float> out) noexcept {
     if (!state || in.size() != out.size() || in.size() > maximumBlockFrames) return false;
-    state->work = {};
+    state->work = {}; state->nearWork = {}; state->directProducts = 0;
     for (std::size_t offset = 0; offset < in.size();) {
         const auto n = std::min(state->scratch.size(), in.size() - offset);
         // Preserve caller input before head output in exact in-place mode.
         std::copy_n(in.data() + offset, n, state->scratch.data());
         const auto original = std::span<const float>(state->scratch).first(n);
         const auto destination = out.subspan(offset, n);
-        state->head.process(original, destination);
+        for (std::size_t i = 0; i < n; ++i) destination[i] = state->direct(original[i]);
+        if (state->near) state->near->add(original, destination, state->nearWork);
         if (state->tail) state->tail->add(original, destination, state->work);
         offset += n;
     }
     return true;
 }
+bool NonUniformConvolver::tick(float input, float& output) noexcept {
+    return process(std::span<const float>(&input, 1), std::span<float>(&output, 1));
+}
 void NonUniformConvolver::reset() noexcept {
-    if (state) { state->head.reset(); if (state->tail) state->tail->reset(); state->work = {}; }
+    if (state) {
+        state->write = state->valid = state->directProducts = 0;
+        if (state->near) state->near->reset();
+        if (state->tail) state->tail->reset();
+        state->work = {}; state->nearWork = {};
+    }
 }
 std::size_t NonUniformConvolver::impulseFrames() const noexcept { return state ? state->frames : 0; }
 NonUniformConvolver::TailWork NonUniformConvolver::lastTailWork() const noexcept {
     return state ? state->work : TailWork{};
 }
+NonUniformConvolver::TailWork NonUniformConvolver::lastNearWork() const noexcept {
+    return state ? state->nearWork : TailWork{};
+}
+std::size_t NonUniformConvolver::lastDirectProducts() const noexcept { return state ? state->directProducts : 0; }
 }
