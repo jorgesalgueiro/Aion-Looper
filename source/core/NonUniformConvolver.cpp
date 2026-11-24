@@ -95,6 +95,17 @@ struct NonUniformConvolver::State {
 };
 NonUniformConvolver::NonUniformConvolver() noexcept = default;
 NonUniformConvolver::~NonUniformConvolver() = default;
+std::size_t NonUniformConvolver::preparationBytes(std::size_t frames) noexcept {
+    if (!frames || frames > maximumImpulseFrames) return 0;
+    auto bytes = sizeof(State) + PartitionedConvolver::preparationBytes(std::min(p, frames));
+    if (frames > p) {
+        // Pinned Ooura FFT(2048): double transform/twiddles, 47 integer work
+        // entries, and a conservative implementation-object allowance.
+        constexpr std::size_t fftPayload = 2048 * 12 + 47 * sizeof(int) + 256;
+        bytes += sizeof(Tail) + 4 * ((frames - p + p - 1) / p) * sizeof(Spectrum) + fftPayload + 7 * 64;
+    }
+    return bytes;
+}
 bool NonUniformConvolver::prepare(std::span<const float> ir, const std::atomic<bool>* flag) noexcept {
     if (ir.empty() || ir.size() > maximumImpulseFrames || cancelled(flag)) return false;
     for (std::size_t i = 0; i < ir.size(); ++i) {

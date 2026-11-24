@@ -28,6 +28,7 @@ public:
     void reset() noexcept;
     std::size_t impulseFrames() const noexcept;
     static constexpr unsigned latencyFrames() noexcept { return 0; }
+    static std::size_t preparationBytes(std::size_t impulseFrames) noexcept;
     // Audio-owner diagnostic only, not thread-safe telemetry. Counts tail work
     // during the last accepted call (not head work or a CPU deadline estimate).
     TailWork lastTailWork() const noexcept;

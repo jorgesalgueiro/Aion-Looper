@@ -33,6 +33,10 @@ public:
     void reset() noexcept;
     std::size_t impulseFrames() const noexcept;
     static constexpr unsigned latencyFrames() noexcept { return 0; }
+    // Conservative requested-allocation payload, pinned portable AudioFFT only.
+    // Includes vector alignment slack; excludes general heap/OS bookkeeping
+    // and an independently retained old owner.
+    static std::size_t preparationBytes(std::size_t impulseFrames) noexcept;
 private:
     struct State;
     std::unique_ptr<State> state;

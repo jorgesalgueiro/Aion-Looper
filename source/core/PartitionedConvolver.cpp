@@ -77,6 +77,17 @@ struct PartitionedConvolver::State {
 };
 PartitionedConvolver::PartitionedConvolver() noexcept = default;
 PartitionedConvolver::~PartitionedConvolver() = default;
+std::size_t PartitionedConvolver::preparationBytes(std::size_t frames) noexcept {
+    if (!frames || frames > maximumImpulseFrames) return 0;
+    // Ooura: double transform[256], twiddles[128], int work[2+sqrt(256)].
+    // 256 extra bytes conservatively cover its implementation object. Caller
+    // State already includes the AudioFFT handle. Reaudit on backend changes.
+    constexpr std::size_t fftPayload = 256 * 12 + 18 * sizeof(int) + 256;
+    // MSVC's large-vector allocations add a 39-byte alignment prefix in this
+    // toolchain. Reserve 64 for each of four spectra + three FFT vectors on
+    // both platforms; general heap/OS bookkeeping is still not an RSS estimate.
+    return sizeof(State) + 4 * ((frames + p - 1) / p) * sizeof(Spectrum) + fftPayload + 7 * 64;
+}
 bool PartitionedConvolver::prepare(std::span<const float> ir,
                                     const std::atomic<bool>* flag) noexcept {
     if (ir.empty() || ir.size() > maximumImpulseFrames || cancelled(flag)) return false;

@@ -11,6 +11,33 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / bounded convolution ownership pool — 24 November 2026
+
+Internal `ReverbStorage` adds 20-track/40-slot off-audio IR+stereo DSP preparation
+and reclamation, conservative requested-payload memory admission, 20ms prepared
+crossfades, cancellation/clear/reset and per-control revision replay. It follows
+existing DelayStorage ownership and retains AudioFFT/Ooura credits. No product
+LoopBank/GUI/CLI/MIDI/state binding, Machine mode, IDs or preserved UI changes.
+
+Temporary IRs, both kernels/FFT working storage and pre-delay are reserved before
+enqueue; retired slots retain their reservation until the worker frees them.
+Initial Windows accounting failed by 225 bytes at 8kHz/5s; traced missing MSVC
+large-vector 39-byte alignment prefixes, added 64-byte per-vector slack without
+relaxing the memory gate. Evidence in build/reverb-storage-reservation-negative.txt.
+This is requested payload, not RSS or a global application memory cap.
+
+Windows ownership and stereo processor 2/2 passed (1.68s) before final added
+memory split-boundary cases. Ownership fixture covers all 20 tracks, full fixed
+pool/budget, old/new stereo fades at 64/128, controls during preparation/fades,
+all 42 worker OOM sites, mid-fade reset and real separate-worker cancelled-result
+rejection. Final Windows/Linux/sanitizer evidence pending this source snapshot.
+No callback allocation/free/locks, IR-size reset or worker destruction on audio.
+
+NEXT: bind the pool to the existing LoopBank worker/render/lifecycle paths and
+coherent bank/restore fencing before product parameter/state/GUI/CLI/MIDI access.
+Keep B disabled and V/legacy chains intact. Machine/plate implementation and
+unified engine switch remain pending. No push/package or release claim.
+
 ### Owner direction — unify Reverb controls, 24 November 2026
 
 One future **B / Reverb** effect replaces separate new-workspace B/V buttons.

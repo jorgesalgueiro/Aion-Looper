@@ -32,6 +32,10 @@ public:
     ReverbSettings settings() const noexcept;
     double sampleRate() const noexcept;
     std::size_t predelayStorageFrames() const noexcept;
+    // New prepared stereo state's requested allocation payload; excludes input
+    // IR vectors, independently held old state and general heap/OS bookkeeping.
+    // Standard-library vector alignment slack is included.
+    static std::size_t preparationBytes(double sampleRate, const ReverbSettings&) noexcept;
 private:
     struct State;
     std::unique_ptr<State> state;

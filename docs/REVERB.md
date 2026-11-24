@@ -392,6 +392,91 @@ retirement with cancellation and history lifetime fencing, then shared product
 GUI/CLI/persistence/MIDI and live transition acceptance. These tests are not
 twenty-track CPU/deadline, physical latency, listening or release certification.
 
+### Bounded convolution graph ownership — 24 November 2026
+
+Internal `ReverbStorage` follows Aion's existing `DelayStorage` phase protocol:
+20 track identities, 40 construction-time heap slots, one exclusive audio owner
+and one worker. It does not start a thread or bind to LoopBank/GUI/CLI yet.
+The future Machine engine is not represented as an available mode; legacy B/V
+state and the unified-Reverb plan remain unchanged.
+
+Acceptance: reject requests before mutation when slot/memory capacity is exhausted;
+prepare and destroy only off audio; preserve old PCM on every worker allocation
+failure; reject obsolete queued/preparing/ready results after cancellation/clear;
+crossfade independent prepared stereo outputs at 64/128; retain only the latest
+accepted per-control edits; and recover after exhaustion/reset/rate changes with
+zero audio-owner new/delete. Existing standalone wet-processor tests remain.
+
+- `request` validates/reserves the temporary stereo IR, both complete convolution
+  graphs, FFT plans/working arrays, pre-delay and fixed state before publishing
+  a slot. `serviceWorker` reclaims retired owners then prepares at most one slot.
+  Settings/seed/request identity are immutable during queued/preparing ownership.
+- The default per-pool reservation budget is 256MiB. `preparationBytes` methods
+  account for pinned portable Ooura arrays and implementation-object allowance.
+  All vectors reserve 64 bytes of standard-library alignment slack; MSVC's pinned
+  Release STL adds a 39-byte prefix to large vectors. Temporary raw IRs are also
+  included. The complete reservation stays held until worker reclamation, even
+  after those IR vectors have been released. Fixed pool metadata is additional
+  construction storage. This is a conservative requested-allocation accounting
+  model, **not RSS, general allocator/OS bookkeeping or an application-wide RAM
+  cap**; the other effect pools and future global admission remain separate.
+- The initial measured allocation test failed at 8kHz/5s: 1,789,169 requested
+  bytes versus 1,788,944 reserved. The missing MSVC alignment prefixes were traced
+  and added to the formula; the measured-payload <= reservation gate was retained.
+  Evidence: `build/reverb-storage-reservation-negative.txt`. Reaudit the formula
+  when FFT/vector backends or toolchains change.
+- `poll` acquires ready results only for the exact pending slot, latches controls
+  and uses a constant-sum 20ms fade from dry/old to new. It marks the old owner
+  retired only after its final audio use. A third replacement is rejected while
+  two owners are pinned. Rendering advances fades; routing integration must
+  account for stopped/omitted stages rather than leaving fades unserviced.
+- Audio `setControl` supports existing live indices 0/1/4/5; Duration/Decay still
+  require worker replacement. Each control and enable has its own revision. At
+  adoption only fields edited after that request override its preset, preserving
+  its other settings. The unrendered new processor latches these targets before
+  the adoption fade; ongoing live edits update both pinned owners with their own
+  shape settings and retain each processor's normal smoothing.
+- `cancel`, `clear`, `clearAll` and `reset` never destroy on audio. Cancelled slot
+  results cannot overwrite a newer request. Reset cancels pending work, retires
+  the previous owner and resets the retained current DSP. `prepareStopped` and
+  `releaseStopped`, including destruction, require both owners quiescent.
+- `View` reports current request installation/IR seed and bounded status only.
+  Installation serials are internal to one prepared lifetime, not new parameter
+  or session IDs. The const graph borrow is audio-owner-only and expires on
+  lifecycle mutation. No shared pointer/refcount or large snapshot was added.
+
+Tests measure preparation payload at 8/48/384kHz including 1024/1025-frame split
+boundaries and maximum 5s IRs, exercise independent old/new stereo fade PCM at
+64/128, all 20 simultaneous tracks, 40-slot and byte-budget exhaustion, retirement
+backpressure, before/after-adoption controls, every one of 42 worker allocation
+failures, mid-transition reset and quiescent rate replacement. A real separate
+worker pauses during allocation while the audio owner cancels and queues a new
+identity; the old result must not install. This is not ThreadSanitizer or physical
+audio/driver evidence. The tests instrument C++ new/delete on the audio owner;
+source review checks phase/lifetime rules and absence of locks/I/O.
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_reverb_storage_tests aion_reverb_tests --parallel 4
+ctest --test-dir build/windows-core -C Release -R '^(reverb_storage_contract|reverb_stereo_processor_contract)$' --output-on-failure --no-tests=error
+```
+
+After committing and the documented WSL snapshot sync:
+
+```sh
+cmake --build build/linux --target aion_reverb_storage_tests aion_reverb_tests --parallel 2
+ctest --test-dir build/linux -R '^(reverb_storage_contract|reverb_stereo_processor_contract)$' --output-on-failure --no-tests=error
+cmake -S . -B build/drive-sanitized
+cmake --build build/drive-sanitized --target aion_reverb_storage_tests aion_reverb_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(reverb_storage_contract|reverb_stereo_processor_contract)$' --output-on-failure --no-tests=error
+```
+
+Next: connect this convolution owner to the existing LoopBank worker/render path,
+destructive/prepare/capture lifecycle barriers and coherent bank/state restore,
+then shared GUI/CLI/MIDI/persistence. Loop/clip generation fencing and global
+multi-effect atomic restore are still integration gates. B stays disabled. No
+Machine engine, product switch, listening/device, twenty-track CPU/deadline,
+Standalone UI or release acceptance is claimed by this internal pool.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

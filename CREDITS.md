@@ -21,6 +21,9 @@ order (pre-delay, convolution, wet damping, dry/wet mix, output volume). Its
 native smoothing, crossfades and Q=.5 TPT filter use Aion's existing Delay
 approach and bilinear-transform equations, not copied WebAudio filter code.
 Convolution continues to use the credited AudioFFT/Ooura sources above.
+The convolution ownership pool follows Aion's existing DelayStorage protocol.
+Its new byte reservations cover the pinned FFT working arrays and standard-
+library vector alignment prefixes; no Microsoft STL implementation was copied.
 
 ## Optional components and platform dependencies
 

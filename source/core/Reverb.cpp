@@ -118,6 +118,12 @@ struct Reverb::State {
 };
 Reverb::Reverb() noexcept = default;
 Reverb::~Reverb() = default;
+std::size_t Reverb::preparationBytes(double rate, const ReverbSettings& settings) noexcept {
+    const auto frames = ReverbImpulse::requiredFrames(rate, settings);
+    if (!frames) return 0;
+    return sizeof(State) + 2 * NonUniformConvolver::preparationBytes(frames)
+        + (static_cast<std::size_t>(std::ceil(rate * .25)) + 2) * sizeof(std::array<float, 2>) + 64;
+}
 bool Reverb::prepare(double rate, const ReverbSettings& settings, std::span<const float> leftIr,
                      std::span<const float> rightIr, const std::atomic<bool>* flag) noexcept {
     const auto frames = ReverbImpulse::requiredFrames(rate, settings);
