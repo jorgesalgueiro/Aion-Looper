@@ -32,6 +32,12 @@ Primary sources:
   compatible separation before claiming the combined application is cleared.
   The user's selection above does not authorize relicensing anyone else's work.
 - CLAP extensions are upstream MIT-licensed; retain their notices.
+- The internal convolution kernel reuses unmodified AudioFFT from pinned
+  FFTConvolver commit `f2cdeb04c42141d2caec19ca4f137398b2a76b85` under MIT.
+  Its portable Ooura implementation has an additional author permission and
+  attribution notice. Both are retained and included by install/package rules;
+  see `third_party/audiofft/README.md` and `third_party/notices/AudioFFT-Ooura.txt`.
+  No external reverb presets or measured IR recordings have been copied.
 - The isolated compressor DSP adapts Chromium/Blink's BSD-licensed compressor
   and AudioParam timeline algorithms. The pinned revision, modifications and full
   notices are retained under `third_party/notices`; CMake installation and the

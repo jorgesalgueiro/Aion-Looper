@@ -23,6 +23,8 @@ foreach ($name in @('BUILDING.md','PARITY.md','VALIDATION.md','LICENSING.md','CL
 }
 # Use the same pinned dependency notices as CMake, including bundled ASIO headers.
 $licenses = @{
+    'third_party/audiofft/COPYING.txt' = 'AudioFFT-MIT.txt'
+    'third_party/notices/AudioFFT-Ooura.txt' = 'AudioFFT-Ooura.txt'
     'third_party/notices/WebAudio-Compressor-BSD.txt' = 'WebAudio-Compressor-BSD.txt'
     'third_party/notices/Chromium-BSD.txt' = 'Chromium-BSD.txt'
     'third_party/notices/WebAudio-Resampling-BSD.txt' = 'WebAudio-Resampling-BSD.txt'

@@ -11,6 +11,33 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / convolution kernel and community reuse — 24 November 2026
+
+New internal zero-latency `PartitionedConvolver` reuses unmodified MIT AudioFFT
+from FFTConvolver revision `f2cdeb04c42141d2caec19ca4f137398b2a76b85`, portable
+Ooura path only. Vendored hashes, MIT/Ooura attribution and install/package
+notice rules are retained. No JUCE upgrade or platform runtime dependency.
+AudioFFT source audit found prepared FFT/ifft arithmetic only, with no callback
+allocation/locks/I/O. Aion's history layer adds transactional worker preparation,
+retained old running state on OOM/cancel/invalid IR and fixed-size reset with a
+saturating valid-history count instead of freeing or scanning IR-size history.
+
+Windows Release 3/3 focused convolution/preparation/original-settings tests passed
+(0.89s). Convolution probe reports peak independent PCM error `5.61065e-08`
+under the fixed `3e-6` ordinary-audio tolerance, nine OOM sites, eight rates,
+stereo isolation, 64/128/variable/in-place blocks, long tail/ring wrap and reset.
+The first extreme-input fixture demanded exact float FFT zeros next to a 1e6
+impulse; it failed, then was replaced by bit-exact manually sanitised input plus
+exact all-nonfinite silence/finite-output checks. No DSP or FIR tolerance changed.
+Linux and sanitizer validation pending this source snapshot; see REVERB.md.
+
+B remains disabled: no product controls, GUI/CLI/MIDI/state/routing change. This
+uniform primitive is not twenty-track CPU acceptance; NEXT use a non-uniform tail
+arrangement, then complete wet controls and bounded per-loop graph ownership
+before exposing B. No community presets/IR assets imported: Dragonfly/Signalsmith
+were researched, but their different algorithmic controls require explicit
+mapping/listening/rights checks. Existing 17 presets retained. No package/push.
+
 ### B / reverb offline preparation foundation — 24 November 2026
 
 Started the next loop effect. New native settings retain six original controls,

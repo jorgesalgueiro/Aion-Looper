@@ -58,24 +58,111 @@ future FFT plans, spectra, overlap, transitions and the global 20-track pool nee
 their own reservation/budget before preparation. There is no connected ownership
 queue/pool or callback convolution in this stage.
 
-### Backend research and next step
+### Earlier backend research (preparation checkpoint)
 
 The existing pinned [JUCE convolution API](https://docs.juce.com/master/classjuce_1_1dsp_1_1Convolution.html)
 offers stereo partitioned/non-uniform processing and explicit load/process
 threading requirements. Its `prepare` makes the latest loaded IR ready before
 processing. The [MIT FFTConvolver implementation](https://github.com/HiFi-LoFi/FFTConvolver/tree/non-uniform)
-offers a pure C++ two-stage alternative with an included FFT. No source was
-copied, dependency added, backend selected or pinned version upgraded here.
+offers a pure C++ two-stage alternative with an included FFT. At the earlier
+preparation checkpoint no source was copied or dependency added. The kernel
+slice below now reuses its pinned AudioFFT subset.
 
-Next: audit a backend's actual process/reset/destruction paths, then verify
+That checkpoint's next step was to audit process/reset/destruction and verify
 convolution against independent short direct-FIR and long impulse/tail oracles.
 Require stereo/mono isolation, declared latency, variable blocks including 64/128,
-zero callback allocations/locks, bounded reset and worker-only retirement. Only
-then add per-loop preparation/adoption with explicit OOM/cancellation outcomes,
+zero callback allocations/locks, bounded reset and worker-only retirement.
+Per-loop preparation/adoption still needs explicit OOM/cancellation outcomes,
 live smoothing/crossfades, user-reorderable B routing, versioned settings and
 shared GUI/CLI/MIDI access. Current presets, IDs, logo and other effects remain.
 
-### Verification
+### Convolution kernel slice — 24 November 2026
+
+Acceptance: independent double-precision direct FIR within absolute `3e-6`,
+zero algorithmic latency, unchanged IR gain/quiet tail coefficients, channel
+isolation, 64/128/variable/in-place blocks, complete tail and ring wrap, reset
+without stale history, atomic OOM/cancel/invalid preparation, no callback new/free,
+and no callback locks/I/O or IR-length clearing. B is still disabled pending the
+remaining wet path, preparation ownership and shared GUI/CLI/state integration.
+
+Reused **AudioFFT** from HiFi-LoFi/FFTConvolver, pinned commit
+`f2cdeb04c42141d2caec19ca4f137398b2a76b85`. The three upstream files are unmodified,
+vendored with hashes/MIT text and Ooura's author-published redistribution
+permission. Only portable Ooura is compiled; no new platform runtime, FFTW,
+JUCE dependency or version upgrade. Init builds tables off audio; audited
+fft/ifft paths use preallocated arrays without locks/allocation/I/O. Source
+provenance and audit are in `third_party/audiofft/README.md`.
+
+Why a small Aion history layer: upstream FFTConvolver `reset` deletes spectra,
+and its raw-pointer incremental initialization is not transactional on OOM.
+JUCE's ready-made engine would add JUCE to the deliberately independent core;
+its reset also clears input spectrum history proportional to IR size. The new
+`PartitionedConvolver` reuses FFT mathematics but owns storage transactionally.
+Its uniform 128-frame partitions cache previous-partition products; partial
+current FFTs provide zero latency for short/irregular calls. No normalization
+or near-zero coefficient trimming is applied. A saturating valid-history count
+invalidates old spectra at reset; only fixed 128-frame overlap/256-frame scratch
+is cleared. Preparation/destruction cannot overlap processing. There is no live
+adoption thread/queue in this slice; that still needs generation fencing.
+
+This uniform kernel is an internal correctness primitive, **not a claim of
+acceptable 20-track long-reverb CPU**. Before connecting B, use a non-uniform
+tail arrangement around the verified primitive (or justify another backend).
+At the maximum 1,920,000 frames, four spectrum vectors hold 30,960,000 bytes per
+mono instance, plus fixed scratch/state/FFT storage and allocator overhead.
+Stereo doubles that; original IRs and old/candidate overlap are additional.
+The future pool must reserve the whole graph, not only raw IR bytes.
+
+Process accepts at most 4096 frames, exact in-place or disjoint spans, rejecting
+invalid length/unprepared calls without state/output mutation. Input nonfinite
+values become silence; only excessive finite values beyond +/-1e6 are limited.
+Prepared IR coefficients must be finite and within +/-1e6. Normal audio and the
+unit-energy generated IR are unaffected. There is no rate conversion in this
+primitive: the worker must supply an IR at the engine sample rate.
+
+Community research also considered [Dragonfly](https://github.com/michaelwillis/dragonfly-reverb)
+(GPLv3, Freeverb3-based algorithmic reverbs with room/studio/hall preset banks)
+and [Signalsmith Basics](https://github.com/Signalsmith-Audio/basics/blob/main/include/signalsmith-basics/reverb.h)
+(MIT algorithmic reverb). Neither is an interchangeable convolution backend or
+six-control preset bank. No code/presets from them are imported here. Preserve
+the current 17 settings presets; community preset adaptation or measured IR
+material needs explicit parameter mapping, per-asset rights and listening
+acceptance, rather than relabeling another engine's settings as equivalent.
+
+Focused commands (core-only; no product UI/CLI changes in this slice):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_convolution_tests aion_reverb_preparation_tests --parallel 4
+ctest --test-dir build/windows-core -C Release -R '^(convolution_kernel_contract|reverb_preparation_contract|original_reverb_settings_contract)$' --output-on-failure --no-tests=error
+```
+
+After a coherent local commit and the documented WSL snapshot sync:
+
+```sh
+cmake --build build/linux --target aion_convolution_tests aion_reverb_preparation_tests --parallel 2
+ctest --test-dir build/linux -R '^(convolution_kernel_contract|reverb_preparation_contract|original_reverb_settings_contract)$' --output-on-failure --no-tests=error
+cmake -S . -B build/drive-sanitized
+cmake --build build/drive-sanitized --target aion_convolution_tests aion_reverb_preparation_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(convolution_kernel_contract|reverb_preparation_contract|original_reverb_settings_contract)$' --output-on-failure --no-tests=error
+```
+
+The generated-IR tests compare actual convolution output, unlike the earlier
+immutable-reads-only checks. They cover eight rates, both channels at 64/128,
+an independent short direct FIR oracle, a 65,537-frame dense tail, ring wrap,
+all allocation failure sites, early/allocation-triggered cancellation, repeated
+maximum-size resets, numerical input protection and invalid calls. Lock freedom
+is source-audited, not proved by the new/delete instrumentation. Live worker
+cancellation races, graph transitions, twenty-track deadlines, product sound,
+listening, device and release validation remain separate pending work.
+
+The initial extreme-input fixture incorrectly demanded exact zero/identity
+samples next to a 1e6 impulse after float FFT roundoff. It failed on Windows.
+The sanitisation regression now compares bit-exactly against the same kernel
+fed manually sanitised PCM and separately requires all-nonfinite input to emit
+exact silence and extreme output to remain finite. No DSP or ordinary-audio
+`3e-6` direct-FIR tolerance was changed.
+
+### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL
 Linux Release 2/2 passed (0.57s), core-only Debug ASan/UBSan/leak 2/2 passed

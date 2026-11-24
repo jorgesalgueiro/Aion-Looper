@@ -1,0 +1,22 @@
+AudioFFT portable FFT provenance
+
+Unmodified AudioFFT.h / AudioFFT.cpp and COPYING.txt from HiFi-LoFi/FFTConvolver:
+https://github.com/HiFi-LoFi/FFTConvolver/tree/f2cdeb04c42141d2caec19ca4f137398b2a76b85
+Revision f2cdeb04c42141d2caec19ca4f137398b2a76b85 (non-uniform branch).
+HiFi-LoFi copyright 2017, MIT license retained in COPYING.txt and source headers.
+Only the portable Ooura implementation is built; no FFTW or Accelerate dependency.
+FFTConvolver / TwoStageFFTConvolver sources are NOT included or built.
+
+AudioFFT's embedded radix-4 FFT is based on Takuya Ooura's FFT package.
+Current upstream permission, retrieved 24 November 2026:
+https://www.kurims.kyoto-u.ac.jp/~ooura/fft.html
+
+Copyright Takuya OOURA, 1996-2001
+
+You may use, copy, modify and distribute this code for any purpose (include
+commercial use) and without fee. Please refer to this package when you modify
+this code.
+
+The earlier readme bundled in fft.zip has narrower distribution wording. The
+current author-published permission above expressly includes modification and
+distribution. Retain both attribution and the AudioFFT MIT license in binaries.
