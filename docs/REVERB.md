@@ -551,6 +551,19 @@ bank/state restore, then shared product GUI/CLI/MIDI/persistence. The scalar
 seam is tested in components, not yet called by the production Engine. B stays
 disabled; no physical/listening/DAW/Standalone UI or release acceptance is claimed.
 
+Executed source `fb69c82`: Windows Release 4/4 (4.14s), native WSL Linux Release
+4/4 (2.99s), core-only Debug ASan/UBSan/leak 4/4 (57.30s), no reported sanitizer
+errors or suppressions. All four tests retain their 60s per-test timeout. Existing
+Debug/address+undefined/frame-pointer/plugin-OFF cache flags confirmed intact.
+Windows diagnostic probes report non-uniform direct-FIR peak `6.35922e-08` and
+stereo wet peak `5.96046e-08`; retained limits are unchanged. The new streaming
+contract requires bit-exact scalar/block equality within each build, not across
+different libm implementations/platforms. C++ audio-owner new/delete, 19 mono,
+40 stereo and 42 pool-worker OOM coverage, cancellation and payload reservation
+checks all pass. These are test wall times/operation counts, not a CPU speedup,
+physical latency or twenty-track deadline measurement. No preserved UI/reference/
+logo or vendored FFT changes, no product engine binding, package or push.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

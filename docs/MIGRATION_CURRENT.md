@@ -24,8 +24,14 @@ then new streaming test 1/1 passed (0.32s). It requires bit-exact scalar versus
 64/128 kernel/wet/owner PCM at sample-indexed controls, bypass sleep/wake, swap,
 reset and cancelled-result recovery, plus partition-boundary-only FFT counts and
 zero audio new/delete. Existing PCM tolerances and 40/42 OOM-site protections
-remain; new storage formulas retain measured payload admission. Final full
-affected Windows/Linux/sanitizer evidence pending this snapshot. See REVERB.md.
+remain; new storage formulas retain measured payload admission. Source `fb69c82`:
+final affected Windows Release 4/4 passed (4.14s), native WSL Linux Release 4/4
+passed (2.99s), core-only Debug ASan/UBSan/leak 4/4 passed (57.30s), no reported
+errors/suppressions. Existing Debug/address+undefined/frame-pointer/plugin-OFF
+cache settings confirmed intact. Test wall times are not runtime/latency gains.
+Bit-exact checks are scalar versus block on each tested build, not a claim of
+cross-platform libm bit identity. UI/logo/reference/upstream FFT bytes unchanged.
+See REVERB.md for commands, coverage and remaining product gates.
 
 NEXT: actual LoopBank worker/render/lifecycle binding using the tested scalar
 entry points, then coordinated bank/state restore and shared GUI/CLI/MIDI access.
