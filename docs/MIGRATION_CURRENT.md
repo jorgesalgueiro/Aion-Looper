@@ -26,15 +26,23 @@ large-vector 39-byte alignment prefixes, added 64-byte per-vector slack without
 relaxing the memory gate. Evidence in build/reverb-storage-reservation-negative.txt.
 This is requested payload, not RSS or a global application memory cap.
 
-Windows ownership and stereo processor 2/2 passed (1.68s) before final added
-memory split-boundary cases. Ownership fixture covers all 20 tracks, full fixed
+Windows ownership and stereo processor 2/2 passed (1.68s); final added memory
+split-boundary ownership 1/1 passed (0.54s). Ownership fixture covers all 20 tracks, full fixed
 pool/budget, old/new stereo fades at 64/128, controls during preparation/fades,
 all 42 worker OOM sites, mid-fade reset and real separate-worker cancelled-result
-rejection. Final Windows/Linux/sanitizer evidence pending this source snapshot.
+rejection. Source `f4f8d97`: native WSL Linux Release 2/2 passed (1.26s), core-only
+Debug ASan/UBSan/leak 2/2 passed (30.49s), no reported errors/suppressions.
+Debug/address+undefined/frame-pointer/plugin-OFF cache flags confirmed intact.
 No callback allocation/free/locks, IR-size reset or worker destruction on audio.
+These are focused component tests/source audits, not TSan/CPU/physical latency.
 
 NEXT: bind the pool to the existing LoopBank worker/render/lifecycle paths and
 coherent bank/restore fencing before product parameter/state/GUI/CLI/MIDI access.
+First resolve the render seam: Engine.cpp's per-sample `loops.tick` cannot naively
+call this zero-latency FFT block processor with one sample (repeated head FFTs).
+Use a scalar-compatible prepared streaming kernel or a bounded block-stage design
+that preserves sample offsets, capture/routing feedback and arbitrary chain order,
+without adding hidden latency or broadly rewriting accepted transport logic.
 Keep B disabled and V/legacy chains intact. Machine/plate implementation and
 unified engine switch remain pending. No push/package or release claim.
 

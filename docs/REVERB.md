@@ -477,6 +477,23 @@ multi-effect atomic restore are still integration gates. B stays disabled. No
 Machine engine, product switch, listening/device, twenty-track CPU/deadline,
 Standalone UI or release acceptance is claimed by this internal pool.
 
+Source `f4f8d97` verification: Windows ownership + stereo processor 2/2 (1.68s),
+then final added memory-boundary ownership 1/1 (0.54s); native WSL Linux Release
+2/2 (1.26s); core-only Debug ASan/UBSan/leak 2/2 (30.49s), no reported errors or
+suppression. Debug/address+undefined/frame-pointer/plugin-OFF flags confirmed.
+Preserved UI/logo/reference and vendored FFT bytes unchanged. These are test wall
+times, not a callback-deadline benchmark. No app/UI/host/hardware run, package or
+push. The memory negative and correction above remain recorded; no numerical or
+reservation assertion was weakened.
+
+Integration seam found in existing source: `Engine.cpp` calls `loops.tick` once
+per sample; `LoopBank::tick` sequences the user-reorderable per-track chain. Do
+not implement B by invoking this FFT processor on one sample repeatedly. Either
+prepare a scalar-compatible streaming head/tail path or add a bounded chunked
+render seam while preserving sample-accurate events, capture/routing dependencies,
+chain order and existing transition state. Do not silently add buffering latency.
+This is an integration architecture prerequisite, not broad deferred CPU tuning.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL
