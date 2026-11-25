@@ -706,6 +706,14 @@ Next is the non-audio reverb settings owner and persistence adapters, then the
 shared GUI/CLI/MIDI surface. B stays disabled and no product state/command ID is
 advertised yet.
 
+Executed source `c58ab43`: focused Windows Release 32/32 passed (47.95s; the
+separately built Delay MIDI audio case passed 0.88s) and the full
+`core_realtime_contract` passed (990.81s); native WSL Linux Release focused
+32/32 passed (15.28s) plus the full Linux `core_realtime_contract` (428.60s);
+core-only Debug ASan/UBSan/leak 32/32 passed (303.02s) with no reported errors or
+suppressions. Old-owner PCM is sample-exact and the all-off fade is within 1e-7
+on both platforms. Wall times are not CPU/latency or callback-deadline claims.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

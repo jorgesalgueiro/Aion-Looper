@@ -29,7 +29,11 @@ independent models, worker-OOM rollback, all-off transition/retirement,
 aggregate budget, unread bounds, busy/stale/cancel, future-sample all-off
 commit and generation recovery at 64/128. Windows Release focused
 `reverb_*|delay_*` + SignalChain/Drive passed 32/32 (47.95s; the separately
-built Delay MIDI audio case passed 0.88s) and the Standalone Release links.
+built Delay MIDI audio case passed 0.88s), the full `core_realtime_contract`
+passed (990.81s) and the Standalone Release links. Native WSL Linux Release
+passed 32/32 (15.28s) plus the full core suite (428.60s), and core-only Debug
+ASan/UBSan/leak passed 32/32 (303.02s) with no reported errors; old-owner PCM is
+sample-exact and the all-off fade is within 1e-7 on both platforms.
 
 NEXT: the non-audio reverb settings owner, persistence/state adapters, then the
 shared GUI/CLI/MIDI surface with stable IDs. B stays disabled; no product
