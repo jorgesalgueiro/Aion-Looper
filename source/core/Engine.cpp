@@ -5,6 +5,7 @@ namespace aion {
 void Engine::prepare(double sampleRate, std::uint32_t poolFrames,DeviceOutputLatency reportedOutputLatency) {
     cancelAllArpPreparations();
     cancelAllDelayEdits();
+    cancelAllReverbEdits();
     auto midiContext=midiDispatch();midi->prepare(midiContext);
     double rate = sampleRate;
     if (!std::isfinite(rate) || rate < 8000.0 || rate > 384000.0) rate = 48000.0;
@@ -33,7 +34,9 @@ bool Engine::enqueue(GainCommand command) noexcept {
     return std::isfinite(command.gain) && command.gain >= 0.0f && command.gain <= 2.0f && commands.push(command);
 }
 bool Engine::enqueueLoop(LoopCommand command) noexcept {
-    if(command.arpTransaction||command.delayTransaction||command.action==LoopAction::delay||command.action==LoopAction::delayBank)return false; // Tracked edits use their dedicated admission.
+    if(command.arpTransaction||command.delayTransaction||command.reverbTransaction
+        ||command.action==LoopAction::delay||command.action==LoopAction::delayBank
+        ||command.action==LoopAction::reverb)return false; // Tracked edits use their dedicated admission.
     if (command.generation == 0 || command.generation != generation() || command.track >= LoopBank::trackCount
         || !std::isfinite(command.value)) return false;
     if(command.action==LoopAction::equalizer&&(!validEqSettings(command.equalizer)||(command.eqMask&~eqAllParameters)))return false;
@@ -89,7 +92,8 @@ bool Engine::applyMidi(LoopAction action,std::uint32_t track,double value) noexc
     if(action==LoopAction::record&&!midiInputAvailable)return false;
     if(action==LoopAction::stopAll){
         const auto discardedUiCommand=[&](const LoopCommand& command) noexcept {
-            if(!isMeterCommand(command.action)&&command.action!=LoopAction::delay&&command.action!=LoopAction::delayBank){lastRequestId=std::max(lastRequestId,command.requestId);rejected=true;}
+            if(!isMeterCommand(command.action)&&command.action!=LoopAction::delay&&command.action!=LoopAction::delayBank
+                &&command.action!=LoopAction::reverb){lastRequestId=std::max(lastRequestId,command.requestId);rejected=true;}
         };
         if(hasPendingLoop){discardedUiCommand(pendingLoop);hasPendingLoop=false;}
         LoopCommand discarded{};for(unsigned n=0;n<256&&loopCommands->pop(discarded);++n)discardedUiCommand(discarded);
@@ -105,6 +109,9 @@ bool Engine::applyLoop(LoopAction action,std::uint32_t track,double value) noexc
     if(action==LoopAction::stopAll||action==LoopAction::clearAll){cancelDelayEdit();cancelStaleDelayEdits();}
     else if(action==LoopAction::clear){cancelDelayEdit(track);cancelStaleDelayEdits();}
     else if(action==LoopAction::clearMergedSource)cancelStaleDelayEdits();
+    if(action==LoopAction::stopAll||action==LoopAction::clearAll){cancelReverbEdit();cancelStaleReverbEdits();}
+    else if(action==LoopAction::clear){cancelReverbEdit(track);cancelStaleReverbEdits();}
+    else if(action==LoopAction::clearMergedSource)cancelStaleReverbEdits();
     if(action==LoopAction::stopAll||action==LoopAction::clearAll)meterGraphStarts->clear();
     else if(action==LoopAction::clear||action==LoopAction::clearMergedSource)
         meterGraphStarts->discardIf([&](const MeterGraphStart& start) noexcept {return start.clearEpoch!=loops.trackView(start.track).clearEpoch;});
@@ -135,9 +142,11 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     // A cancelled ready graph must lose its pending slot BEFORE bank adoption.
     cancelStaleArpPreparations();
     cancelStaleDelayEdits();
+    cancelStaleReverbEdits();
     loops.beginBlock();
     serviceArpPreparations();
     serviceDelayEdits();
+    serviceReverbEdits();
     for(unsigned id=0;id<LoopBank::trackCount;++id){
         const auto retired=sourceRetirements[id].load(std::memory_order_acquire);
         if(static_cast<std::uint32_t>(retired>>32)==thisCallback.generation)
@@ -183,10 +192,13 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
         if (!hasPendingLoop) hasPendingLoop = loopCommands->pop(pendingLoop);
         if(hasPendingLoop&&pendingLoop.arpTransaction>seenArpTransaction)serviceArpPreparations();
         if(hasPendingLoop&&pendingLoop.delayTransaction>seenDelayTransaction)serviceDelayEdits();
+        if(hasPendingLoop&&pendingLoop.reverbTransaction>seenReverbTransaction)serviceReverbEdits();
         while (hasPendingLoop && (!pendingLoop.arpTransaction||pendingLoop.arpTransaction<=seenArpTransaction)
             && (!pendingLoop.delayTransaction||pendingLoop.delayTransaction<=seenDelayTransaction)
+            && (!pendingLoop.reverbTransaction||pendingLoop.reverbTransaction<=seenReverbTransaction)
             && (pendingLoop.frame <= frame||isMeterCommand(pendingLoop.action)||(pendingLoop.arpTransaction&&!currentArpEdit(pendingLoop))
-                ||(pendingLoop.delayTransaction&&!currentDelayCommand(pendingLoop))) && loopApplied < 128) {
+                ||(pendingLoop.delayTransaction&&!currentDelayCommand(pendingLoop))
+                ||(pendingLoop.reverbTransaction&&!currentReverbEdit(pendingLoop))) && loopApplied < 128) {
             if(pendingLoop.action==LoopAction::meterQueuedWindowStart||pendingLoop.action==LoopAction::meterQueuedWindowRequest||pendingLoop.action==LoopAction::meterQueuedGraphRequest){
                 // The callback has already happened on the message owner.
                 // Validate against current audio ownership, not its old view.
@@ -209,6 +221,8 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
                 applyDelayBank(pendingLoop);
             }else if(pendingLoop.action==LoopAction::delay){
                 applyDelayEdit(pendingLoop); // Exact terminal receipt; never hijack ordinary UI acknowledgement.
+            }else if(pendingLoop.action==LoopAction::reverb){
+                applyReverbEdit(pendingLoop);
             }else{
                 lastRequestId = pendingLoop.requestId;
                 const bool cancelledStutter=pendingLoop.action==LoopAction::stutterStart&&pendingLoop.stutterRevision!=stutterRevisions[pendingLoop.track].load(std::memory_order_acquire);
@@ -229,6 +243,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
             ++loopApplied; hasPendingLoop = loopCommands->pop(pendingLoop);
             if(hasPendingLoop&&pendingLoop.arpTransaction>seenArpTransaction)serviceArpPreparations();
             if(hasPendingLoop&&pendingLoop.delayTransaction>seenDelayTransaction)serviceDelayEdits();
+            if(hasPendingLoop&&pendingLoop.reverbTransaction>seenReverbTransaction)serviceReverbEdits();
         }
         midiContext.frame=frame;
         while(midiRead<midiEvents.size()&&midiEvents[midiRead].offset<=static_cast<unsigned>(i)){

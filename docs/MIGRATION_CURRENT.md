@@ -11,6 +11,32 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / ordered Engine edit transactions — 25 November 2026
+
+`Engine` now has the same tracked request/result protocol for B that D uses:
+`enqueueReverbEdit`/`popReverbEdit`/`cancelReverbEdit`, `ReverbEditStatus`,
+one outstanding (including unread) receipt per track, never-reused transaction
+identities, a shared FIFO preflight, and `LoopAction::reverb` excluded from the
+bare `enqueueLoop` path. The audio owner validates identity/epoch/revision, then
+commits same-shape and disabled edits live in the ordered callback or defers the
+receipt until the worker installs a prepared graph; a refused request during the
+20ms adoption fade reports `busy`. STOP ALL/DEL/MIDI Stop/prepare cancel or stale
+the pending receipt without touching ordinary UI acknowledgements.
+
+Windows Release `reverb_engine_transactions_contract` and
+`reverb_engine_audio_contract` passed with the retained Delay/SignalChain set
+(11/11, 23.44s). The PCM fixture drives the actual Engine callback against an
+independent `ReverbStorage` oracle at the same sample and reports `1.49012e-08`
+peak error at 8/48kHz and 64/128 across prepared adoption, a live sample-offset
+mix, disabled-shape metadata settling to bit-exact dry and a prepared re-enable;
+the transaction fixture records zero tracked callback heap operations. No
+product bridge/CLI/GUI/state/MIDI command or B toggle is enabled.
+
+NEXT: the reverb settings owner and bank/state restore (including the
+arp/effects restore hook), then shared GUI/CLI/MIDI/persistence with stable IDs.
+B stays disabled in the product surface; no listening, device, DAW, UI or
+release acceptance is claimed.
+
 ### B / LoopBank worker, render and lifecycle binding — 25 November 2026
 
 `LoopBank` now owns a construction-time heap `ReverbStorage` and processes the

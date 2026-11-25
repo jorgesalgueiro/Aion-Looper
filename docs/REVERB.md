@@ -625,6 +625,42 @@ hook for B), then shared product GUI/CLI/MIDI/persistence. B stays disabled in
 the product surface; no listening, physical, DAW or Standalone UI acceptance is
 claimed by this binding.
 
+### Ordered Engine B transactions — 25 November 2026
+
+`Engine` now owns the same tracked request/result protocol for B that D uses,
+without exposing a product command. `enqueueReverbEdit` publishes a
+`ReverbEditRequest` descriptor and one ordered `LoopCommand` only after a shared
+FIFO preflight; one unread receipt per track remains the admission bound, and
+transaction identities are never reused across prepare. `popReverbEdit` returns
+the immutable terminal fact (`ready/cancelled/stale/busy/failed`) with the
+request, generation, clear epoch and settings revision it actually committed.
+
+The audio owner validates the current edit identity, epoch and revision, then:
+
+- a same-shape live edit (or any disabled metadata edit) commits in the ordered
+  callback at its exact sample deadline (`setReverb`), with no worker wait;
+- an enable that needs a new impulse/graph defers `ready` until the worker
+  installs it, matching the adoption receipt to the storage installation and
+  revision; a request refused while a prior 20ms adoption fade is live reports
+  `busy`;
+- STOP ALL, DEL, MIDI Stop, prepare and changed epochs/revisions cancel or stale
+  the pending receipt without converting it into an ordinary UI acknowledgement.
+
+New `reverb_engine_transactions_contract` covers validation, one-outstanding,
+bare-command rejection, ordinary-loop acknowledgement isolation, adoption and
+live receipts, busy/stale, zero-block cancellation and ID reuse, MIDI Stop,
+committed-then-DEL, FIFO saturation, twenty unread receipts and generation
+recovery at 64/128, with zero tracked callback heap operations. New
+`reverb_engine_audio_contract` drives the actual Engine callback against an
+independent `ReverbStorage` oracle moved to the same target at the same sample;
+prepared adoption, a sample-offset live mix, disabled-shape metadata (settling
+to bit-exact dry) and a prepared re-enable all match at <=2e-6. Measured Windows
+peak error is `1.49012e-08` at 8/48 kHz and 64/128 with audible change >0.059.
+
+Next: the reverb settings owner and bank/state restore (including the
+arp/effects restore hook), then shared GUI/CLI/MIDI/persistence. No product
+bridge/CLI/GUI/state/MIDI command, preset identity or B toggle is enabled yet.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

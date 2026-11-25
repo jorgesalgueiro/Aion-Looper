@@ -51,6 +51,8 @@ struct LoopCommand {
     std::uint64_t arpTransaction=0; // Internal tracked edit identity, never a product ID.
     DelaySettings delay{};
     std::uint64_t delayClearEpoch=0,delaySettingsRevision=0,delayTransaction=0;
+    ReverbSettings reverb{};
+    std::uint64_t reverbClearEpoch=0,reverbSettingsRevision=0,reverbTransaction=0;
 };
 struct WaveformEvent {std::uint32_t generation=0,track=0;std::uint64_t id=0;std::array<float,LoopBank::waveformWidth> peaks{};};
 struct ExportRequest {std::uint32_t track=0,generation=0;std::uint64_t waveformId=0;};
@@ -62,6 +64,19 @@ struct DelayEditRequest {
 struct DelayEditResult {
     std::uint32_t track=0,requestId=0,generation=0;
     DelayEditStatus status=DelayEditStatus::failed;
+    std::uint64_t transaction=0,settingsRevision=0,clearEpoch=0,frame=0;
+};
+// Internal per-loop B transaction. Live same-shape/disabled edits commit in the
+// ordered callback; an enable that needs a new impulse/graph defers its receipt
+// until the worker installs it. Product bridge/CLI/GUI/state/MIDI remain gated.
+enum class ReverbEditStatus : std::uint8_t {ready,cancelled,stale,busy,failed};
+struct ReverbEditRequest {
+    std::uint32_t track=0,requestId=0,generation=0;
+    std::uint64_t clearEpoch=0,settingsRevision=0,transaction=0,cancellation=0;
+};
+struct ReverbEditResult {
+    std::uint32_t track=0,requestId=0,generation=0;
+    ReverbEditStatus status=ReverbEditStatus::failed;
     std::uint64_t transaction=0,settingsRevision=0,clearEpoch=0,frame=0;
 };
 // Internal D-only restore bank. One outstanding (including unread terminal
@@ -174,6 +189,11 @@ public:
     bool enqueueDelayEdit(LoopCommand,std::uint64_t& transaction) noexcept;
     bool popDelayEdit(DelayEditResult&) noexcept;
     void cancelDelayEdit(unsigned track=LoopBank::trackCount) noexcept;
+    // Same sole message owner and receipt bound for B. One outstanding edit per
+    // track (including unread terminal receipts); never a bare LoopCommand path.
+    bool enqueueReverbEdit(LoopCommand,std::uint64_t& transaction) noexcept;
+    bool popReverbEdit(ReverbEditResult&) noexcept;
+    void cancelReverbEdit(unsigned track=LoopBank::trackCount) noexcept;
     bool enqueueDelayBank(DelayBankRequest,std::uint64_t& transaction) noexcept;
     bool popDelayBank(DelayBankResult&) noexcept;
     void cancelDelayBank() noexcept;
@@ -316,6 +336,22 @@ private:
     void cancelQueuedDelayBank() noexcept;
     bool currentDelayCommand(const LoopCommand&) const noexcept;
     void applyDelayBank(const LoopCommand&) noexcept;
+    struct PendingReverbEdit {
+        ReverbEditRequest request{};bool active=false,preparing=false,finished=false;
+        std::uint64_t installation=0;ReverbEditResult completion{};
+    };
+    std::unique_ptr<std::array<PendingReverbEdit,LoopBank::trackCount>> pendingReverb=std::make_unique<std::array<PendingReverbEdit,LoopBank::trackCount>>();
+    std::array<bool,LoopBank::trackCount> outstandingReverb{}; // sole message owner
+    std::array<std::atomic<std::uint64_t>,LoopBank::trackCount> reverbCancellations{};
+    std::uint64_t nextReverbTransaction=0,seenReverbTransaction=0; // message / audio owners, never reset
+    std::unique_ptr<SpscQueue<ReverbEditRequest,32>> reverbRequests=std::make_unique<SpscQueue<ReverbEditRequest,32>>();
+    std::unique_ptr<SpscQueue<ReverbEditResult,32>> reverbResults=std::make_unique<SpscQueue<ReverbEditResult,32>>();
+    void finishReverbEdit(unsigned,ReverbEditStatus) noexcept;
+    void cancelStaleReverbEdits() noexcept;
+    void serviceReverbEdits() noexcept;
+    void cancelAllReverbEdits() noexcept;
+    bool currentReverbEdit(const LoopCommand&) const noexcept;
+    void applyReverbEdit(const LoopCommand&) noexcept;
     struct PendingArpPreparation {
         ArpPreparationRequest request{};
         bool active=false,started=false,finished=false;

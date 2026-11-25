@@ -753,6 +753,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         case LoopAction::drive:
         case LoopAction::delay:
         case LoopAction::delayBank:
+        case LoopAction::reverb:
         case LoopAction::signalChain:
         case LoopAction::arpDelay:
         case LoopAction::stopAll:break;
