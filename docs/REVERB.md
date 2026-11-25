@@ -608,8 +608,13 @@ cmake --build build/windows-core --config Release --target aion_reverb_connected
 ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(reverb_loopbank_connected_contract|reverb_loopbank_stereo_8000_64|reverb_loopbank_stereo_8000_128|reverb_loopbank_stereo_48000_64|reverb_loopbank_stereo_48000_128|reverb_storage_contract|reverb_streaming_contract|reverb_stereo_processor_contract|delay_loopbank_connected_contract|signal_chain_connected_contract)$'
 ```
 
-The connected suite's platform matrix and sanitizer run are recorded after the
-committed-snapshot WSL sync. The full `core_realtime_contract` suite now keeps
+Executed source `1fe4e67`: focused Windows Release 12/12 passed (20.55s) and the
+full `core_realtime_contract` passed (991.75s); native WSL Linux Release 12/12
+passed (7.39s) plus the full Linux `core_realtime_contract` (452.04s); core-only
+Debug ASan/UBSan/leak 12/12 passed (140.08s) with no reported sanitizer errors
+or suppressions. PCM peaks are identical on Windows and Linux (`1.49012e-08`
+mono, `1.23721e-08` stereo). Test wall times are not CPU/latency or deadline
+claims. The full `core_realtime_contract` suite now keeps
 its two large test `Engine` instances and the per-fixture `EngineView` snapshots
 on the heap; adding the reverb view fields had pushed that single test frame
 past the default 1 MB Windows stack. No assertion, tolerance or audio behavior

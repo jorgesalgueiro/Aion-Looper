@@ -33,7 +33,10 @@ new/delete. The full `core_realtime_contract` suite passed in 991.75s after the
 heap change. The MIDI fixture now heap-owns its ~15KB snapshots and CoreTests
 heap-owns its two Engines: the new view field had pushed that single test frame
 over the default 1MB Windows stack. No assertion or tolerance changed, and
-repeated `--midi` runs are deterministic.
+repeated `--midi` runs are deterministic. Native WSL Linux Release passed 12/12
+(7.39s) plus the full `core_realtime_contract` (452.04s), and core-only Debug
+ASan/UBSan/leak passed 12/12 (140.08s) with no reported errors or suppressions;
+PCM peaks match Windows.
 
 NEXT: coordinated bank/state restore including the arp/effects restore hook for B,
 then shared GUI/CLI/MIDI/persistence with stable IDs. B stays disabled in the
