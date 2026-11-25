@@ -714,6 +714,36 @@ core-only Debug ASan/UBSan/leak 32/32 passed (303.02s) with no reported errors o
 suppressions. Old-owner PCM is sample-exact and the all-off fade is within 1e-7
 on both platforms. Wall times are not CPU/latency or callback-deadline claims.
 
+### Non-audio B settings owner — 25 November 2026
+
+`ReverbSettingsOwner` mirrors the accepted `DelaySettingsOwner` contract for the
+non-audio side: explicit known-state `bind` (all twenty committed settings and
+pending state must match the supplied `EngineView`), per-track candidates and
+intents, exact `ReverbEditResult`/`ReverbBankResult` receipt matching, and a
+committed record that advances only on a proven native adoption. Precision is
+retained exactly; `intent()` exposes an uncommitted candidate while `track()`
+keeps the last proven fact. A clear-epoch advance rolls that track back and
+cancels its pending edit; a generation change or an unexplained external
+revision detaches rather than guessing; the saved bank remains readable after
+detach for an explicit rebind.
+
+`restore` publishes a coordinated bank only when no track is pending and every
+member is valid, marks every record pending, and commits all twenty (or just the
+non-cleared tracks when DEL races the receipt) only on the exact bank receipt.
+Waiting on a per-track receipt excludes further edits and another bank. The
+owner deliberately has no MIDI receipt path and no coordinated Arp/effects
+restore hook yet; those remain separate, gated slices.
+
+New `reverb_settings_owner_contract` covers invalid-edit atomicity, double-bind
+rejection, exact-precision intent vs committed, pending exclusion, unrelated
+global acknowledgements, stale snapshots, cancellation and request-ID reuse,
+worker-OOM rollback of enable intent, prepared enable/room adoption, disable
+retention, full-FIFO admission failure, unread-success vs late cancel/clear,
+bank invalid-member/duplicate/pending exclusion, full-bank commit, OOM rollback,
+per-track cancellation, ID reuse, unread all-off plus clear reconciliation,
+same-rate rebind, rate-change detach/rebind, queued-intent cancellation and
+external-revision detach at 64/128.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

@@ -11,6 +11,28 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / non-audio settings owner — 25 November 2026
+
+`ReverbSettingsOwner` mirrors `DelaySettingsOwner`: explicit known-state bind,
+per-track intent vs committed state, exact edit/bank receipt matching, clear
+rollback, detach on generation change or unexplained external revision, and a
+coordinated `restore` that commits all twenty only on the exact bank receipt.
+Precision is exact, pending work excludes further edits/banks, and a per-track
+clear reconciles with an already-adopted bank. MIDI and coordinated Arp/effects
+restore hooks remain separate gated slices.
+
+New `reverb_settings_owner_contract` covers invalid-edit/double-bind atomicity,
+intent vs committed, pending/unrelated-ack/stale-snapshot behavior, cancel and
+ID reuse, OOM rollback, prepared enable/room adoption, disable retention, FIFO
+admission, unread-success vs late cancel/clear, bank invalid/duplicate/commit/
+OOM/cancel/ID-reuse, unread all-off plus clear, same-rate rebind and rate-change
+detach at 64/128. Windows focused `reverb_*|delay_*` + SignalChain/Drive passed
+33/33 (50.42s) and the Standalone Release links.
+
+NEXT: persistence/state adapters for the owner, then the shared GUI/CLI/MIDI
+surface with stable IDs. B stays disabled; no product command/state ID or
+listening/device/DAW/UI acceptance is claimed.
+
 ### B / coordinated restore bank — 25 November 2026
 
 `ReverbStorage` now has the all-or-nothing `Bank` protocol (full preflight,
