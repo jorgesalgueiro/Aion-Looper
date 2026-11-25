@@ -7,7 +7,7 @@ bool Engine::enqueueReverbEdit(LoopCommand command,std::uint64_t& transaction) n
  if(command.action!=LoopAction::reverb||command.track>=LoopBank::trackCount||!command.requestId
   ||!command.generation||command.generation!=generation()||command.arpTransaction||command.delayTransaction
   ||command.reverbTransaction||!validReverbSettings(command.reverb)||command.reverbSettingsRevision==UINT64_MAX
-  ||outstandingReverb[command.track]||nextReverbTransaction==UINT64_MAX)return false;
+  ||outstandingReverb[command.track]||outstandingReverbBank||nextReverbTransaction==UINT64_MAX)return false;
  if(!reverbRequests->canPush()||!loopCommands->canPush())return false;
  command.reverbTransaction=nextReverbTransaction+1;
  ReverbEditRequest request{command.track,command.requestId,command.generation,command.reverbClearEpoch,
@@ -23,6 +23,7 @@ bool Engine::popReverbEdit(ReverbEditResult& result) noexcept {
  outstandingReverb[result.track]=false;return true;
 }
 void Engine::cancelReverbEdit(unsigned track) noexcept {
+ if(track<=LoopBank::trackCount)cancelReverbBank();
  if(track<LoopBank::trackCount)reverbCancellations[track].fetch_add(1,std::memory_order_release);
  else if(track==LoopBank::trackCount)for(auto& serial:reverbCancellations)serial.fetch_add(1,std::memory_order_release);
 }
@@ -96,7 +97,7 @@ void Engine::applyReverbEdit(const LoopCommand& command) noexcept {
 void Engine::cancelAllReverbEdits() noexcept {
  // Stopped prepare temporarily owns the audio endpoints. Keep unread old-
  // generation receipts and message outstanding flags until actually consumed.
- cancelReverbEdit();cancelStaleReverbEdits();ReverbEditRequest request;
+ cancelReverbEdit();cancelStaleReverbEdits();cancelQueuedReverbBank();ReverbEditRequest request;
  for(unsigned n=0;n<LoopBank::trackCount&&reverbRequests->pop(request);++n){
   seenReverbTransaction=std::max(seenReverbTransaction,request.transaction);
   auto& p=(*pendingReverb)[request.track];p={};p.request=request;p.active=true;

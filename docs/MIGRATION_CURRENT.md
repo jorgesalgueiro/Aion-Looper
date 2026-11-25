@@ -11,6 +11,30 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / coordinated restore bank — 25 November 2026
+
+`ReverbStorage` now has the all-or-nothing `Bank` protocol (full preflight,
+enabled-only slot publication, aggregate budget, partial-prefix rejection,
+rollback on one failure, all-off dry fade, retire-on-fade). `LoopBank` adds
+`requestReverbBank`/`cancelReverbBank`/`reverbBankResult` with epoch/revision
+validation and all-twenty metadata commit at completion. `Engine` adds
+`enqueueReverbBank`/`popReverbBank`/`cancelReverbBank` with descriptor+ordered
+command admission, one outstanding (including unread) receipt, never-reused
+transactions, and ready/busy/stale/cancelled correlation; STOP ALL/DEL/MIDI
+Stop/prepare cancel without hijacking ordinary UI acknowledgements.
+
+New `reverb_bank_contract` covers atomic admission, bank/edit exclusion,
+nineteen-member partial non-commit, sample-exact old-owner PCM against twenty
+independent models, worker-OOM rollback, all-off transition/retirement,
+aggregate budget, unread bounds, busy/stale/cancel, future-sample all-off
+commit and generation recovery at 64/128. Windows Release focused
+`reverb_*|delay_*` + SignalChain/Drive passed 32/32 (47.95s; the separately
+built Delay MIDI audio case passed 0.88s) and the Standalone Release links.
+
+NEXT: the non-audio reverb settings owner, persistence/state adapters, then the
+shared GUI/CLI/MIDI surface with stable IDs. B stays disabled; no product
+command/state ID or listening/device/DAW/UI acceptance is claimed.
+
 ### B / ordered Engine edit transactions — 25 November 2026
 
 `Engine` now has the same tracked request/result protocol for B that D uses:

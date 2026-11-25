@@ -668,6 +668,44 @@ core-only Debug ASan/UBSan/leak 11/11 passed (116.07s) with no reported errors o
 suppressions. The Engine PCM peak is `1.49012e-08` on both platforms. Wall times
 are not CPU/latency or callback-deadline claims.
 
+### Coordinated B bank restore — 25 November 2026
+
+`ReverbStorage` now has the same all-or-nothing bank protocol as `DelayStorage`.
+`collectBankSlots` validates every member and the aggregate payload reservation
+before publishing any work; only enabled members claim worker slots. Disabled
+members publish nothing. `bankStatus` requires *every* member ready, so a partial
+worker prefix can never reach audio. `prepareBankCommit` applies/reset each
+prepared graph and aborts the whole bank if any shape is refused; `commitBank`
+then swaps all twenty owners together, crossfading each enabled target and
+fading an old owner to dry for disabled ones. One failed member rolls back the
+whole bank and retains every old target. An all-off bank needs no worker work
+and retires all old owners after the bounded dry fade. Cancellation, prepare,
+clear and per-track edits cancel the bank; a new bank is excluded while a
+per-track request or adoption fade is live.
+
+`LoopBank::requestReverbBank`/`cancelReverbBank` validate each track's clear
+epoch, settings revision and per-track pending state before admission, publish a
+`pending` result, and commit metadata/revisions for all twenty tracks only at
+the matching worker completion. `Engine::enqueueReverbBank`/`popReverbBank`/
+`cancelReverbBank` add the descriptor+ordered-command admission, one outstanding
+receipt including unread terminals, shared never-reused transaction identities,
+and `ready/busy/stale/cancelled/failed` correlation with the actual audio
+ownership. STOP ALL, DEL, MIDI Stop, prepare and changed epochs/revisions cancel
+or stale the bank without touching ordinary UI acknowledgements.
+
+New `reverb_bank_contract` covers invalid-member atomic rejection with no worker
+prefix, bank/edit exclusion, nineteen-member partial non-commit, sample-exact
+old-owner PCM against twenty independent `Reverb` models, injected worker OOM
+rollback, the all-off old-to-dry transition and full retirement, aggregate
+budget admission, full-FIFO and unread-receipt bounds, busy/stale/cancel,
+all-off next-boundary commit at a future sample, and old-generation retention /
+new-generation recovery through prepare at 64/128 with zero tracked callback
+heap operations.
+
+Next is the non-audio reverb settings owner and persistence adapters, then the
+shared GUI/CLI/MIDI surface. B stays disabled and no product state/command ID is
+advertised yet.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

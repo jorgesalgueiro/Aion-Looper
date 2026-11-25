@@ -18,6 +18,7 @@ void ReverbStorage::releaseStopped() noexcept {
     for (auto& slot : *slots) { slot.graph.reset(); slot.phase.store(Phase::free, std::memory_order_relaxed); }
     active.fill(nullptr); pending.fill(nullptr); previous.fill(nullptr); remaining.fill(0);
     failed.fill(false); installations.fill(0); intents = {}; rate = 0; cursor = fadeFrames = 0; serial = 0;
+    bankSlots.fill(nullptr); bankActive = bankPrepared = false;
 }
 std::size_t ReverbStorage::reservationBytes(double sr, const ReverbSettings& s) noexcept {
     const auto bytes = Reverb::preparationBytes(sr, s);
@@ -30,7 +31,7 @@ std::size_t ReverbStorage::reservedBytes() const noexcept {
     return total;
 }
 bool ReverbStorage::request(unsigned id, const ReverbSettings& s, std::uint32_t seed) noexcept {
-    if (id >= trackCount || !rate || pending[id] || remaining[id] || serial == std::numeric_limits<std::uint64_t>::max()) return false;
+    if (id >= trackCount || !rate || bankActive || pending[id] || remaining[id] || serial == std::numeric_limits<std::uint64_t>::max()) return false;
     const auto bytes = reservationBytes(rate, s);
     if (!bytes) return false;
     std::size_t used = 0; Slot* available = nullptr;
@@ -106,10 +107,12 @@ bool ReverbStorage::set(unsigned id, const ReverbSettings& settings) noexcept {
 }
 ReverbStorage::Completion ReverbStorage::poll() noexcept {
     Completion completion;
+    pollBank(completion);
     for (auto& slot : *slots) {
         const auto phase = slot.phase.load(std::memory_order_acquire);
         if (phase != Phase::ready && phase != Phase::failed) continue;
         const auto id = slot.track;
+        if (slot.bankMember && bankActive && bankSlots[id] == &slot) continue;
         if (pending[id] != &slot) { slot.phase.store(Phase::retired, std::memory_order_release); continue; }
         pending[id] = nullptr;
         if (phase == Phase::ready) {
@@ -161,7 +164,7 @@ bool ReverbStorage::process(unsigned id, std::span<const float> left, std::span<
     return true;
 }
 ReverbStorage::View ReverbStorage::view(unsigned id) const noexcept {
-    return id < trackCount ? View{active[id] != nullptr, pending[id] != nullptr, failed[id], remaining[id] != 0, installations[id], active[id] ? active[id]->seed : 0} : View{};
+    return id < trackCount ? View{active[id] != nullptr, pending[id] != nullptr || bankActive, failed[id], remaining[id] != 0, installations[id], active[id] ? active[id]->seed : 0} : View{};
 }
 bool ReverbStorage::tick(unsigned id, float left, float right, float& outLeft, float& outRight) noexcept {
     return process(id, std::span<const float>(&left, 1), std::span<const float>(&right, 1),

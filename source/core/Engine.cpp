@@ -36,7 +36,7 @@ bool Engine::enqueue(GainCommand command) noexcept {
 bool Engine::enqueueLoop(LoopCommand command) noexcept {
     if(command.arpTransaction||command.delayTransaction||command.reverbTransaction
         ||command.action==LoopAction::delay||command.action==LoopAction::delayBank
-        ||command.action==LoopAction::reverb)return false; // Tracked edits use their dedicated admission.
+        ||command.action==LoopAction::reverb||command.action==LoopAction::reverbBank)return false; // Tracked edits use their dedicated admission.
     if (command.generation == 0 || command.generation != generation() || command.track >= LoopBank::trackCount
         || !std::isfinite(command.value)) return false;
     if(command.action==LoopAction::equalizer&&(!validEqSettings(command.equalizer)||(command.eqMask&~eqAllParameters)))return false;
@@ -143,10 +143,12 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
     cancelStaleArpPreparations();
     cancelStaleDelayEdits();
     cancelStaleReverbEdits();
+    cancelStaleReverbBank();
     loops.beginBlock();
     serviceArpPreparations();
     serviceDelayEdits();
     serviceReverbEdits();
+    serviceReverbBank();
     for(unsigned id=0;id<LoopBank::trackCount;++id){
         const auto retired=sourceRetirements[id].load(std::memory_order_acquire);
         if(static_cast<std::uint32_t>(retired>>32)==thisCallback.generation)
@@ -192,13 +194,13 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
         if (!hasPendingLoop) hasPendingLoop = loopCommands->pop(pendingLoop);
         if(hasPendingLoop&&pendingLoop.arpTransaction>seenArpTransaction)serviceArpPreparations();
         if(hasPendingLoop&&pendingLoop.delayTransaction>seenDelayTransaction)serviceDelayEdits();
-        if(hasPendingLoop&&pendingLoop.reverbTransaction>seenReverbTransaction)serviceReverbEdits();
+        if(hasPendingLoop&&pendingLoop.reverbTransaction>seenReverbTransaction){serviceReverbEdits();serviceReverbBank();}
         while (hasPendingLoop && (!pendingLoop.arpTransaction||pendingLoop.arpTransaction<=seenArpTransaction)
             && (!pendingLoop.delayTransaction||pendingLoop.delayTransaction<=seenDelayTransaction)
             && (!pendingLoop.reverbTransaction||pendingLoop.reverbTransaction<=seenReverbTransaction)
             && (pendingLoop.frame <= frame||isMeterCommand(pendingLoop.action)||(pendingLoop.arpTransaction&&!currentArpEdit(pendingLoop))
                 ||(pendingLoop.delayTransaction&&!currentDelayCommand(pendingLoop))
-                ||(pendingLoop.reverbTransaction&&!currentReverbEdit(pendingLoop))) && loopApplied < 128) {
+                ||(pendingLoop.reverbTransaction&&!currentReverbCommand(pendingLoop))) && loopApplied < 128) {
             if(pendingLoop.action==LoopAction::meterQueuedWindowStart||pendingLoop.action==LoopAction::meterQueuedWindowRequest||pendingLoop.action==LoopAction::meterQueuedGraphRequest){
                 // The callback has already happened on the message owner.
                 // Validate against current audio ownership, not its old view.
@@ -223,6 +225,8 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
                 applyDelayEdit(pendingLoop); // Exact terminal receipt; never hijack ordinary UI acknowledgement.
             }else if(pendingLoop.action==LoopAction::reverb){
                 applyReverbEdit(pendingLoop);
+            }else if(pendingLoop.action==LoopAction::reverbBank){
+                applyReverbBank(pendingLoop);
             }else{
                 lastRequestId = pendingLoop.requestId;
                 const bool cancelledStutter=pendingLoop.action==LoopAction::stutterStart&&pendingLoop.stutterRevision!=stutterRevisions[pendingLoop.track].load(std::memory_order_acquire);
@@ -243,7 +247,7 @@ void Engine::process(float* const* channels, int count, int frames,std::span<con
             ++loopApplied; hasPendingLoop = loopCommands->pop(pendingLoop);
             if(hasPendingLoop&&pendingLoop.arpTransaction>seenArpTransaction)serviceArpPreparations();
             if(hasPendingLoop&&pendingLoop.delayTransaction>seenDelayTransaction)serviceDelayEdits();
-            if(hasPendingLoop&&pendingLoop.reverbTransaction>seenReverbTransaction)serviceReverbEdits();
+            if(hasPendingLoop&&pendingLoop.reverbTransaction>seenReverbTransaction){serviceReverbEdits();serviceReverbBank();}
         }
         midiContext.frame=frame;
         while(midiRead<midiEvents.size()&&midiEvents[midiRead].offset<=static_cast<unsigned>(i)){

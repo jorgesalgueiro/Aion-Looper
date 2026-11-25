@@ -19,7 +19,8 @@ public:
         std::uint64_t installation = 0;
         std::uint32_t seed = 0;
     };
-    struct Completion { std::uint32_t installed = 0, failed = 0; };
+    using Bank = std::array<ReverbSettings, trackCount>;
+    struct Completion { std::uint32_t installed = 0, failed = 0; bool bankInstalled = false, bankFailed = false; };
     explicit ReverbStorage(std::size_t byteBudget = defaultBudget);
     ReverbStorage(const ReverbStorage&) = delete;
     ReverbStorage& operator=(const ReverbStorage&) = delete;
@@ -29,6 +30,16 @@ public:
     // held through retirement/reclamation, not released at audio cancellation.
     static std::size_t reservationBytes(double sampleRate, const ReverbSettings&) noexcept;
     bool request(unsigned track, const ReverbSettings&, std::uint32_t seed) noexcept;
+    // All-or-nothing coordinated restore. Disabled members publish no slot and
+    // fade any old owner to dry at commit. Individual requests stay excluded
+    // while a bank is active, and vice versa.
+    bool requestBank(const Bank&) noexcept;
+    bool canRequestBank(const Bank&) const noexcept;
+    enum class BankStatus { none, pending, ready, failed };
+    BankStatus bankStatus() const noexcept;
+    bool prepareBankCommit() noexcept;
+    void commitBank() noexcept; // Same audio owner, immediately after successful prepare.
+    void cancelBank() noexcept;
     void cancel(unsigned track) noexcept;
     void clear(unsigned track) noexcept;
     void clearAll() noexcept;
@@ -69,10 +80,15 @@ private:
         std::uint64_t request = 0;
         ReverbSettings settings{};
         std::array<std::uint64_t, 5> revisions{};
+        bool bankMember = false; // immutable from queued publication through retirement
         std::optional<Reverb> graph; // worker constructs/retires, audio exclusively owns ready/active
     };
     std::unique_ptr<std::array<Slot, capacity>> slots;
     std::array<Slot*, trackCount> active{}, pending{}, previous{};
+    std::array<Slot*, trackCount> bankSlots{};
+    bool bankActive = false, bankPrepared = false;
+    bool collectBankSlots(const Bank&, std::array<Slot*, trackCount>&) const noexcept;
+    void pollBank(Completion&) noexcept;
     std::array<unsigned, trackCount> remaining{};
     std::array<bool, trackCount> failed{};
     std::array<std::uint64_t, trackCount> installations{};

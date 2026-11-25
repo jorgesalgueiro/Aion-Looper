@@ -24,7 +24,7 @@ namespace aion {
 // Application queues wait for explicit source creation; direct DSP clients may schedule at the grid.
 enum class QueuedStartMode { sampleGrid, messageCallback };
 enum class LoopState : std::uint8_t { empty, recording, playing, stopped, overdubbing, substituting, finalizing, multiplying, armed, queued, stopping };
-enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor, signalChain, arpDelay, drive, delay, delayBank, reverb }; // Append-only. Source/reset primitives remain core-only.
+enum class LoopAction : std::uint8_t { record, finish, play, stop, overdub, substitute, clear, stopAll, volume, feedback, mute, clearAll, solo, retrigger, pan, speed, normalize, reverse, undo, redo, undoGlobal, redoGlobal, multiply, stopImmediate, startDelay, applyStart, quantizeStart, nudgeStart, stutterStart, stutterStop, merge, clearMergedSource, sourceRestart, meterGraphStart, meterQueuedWindowStart, meterQueuedWindowRequest, meterQueuedGraphRequest, equalizer, compressor, signalChain, arpDelay, drive, delay, delayBank, reverb, reverbBank }; // Append-only. Source/reset primitives remain core-only.
 constexpr bool isMeterCommand(LoopAction action) noexcept {return action==LoopAction::meterGraphStart||action==LoopAction::meterQueuedWindowStart||action==LoopAction::meterQueuedWindowRequest||action==LoopAction::meterQueuedGraphRequest;}
 struct Stereo { float left = 0, right = 0; };
 struct LoopView {
@@ -98,6 +98,15 @@ public:
     bool setReverb(unsigned,const ReverbSettings&,std::uint64_t clearEpoch,std::uint64_t revision,std::uint32_t request,bool midi=false) noexcept;
     void cancelReverb(unsigned) noexcept;
     ReverbStorage::View reverbStorageView(unsigned id) const noexcept {return reverbStorage->view(id);}
+    // All-or-nothing coordinated B restore across all twenty tracks. Product
+    // state/GUI/CLI remain gated; this is the internal transaction used by them.
+    using ReverbBank=ReverbStorage::Bank;
+    using ReverbEpochs=std::array<std::uint64_t,trackCount>;
+    enum class ReverbBankStatus {none,pending,ready,failed,cancelled};
+    struct ReverbBankResult {std::uint32_t request=0;std::uint64_t transaction=0;ReverbBankStatus status=ReverbBankStatus::none;};
+    bool requestReverbBank(const ReverbBank&,const ReverbEpochs&,const ReverbEpochs&,std::uint32_t request,std::uint64_t transaction) noexcept;
+    void cancelReverbBank() noexcept;
+    ReverbBankResult reverbBankResult() const noexcept {return bankReverbResult;}
     using DelayBank=DelayStorage::Bank;
     using DelayEpochs=std::array<std::uint64_t,trackCount>;
     enum class DelayBankStatus {none,pending,ready,failed,cancelled};
@@ -413,6 +422,12 @@ private:
         ReverbSettings settings{};std::uint64_t clearEpoch=0,revision=0;std::uint32_t request=0;bool active=false;
     };
     std::array<PendingReverbSettings,trackCount> pendingReverbs{};
+    struct PendingReverbBank {
+        ReverbBank settings{};ReverbEpochs epochs{},revisions{};
+        std::uint32_t request=0;std::uint64_t transaction=0;bool active=false;
+    };
+    std::unique_ptr<PendingReverbBank> pendingReverbBank=std::make_unique<PendingReverbBank>();
+    ReverbBankResult bankReverbResult{};
     void pollReverbs() noexcept;
     void resetReverb(unsigned) noexcept;
     void resetReverbs() noexcept;

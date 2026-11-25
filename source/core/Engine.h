@@ -79,6 +79,19 @@ struct ReverbEditResult {
     ReverbEditStatus status=ReverbEditStatus::failed;
     std::uint64_t transaction=0,settingsRevision=0,clearEpoch=0,frame=0;
 };
+// Internal coordinated B-only restore bank. One outstanding (including unread
+// terminal result), mutually exclusive with per-track B edits. Payload is kept
+// out of LoopCommand so ordinary performance FIFO entries do not grow.
+struct ReverbBankRequest {
+    LoopBank::ReverbBank settings{};LoopBank::ReverbEpochs clearEpochs{},settingsRevisions{};
+    std::uint32_t requestId=0,generation=0;
+    std::uint64_t frame=0,transaction=0,cancellation=0;
+};
+struct ReverbBankResult {
+    std::uint32_t requestId=0,generation=0;ReverbEditStatus status=ReverbEditStatus::failed;
+    std::uint64_t transaction=0,frame=0;
+    LoopBank::ReverbEpochs clearEpochs{},settingsRevisions{};
+};
 // Internal D-only restore bank. One outstanding (including unread terminal
 // result), mutually exclusive with per-track D edits. Payload is kept out of
 // LoopCommand so ordinary performance FIFO entries do not grow by 20 tracks.
@@ -194,6 +207,10 @@ public:
     bool enqueueReverbEdit(LoopCommand,std::uint64_t& transaction) noexcept;
     bool popReverbEdit(ReverbEditResult&) noexcept;
     void cancelReverbEdit(unsigned track=LoopBank::trackCount) noexcept;
+    // Same sole message owner for the coordinated B restore bank.
+    bool enqueueReverbBank(ReverbBankRequest,std::uint64_t& transaction) noexcept;
+    bool popReverbBank(ReverbBankResult&) noexcept;
+    void cancelReverbBank() noexcept;
     bool enqueueDelayBank(DelayBankRequest,std::uint64_t& transaction) noexcept;
     bool popDelayBank(DelayBankResult&) noexcept;
     void cancelDelayBank() noexcept;
@@ -352,6 +369,21 @@ private:
     void cancelAllReverbEdits() noexcept;
     bool currentReverbEdit(const LoopCommand&) const noexcept;
     void applyReverbEdit(const LoopCommand&) noexcept;
+    struct PendingReverbBank {
+        ReverbBankRequest request{};ReverbBankResult completion{};
+        bool active=false,started=false,finished=false;
+    };
+    std::unique_ptr<PendingReverbBank> pendingReverbBank=std::make_unique<PendingReverbBank>();
+    std::unique_ptr<SpscQueue<ReverbBankRequest,2>> reverbBankRequests=std::make_unique<SpscQueue<ReverbBankRequest,2>>();
+    std::unique_ptr<SpscQueue<ReverbBankResult,2>> reverbBankResults=std::make_unique<SpscQueue<ReverbBankResult,2>>();
+    bool outstandingReverbBank=false; // message owner; retained across prepare
+    std::atomic<std::uint64_t> reverbBankCancellation{0};
+    void finishReverbBank(ReverbEditStatus) noexcept;
+    void cancelStaleReverbBank() noexcept;
+    void serviceReverbBank() noexcept;
+    void cancelQueuedReverbBank() noexcept;
+    bool currentReverbCommand(const LoopCommand&) const noexcept;
+    void applyReverbBank(const LoopCommand&) noexcept;
     struct PendingArpPreparation {
         ArpPreparationRequest request{};
         bool active=false,started=false,finished=false;
