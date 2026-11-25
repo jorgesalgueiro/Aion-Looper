@@ -3,13 +3,20 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <thread>
 extern thread_local bool watch;extern std::atomic<int> allocations;
 namespace {
 using namespace aion;using A=LoopAction;using S=LoopState;
 void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
 struct Fixture {
- std::unique_ptr<Engine> engine=std::make_unique<Engine>();unsigned block;std::uint32_t revision=0,request=0;EngineView latest{};bool varyingInput=false;std::array<float,128> renderedLeft{},renderedRight{};
+ std::unique_ptr<Engine> engine=std::make_unique<Engine>();unsigned block;std::uint32_t revision=0,request=0;
+ // The snapshot is ~15 KB. The suite keeps dozens of fixtures alive across one
+ // function frame, so store it on the heap to stay inside the default 1 MB
+ // Windows stack. Every call site and assertion is unchanged.
+ std::unique_ptr<EngineView> latestStorage=std::make_unique<EngineView>();
+ EngineView& latest=*latestStorage;
+ bool varyingInput=false;std::array<float,128> renderedLeft{},renderedRight{};
  explicit Fixture(unsigned n):block(n){engine->prepare(8000,131072);engine->setMonitoring(false);engine->setTarget(1);MidiSettings settings;settings.enabled=true;settings.revision=++revision;check(engine->configureMidi(settings),"configure MIDI");process(0);}
  void process(unsigned frames,std::span<const MidiEvent> events={}){float l[128],r[128];std::fill_n(l,128,0.2f);std::fill_n(r,128,-0.1f);if(varyingInput)for(unsigned i=0;i<frames;++i){const double t=static_cast<double>(engine->clock()+i);l[i]=static_cast<float>(0.4*std::sin(t*0.071));r[i]=static_cast<float>(0.3*std::cos(t*0.053));}float* channels[]={l,r};watch=true;engine->process(channels,2,static_cast<int>(frames),events);watch=false;std::copy_n(l,frames,renderedLeft.begin());std::copy_n(r,frames,renderedRight.begin());EngineView view;while(engine->popView(view))latest=view;}
  void advance(unsigned frames){while(frames){const auto n=std::min(frames,block);process(n);frames-=n;}}

@@ -4,7 +4,9 @@
 #include "ReverbSettings.h"
 
 namespace aion {
-// Prepared stereo B component, not yet connected to product graph ownership.
+// Prepared stereo B component. LoopBank owns it through ReverbStorage and calls
+// the zero-latency scalar path from the per-track chain; product GUI/CLI/state/
+// MIDI and the unified Machine engine remain gated.
 // Controls/routing: Jorge Salgueiro's Ascii-Looper _createReverb. FFT backend:
 // HiFi-LoFi AudioFFT / Takuya Ooura; see CREDITS.md and full retained notices.
 // prepare/destruction are worker-only, never concurrent with process/set/reset.

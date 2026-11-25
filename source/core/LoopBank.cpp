@@ -26,6 +26,7 @@ void LoopBank::shutdown(){
     if(worker.joinable())worker.join();
     arpStorage->releaseStopped();
     delayStorage->releaseStopped();pendingDelays={};pendingDelayBank->active=false;bankDelayResult={};
+    reverbStorage->releaseStopped();pendingReverbs={};
     owned.clear();
     Clip* discarded=nullptr;while(retired.pop(discarded)){}
     result=nullptr;jobState.store(0,std::memory_order_relaxed);
@@ -42,6 +43,7 @@ void LoopBank::prepare(std::uint32_t frames,std::uint32_t fadeFrames,double samp
     rate=std::isfinite(sampleRate)&&sampleRate>0?sampleRate:48000;
     (void)arpStorage->prepareStopped(rate);
     (void)delayStorage->prepareStopped(rate);
+    (void)reverbStorage->prepareStopped(rate);
     resetTimeline();previousInput=olderInput={};
     owned.reserve(128);stopping.store(false,std::memory_order_release);
     worker=std::thread([this]{workerLoop();});
@@ -138,6 +140,7 @@ void LoopBank::workerLoop() noexcept {
         }
         arpStorage->serviceWorker();
         delayStorage->serviceWorker();
+        reverbStorage->serviceWorker();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
@@ -423,11 +426,13 @@ void LoopBank::cancelArmed(Track& track) noexcept {
     const auto chain=track.info.signalChain;const auto chainRequest=track.info.chainRequest;
     const auto arp=track.info.arp;const auto arpRevision=track.info.arpSettingsRevision;const auto arpRequest=track.info.arpRequest;
     const auto delay=track.info.delay;const auto delayRevision=track.info.delaySettingsRevision;const auto delayRequest=track.info.delayRequest;
+    const auto reverb=track.info.reverb;const auto reverbRevision=track.info.reverbSettingsRevision;const auto reverbRequest=track.info.reverbRequest;
     clear(track,true);track.info.signalChain=chain;track.info.chainRequest=chainRequest;track.info.equalizer=settings;track.info.eqRequest=request;
     track.info.compressor=compressor;track.info.compressorRequest=compressorRequest;
     track.info.drives=drive;track.info.driveRequest=driveRequest;
     track.info.arp=arp;track.info.arpSettingsRevision=arpRevision;track.info.arpRequest=arpRequest;
     track.info.delay=delay;track.info.delaySettingsRevision=delayRevision;track.info.delayRequest=delayRequest;
+    track.info.reverb=reverb;track.info.reverbSettingsRevision=reverbRevision;track.info.reverbRequest=reverbRequest;
 }
 void LoopBank::clear(Track& track,bool preserveArp) noexcept {
     cancelArpBank();
@@ -457,6 +462,8 @@ void LoopBank::clear(Track& track,bool preserveArp) noexcept {
     else {arpStorage->clear(id);pendingArpSettings[id]={};}
     if(preserveArp)resetDelay(id);
     else {cancelDelay(id);delayStorage->clear(id);}
+    if(preserveArp)resetReverb(id);
+    else {cancelReverb(id);reverbStorage->clear(id);}
     (*meterWindows)[id].reset();meterGraphTickets[id]=meterImmediateTickets[id]=0;meterGraphFrames[id]=0;
     meterPanicKnown[id]=false;
     meterQueuedIds[id]=meterQueuedBufferIds[id]=0;
@@ -478,6 +485,7 @@ bool LoopBank::apply(LoopAction action,std::uint32_t id,float value) noexcept {
         auto& comp=(*compressors)[next];comp={};(void)comp.filter.prepare(rate,tracks[next].info.compressor.values,frame);comp.prepared=true;
         resetDrives(next);
         resetDelay(next);
+        resetReverb(next);
         if(tracks[next].info.arp.enabled){cancelArpStorage(next);if(auto* graph=arpStorage->graph(next))(void)graph->reset(tracks[next].info.arp.seed,frame);}
         }return true;}
     if(action==LoopAction::clearAll){undoSize=redoSize=0;for(auto& track:tracks){++track.clearEpoch;clear(track);}return true;}
@@ -797,7 +805,7 @@ void LoopBank::completeOfflineEdits() noexcept {
     }
     acceptResult();
 }
-void LoopBank::beginBlock() noexcept {pollArps();pollDelays();acceptResult();for(auto& track:tracks)track.info.peak=0;}
+void LoopBank::beginBlock() noexcept {pollArps();pollDelays();pollReverbs();acceptResult();for(auto& track:tracks)track.info.peak=0;}
 bool LoopBank::schedulePhase(Track& track,std::uint32_t id,double target,bool master,bool replacePending,Clip* sourceBuffer,const SourceMetadata* metadata) noexcept {
     const auto deadline=SyncClock::deadline(target*rate);
     auto* source=sourceBuffer?sourceBuffer:track.clip;
@@ -975,6 +983,7 @@ bool LoopBank::setSignalChain(std::uint32_t id,const SignalChain& settings,std::
     if(settings.contains('C')&&!previous.contains('C')&&t.info.compressor.enabled){auto& comp=(*compressors)[id];(void)comp.filter.prepare(rate,t.info.compressor.values,frame);comp.prepared=true;}
     if(settings.contains('A')&&!previous.contains('A')&&t.info.arp.enabled){if(auto* graph=arpStorage->graph(id))(void)graph->reset(t.info.arp.seed,frame);}
     if(settings.contains('D')&&!previous.contains('D'))resetDelay(id,true);
+    if(settings.contains('B')&&!previous.contains('B'))resetReverb(id);
     for(unsigned k=0;k<3;++k)if(settings.contains(driveCodes[k])&&!previous.contains(driveCodes[k])){
         auto& bank=(*drives)[id];(void)bank.filters[k].prepare(rate,static_cast<DriveKind>(k),t.info.drives[k]);
     }
@@ -1093,6 +1102,7 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
             else if(code=='C')equalized=tickCompressor(id,equalized,eqSource);
             else if(code=='A')equalized=tickArp(id,equalized,eqSource);
             else if(code=='D'){if(delayStorage->hasOwner(id))equalized=tickDelay(id,equalized,eqSource);}
+            else if(code=='B'){if(reverbStorage->hasOwner(id))equalized=tickReverb(id,equalized,eqSource);}
             // Keep the first preparation after clear/cancel. Only skip a
             // prepared processor whose own tick is an exact, stateless bypass.
             else if(code=='T'){if(!driveBank.prepared||!driveBank.filters[0].isBypassed())equalized=tickDrive(id,0,equalized,eqSource);}
@@ -1103,6 +1113,7 @@ Stereo LoopBank::tick(Stereo input, bool nonRealtime) noexcept {
         // A temporarily removed D must not strand a replacement's old owner.
         // Advance only its bounded transition with silence, then freeze it.
         if(!v.signalChain.contains('D')&&delayStorage->view(id).transitioning)(void)tickDelay(id,{},false);
+        if(!v.signalChain.contains('B')&&reverbStorage->view(id).transitioning)(void)tickReverb(id,{},false);
         if(t.queuedGainAt){
             if(frame<t.queuedGainAt){out={};equalized={};}
             else if(fadeLength&&frame-t.queuedGainAt<fadeLength){

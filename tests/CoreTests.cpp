@@ -140,19 +140,23 @@ int main(int argc,char** argv) {
     aion::SpscQueue<unsigned,1024> threaded;
     std::thread producer([&]{for(unsigned i=0;i<100000;++i)while(!threaded.push(i))std::this_thread::yield();});
     for(unsigned i=0;i<100000;++i){while(!threaded.pop(value))std::this_thread::yield();check(value==i,"concurrent FIFO");} producer.join();
-    aion::Engine a,b; a.prepare(48000, 8192); b.prepare(48000, 8192);
-    check(a.enqueue({32,1.0f})&&b.enqueue({32,1.0f}),"timestamped gain");
-    check(!a.enqueue({0,std::numeric_limits<float>::quiet_NaN()}),"reject nonfinite control");
+    // Large engine state (each ~190 KB) belongs on the heap: this frame runs
+    // below the per-fixture views in the MIDI suite, and Windows' default
+    // thread stack is 1 MB. This changes no assertion or audio behavior.
+    auto a=std::make_unique<aion::Engine>(),b=std::make_unique<aion::Engine>();
+    a->prepare(48000, 8192); b->prepare(48000, 8192);
+    check(a->enqueue({32,1.0f})&&b->enqueue({32,1.0f}),"timestamped gain");
+    check(!a->enqueue({0,std::numeric_limits<float>::quiet_NaN()}),"reject nonfinite control");
     std::vector<float> x(2048,0.5f), y=x;
     float* ax[]={x.data()}; float* by[]={y.data()};
     watch=true;
-    for(int offset=0;offset<2048;offset+=64){float* block[]={ax[0]+offset};a.process(block,1,64);}
-    for(int offset=0;offset<2048;offset+=128){float* block[]={by[0]+offset};b.process(block,1,128);}
+    for(int offset=0;offset<2048;offset+=64){float* block[]={ax[0]+offset};a->process(block,1,64);}
+    for(int offset=0;offset<2048;offset+=128){float* block[]={by[0]+offset};b->process(block,1,128);}
     watch=false;
     check(allocations==0,"callback allocation/free"); check(x==y,"64/128 block invariance");
     check(x[31]==0.0f&&x[32]>0.0f,"sample accurate command boundary");
-    check(std::abs(x.back()-0.5f)<1e-5f,"smoothing reaches target"); check(a.clock()==2048,"sample clock");
-    x[0]=std::numeric_limits<float>::infinity(); a.process(ax,1,1);check(x[0]==0.0f,"nonfinite audio");
+    check(std::abs(x.back()-0.5f)<1e-5f,"smoothing reaches target"); check(a->clock()==2048,"sample clock");
+    x[0]=std::numeric_limits<float>::infinity(); a->process(ax,1,1);check(x[0]==0.0f,"nonfinite audio");
     loopTests();
     reverseTests();
     historyTests();

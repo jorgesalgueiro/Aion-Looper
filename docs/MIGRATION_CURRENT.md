@@ -11,6 +11,34 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / LoopBank worker, render and lifecycle binding — 25 November 2026
+
+`LoopBank` now owns a construction-time heap `ReverbStorage` and processes the
+prepared scalar B path at the existing per-sample chain seam, mirroring the
+accepted Delay pattern (`LoopBankReverb.cpp`, `ReverbStorage::set`,
+`LoopView::reverb*`). Request/poll/adopt, live edits, cancel/reset, armed-cancel
+metadata restore, STOP ALL, `resetTimeline`, DEL, lane reuse, chain reinsert and
+off-chain transition servicing are wired. A live edit cancels an unadopted
+request; disabled metadata may select a shape without allocating, while enabling
+a changed shape requires a prepared request and is rejected atomically. Disabled
+runtime settles to exact dry, `tickReverb` obeys the STOP/clear source gate, and
+no bridge/CLI/state/MIDI/JSON/parameter surface was added.
+
+Windows Release `reverb_loopbank_connected_contract` plus four
+`reverb_loopbank_stereo_*` cases passed in the 20.55s focused set: independent
+stereo oracle at <=2e-6 (measured peaks `1.49012e-08` mono, `1.23721e-08`
+stereo), 64/128 at 8/48kHz, adoption acknowledgement, stale epoch/revision,
+replacement crossfade, off-chain completion, panic/clear and zero audio-owner
+new/delete. The full `core_realtime_contract` suite passed in 991.75s after the
+heap change. The MIDI fixture now heap-owns its ~15KB snapshots and CoreTests
+heap-owns its two Engines: the new view field had pushed that single test frame
+over the default 1MB Windows stack. No assertion or tolerance changed, and
+repeated `--midi` runs are deterministic.
+
+NEXT: coordinated bank/state restore including the arp/effects restore hook for B,
+then shared GUI/CLI/MIDI/persistence with stable IDs. B stays disabled in the
+product surface; no listening, device, DAW, UI or release acceptance is claimed.
+
 ### B / scalar-compatible convolution render seam — 24 November 2026
 
 New direct 128-tap head + prepared delayed 128/1024-frame stages replace repeated

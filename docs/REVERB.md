@@ -564,6 +564,62 @@ checks all pass. These are test wall times/operation counts, not a CPU speedup,
 physical latency or twenty-track deadline measurement. No preserved UI/reference/
 logo or vendored FFT changes, no product engine binding, package or push.
 
+### LoopBank worker/render/lifecycle binding — 25 November 2026
+
+`LoopBank` now owns a construction-time heap `ReverbStorage`, following the
+accepted Delay ownership pattern (`LoopBankReverb.cpp`, `ReverbStorage::set`,
+`LoopView::reverb*`). The prepared scalar `Reverb::tick` path is called from the
+existing per-sample chain at code **B**:
+
+- `requestReverb` admits only an enabled, valid, epoch/revision-matching prepared
+  request; the worker prepares the stereo IR/graph off audio.
+- `pollReverbs` publishes metadata only at the matching worker installation;
+  `beginBlock` is the sole poll point. A newer accepted live edit cancels a
+  not-yet-adopted request so a stale completion cannot overwrite it.
+- `setReverb` treats live controls 0/1/4/5 like Delay: a same-shape edit applies
+  to both pinned transition owners. Disabled metadata may select a new shape
+  without allocating; enabling that shape still requires a prepared request and
+  is rejected atomically (no metadata mutation) otherwise.
+- `cancelReverb`/`resetReverb`/`resetReverbs` cover armed-cancel metadata restore,
+  lane reuse, STOP ALL, timeline reset and DEL. A real `clear` retires the graph
+  and resets `info.reverb`; `preserveArp` resets the runtime but keeps metadata.
+- Reinserting B in `setSignalChain` starts a fresh instance (history/reset), like
+  D. While B is temporarily absent, an in-flight replacement crossfade advances
+  with silence so it cannot leak PCM or strand an owner.
+- `tickReverb` obeys the existing STOP/clear source gate (`sourceActive`), so
+  panic cannot resurrect wet tails; disabled runtime settles to exact dry.
+- `trackView().reverbTransitioning` mirrors owned transition state for future UI
+  telemetry. No bridge/CLI/state/MIDI/JSON/parameter change is included.
+
+New `reverb_loopbank_connected_contract` (4 rate/block combinations) compares the
+bank against an independent `ReverbStorage` oracle fed the recovered pre-merger
+source at <=2e-6, with measured Windows peak error `1.49012e-08`. It covers
+prepared adoption acknowledgement, stale epoch/revision rejection, live mix,
+shape replacement crossfade, timeline reset, disable-to-exact-dry/re-enable,
+off-chain transition completion, reinsert reset, prepared-shape rejection,
+disabled-shape metadata, prepared delivery of that shape, pending-replacement
+invalidation, STOP ALL source gating and DEL invalidation. Four `reverb_loopbank_stereo_*` cases add independent
+left/right recovery, loop pans 0/2/5/8/10, hard-pan silence, immutable PCM and
+finite output (Windows peak error `1.23721e-08`). Every audio-owner call stays in
+`AudioScope`: no new/delete on the callback.
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_reverb_connected_tests --parallel 4
+ctest --test-dir build/windows-core -C Release --no-tests=error --output-on-failure -R '^(reverb_loopbank_connected_contract|reverb_loopbank_stereo_8000_64|reverb_loopbank_stereo_8000_128|reverb_loopbank_stereo_48000_64|reverb_loopbank_stereo_48000_128|reverb_storage_contract|reverb_streaming_contract|reverb_stereo_processor_contract|delay_loopbank_connected_contract|signal_chain_connected_contract)$'
+```
+
+The connected suite's platform matrix and sanitizer run are recorded after the
+committed-snapshot WSL sync. The full `core_realtime_contract` suite now keeps
+its two large test `Engine` instances and the per-fixture `EngineView` snapshots
+on the heap; adding the reverb view fields had pushed that single test frame
+past the default 1 MB Windows stack. No assertion, tolerance or audio behavior
+changed, and repeated `--midi` runs are deterministic.
+
+Next is coherent bank/state restore (including the future arp/effects restore
+hook for B), then shared product GUI/CLI/MIDI/persistence. B stays disabled in
+the product surface; no listening, physical, DAW or Standalone UI acceptance is
+claimed by this binding.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

@@ -88,6 +88,22 @@ bool ReverbStorage::setEnabled(unsigned id, bool enabled) noexcept {
     }
     intents[id].enabled = enabled; intents[id].revisions[4] = ++serial; return true;
 }
+bool ReverbStorage::set(unsigned id, const ReverbSettings& settings) noexcept {
+    if (id >= trackCount || !active[id] || !validReverbSettings(settings)
+        || serial > std::numeric_limits<std::uint64_t>::max() - liveControls.size() - 1) return false;
+    // Reject a shape edit before mutating either pinned owner or its intents.
+    if (!active[id]->graph->set(settings)) return false;
+    if (auto* old = previous[id]) {
+        auto oldSettings = old->graph->settings();
+        for (const auto control : liveControls) (void)setReverbControl(oldSettings, control, settings.values[control]);
+        oldSettings.enabled = settings.enabled;
+        (void)old->graph->set(oldSettings);
+    }
+    for (std::size_t i = 0; i < liveControls.size(); ++i) {
+        intents[id].values[i] = settings.values[liveControls[i]]; intents[id].revisions[i] = ++serial;
+    }
+    intents[id].enabled = settings.enabled; intents[id].revisions[4] = ++serial; return true;
+}
 ReverbStorage::Completion ReverbStorage::poll() noexcept {
     Completion completion;
     for (auto& slot : *slots) {

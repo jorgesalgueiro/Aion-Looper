@@ -7,7 +7,8 @@ namespace aion {
 // Internal convolution ownership layer, following Aion's DelayStorage pattern.
 // Audio owner: request/cancel/poll/controls/process. Sole worker: serviceWorker.
 // Construction, destruction, prepareStopped/releaseStopped require BOTH owners
-// quiescent. No product LoopBank/GUI/CLI binding or Machine engine is connected.
+// quiescent. LoopBank binds this owner to the per-track B chain seam; product
+// GUI/CLI/state/MIDI and the Machine engine remain unconnected.
 // FFT credits: HiFi-LoFi AudioFFT / Takuya Ooura, retained in CREDITS.md.
 class ReverbStorage {
 public:
@@ -37,9 +38,14 @@ public:
     // Per-control revision fences replay only edits accepted AFTER a request.
     bool setControl(unsigned track, unsigned control, double value) noexcept;
     bool setEnabled(unsigned track, bool enabled) noexcept;
+    // Complete accepted live settings for the current graph. Requires an active
+    // owner and rejects a shape change atomically; both pinned transition owners
+    // receive the live values while each retains its own prepared shape.
+    bool set(unsigned track, const ReverbSettings&) noexcept;
     bool process(unsigned track, std::span<const float> left, std::span<const float> right,
                  std::span<float> outLeft, std::span<float> outRight) noexcept;
     bool tick(unsigned track, float left, float right, float& outLeft, float& outRight) noexcept;
+    bool hasOwner(unsigned track) const noexcept { return track < trackCount && (active[track] || previous[track]); }
     View view(unsigned track) const noexcept;
     const Reverb* graph(unsigned track) const noexcept; // audio-only borrow, never mutate/retain across lifecycle calls
     std::size_t reservedBytes() const noexcept; // audio-only conservative reservation, not RSS
