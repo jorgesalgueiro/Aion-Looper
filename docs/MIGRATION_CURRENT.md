@@ -30,7 +30,10 @@ independent `ReverbStorage` oracle at the same sample and reports `1.49012e-08`
 peak error at 8/48kHz and 64/128 across prepared adoption, a live sample-offset
 mix, disabled-shape metadata settling to bit-exact dry and a prepared re-enable;
 the transaction fixture records zero tracked callback heap operations. No
-product bridge/CLI/GUI/state/MIDI command or B toggle is enabled.
+product bridge/CLI/GUI/state/MIDI command or B toggle is enabled. Native WSL
+Linux Release passed 11/11 (5.76s) plus the full `core_realtime_contract`
+(428.01s), and core-only Debug ASan/UBSan/leak passed 11/11 (116.07s) with no
+reported errors or suppressions; the Linux PCM peak matches Windows.
 
 NEXT: the reverb settings owner and bank/state restore (including the
 arp/effects restore hook), then shared GUI/CLI/MIDI/persistence with stable IDs.

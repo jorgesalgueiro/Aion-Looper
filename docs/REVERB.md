@@ -661,6 +661,13 @@ Next: the reverb settings owner and bank/state restore (including the
 arp/effects restore hook), then shared GUI/CLI/MIDI/persistence. No product
 bridge/CLI/GUI/state/MIDI command, preset identity or B toggle is enabled yet.
 
+Executed source `3a9381d`: focused Windows Release 11/11 passed (23.44s) and the
+full `core_realtime_contract` passed (1012.69s); native WSL Linux Release focused
+11/11 passed (5.76s) plus the full Linux `core_realtime_contract` (428.01s);
+core-only Debug ASan/UBSan/leak 11/11 passed (116.07s) with no reported errors or
+suppressions. The Engine PCM peak is `1.49012e-08` on both platforms. Wall times
+are not CPU/latency or callback-deadline claims.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL
