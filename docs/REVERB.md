@@ -744,6 +744,13 @@ per-track cancellation, ID reuse, unread all-off plus clear reconciliation,
 same-rate rebind, rate-change detach/rebind, queued-intent cancellation and
 external-revision detach at 64/128.
 
+Executed source `270c652`: focused Windows Release 33/33 passed (50.42s) and the
+full `core_realtime_contract` passed (1013.67s); native WSL Linux Release
+focused 33/33 passed (15.44s) plus the full Linux `core_realtime_contract`
+(433.48s); core-only Debug ASan/UBSan/leak focused 33/33 passed (325.37s) with
+no reported errors or suppressions. These are test wall times, not CPU/latency
+claims.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

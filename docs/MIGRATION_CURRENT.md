@@ -27,7 +27,10 @@ ID reuse, OOM rollback, prepared enable/room adoption, disable retention, FIFO
 admission, unread-success vs late cancel/clear, bank invalid/duplicate/commit/
 OOM/cancel/ID-reuse, unread all-off plus clear, same-rate rebind and rate-change
 detach at 64/128. Windows focused `reverb_*|delay_*` + SignalChain/Drive passed
-33/33 (50.42s) and the Standalone Release links.
+33/33 (50.42s), the full `core_realtime_contract` passed (1013.67s) and the
+Standalone Release links. Native WSL Linux Release passed 33/33 (15.44s) plus
+the full core suite (433.48s), and core-only Debug ASan/UBSan/leak passed 33/33
+(325.37s) with no reported errors.
 
 NEXT: persistence/state adapters for the owner, then the shared GUI/CLI/MIDI
 surface with stable IDs. B stays disabled; no product command/state ID or
