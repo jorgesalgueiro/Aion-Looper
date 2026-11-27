@@ -40,6 +40,18 @@ Machine/B-V compatibility, shape-control MIDI, Linux WebKit and physical
 controller/listening/device/DAW acceptance remain pending. The conservative
 four-control MIDI surface remains the product scope of this slice.
 
+### Native Machine plate engine kernel — 27 November 2026
+
+Added the native plate reverb + dry-aware carver DSP (8-line FDN, diffusers,
+RT60/damping/low cut, gentle modulation, pre-delay; 8-band dynamic wet peaking
+cuts driven by the dry signal). Controls are Decay, Damping, Low Cut, Pre-delay,
+Mix and Unmask. `plate_reverb_contract` passes at 8/48 kHz x 64/128 with
+zero callback heap, verified decay/damping/carving and untouched dry.
+
+This is the DSP slice only; the unified panel engine toggle, per-engine state/
+presets, prepared crossfade, CLI/MIDI ownership and legacy B/V migration remain
+pending, as do listening and physical/device checks.
+
 ### Prepared shape MIDI for Reverb Duration/Decay — 27 November 2026
 
 Duration and Decay now learnable on targets 157/158. The audio callback publishes a

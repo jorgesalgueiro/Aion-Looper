@@ -1412,3 +1412,34 @@ No DSP algorithm, product control, ID, logo, preserved reference or third-party
 source was changed by the independent audit. Physical controller,
 listening/device/DAW, Linux WebKit and Machine acceptance remain separate. No
 full unrelated suite, sanitizer rerun, package, push or release-ready claim.
+
+### Native Machine plate engine — 27 November 2026
+
+The Machine backend is now a native plate design (not a convolution preset).
+The kernel is additive: no product panel/state/CLI/MIDI surface is connected
+until the unified engine-selection slice is complete.
+
+- Topology: two input diffusers per channel, an eight-line feedback network with
+  Householder mixing, per-line RT60 gain, one-pole damping and low cut, gentle
+  0.7 Hz/0.2 ms delay modulation for a smooth tail, and a stereo pre-delay.
+  Controls: Decay 0.1–10 s, Damping 500–20000 Hz, Low Cut 20–500 Hz, Pre-delay
+  0–100 ms, Mix 0–1, Unmask 0–1; defaults 2.5 s, 12 kHz, 80 Hz, 20 ms, 0.35, 0.5.
+- Dry-aware carver: an original implementation inspired by the adaptive
+  unmasking concept (no vendor algorithm or code). Eight logarithmic bands
+  (125 Hz–12 kHz, bands above 0.45·rate disabled) analyse the dry sum with
+  2 ms/150 ms envelopes and apply dynamic peaking cuts of up to 12 dB, scaled by
+  Unmask, to the wet path only. Dry is never filtered; zero latency, no
+  allocation/locks on the audio path.
+- Preparation allocates all delay/filter state on the worker; `set` changes only
+  scalars/coefficients. Disabled is an exact dry passthrough.
+
+Executed: `plate_reverb_contract` passes at 8 and 48 kHz with 64/128 blocks:
+finite stable tails, longer-decay energy, damping removes high end, the carver
+reduces the wet band driven by a 2 kHz dry tone, the dry path is bit-untouched,
+invalid edits preserve settings, cancellation is honoured and callback new/delete
+is zero. This is DSP acceptance, not a listening or product-integration claim.
+
+Pending integration: unified Reverb panel engine toggle, per-engine state and
+presets, prepared crossfade/storage, CLI/MIDI engine ownership, and the legacy
+B/V migration. Listening, physical controller and device/DAW checks remain
+explicitly pending.
