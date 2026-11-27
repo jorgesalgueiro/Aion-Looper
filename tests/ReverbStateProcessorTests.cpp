@@ -125,8 +125,30 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const unsigne
  f.settle();check(f.p->inspectAudioThread(0).track.reverb.values[1]==.33,"reverb set committed natively");
  check(call(requestObject("toggle",[](auto& o){(void)o;}))["ok"],"reverb toggle admitted");
  f.settle();check(f.p->inspectAudioThread(0).track.reverb.enabled,"reverb toggle enabled natively");
+ // A panic before the callback cancels an admitted individual edit. Servicing
+ // its receipt must roll intent back, never resubmit it as a lifecycle bank.
+ const auto beforeCancel=f.p->inspectAudioThread(0).track.reverb;
+ check(call(requestObject("set",[](auto& o){o.setProperty("parameter","mix");o.setProperty("value",.71);}))["ok"],"cancel candidate admitted");
+ auto panic=requestObject("stopAll",[](auto& o){o.setProperty("operation","loop");});
+ check(call(panic)["ok"],"panic admitted before edit callback");
+ f.settle();
+ check(f.p->inspectAudioThread(0).track.reverb==beforeCancel,"cancelled reverb edit must not be replayed by state service");
+ {auto saved=Fixture::xml(f.save());check(saved->getChildByName("LoopReverbs")->getChildElement(0)->getDoubleAttribute("mix")==.33,"cancelled intent rolls back in saved state");}
+ check(call(requestObject("set",[](auto& o){o.setProperty("parameter","mix");o.setProperty("value",.33);}))["ok"],"fresh command after cancellation admitted");f.settle();
  {auto* o=new juce::DynamicObject;o->setProperty("operation","snapshot");const auto snap=call(juce::var(o));
   check(snap["tracks"][0]["reverb"]["values"]["mix"].toString().getDoubleValue()==.33,"snapshot exposes reverb values");
   check(static_cast<bool>(snap["tracks"][0]["reverbReady"]),"snapshot reports reverb ready");}
- std::cout<<"PASS Reverb state "<<block<<": exact versioned roundtrip, "<<rejected<<" whole-state rejections, pre-B defaults, stopped prepare and shared reverb commands; zero callback heap operations\n";
+ // A later load owns its candidate even when an older FIFO clear is not yet
+ // reflected in telemetry. A fresh clear after that load still wins.
+ check(call(requestObject("clear",[](auto& o){o.setProperty("operation","loop");}))["ok"],"clear before load admitted");
+ f.load(a);f.settle();f.verify(one);
+ f.load(b);f.service();
+ check(call(requestObject("clear",[](auto& o){o.setProperty("operation","loop");}))["ok"],"clear after load admitted");
+ auto cleared=two;cleared[0]={};f.settle();f.verify(cleared);
+ // Superseding an individual edit or an in-flight bank must preserve the most
+ // recent accepted load, including a return to the old committed settings.
+ check(call(requestObject("set",[](auto& o){o.setProperty("parameter","mix");o.setProperty("value",.71);}))["ok"],"edit before load admitted");
+ f.load(a);f.settle();f.verify(one);
+ f.load(b);f.service();f.load(a);f.settle();f.verify(one);
+ std::cout<<"PASS Reverb state "<<block<<": exact versioned roundtrip, "<<rejected<<" whole-state rejections, pre-B defaults, stopped prepare, command cancellation and ordered load/clear recovery; zero callback heap operations\n";
 }

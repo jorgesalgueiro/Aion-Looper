@@ -430,9 +430,10 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             arpSettings=restoredArps;arpRestorePending=true;
             driveSettings=restoredDrives;driveRestorePending=true;drivePending.fill(0);driveClearing.fill(false);
             delaySettings=restoredDelays;delayRestorePending=delayRestoreFailed=false;pendingDelayClears.fill({});
-            reverbSettings=restoredReverbs;reverbRestorePending=reverbRestoreFailed=false;lastReverbRequest=0;pendingReverbClears.fill({});
+            reverbSettings=restoredReverbs;reverbRestorePending=true;reverbRestoreFailed=false;lastReverbRequest=0;pendingReverbClears.fill({});
             ++effectsIntent;engine.cancelArpPreparation(); // Host thread publishes cancellation only, never consumes or enqueues.
             engine.cancelDelayEdit(); // Cancel obsolete D work; the sole joint owner submits the validated bank.
+            engine.cancelReverbEdit(); // Retire older B work before the sole owner submits the new load.
             parameters.replaceState(state);
             arpTiming=readArpTiming();arpTempoSeen=++arpTempoIntent; // Restore explicit original BPMs, not an incidental APVTS notification.
         }

@@ -912,3 +912,38 @@ ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build
 No actual UI/device,
 listening, DAW, sustained performance or release claim. Do not package this stage
 as a working B feature or rerun unrelated passing suites routinely.
+
+### Independent persistence/command review — 27 November 2026
+
+Reviewed `5af180b` and `3a8d8d5` through checkpoint `105a443`. The new panic
+regression failed 2/2 at 64/128 before the fix (`build/reverb-review-before.txt`):
+STOP ALL cancelled an individual edit, but the state service resubmitted the
+unconfirmed shadow settings as a bank. Terminal individual receipts now roll
+shadow intent back to committed settings without automatic retry. Only explicit
+load/prepare intent can prepare a bank. Loads mark that intent before older clear
+acknowledgements arrive and cancel obsolete B edit/bank work. State tests add
+panic/save rollback, fresh-edit recovery, clear-before/after-load, an edit
+superseded by a load, and an in-flight bank superseded by the prior committed bank.
+
+New `aion_reverb_command_tests` drives the public production request owner at
+64/128, plus `tests/ReverbCliTests.py` as a separate process through the actual
+LocalCommandServer. It checks exact receipts, all six controls and endpoints,
+17 presets, eight rooms, enabled preparation/live edits, original precision,
+strict invalid-command rollback, accepted-intent persistence, reset/bypass and
+expanded-track isolation. All processor tests track zero callback new/delete.
+The external CLI harness uses synthetic callbacks; it does not test a physical
+device, the desktop holder's automatic server startup or the pending web adapter.
+
+```powershell
+cmake --build build/windows --config Release --target aion_reverb_command_tests aion_reverb_state_processor_tests aion_delay_state_processor_tests aion_joint_effects_processor_tests AionLooper_Standalone --parallel 2
+ctest --test-dir build/windows -C Release -R '^native_(reverb_commands|reverb_state_processor|delay_state_processor|joint_effects_processor)_(64|128)$' --output-on-failure --no-tests=error
+ctest --test-dir build/windows-core -C Release -R '^(reverb_.*|original_reverb_settings_contract)$' --output-on-failure --no-tests=error
+```
+
+Windows core reverb/reference passed 20/20 (16.45s). An initial invocation used
+`build/windows`, where the core executables were not built: nine were Not Run
+and the reference launcher failed to spawn its probe. Rebuilt the correct
+`build/windows-core` targets and all 20 passed; no product/test tolerance change.
+Final processor and native Linux results follow in the verification checkpoint.
+Core DSP is unchanged, so prior sanitizer DSP evidence remains historical;
+the JUCE state/command paths are not covered by that core-only sanitizer build.

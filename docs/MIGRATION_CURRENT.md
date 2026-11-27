@@ -11,6 +11,29 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Reverb persistence/command audit and CLI acceptance — 27 November 2026
+
+Reviewed the persistence/command changes through `105a443` following the earlier
+DSP/owner audit. Reproduced a STOP ALL cancellation failure at 64/128: the
+individual edit receipt was cancelled, but `serviceReverb` replayed its shadow
+intent as a restore bank. Individual terminal receipts now reconcile intent to
+committed settings; only an explicit load/prepare can submit a bank. Loads now
+mark their protected intent immediately and cancel obsolete B work. New native
+state cases retain panic rollback, immediate saved-state rollback, fresh-edit
+recovery, clear-before/after-load and superseding-edit/bank loads at 64/128.
+
+Added production `native_reverb_commands_64/128` with an external Python CLI
+against the real LocalCommandServer and processor callback. Covers exact receipts,
+all six controls/endpoints, 17 presets, eight rooms, enabled live edits, strict
+rejections, immediate persistence, reset/bypass and track-20 isolation. Callback
+new/delete remains zero. No original tests/tolerances or preserved UI changed.
+Windows Release core reverb/reference 20/20 passed; state/command/adjacent restore
+and Linux verification are recorded in REVERB.md after the final source check.
+
+NEXT remains the preserved B panel adapter and real WebView2/Standalone CLI
+acceptance, then coordinated Arp/effects restore and MIDI receipts/learn. B stays
+hidden/disabled in the GUI; no device/listening/DAW/release acceptance is claimed.
+
 ### B / versioned state persistence — 27 November 2026
 
 `AionProcessor` now persists B in a versioned `LoopReverbs` node (one `Reverb`
