@@ -19,7 +19,8 @@ boundary. First enable, replacement shape, all-twenty receipt revisions and a
 worker-OOM rollback are covered at 8/48 kHz and 64/128; maximum error 7.45e-09
 (limit 2e-6), audible change 0.036–0.053, zero callback heap operations. CTest
 `effects_reverb_coordinated_bank_audio_contract` passes with the B bank set
-6/6. Linux execution is recorded after the committed sync.
+6/6 on Windows, and the native WSL Linux build passes the same set 6/6 (9.82 s;
+PCM 0.15 s).
 
 ### Processor joint B restore — 27 November 2026
 

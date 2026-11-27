@@ -1232,8 +1232,8 @@ Executed: 8000 and 48000 Hz at 64/128 all pass. Maximum absolute error is
 7.45058e-09 (limit unchanged 2e-6), audible change 0.0362–0.0525, and the Engine
 output matches the independent B bank sample-for-sample after each commit. CTest
 `effects_reverb_coordinated_bank_audio_contract` passes (0.81 s); the full B
-bank set is 6/6. Linux build and execution are recorded after the committed
-sync.
+bank set is 6/6 on Windows. The clean native WSL checkout builds the same test
+and passes the B bank set 6/6 (9.82 s; the PCM case 0.15 s).
 
 ### Coordinated core Arp/Reverb/effects bank — 27 November 2026
 
