@@ -827,6 +827,35 @@ sources/notices remain unchanged. Reverb stays disabled in the product surface.
 This is a bounded audit with regression fixes, not a certification that the
 application is bug-free or that UI/listening/device/DAW/release checks passed.
 
+### B state persistence — 27 November 2026
+
+`AionProcessor` now persists B independently of the joint Q/C/chain/A/D restore.
+`readReverbs`/`saveReverbs` use a versioned `LoopReverbs` node with one `Reverb`
+row per track (`track`, `enabled`, `room`, `preset`, six exact-precision
+controls). An absent node restores the original disabled defaults for pre-B
+sessions; duplicate nodes, wrong version/count/tag/track, nested children,
+missing fields, non-finite/non-canonical numbers, unknown rooms, out-of-range
+presets/controls or preset/room/value mismatch reject the complete state before
+any engine, owner or APVTS mutation.
+
+`serviceReverb` is the sole serialized non-audio B owner service, reached by the
+existing message Timer through `serviceEffectsRestore` (not a second producer):
+it drains exact receipts, binds only verified known settings, fences ordinary
+DEL acknowledgements, tracks shadow clear epochs, protects an accepted load until
+its exact bank receipt, and submits the coordinated bank only when the confirmed
+bank differs. A failed/cancelled bank retains the confirmed records and stops
+retrying until a new load/clear. Prepare keeps the accepted intent, save drains
+receipts first, and STOP ALL cancels pending B work while DEL resets only its
+track. No B command, GUI/CLI/MIDI control, preset ID or Machine engine is added.
+
+New `aion_reverb_state_processor_tests` (64/128) covers exact versioned
+round-trip through a second processor and a stopped load before first prepare,
+immediate save of an accepted-not-yet-admitted intent, 32 whole-state rejections
+(type/version/duplicate/track/field/range/room/preset/number cases), pre-B
+defaults, and zero callback heap operations. The retained
+`aion_delay_state_processor_tests` still passes 64/128 and the Standalone Release
+links.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

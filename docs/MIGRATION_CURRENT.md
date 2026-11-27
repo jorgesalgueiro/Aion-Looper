@@ -11,6 +11,30 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / versioned state persistence — 27 November 2026
+
+`AionProcessor` now persists B in a versioned `LoopReverbs` node (one `Reverb`
+row per track: identity, enable, room, preset and six exact-precision controls).
+Absent node = pre-B disabled defaults; duplicate/version/count/tag/track/field/
+range/room/preset/non-finite or preset-identity mismatch rejects the whole state
+before mutation. The sole Timer-driven `serviceReverb` drains exact receipts,
+binds verified known settings, fences DEL acknowledgements, protects an accepted
+load until its exact bank receipt, and submits the coordinated bank only when
+confirmed settings differ. Prepare keeps intent, save drains first, STOP ALL
+cancels pending B work and DEL resets only its track. No B command, GUI/CLI/MIDI
+control, preset ID or Machine engine is exposed.
+
+New `aion_reverb_state_processor_tests` 64/128 covers exact round-trip across a
+second processor, stopped load before prepare, immediate accepted-intent save, 32
+whole-state rejections, pre-B defaults and zero callback heap operations. The
+retained Delay state tests still pass 64/128 (3.59s for the four native state
+cases) and the Standalone Release links. Native WSL/Linux and sanitizer results
+are recorded after the committed-snapshot sync; the sanitizer build remains
+core-only.
+
+NEXT: the coordinated Arp/effects restore hook and MIDI receipts/learn, then the
+shared GUI/CLI surface with stable IDs. B remains disabled in the product surface.
+
 ### Independent audit of recent reverb integration — 27 November 2026
 
 Reviewed the eight commits after `37206b4` through `d5c69c8`: LoopBank binding,

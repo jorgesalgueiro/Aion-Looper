@@ -12,6 +12,7 @@ bool AionProcessor::serviceEffectsRestore(){
     }
     delayOwner.suspendMidi(retainedDelayFailure||effectsRestore.active||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending);
     serviceDelay();
+    serviceReverb();
     arpOwner.service(latest);
     serviceArpTempo(false); // Retire maintenance before a new FX restore can own the bank receipt.
     if(!arpOwner.bound()){

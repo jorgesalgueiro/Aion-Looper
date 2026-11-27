@@ -4,6 +4,7 @@
 #include "core/Engine.h"
 #include "core/ArpSettingsOwner.h"
 #include "core/DelaySettingsOwner.h"
+#include "core/ReverbSettingsOwner.h"
 #include "core/CallbackAudibleTime.h"
 #include "plugin/Vst3ProgramRouting.h"
 #include "plugin/LoopMeterClearDispatcher.h"
@@ -76,6 +77,7 @@ public:
 private:
     friend struct AionDelayProcessorTestAccess; // Native test access only; no RPC or product control.
     friend struct AionJointEffectsProcessorTestAccess;
+    friend struct AionReverbStateTestAccess;
     OutputLatencyReader outputLatencyReader; // Never invoked in processBlock or IPC.
     ProcessorClockReader processorClockReader=nullptr;
     aion::DeviceCallbackBinding* controlledDeviceClockOwner=nullptr; // Immutable controlled IO seam; never IPC.
@@ -179,6 +181,19 @@ private:
     static bool readDelays(const juce::ValueTree&,aion::DelaySettingsOwner::Bank&);
     void delaySnapshot(juce::DynamicObject&,unsigned);
     bool delayRequest(const juce::var&,juce::DynamicObject&);
+    // Independent B owner; not part of the joint Q/C/chain/A/D bank. Message
+    // thread/mutex only, never processBlock.
+    aion::ReverbSettingsOwner reverbOwner{engine};
+    aion::ReverbSettingsOwner::Bank reverbSettings{};
+    bool reverbRestorePending=false,reverbRestoreFailed=false;
+    std::uint32_t reverbShadowGeneration=0,nextReverbRequest=0,lastReverbRequest=0;
+    aion::LoopBank::ReverbEpochs reverbShadowEpochs{};
+    struct PendingReverbClear {std::uint32_t request=0,generation=0;std::uint64_t epoch=0;};
+    std::array<PendingReverbClear,aion::LoopBank::trackCount> pendingReverbClears{};
+    void serviceReverb();
+    void reverbCleared(unsigned track,bool all,std::uint32_t request);
+    void saveReverbs(juce::ValueTree&);
+    static bool readReverbs(const juce::ValueTree&,aion::ReverbSettingsOwner::Bank&);
     void arpSnapshot(juce::DynamicObject&,unsigned);
     bool arpRequest(const juce::var&,juce::DynamicObject&);
     void serviceEqualizer();

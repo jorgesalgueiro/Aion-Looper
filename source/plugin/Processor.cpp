@@ -198,6 +198,7 @@ void AionProcessor::prepareToPlay(double rate, int) {
      engine.prepare(rate,aion::LoopBank::defaultFrames,latency);
      bool delayedClear=false;for(auto& clear:pendingDelayClears){delayedClear|=clear.request!=0;clear={};}
      delayRestorePending=delayedClear||delaySettings!=aion::DelaySettingsOwner::Bank{};delayRestoreFailed=false;
+     reverbRestorePending=reverbSettings!=aion::ReverbSettingsOwner::Bank{};reverbRestoreFailed=false;lastReverbRequest=0;pendingReverbClears.fill({});
      engine.prepareEqBank(eqSettings);engine.prepareCompressorBank(compressorSettings);engine.prepareDriveBank(driveSettings);driveRestorePending=false;drivePending.fill(0);driveClearing.fill(false);engine.prepareChainBank(chainSettings);chainRestorePending=false;chainPending.fill(0);chainClearing.fill(false);eqRestorePending=compressorRestorePending=false;eqPending.fill(0);eqClearing.fill(false);compressorPending.fill(0);compressorClearing.fill(false);
      auto renderIntent=arpSettings;for(auto& s:renderIntent)s.fresh=false;
      // Fresh classification alone needs no audio bank at first prepare. Keep a
@@ -403,13 +404,14 @@ void AionProcessor::getStateInformation(juce::MemoryBlock& data) {
     saveChains(state);
     saveArps(state);
     saveDelays(state);
+    saveReverbs(state);
     if (auto xml = state.createXml()) copyXmlToBinary(*xml, data);
 }
 void AionProcessor::setStateInformation(const void* data, int size) {
     if (size <= 0 || size > 1024 * 1024) return;
     if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName("AionState")) {
-        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;CompressorBank restoredCompressor;ChainBank restoredChains;DriveBanks restoredDrives;aion::ArpSettingsOwner::Bank restoredArps;aion::DelaySettingsOwner::Bank restoredDelays;
-        if(!readEqualizers(state,restoredEq)||!readCompressors(state,restoredCompressor)||!readChains(state,restoredChains)||!readArps(state,restoredArps)||!readDrives(state,restoredDrives)||!readDelays(state,restoredDelays))return;
+        auto state=juce::ValueTree::fromXml(*xml);EqBank restoredEq;CompressorBank restoredCompressor;ChainBank restoredChains;DriveBanks restoredDrives;aion::ArpSettingsOwner::Bank restoredArps;aion::DelaySettingsOwner::Bank restoredDelays;aion::ReverbSettingsOwner::Bank restoredReverbs;
+        if(!readEqualizers(state,restoredEq)||!readCompressors(state,restoredCompressor)||!readChains(state,restoredChains)||!readArps(state,restoredArps)||!readDrives(state,restoredDrives)||!readDelays(state,restoredDelays)||!readReverbs(state,restoredReverbs))return;
         aion::MidiSettings next;const auto stored=state.getChildWithName("MidiSettings");
         if(stored.isValid()){
             const auto enabled=stored.getProperty("enabled").toString();if(enabled!="0"&&enabled!="1")return;next.enabled=enabled=="1";
@@ -428,6 +430,7 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             arpSettings=restoredArps;arpRestorePending=true;
             driveSettings=restoredDrives;driveRestorePending=true;drivePending.fill(0);driveClearing.fill(false);
             delaySettings=restoredDelays;delayRestorePending=delayRestoreFailed=false;pendingDelayClears.fill({});
+            reverbSettings=restoredReverbs;reverbRestorePending=reverbRestoreFailed=false;lastReverbRequest=0;pendingReverbClears.fill({});
             ++effectsIntent;engine.cancelArpPreparation(); // Host thread publishes cancellation only, never consumes or enqueues.
             engine.cancelDelayEdit(); // Cancel obsolete D work; the sole joint owner submits the validated bank.
             parameters.replaceState(state);
@@ -676,6 +679,8 @@ juce::var AionProcessor::request(const juce::Array<juce::var>& args) {
         // complete barrier request was validated and admitted successfully.
         if(actionName=="stopAll"&&!effectsRestore.active)engine.cancelDelayEdit();
         else if(actionName=="clearAll"||actionName=="clear")delayCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
+        if(actionName=="stopAll")engine.cancelReverbEdit();
+        if(actionName=="clearAll"||actionName=="clear")reverbCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")equalizerCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")compressorCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
         if(actionName=="clear"||actionName=="clearAll")driveCleared(static_cast<unsigned>(static_cast<int>(id)),actionName=="clearAll",requestId);
