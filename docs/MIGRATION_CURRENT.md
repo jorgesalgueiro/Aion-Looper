@@ -48,10 +48,12 @@ cuts driven by the dry signal). Controls are Decay, Damping, Low Cut, Pre-delay,
 Mix and Unmask. `plate_reverb_contract` passes at 8/48 kHz x 64/128 with
 zero callback heap, verified decay/damping/carving and untouched dry.
 
-Linux passes the same `plate_reverb_contract` (0.48 s). This is the DSP slice
-only; the unified panel engine toggle, per-engine state/
-presets, prepared crossfade, CLI/MIDI ownership and legacy B/V migration remain
-pending, as do listening and physical/device checks.
+Linux passes the same `plate_reverb_contract` (0.48 s). Core engine selection is
+now in ReverbSettings/ReverbStorage: the plate graph is prepared by the worker,
+exposed via plateGraph, driven by plate live controls and crossfaded on an engine
+switch; the storage test switches machine to convolution and back. Still pending:
+the unified panel engine toggle, per-engine state/persistence and presets, CLI/MIDI
+ownership, legacy B/V migration, listening and physical/device checks.
 
 ### Prepared shape MIDI for Reverb Duration/Decay — 27 November 2026
 

@@ -16,6 +16,15 @@ inline constexpr std::array<ReverbRoomInfo,8> reverbRooms{{
  {"cathedral",3,2},{"spring",.8,2.5},{"plate",1.5,1.2},{"hall",2.5,1.8}
 }};
 using ReverbValues=std::array<double,6>;
+enum class ReverbEngine:std::uint8_t {convolution,machine};
+// Machine (plate) controls: decay, damping, low cut, pre-delay, mix, unmask.
+inline constexpr std::array<ReverbControl,6> plateControls{{
+ {"decay",2.5,.1,10,.1},{"damping",12000,500,20000,100},{"lowCut",80,20,500,5},
+ {"predelay",.02,0,.1,.005},{"mix",.35,0,1,.01},{"unmask",.5,0,1,.01}
+}};
+constexpr ReverbValues plateDefaults() noexcept {ReverbValues v{};for(unsigned p=0;p<v.size();++p)v[p]=plateControls[p].initial;return v;}
+inline constexpr std::array<std::string_view,7> platePresetNames{
+ "smooth-plate","bright-plate","big-plate","vocal-plate","drum-plate","dark-plate","shimmer-plate"};
 // Continuous MIDI targets expose only the live controls; duration/decay change
 // the prepared impulse shape and are not mapped by the conservative slice.
 inline constexpr std::array<unsigned,6> reverbMidiControls{0,1,4,5,2,3}; // live controls, then prepared shape controls
@@ -30,10 +39,13 @@ inline constexpr std::array<std::string_view,17> reverbPresetNames{
 struct ReverbSettings {
  ReverbValues values=reverbDefaults();ReverbRoom room=ReverbRoom::studio;
  bool enabled=false;std::uint8_t preset=0;
+ ReverbEngine engine=ReverbEngine::convolution;ReverbValues plate=plateDefaults();
  bool operator==(const ReverbSettings&)const noexcept=default;
 };
 bool validReverbSettings(const ReverbSettings&) noexcept;
 bool setReverbControl(ReverbSettings&,unsigned,double) noexcept;
+bool setPlateControl(ReverbSettings&,unsigned,double) noexcept;
+bool applyPlatePreset(ReverbSettings&,unsigned) noexcept;
 bool setReverbRoom(ReverbSettings&,ReverbRoom) noexcept;
 bool applyReverbPreset(ReverbSettings&,unsigned) noexcept;
 }

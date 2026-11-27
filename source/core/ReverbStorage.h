@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #pragma once
+#include "PlateReverb.h"
 #include "Reverb.h"
 #include <optional>
 
@@ -59,6 +60,7 @@ public:
     bool hasOwner(unsigned track) const noexcept { return track < trackCount && (active[track] || previous[track]); }
     View view(unsigned track) const noexcept;
     const Reverb* graph(unsigned track) const noexcept; // audio-only borrow, never mutate/retain across lifecycle calls
+    const PlateReverb* plateGraph(unsigned track) const noexcept; // machine-engine borrow
     std::size_t reservedBytes() const noexcept; // audio-only conservative reservation, not RSS
     void serviceWorker() noexcept;
 private:
@@ -69,6 +71,8 @@ private:
     struct Intent {
         std::array<std::uint64_t, 5> revisions{};
         std::array<double, 4> values{};
+        std::array<double, 6> plateValues{};
+        std::array<std::uint64_t, 6> plateRevisions{};
         bool enabled = false;
     };
     struct Slot {
@@ -80,8 +84,10 @@ private:
         std::uint64_t request = 0;
         ReverbSettings settings{};
         std::array<std::uint64_t, 5> revisions{};
+        std::array<std::uint64_t, 6> plateRevisions{};
         bool bankMember = false; // immutable from queued publication through retirement
         std::optional<Reverb> graph; // worker constructs/retires, audio exclusively owns ready/active
+        std::optional<PlateReverb> plate; // machine-engine graph
     };
     std::unique_ptr<std::array<Slot, capacity>> slots;
     std::array<Slot*, trackCount> active{}, pending{}, previous{};

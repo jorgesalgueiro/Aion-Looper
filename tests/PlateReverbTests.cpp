@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "core/PlateReverb.h"
+#include "core/ReverbSettings.h"
+#include "core/ReverbStorage.h"
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
@@ -58,4 +60,21 @@ static void run(double sr,unsigned block){
  {aion::PlateSettings bad=s;bad.decay=20;const auto before=p.settings();check(!p.set(bad)&&p.settings().decay==before.decay,"invalid plate edit rejected atomically");
   cancel.store(true);check(!p.prepare(sr,s,&cancel),"cancelled plate prepare rejected");cancel.store(false);}
 }
-int main(){run(48000,64);run(48000,128);run(8000,64);run(8000,128);std::cout<<"PASS native Plate/Machine: stable finite tail, decay/damping behavior, dry-aware carving, untouched dry path and zero callback heap at 8/48 kHz 64/128\n";}
+static void storageEngineSwitch(){
+ aion::ReverbStorage st;check(st.prepareStopped(8000),"storage prepare");
+ aion::ReverbSettings m{};m.engine=aion::ReverbEngine::machine;m.enabled=true;m.plate=aion::plateDefaults();m.plate[0]=2;m.plate[4]=.5;
+ check(st.reservationBytes(8000,m)>0,"machine reservation");
+ check(st.request(0,m,1),"machine request");
+ for(unsigned n=0;n<400&&!st.view(0).active;++n){st.serviceWorker();(void)st.poll();}
+ check(st.view(0).active&&st.plateGraph(0)&&!st.graph(0),"machine graph installed");
+ std::vector<float> l(64,0.f),r(64,0.f),ol(64,0.f),or_(64,0.f);l[0]=1;
+ check(st.process(0,l,r,ol,or_),"machine process");
+ double peak=0;for(float x:ol)peak=std::max(peak,std::abs(double(x)));check(peak>1e-6,"machine produced wet audio");
+ check(st.setControl(0,0,5.0),"machine live control");
+ for(unsigned n=0;n<100&&st.view(0).transitioning;++n)(void)st.process(0,l,r,ol,or_);
+ aion::ReverbSettings c{};c.enabled=true;c.engine=aion::ReverbEngine::convolution;
+ check(st.request(0,c,2),"convolution request");
+ for(unsigned n=0;n<400&&!st.graph(0);++n){st.serviceWorker();(void)st.poll();}
+ check(st.graph(0)&&!st.plateGraph(0),"engine switch installs convolution");
+}
+int main(){run(48000,64);run(48000,128);run(8000,64);run(8000,128);storageEngineSwitch();std::cout<<"PASS native Plate/Machine: stable finite tail, decay/damping behavior, dry-aware carving, untouched dry path and zero callback heap at 8/48 kHz 64/128\n";}

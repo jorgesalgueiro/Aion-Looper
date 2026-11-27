@@ -1438,7 +1438,14 @@ finite stable tails, longer-decay energy, damping removes high end, the carver
 reduces the wet band driven by a 2 kHz dry tone, the dry path is bit-untouched,
 invalid edits preserve settings, cancellation is honoured and callback new/delete
 is zero. Linux builds the same module and passes `plate_reverb_contract` (0.48 s).
-This is DSP acceptance, not a listening or product-integration claim.
+
+Engine selection now exists in the core: `ReverbSettings.engine` and the six plate
+values/presets are validated; `ReverbStorage` prepares a plate graph for machine
+requests, exposes it via `plateGraph`, applies plate live controls/edits, and
+crossfades an engine change through the existing prepared-slot path. The storage
+test switches machine to convolution and back. This is core acceptance; no
+product panel/state/CLI/MIDI surface selects machine yet, so there is no listening
+or user-visible claim.
 
 Pending integration: unified Reverb panel engine toggle, per-engine state and
 presets, prepared crossfade/storage, CLI/MIDI engine ownership, and the legacy
