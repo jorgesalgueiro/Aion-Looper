@@ -1203,9 +1203,13 @@ Acceptance (Windows Release):
 - Actual WebView2 Reverb and Delay UI tests pass at 64/128 (panel/commands,
   reload, nonzero PCM, unchanged clip) with the joint restore active.
 
-Not yet established: the Linux build/tests for this Processor change, a B joint
-PCM audio oracle, a GUI host-state-load fixture, MIDI learn/receipts, Machine
-mode and listening/device/DAW acceptance.
+Linux (clean native WSL checkout at this commit): the Release Standalone links,
+and the native reverb command/state, Delay state and joint-effects processor
+cases pass 8/8 at 64/128 (10.81 s). The reverb settings-owner contract, the new
+coordinated Arp/B bank set and the reverb/Arp bank contracts pass 8/8 (12.87 s).
+
+Not yet established: a B joint PCM audio oracle, a GUI host-state-load fixture,
+MIDI learn/receipts, Machine mode and listening/device/DAW acceptance.
 
 ### Coordinated core Arp/Reverb/effects bank — 27 November 2026
 

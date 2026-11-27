@@ -21,9 +21,10 @@ resubmits the cleared candidate rather than latching failure.
 
 Windows: reverb state 64/128, reverb command 64/128, Delay state 64/128 and joint
 effects 64/128 pass; the Standalone and mouse host link; actual WebView2 Reverb
-and Delay UI pass at 64/128. Callback heap operations remain zero. Linux, joint B
-PCM, GUI host-state-load, MIDI/Machine and listening/DAW acceptance remain
-pending.
+and Delay UI pass at 64/128. Linux: Standalone links, native processor 8/8
+(10.81 s), reverb owner + coordinated B bank + reverb/Arp bank 8/8 (12.87 s).
+Callback heap operations remain zero. Joint B PCM, GUI host-state-load,
+MIDI/Machine and listening/DAW acceptance remain pending.
 
 ### Coordinated core Arp/Reverb/effects bank — 27 November 2026
 
