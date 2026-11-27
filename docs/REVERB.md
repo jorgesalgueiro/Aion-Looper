@@ -1342,3 +1342,37 @@ Limits: no MIDI mapping for Duration/Decay, Machine engine, pitch/expression
 targets, physical controllers or Linux WebKit/listening/DAW acceptance. The host
 state load now suspends B MIDI immediately (not only on the next Timer tick), so
 a packet between the load and its first service cannot edit the old owner.
+
+### Independent integration audit and audible B MIDI — 27 November 2026
+
+Reviewed the panel/bridge, coordinated Arp/Delay/B bank, Processor adoption and
+four-control MIDI changes from `8b61e0a` through `53c7c71`. One production defect
+was reproduced with a valid 384 kHz, all-twenty, five-second B load: aggregate
+budget refusal leaves the confirmed native owner unchanged and retains the
+failed host intent, but MIDI was resumed unconditionally. A subsequent CC could
+then change the audio owner against that intent. The new production regression
+failed at both block sizes before the fix (`build/reverb-midi-failed-restore-before.txt`).
+The message service now suspends B MIDI while failed intent differs from the
+confirmed bank and clears a resolved failure only after pending edits settle.
+It also checks the failure delivered in that same service before returning MIDI
+ownership. Tests verify rejection of CC during failure and fresh-load recovery;
+both 64/128 pass (`build/reverb-midi-failed-restore-fixed.txt`).
+
+New `aion_reverb_midi_audio_tests` / `reverb_midi_audio_contract` compares actual
+paired Engine PCM against scheduled ordinary ReverbSettingsOwner edits. It uses
+captured nonzero audio, prepared enabled convolution, all four live controls,
+preassigned and first-packet-consumed same-block provisional Learn, sample
+offsets 0/17/last, channels 1/16 and nonmonotonic 0/127/32/64 values, 8/48 kHz and
+64/128. Both output channels must remain within the existing `1e-6` limit and
+settings must match exactly with owners still bound. Unread MIDI followed by
+DEL, fresh post-clear CC, suspend/recovery and zero callback new/delete remain
+asserted. No old test or tolerance was removed/relaxed. The first learned-audio
+fixture omitted the required learnGeneration and therefore never armed Learn;
+correcting that fixture stamp made its retained PCM assertion pass.
+
+Windows core checks: coordinated bank admission/scenarios/PCM and owner 7/7
+passed; the final MIDI audio test passed (1.89s). FrontendTests and BridgeTests
+pass. Final native/UI/Linux evidence follows in the verification checkpoint.
+No DSP algorithm, product control, ID, schema, logo, preserved reference or
+third-party source was changed. Physical controller, listening/device/DAW,
+Linux WebKit, shape-control MIDI and Machine acceptance remain separate.

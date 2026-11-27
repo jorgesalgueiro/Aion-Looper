@@ -11,6 +11,28 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Independent B integration audit / MIDI PCM acceptance — 27 November 2026
+
+Reviewed the B panel, joint Arp/Delay/B restore and conservative MIDI changes
+after `8b61e0a` through `53c7c71`. Reproduced a retained-failure ownership defect
+at 64/128: a valid over-budget host load failed, but B MIDI resumed against the
+old audio owner while the processor kept the failed load's different intent.
+The message owner now keeps MIDI suspended for that retained failure, including
+the service that receives the failure. A fresh valid load restores MIDI. The
+new production regression fails before the fix and passes after it at 64/128.
+
+Continued the MIDI slice with `reverb_midi_audio_contract`: paired actual Engine
+stereo PCM for all four preassigned and same-block provisionally learned live
+controls against scheduled ordinary owner edits. Covers offsets 0/17/last,
+nonmonotonic CC values, 8/48 kHz and 64/128, nonzero PCM, exact settings/owner
+proof, unread-receipt clear and suspend/recovery, with zero callback heap work.
+The retained `1e-6` PCM limit passes. Final platform/UI evidence is in REVERB.md.
+No original cases/tolerances, UI/logo, IDs, presets or state schema changed.
+
+Machine/B-V compatibility, shape-control MIDI, Linux WebKit and physical
+controller/listening/device/DAW acceptance remain pending. The conservative
+four-control MIDI surface remains the product scope of this slice.
+
 ### Conservative B MIDI learn — 27 November 2026
 
 Appended continuous targets 153–156 for Reverb Volume/Mix/Damp/Pre-delay (live

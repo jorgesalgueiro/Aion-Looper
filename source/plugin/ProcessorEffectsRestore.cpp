@@ -11,7 +11,14 @@ bool AionProcessor::serviceEffectsRestore(){
         if(!retainedDelayFailure&&!pending)delayRestoreFailed=false;
     }
     delayOwner.suspendMidi(retainedDelayFailure||effectsRestore.active||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending);
-    reverbOwner.suspendMidi(effectsRestore.active||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending||reverbRestorePending);
+    const auto retainedReverbFailure=[&]{
+        if(!reverbRestoreFailed)return false;
+        bool differs=false,pending=false;
+        for(unsigned id=0;id<reverbSettings.size();++id){differs|=reverbSettings[id]!=reverbOwner.track(id)->committed;pending|=reverbOwner.track(id)->pending;}
+        if(!differs&&!pending)reverbRestoreFailed=false;
+        return differs;
+    };
+    reverbOwner.suspendMidi(retainedReverbFailure()||effectsRestore.active||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending||reverbRestorePending);
     serviceDelay();
     serviceReverb();
     arpOwner.service(latest);
@@ -70,7 +77,9 @@ bool AionProcessor::serviceEffectsRestore(){
     }
     if(!(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending||reverbRestorePending)){
         delayOwner.suspendMidi(retainedDelayFailure);
-        reverbOwner.suspendMidi(false);
+        // Include a failure delivered in this very service: there must be no
+        // callback window where MIDI owns the old graph against retained intent.
+        reverbOwner.suspendMidi(retainedReverbFailure());
         for(unsigned i=0;i<arpSettings.size();++i)if(!arpOwner.track(i)->pending)arpSettings[i]=arpOwner.track(i)->committed;
         return true;
     }

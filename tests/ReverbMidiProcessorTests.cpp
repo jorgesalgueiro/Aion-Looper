@@ -9,6 +9,31 @@ void* operator new(std::size_t n){if(watch)++operations;if(auto* p=std::malloc(n
 void* operator new[](std::size_t n){return ::operator new(n);}void operator delete(void* p)noexcept{if(watch&&p)++operations;std::free(p);}
 void operator delete[](void* p)noexcept{::operator delete(p);}void operator delete(void* p,std::size_t)noexcept{::operator delete(p);}void operator delete[](void* p,std::size_t)noexcept{::operator delete(p);}
 static void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
+struct AionReverbStateTestAccess {
+ static bool failed(AionProcessor& p){std::lock_guard guard(p.midiSettingsMutex);return p.reverbRestoreFailed;}
+};
+static void failedRestore(unsigned block){
+ // A valid but over-budget load fails before graph preparation. Retained host
+ // intent must remain exclusive until a fresh load/clear resolves the failure.
+ auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,384000,static_cast<int>(block));p->prepareToPlay(384000,static_cast<int>(block));
+ juce::AudioBuffer<float> audio(2,static_cast<int>(block));juce::MidiBuffer midi;midi.ensureSize(4096);
+ auto pump=[&]{audio.clear();watch=true;p->processBlock(audio,midi);watch=false;midi.clear();check(!operations,"failed restore callback new/delete");};
+ auto snapshot=[&]{return p->request({juce::JSON::parse(R"({"operation":"snapshot"})")});};pump();(void)snapshot();
+ juce::MemoryBlock base;p->getStateInformation(base);auto xml=p->getXmlFromBinary(base.getData(),static_cast<int>(base.getSize()));
+ auto* mappings=xml->getChildByName("MidiSettings");mappings->setAttribute("enabled",1);mappings->setAttribute("eqTrack",19);mappings->setAttribute("binding153",static_cast<int>(aion::midiBinding(2,20)));
+ for(auto* row:xml->getChildByName("LoopReverbs")->getChildIterator()) {row->setAttribute("enabled",1);row->setAttribute("duration",5);}
+ juce::MemoryBlock candidate;p->copyXmlToBinary(*xml,candidate);p->setStateInformation(candidate.getData(),static_cast<int>(candidate.getSize()));
+ for(unsigned n=0;!AionReverbStateTestAccess::failed(*p);++n){check(n<2000,"over-budget B restore reaches terminal failure");pump();(void)snapshot();std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+ const auto before=p->inspectAudioThread(19).track.reverb;
+ for(unsigned n=0;n<4;++n){midi.addEvent(juce::MidiMessage::controllerEvent(1,20,127),17);pump();(void)snapshot();}
+ check(p->inspectAudioThread(19).track.reverb==before,"retained failed B restore must keep MIDI suspended");
+ // A fresh valid state relinquishes the retained failed intent and recovers MIDI.
+ for(auto* row:xml->getChildByName("LoopReverbs")->getChildIterator()){row->setAttribute("enabled",0);row->setAttribute("duration",1.2);}
+ p->copyXmlToBinary(*xml,candidate);p->setStateInformation(candidate.getData(),static_cast<int>(candidate.getSize()));
+ for(unsigned n=0;n<2000;++n){pump();const auto s=snapshot();if(!static_cast<bool>(s["tracks"][19]["reverbBusy"]))break;check(n<1999,"fresh load after B failure recovers");std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+ midi.addEvent(juce::MidiMessage::controllerEvent(1,20,127),17);pump();(void)snapshot();
+ check(p->inspectAudioThread(19).track.reverb.values[0]==3,"fresh valid load restores B MIDI ownership");
+}
 int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const int block=argc==2?juce::String(argv[1]).getIntValue():64;check(block==64||block==128,"64/128");
  auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,block);p->prepareToPlay(8000,block);juce::AudioBuffer<float> audio(2,block);juce::MidiBuffer midi;midi.ensureSize(4096);
  auto pump=[&]{audio.clear();watch=true;p->processBlock(audio,midi);watch=false;midi.clear();check(!operations,"zero Reverb MIDI callback new/delete");};
@@ -55,5 +80,6 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const int blo
  check(mm->getIntAttribute("version")==9,"v8 migrates to v9");for(unsigned j=0;j<4;++j)check(mm->getIntAttribute("binding"+juce::String(153+j),-1)==0,"new B slots start unassigned in v8 states");
  check(mm->getIntAttribute("binding152",-1)==aion::midiBinding(2,25),"legacy Delay binding survives migration");
  check(p->getActiveEditor()==nullptr,"Reverb MIDI works without an editor");
+ failedRestore(static_cast<unsigned>(block));
  std::cout<<"PASS native Reverb MIDI "<<block<<": four live targets, all CC/channel values, learn, saturation/recovery, joint restore gate and v8 migration; zero callback heap\n";
 }
