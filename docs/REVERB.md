@@ -816,6 +816,11 @@ recovery cases, Note/CC/PC routing, sustain/panic/holds, zero callback new/delet
 and exact native WAV/sample-offset checks at 64/128. This is synthetic core MIDI,
 not physical controllers, JUCE device routing, editor interaction or driver tests.
 
+Independent full-suite rerun at source `4670bc0` closed that focused-only gap:
+Windows Release `core_realtime_contract` passed (1038.84s) and native WSL Linux
+passed (436.35s, 91 PASS sections). No test, tolerance, timeout or build flag was
+changed.
+
 No new audio model, parameter/action/preset IDs, bridge/GUI/CLI/persistence or
 Machine-mode feature was added. Preserved UI/logo/reference and third-party
 sources/notices remain unchanged. Reverb stays disabled in the product surface.

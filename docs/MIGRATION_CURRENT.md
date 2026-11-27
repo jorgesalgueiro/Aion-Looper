@@ -42,7 +42,10 @@ ASan/UBSan/leak 16/16 passed (102.46s), no reported errors/suppressions. Existin
 Debug/address+undefined/frame-pointer/plugin-OFF flags and timeouts retained.
 The focused Windows `aion_core_tests --midi` also passed: CC lookup/filtering,
 Note/CC/PC, MUTE/UNM sample offsets and exact WAV, holds/sustain/panic/recovery.
-The core test binary was rebuilt, but its full default suite was not rerun.
+The core test binary was rebuilt; an independent full-suite rerun at source
+`4670bc0` then closed that gap: Windows Release `core_realtime_contract` passed
+(1038.84s) and native WSL Linux passed (436.35s, 91 PASS sections), with no test,
+tolerance, timeout or build-flag change.
 No GUI/driver/DAW/device tests were performed. See REVERB.md for exact commands.
 
 No new feature/preset/DSP model, UI/CLI/state surface, dependency, logo/reference
