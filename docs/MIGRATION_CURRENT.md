@@ -11,6 +11,20 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / coordinated Arp/Reverb/effects restore design — 27 November 2026
+
+Wrote the gated-slice design for joining B to the existing Arp/effects bank:
+opt-in EffectsBank.reverbs/reverbRevisions/restoreReverbs, three-storage
+admission and commit in LoopBank (Arp+Delay+B), EngineArpBank stale checks and
+receipt fields (includesReverbs/reverb settings revisions), a
+coordinatedReverbBank admission flag, and Processor ordering where
+serviceEffectsRestore is the sole submitter of a joint state/prepare restore and
+serviceReverb stops submitting a competing B-only bank. The failure/cancellation
+matrix, exact receipt epoch/revision proofs and planned core, audio, Processor
+and GUI/state tests are recorded in [REVERB.md](REVERB.md). No production code,
+state version, parameter or command changed; implementation starts with the core
+bank and its admission/cancellation tests.
+
 ### B / web panel adapter and GUI acceptance — 27 November 2026
 
 Connected the preserved B panel through a native presentation adapter

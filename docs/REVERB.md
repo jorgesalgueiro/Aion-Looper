@@ -1037,3 +1037,135 @@ the WebView2 IPC round trip was ~300 ms, so that suite is inconclusive here and
 the text-only chain tooltip update is not counted as validated by it. B is now
 enabled in the GUI; the unified Machine engine, B MIDI learn/CC targets and the
 coordinated effects restore hook remain pending.
+
+
+## Coordinated Arp/Reverb/effects restore — design, 27 November 2026
+
+Status: **design only, no production code changed.** This is the next gated slice
+for B. It follows the already-accepted Delay precedent (opt-in fields on the Arp
+bank, a single joint receipt and storage-level commit) rather than inventing a
+second restore mechanism.
+
+### Observable acceptance
+
+A saved-state load (host state set, processor restoreState and a changed-rate
+prepare) restores Q/C/chain/A/D **and B** as one admitted transaction:
+
+- all twenty B settings, clear epochs and revisions are validated before any
+  worker job or audio graph change;
+- if any B storage/impulse preparation fails, the whole joint bank fails and the
+  previously playing graphs and committed B settings remain untouched;
+- the single terminal receipt names B (its epoch/revision arrays), and the
+  non-audio owner adopts B only from that receipt;
+- a DEL on one track during preparation cancels the joint bank or preserves that
+  track's post-clear owner exactly as the accepted Delay/per-track rules require;
+- panic, STOP ALL, clear, prepare, supersession and unread receipts keep the
+  current bounded/cancellation semantics;
+- external accepted B edits cannot interleave with the joint transaction;
+- callback new/delete stays zero and the existing audio tolerances are unchanged.
+
+### Current state and why B is separate
+
+B already has complete individual and B-only bank transactions
+(Engine::enqueueReverbEdit/enqueueReverbBank, LoopBank::requestReverbBank,
+ReverbSettingsOwner). The Processor restores B independently in serviceReverb,
+while serviceEffectsRestore submits the existing Arp/effects bank
+(Q/C/chain/A/D). A session load can therefore install B outside the joint
+atomicity and after the other effects, and B failures/clears cannot cancel the
+joint transaction. Delay no longer has this split: its settings travel in
+LoopBank::EffectsBank with restoreDelays.
+
+### Data model
+
+1. LoopBank::EffectsBank gains ReverbBank reverbs{}, ReverbEpochs
+   reverbRevisions{} and bool restoreReverbs=false (default false preserves
+   Arp-only and existing Delay callers). validEffectsBank requires every
+   validReverbSettings and reverbRevisions[id] != UINT64_MAX when the flag is set.
+2. The Arp bank request already embeds EffectsBank; no new payload queue or
+   second producer is added. ArpBankResult gains bool includesReverbs=false and
+   LoopBank::ReverbEpochs reverbSettingsRevisions{} (mirroring
+   includesDelays/delaySettingsRevisions).
+3. Engine::enqueueArpBank requires no outstanding B bank and no outstanding
+   per-track B edit when restoreReverbs is set, and publishes
+   coordinatedReverbBank (a release/acquire atomic, like coordinatedDelayBank)
+   for the admission lifetime. B edit/bank admission rejects while that flag is
+   set; a B edit accepted before joint admission is excluded by revision checks.
+4. LoopBank::requestArpBank (audio owner) verifies no pending B bank/edit and
+   matching B revisions, then requests all selected banks: Arp, Delay (existing)
+   and B. Any failure rolls back every staged bank before jobs can install; the
+   audio graphs already in use are never touched.
+5. LoopBank::pollArps owns the joint terminal state: stale clear-epoch/revision
+   changes cancel all staged banks (cancelArpBank also cancels the B bank), a
+   worker failure in any stage fails the joint result, and only when Arp, Delay
+   and B are all ready are they committed in the same callback before
+   info.reverb/revision are advanced and the Q/C/chain/drives metadata is
+   applied. pollReverbs must not independently validate, cancel or commit a
+   storage bank while the joint request owns it; it continues to service
+   per-track B results and reverbStorage->poll().
+6. EngineArpBank adds B stale checks (all twenty epochs/revisions), draws the
+   receipt's B arrays/revision ownership from the already-committed view, and
+   reports includesReverbs. Cancellation of the joint request retires the B
+   storage bank through the same owner; unread receipts remain bounded.
+
+### Processor ordering
+
+7. restoreState keeps publishing the exact B candidate and reverbRestorePending;
+   prepareToPlay keeps its stopped-lifecycle intent. No new intent format or
+   state version is needed.
+8. serviceEffectsRestore is the only submitter while the joint intent exists: it
+   includes reverbOwner's committed/known B bank only after the B owner is bound
+   and no B edit/bank is pending, then accepts the single receipt through a new
+   ReverbSettingsOwner::acceptEffectsRestore(view, candidate, receipt, epochs,
+   revisions) (exact request/generation/callback-serial/epoch/revision proofs,
+   cleared-track semantics, no retry). Only then does it clear
+   reverbRestorePending.
+9. serviceReverb returns early while the joint intent is active (the current
+   serviceDelay rule), keeps servicing individual edit receipts, clear epochs
+   and intent rollback, and stops submitting a competing B-only bank for state
+   loads. A failed joint bank retains the previous committed B values and
+   reverbRestoreFailed semantics.
+10. STOP ALL/DEL/MIDI Stop clear/cancel paths keep their existing ordering: the
+    effect bank is cancelled before ordinary commands; DEL cancels only its
+    track's pending work and its newer clear epoch invalidates stale adoptions.
+    No audio-thread allocation, lock, file or UI work is introduced.
+
+### Failure and cancellation matrix (must be covered)
+
+| Event | Required outcome |
+| --- | --- |
+| B worker OOM / impulse build failure | joint failed, Arp/D/B staged banks cancelled, old audio and committed B kept |
+| Arp or Delay stage fails while B is ready | same cancelled/failed terminal receipt; B is never adopted alone |
+| clear-epoch/revision change on any track before commit | joint cancelled (or that track's exact post-clear owner preserved as today) |
+| DEL during preparation | no old-graph hybrid; receipt exposes the per-track epoch outcome |
+| STOP ALL / panic / prepare | joint cancelled, queued jobs retired, unread receipts retained |
+| external B edit/command during joint admission | rejected; a later independent edit after admission does not steal the receipt |
+| superseding state load | newest intent wins; the older transaction cannot adopt |
+| unread terminal receipt | no new joint bank or B edit until consumed (bounded) |
+
+### Planned tests
+
+- Core admission/ownership: mirror effects_delay_coordinated_bank_* with B —
+  both readiness orders, OOM in each of the three storages, all-off commit,
+  stale final-track revisions, independent B edit/unread-receipt exclusion,
+  B/Arp/D cancellation, panic, DEL and prepare, same-ID recovery.
+- Actual Engine audio at 8/48 kHz and 64/128: joint Q/C/chain/A/D/B restore with
+  independent PCM oracles for the B wet/dry output; old audio continuous during
+  preparation; OOM rollback; B disabled/all-off and enabled transitions; zero
+  callback new/delete. Reuse the existing 2e-6 stereo tolerance and the existing
+  mono-downmix/centre-pan input model; no new browser-PCM gate is invented.
+- Processor: state load restoring all effects plus B through one receipt;
+  save-load-save identity; B failure/rollback; clear/DEL; superseding load;
+  prepare/rate change; no-editor Timer service; zero callback heap operations.
+- GUI/state: after a load the B panel and row toggle show the restored settings
+  and the existing exact bridge precision is retained.
+
+### Risks and limits
+
+The Arp bank is the single audio-side transaction for effects; adding a third
+storage increases its cancellation surface. The design therefore keeps B opt-in,
+reuses the existing ReverbStorage bank APIs and worker ownership, adds no new
+queue, allocation, lock or parameter/state ID, and preserves the accepted Delay
+and standalone B behavior when the flag is false. Machine engine, B MIDI
+learn/CC targets, listening/device/DAW and Linux WebKit UI remain outside this
+slice. Implementation proceeds core bank first, then Processor ordering, then
+GUI/state acceptance, with the affected Windows and Linux tests at each step.
