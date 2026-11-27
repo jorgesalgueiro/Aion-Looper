@@ -11,6 +11,21 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Conservative B MIDI learn — 27 November 2026
+
+Appended continuous targets 153–156 for Reverb Volume/Mix/Damp/Pre-delay (live
+controls only; Duration/Decay stay unmapped). Added Engine MIDI apply/receipts,
+owner consumption/suspension and schema version 9 (v8 states read their 153
+bindings; the new slots start empty). Reverb UI supports right-click learn and
+Shift-right-click clear on the four sliders.
+
+Windows: native Reverb MIDI 64/128, Delay MIDI 64/128 and the production MIDI
+suite pass; retained reverb state/command, Delay state and joint tests pass;
+Reverb UI 64/128 (learn/CC/clear/unmapped shape controls), Delay UI 64/128 and
+FrontendTests pass. Linux build/execution is recorded after the committed sync.
+Duration/Decay mapping, Machine, physical controllers and listening/DAW remain
+pending.
+
 ### GUI host-state B restore — 27 November 2026
 
 The WebView2 test host gained a test-only file channel that calls the production

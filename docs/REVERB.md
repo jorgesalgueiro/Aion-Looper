@@ -1303,3 +1303,36 @@ Executed: Reverb UI passes at 64 and 128 with the retained panel/reload/LIVE
 coverage and host-state round trip. The retained Delay UI passes at 64/128 with
 the same host. Linux GUI/WebKit, MIDI learn, Machine mode and listening/device/DAW
 acceptance remain separate.
+
+### B MIDI continuous learn — 27 November 2026
+
+Conservative B MIDI mapping is now connected end to end. Only the live controls
+that do not change the prepared impulse shape are exposed: Volume, Mix, Damp and
+Pre-delay map to appended continuous targets 153–156 after Delay's 147–152;
+Duration and Decay stay unmapped (a shape edit needs a prepared transaction).
+
+- MidiSettings version 9 writes 157 bindings. Versions 1–8 keep their exact old
+  lengths (v8 reads 153) and the four new slots start unassigned.
+- Engine::applyReverbMidi applies the exact CC value to the committed B track and
+  publishes a bounded receipt with clear epoch and before/after revision. The
+  ReverbSettingsOwner consumes receipts under its owner generation, suspends
+  dispatch during joint restore/edit intent, and detaches on any unexplained
+  revision, exactly like the accepted Delay owner.
+- Message 153 = Volume, 154 = Mix, 155 = Damp, 156 = Pre-delay as CC.
+  Right-click learn and Shift-right-click clear work on those four sliders;
+  a focused learned slider follows hardware values, an unbound focused slider is
+  protected, and drags/keys keep ownership until release. Duration/Decay sliders
+  stay unlearnable.
+
+Executed (Windows Release): native Reverb MIDI passes at 64/128 (learn, all four
+targets across every channel and representative values, full 0–127 Mix sweep,
+bounded 512-receipt saturation and drain recovery, joint-restore suspension,
+unselected tracks, zero callback heap, v8 to v9 migration). Delay MIDI passes at
+64/128, and the production MIDI suite's 64/128 sections pass. Retained reverb
+state/command, Delay state and joint-effects tests pass; Reverb UI passes at
+64/128 with right-click learn, CC application, clear and an unmapped
+Duration/Decay check; Delay UI passes at 64/128 and FrontendTests pass.
+
+Limits: no MIDI mapping for Duration/Decay, Machine engine, pitch/expression
+targets, physical controllers or listening/DAW acceptance. Linux MIDI build and
+execution are recorded after the committed sync.

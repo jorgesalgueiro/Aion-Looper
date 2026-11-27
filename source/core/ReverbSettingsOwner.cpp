@@ -6,7 +6,7 @@ bool ReverbSettingsOwner::bind(const EngineView& view,const Bank& known) noexcep
  for(unsigned id=0;id<records.size();++id)
   if(records[id].pending||!validReverbSettings(known[id])||known[id]!=view.tracks[id].reverb)return false;
  for(unsigned id=0;id<records.size();++id)records[id]={known[id],view.tracks[id].clearEpoch,view.tracks[id].reverbSettingsRevision,0,ReverbEditStatus::ready,false};
- generation=view.generation;attached=true;return true;
+ generation=view.generation;attached=true;suspendMidi(midiSuspended);return true;
 }
 bool ReverbSettingsOwner::submit(unsigned id,const ReverbSettings& candidate,std::uint32_t request,std::uint64_t frame) noexcept {
  if(!bound()||bank.active||id>=records.size()||records[id].pending||!request||!validReverbSettings(candidate))return false;
@@ -65,7 +65,7 @@ bool ReverbSettingsOwner::acceptEffectsRestore(const EngineView& view,const Bank
   if(audio.clearEpoch==epochs[id])record={candidate[id],audio.clearEpoch,audio.reverbSettingsRevision,receipt.requestId,ReverbEditStatus::ready,false};
   else if(audio.reverbSettingsRevision==0)record={ReverbSettings{},audio.clearEpoch,0,receipt.requestId,ReverbEditStatus::cancelled,false};
  }
- generation=receipt.generation;attached=true;return true;
+ generation=receipt.generation;attached=true;suspendMidi(midiSuspended);return true;
 }
 void ReverbSettingsOwner::cancel(unsigned id) noexcept {engine.cancelReverbEdit(id);}
 void ReverbSettingsOwner::serviceBank() noexcept {
@@ -101,9 +101,18 @@ void ReverbSettingsOwner::service(const EngineView& view) noexcept {
   record.status=committed?ReverbEditStatus::ready:result.status==ReverbEditStatus::ready?ReverbEditStatus::cancelled:result.status;
   record.pending=false;pending[result.track]={};
  }
+ ReverbMidiReceipt midi;
+ for(unsigned n=0;n<511&&engine.popReverbMidi(midi);++n){
+  if(midi.generation!=generation||midi.track>=records.size())continue;
+  auto& record=records[midi.track];if(midi.epoch<record.clearEpoch)continue;
+  if(midi.epoch!=record.clearEpoch||midi.before!=record.revision||midi.revision!=midi.before+1){attached=false;continue;}
+  if(!setReverbControl(record.committed,midi.parameter,midi.value)){attached=false;continue;}
+  record.revision=midi.revision;
+ }
  if(attached&&view.generation==generation)for(unsigned id=0;id<records.size();++id){const auto& record=records[id];const auto& audio=view.tracks[id];
   if(record.pending||audio.clearEpoch!=record.clearEpoch||audio.reverbSettingsRevision<record.revision)continue;
   if(audio.reverbSettingsRevision!=record.revision||audio.reverb!=record.committed){attached=false;break;}
  }
+ suspendMidi(midiSuspended);
 }
 }

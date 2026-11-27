@@ -1218,10 +1218,12 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  fire(reset,'click');assert.deepEqual(lastCommand(),{target:0,key:undefined,action:'reset',preset:undefined,parameter:undefined,value:undefined});
  volume.value='0.65';fire(volume,'input');assert.deepEqual(lastCommand(),{target:0,key:'reverb:volume',action:'set',preset:undefined,parameter:'volume',value:.65});
  fire(mix,'dblclick');assert.deepEqual(lastCommand(),{target:0,key:'reverb:mix',action:'set',preset:undefined,parameter:'mix',value:.15});
- // A focused slider follows authoritative native/preset values; only an actual
- // drag or key gesture owns the control until release.
- setSnapshot({volume:.8});ui.update();dom.doc.activeElement=volume;setSnapshot({volume:.8});ui.update();assert.equal(volume.value,.8,'focused slider follows native value');
- fire(volume,'pointerdown',{button:0,pointerId:7});setSnapshot({volume:.9});ui.update();assert.equal(volume.value,.8,'active drag keeps the user value');
+ // An unbound focused slider is protected; a learned one follows authoritative
+ // native values, and an active drag/key gesture owns the control until release.
+ setSnapshot({volume:.8});snapshot.midi={bindings:[]};ui.update();dom.doc.activeElement=volume;
+ setSnapshot({volume:.85});snapshot.midi={bindings:[]};ui.update();assert.equal(volume.value,.8,'focused unbound slider keeps the user value');
+ setSnapshot({volume:.85});snapshot.midi={bindings:[]};snapshot.midi.bindings[153]=0x0201;ui.update();assert.equal(volume.value,.85,'focused learned slider follows native value');
+ fire(volume,'pointerdown',{button:0,pointerId:7});setSnapshot({volume:.9});snapshot.midi={bindings:[]};snapshot.midi.bindings[153]=0x0201;ui.update();assert.equal(volume.value,.85,'active drag keeps the user value');
  for(const fn of dom.handlers.pointerup||[])fn({pointerId:7});ui.update();assert.equal(volume.value,.9,'release follows the native value');
  dom.doc.activeElement=null;
  const toggle=dom.doc.createElement('input');toggle.id='loop-0-reverb';

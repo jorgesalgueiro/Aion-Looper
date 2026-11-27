@@ -15,6 +15,11 @@ window.AionMidiDelayParameters=['time','repetitions','damp','mix','panSpeed','pa
 window.AionMidiSliderTarget=id=>{const drive=window.AionMidiDriveParameters.findIndex(([effect,p])=>id===effect+p[0].toUpperCase()+p.slice(1));if(drive>=0)return 133+drive;const arp=window.AionMidiArpParameters.findIndex(p=>id==='arpDelay'+p[0].toUpperCase()+p.slice(1));if(arp>=0)return 124+arp;const comp=window.AionMidiCompressorParameters.findIndex(p=>id==='compressor'+p[0].toUpperCase()+p.slice(1));if(comp>=0)return 117+comp;const eq=window.AionMidiEqParameters.findIndex(p=>id==='eq'+p[0].toUpperCase()+p.slice(1));if(eq>=0)return 93+eq;const live=/^live_mm_slider_l_(\d+)$/.exec(id);if(live)return Number(live[1])<20?33+Number(live[1]):-1;const m=/^loop-(vol|pan)-slider-(\d+)$/.exec(id);return m&&Number(m[2])<20?(m[1]==='vol'?33:53)+Number(m[2]):-1;};
 const previousSliderTarget=window.AionMidiSliderTarget;
 window.AionMidiSliderTarget=id=>{const delay=window.AionMidiDelayParameters.findIndex(p=>id==='delay'+p[0].toUpperCase()+p.slice(1));return delay>=0?147+delay:previousSliderTarget(id);};
+// Conservative B surface: only ReverbStorage live controls; duration/decay
+// change the prepared impulse shape and stay unmapped.
+window.AionMidiReverbParameters=['volume','mix','damp','predelay'];
+const previousSliderTargetTwo=window.AionMidiSliderTarget;
+window.AionMidiSliderTarget=id=>{const reverb=window.AionMidiReverbParameters.findIndex(p=>id==='reverb'+p[0].toUpperCase()+p.slice(1));return reverb>=0?153+reverb:previousSliderTargetTwo(id);};
 window.AionMidiLearnTarget=id=>{const mute=/^live_mm_mute_l_(\d+)$/.exec(id);if(mute)return Number(mute[1])<20?73+Number(mute[1]):-1;const m=/^loop-action-(\d+)$/.exec(id);return m?(Number(m[1])<20?Number(m[1]):-1):window.AionMidiSliderTarget(id);};
 // Original main MUTE has no ID; recognise its bound button in its owning card.
 window.AionMidiMuteButton=row=>[...(row?.querySelectorAll?.('button')||[])].find(e=>e.dataset?.nativeControl==='true'&&['MUTE','UNM'].includes(e.textContent?.trim()))||null;

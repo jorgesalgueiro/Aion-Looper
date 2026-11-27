@@ -9,6 +9,8 @@
  // Native catalogue order/identity. Rooms are selected by these presets, as in
  // the preserved panel; the command layer keeps the explicit room action.
  const presets=['small','studio','medium','large','hall','plate','bright-plate','spring','cathedral','washed-out','tight-drum','ambient-cloud','dark-cave','dub-space','vocal-room','garage','shimmer-hall'];
+ // Conservative MIDI surface: live controls only (targets 153..156).
+ const midiTarget={volume:153,mix:154,damp:155,predelay:156};
  window.AionReverbUI=({current,equalizer,enqueue})=>{
   let alive=true;const controls=[],toggles=[];
   const module=document.createElement('div');module.id='native-reverb-panel';module.className='retro-module';module.style.borderColor='lightblue';
@@ -58,7 +60,7 @@
     const ready=!!s.audioReady;
     title.textContent=`Loop ${track+1} — CONV. REVERB (B)`;
     enabled.checked=!!settings.enabled;preset.value=settings.preset??'';preset.disabled=enabled.disabled=reset.disabled=!ready;
-    for(const c of controls){const number=Number(settings.values[c.name]);c.edit.update(number,true);c.value.textContent=number.toFixed(2);c.input.disabled=!ready;}
+    for(const c of controls){const number=Number(settings.values[c.name]);c.edit.update(number,midiTarget[c.name]?!!s.midi?.bindings[midiTarget[c.name]]:true);c.value.textContent=number.toFixed(2);c.input.disabled=!ready;}
     for(const t of toggles){const other=s.tracks?.[t.track]?.reverb;t.input.checked=!!other?.enabled;t.input.disabled=!ready;}
    }
   };

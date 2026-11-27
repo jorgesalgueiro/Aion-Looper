@@ -5,7 +5,7 @@ namespace aion {
 // Packed binding: kind (1 note, 2 CC, 3 program), number, optional channel.
 constexpr std::uint16_t midiBinding(unsigned kind,unsigned number,unsigned channel=0) noexcept {return static_cast<std::uint16_t>(kind|(number<<2)|(channel<<9));}
 struct MidiSettings {
-    static constexpr unsigned eqBase=93,compressorBase=eqBase+24,arpBase=compressorBase+7,driveBase=arpBase+9,delayBase=driveBase+14,bindingCount=delayBase+6,volumeBase=33,panBase=53,muteBase=73;
+    static constexpr unsigned eqBase=93,compressorBase=eqBase+24,arpBase=compressorBase+7,driveBase=arpBase+9,delayBase=driveBase+14,reverbBase=delayBase+6,bindingCount=reverbBase+4,volumeBase=33,panBase=53,muteBase=73;
     static constexpr bool continuous(int target) noexcept {return (target>=static_cast<int>(volumeBase)&&target<static_cast<int>(muteBase))||(target>=static_cast<int>(eqBase)&&target<static_cast<int>(bindingCount));}
     static constexpr bool globalMode(int target) noexcept {return target>=30&&target<static_cast<int>(volumeBase);}
     bool enabled=false;
@@ -29,7 +29,7 @@ struct MidiView {
 };
 class MidiController {
 public:
-    struct Dispatch {LoopBank& bank;std::uint64_t frame;double rate;std::uint32_t generation;void* context;bool(*apply)(void*,LoopAction,std::uint32_t,double);bool(*arp)(void*,unsigned,unsigned,unsigned)=nullptr;bool(*delay)(void*,unsigned,unsigned,unsigned)=nullptr;};
+    struct Dispatch {LoopBank& bank;std::uint64_t frame;double rate;std::uint32_t generation;void* context;bool(*apply)(void*,LoopAction,std::uint32_t,double);bool(*arp)(void*,unsigned,unsigned,unsigned)=nullptr;bool(*delay)(void*,unsigned,unsigned,unsigned)=nullptr;bool(*reverb)(void*,unsigned,unsigned,unsigned)=nullptr;};
     static bool valid(const MidiSettings&) noexcept;
     static int targetFor(const MidiSettings&,const MidiEvent&) noexcept;
     bool configure(const MidiSettings& value) noexcept {return valid(value)&&configs.push(value);}

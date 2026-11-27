@@ -18,6 +18,7 @@ struct ArpMidiReceipt {
     std::uint32_t generation=0;std::uint64_t epoch=0,before=0,revision=0;
 };
 struct DelayMidiReceipt {unsigned track=0,parameter=0;double value=0;std::uint32_t generation=0;std::uint64_t epoch=0,before=0,revision=0;};
+struct ReverbMidiReceipt {unsigned track=0,parameter=0;double value=0;std::uint32_t generation=0;std::uint64_t epoch=0,before=0,revision=0;};
 struct Meter { std::uint64_t frame; float peak; };
 struct LoopCommand {
     LoopAction action{};
@@ -286,6 +287,8 @@ public:
     bool popArpMidi(ArpMidiReceipt& result) noexcept {return arpMidiResults->pop(result);}
     bool popDelayMidi(DelayMidiReceipt& result) noexcept {return delayMidiResults->pop(result);}
     void delayMidiOwner(std::uint32_t generation) noexcept {delayMidiGeneration.store(generation,std::memory_order_release);}
+    bool popReverbMidi(ReverbMidiReceipt& result) noexcept {return reverbMidiResults->pop(result);}
+    void reverbMidiOwner(std::uint32_t generation) noexcept {reverbMidiGeneration.store(generation,std::memory_order_release);}
     bool midiLearnCurrent(const MidiLearnResult& result) const noexcept {return midi->learnCurrent(result);}
     void cancelMidi() noexcept {midiCancellation.fetch_add(1,std::memory_order_release);}
     void cancelMidiLearn() noexcept {midiLearnCancellation.fetch_add(1,std::memory_order_release);}
@@ -315,10 +318,13 @@ private:
     bool midiInputAvailable=true;
     bool applyLoop(LoopAction,std::uint32_t,double) noexcept;
     bool applyMidi(LoopAction,std::uint32_t,double) noexcept;
-    MidiController::Dispatch midiDispatch() noexcept {return {loops,frame,preparedRate,generation(),this,[](void* context,LoopAction action,std::uint32_t track,double value){return static_cast<Engine*>(context)->applyMidi(action,track,value);},[](void* context,unsigned track,unsigned p,unsigned cc){return static_cast<Engine*>(context)->applyArpMidi(track,p,cc);},[](void* context,unsigned track,unsigned p,unsigned cc){return static_cast<Engine*>(context)->applyDelayMidi(track,p,cc);}};}
+    MidiController::Dispatch midiDispatch() noexcept {return {loops,frame,preparedRate,generation(),this,[](void* context,LoopAction action,std::uint32_t track,double value){return static_cast<Engine*>(context)->applyMidi(action,track,value);},[](void* context,unsigned track,unsigned p,unsigned cc){return static_cast<Engine*>(context)->applyArpMidi(track,p,cc);},[](void* context,unsigned track,unsigned p,unsigned cc){return static_cast<Engine*>(context)->applyDelayMidi(track,p,cc);},[](void* context,unsigned track,unsigned p,unsigned cc){return static_cast<Engine*>(context)->applyReverbMidi(track,p,cc);}};}
     bool applyDelayMidi(unsigned,unsigned,unsigned) noexcept;
     std::atomic<std::uint32_t> delayMidiGeneration{0};
     std::unique_ptr<SpscQueue<DelayMidiReceipt,512>> delayMidiResults=std::make_unique<SpscQueue<DelayMidiReceipt,512>>();
+    bool applyReverbMidi(unsigned,unsigned,unsigned) noexcept;
+    std::atomic<std::uint32_t> reverbMidiGeneration{0};
+    std::unique_ptr<SpscQueue<ReverbMidiReceipt,512>> reverbMidiResults=std::make_unique<SpscQueue<ReverbMidiReceipt,512>>();
     bool applyArpMidi(unsigned,unsigned,unsigned) noexcept;
     std::unique_ptr<SpscQueue<ArpMidiReceipt,512>> arpMidiResults=std::make_unique<SpscQueue<ArpMidiReceipt,512>>();
     LoopBank loops;

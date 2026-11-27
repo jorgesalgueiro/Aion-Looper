@@ -16,6 +16,12 @@ inline constexpr std::array<ReverbRoomInfo,8> reverbRooms{{
  {"cathedral",3,2},{"spring",.8,2.5},{"plate",1.5,1.2},{"hall",2.5,1.8}
 }};
 using ReverbValues=std::array<double,6>;
+// Continuous MIDI targets expose only the live controls; duration/decay change
+// the prepared impulse shape and are not mapped by the conservative slice.
+inline constexpr std::array<unsigned,4> reverbMidiControls{0,1,4,5};
+constexpr double reverbMidiValue(unsigned slider,unsigned cc) noexcept {
+ const auto& p=reverbControls[reverbMidiControls[slider]];return p.minimum+(cc/127.0)*(p.maximum-p.minimum);
+}
 constexpr ReverbValues reverbDefaults() noexcept {ReverbValues v{};for(unsigned p=0;p<v.size();++p)v[p]=reverbControls[p].initial;return v;}
 inline constexpr std::array<std::string_view,17> reverbPresetNames{
  "small","studio","medium","large","hall","plate","bright-plate","spring",

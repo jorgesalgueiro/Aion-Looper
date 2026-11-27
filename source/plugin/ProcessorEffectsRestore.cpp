@@ -11,6 +11,7 @@ bool AionProcessor::serviceEffectsRestore(){
         if(!retainedDelayFailure&&!pending)delayRestoreFailed=false;
     }
     delayOwner.suspendMidi(retainedDelayFailure||effectsRestore.active||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending);
+    reverbOwner.suspendMidi(effectsRestore.active||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending||reverbRestorePending);
     serviceDelay();
     serviceReverb();
     arpOwner.service(latest);
@@ -69,6 +70,7 @@ bool AionProcessor::serviceEffectsRestore(){
     }
     if(!(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending||reverbRestorePending)){
         delayOwner.suspendMidi(retainedDelayFailure);
+        reverbOwner.suspendMidi(false);
         for(unsigned i=0;i<arpSettings.size();++i)if(!arpOwner.track(i)->pending)arpSettings[i]=arpOwner.track(i)->committed;
         return true;
     }

@@ -3,6 +3,15 @@
 #include <algorithm>
 #include <cmath>
 namespace aion {
+bool Engine::applyReverbMidi(unsigned track,unsigned slider,unsigned cc) noexcept {
+ if(track>=LoopBank::trackCount||slider>=reverbMidiControls.size()||cc>127||!generation()
+  ||reverbMidiGeneration.load(std::memory_order_acquire)!=generation()
+  ||coordinatedReverbBank.load(std::memory_order_acquire)||pendingArpBank.active||pendingReverbBank->active
+  ||(*pendingReverb)[track].active||!reverbMidiResults->canPush())return false;
+ const auto old=loops.trackView(track);auto settings=old.reverb;const auto parameter=reverbMidiControls[slider];const double value=reverbMidiValue(slider,cc);
+ if(!setReverbControl(settings,parameter,value)||!loops.setReverb(track,settings,old.clearEpoch,old.reverbSettingsRevision,old.reverbRequest,true))return false;
+ (void)reverbMidiResults->push({track,parameter,value,generation(),old.clearEpoch,old.reverbSettingsRevision,old.reverbSettingsRevision+1});return true;
+}
 bool Engine::enqueueReverbEdit(LoopCommand command,std::uint64_t& transaction) noexcept {
  if(command.action!=LoopAction::reverb||command.track>=LoopBank::trackCount||!command.requestId
   ||!command.generation||command.generation!=generation()||command.arpTransaction||command.delayTransaction

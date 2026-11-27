@@ -86,6 +86,10 @@ void MidiController::main(unsigned id,int requestedMode,Dispatch& d) noexcept {
     else apply(A::finish,id,0,d);
 }
 void MidiController::continuous(int target,std::uint8_t cc,Dispatch& d) noexcept {
+    if(target>=static_cast<int>(MidiSettings::reverbBase)){
+        if(d.reverb&&d.reverb(d.context,settings.eqTrack,static_cast<unsigned>(target)-MidiSettings::reverbBase,cc))++actions;else ++rejections;
+        return;
+    }
     if(target>=static_cast<int>(MidiSettings::delayBase)){
         if(d.delay&&d.delay(d.context,settings.eqTrack,static_cast<unsigned>(target)-MidiSettings::delayBase,cc))++actions;else ++rejections;
         return;

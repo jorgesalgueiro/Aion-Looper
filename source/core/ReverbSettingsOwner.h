@@ -17,6 +17,8 @@ class ReverbSettingsOwner {
 public:
  using Bank=LoopBank::ReverbBank;
  explicit ReverbSettingsOwner(Engine& backend) noexcept:engine(backend){}
+ ~ReverbSettingsOwner(){engine.reverbMidiOwner(0);} // Engine outlives its sole non-audio owner.
+ void suspendMidi(bool suspended) noexcept {midiSuspended=suspended;engine.reverbMidiOwner(bound()&&!midiSuspended?generation:0);}
  bool bind(const EngineView&,const Bank& known=Bank{}) noexcept;
  void service(const EngineView&) noexcept;
  bool set(unsigned track,unsigned parameter,double value,std::uint32_t request,std::uint64_t frame=0) noexcept;
@@ -43,5 +45,6 @@ private:
  ReverbBankResult bankReceipt{};
  std::uint32_t generation=0;
  bool attached=false;
+ bool midiSuspended=false;
 };
 }
