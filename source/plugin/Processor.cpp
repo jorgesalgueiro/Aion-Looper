@@ -424,6 +424,7 @@ void AionProcessor::setStateInformation(const void* data, int size) {
             std::lock_guard guard(midiSettingsMutex);next.learnToken=midiSettings.learnToken+1;
             if(!updateMidi(next))return;
             delayOwner.suspendMidi(true); // Keep joint revision proof exclusive until its enclosing owner confirms.
+            reverbOwner.suspendMidi(true); // Same exclusivity for B until the joint receipt is adopted.
             eqSettings=restoredEq;eqRestorePending=true;eqPending.fill(0);eqClearing.fill(false);
             compressorSettings=restoredCompressor;compressorRestorePending=true;compressorPending.fill(0);compressorClearing.fill(false);
             chainSettings=restoredChains;chainRestorePending=true;chainPending.fill(0);chainClearing.fill(false);
