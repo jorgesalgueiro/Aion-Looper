@@ -1443,9 +1443,10 @@ Engine selection now exists in the core: `ReverbSettings.engine` and the six pla
 values/presets are validated; `ReverbStorage` prepares a plate graph for machine
 requests, exposes it via `plateGraph`, applies plate live controls/edits, and
 crossfades an engine change through the existing prepared-slot path. The storage
-test switches machine to convolution and back. This is core acceptance; no
-product panel/state/CLI/MIDI surface selects machine yet, so there is no listening
-or user-visible claim.
+test switches machine to convolution and back. Linux passes
+`plate_reverb_contract` and `reverb_storage_contract` 2/2 (0.96 s). This is core
+acceptance; no product panel/state/CLI/MIDI surface selects machine yet, so there
+is no listening or user-visible claim.
 
 Pending integration: unified Reverb panel engine toggle, per-engine state and
 presets, prepared crossfade/storage, CLI/MIDI engine ownership, and the legacy
