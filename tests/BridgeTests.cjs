@@ -51,8 +51,13 @@ const document=(session,crypto={randomUUID:()=>session})=>{
  const preciseDelay=current.api.request({operation:'delay',action:'get',track:0}),delayPacket=current.outgoing.at(-1);
  current.complete({promiseId:delayPacket.resultId,result:{ok:true,_aionSession:'current-document',delay:delayEncoded,tracks:[{delay:delayEncoded}]}});
  const delayReply=await preciseDelay;assert.equal(delayReply.delay.values.time,delayValue);assert.equal(delayReply.tracks[0].delay.values.time,delayValue);
+ const reverbValue=.12345678901234566,reverbEncoded=JSON.stringify({values:{volume:reverbValue}});
+ const preciseReverb=current.api.request({operation:'reverb',action:'get',track:0}),reverbPacket=current.outgoing.at(-1);
+ current.complete({promiseId:reverbPacket.resultId,result:{ok:true,_aionSession:'current-document',reverb:reverbEncoded,tracks:[{reverb:reverbEncoded}]}});
+ const reverbReply=await preciseReverb;assert.equal(reverbReply.reverb.values.volume,reverbValue);assert.equal(reverbReply.tracks[0].reverb.values.volume,reverbValue);
  const malformed=current.api.request({operation:'snapshot'}),bad=current.outgoing.at(-1);current.complete({promiseId:bad.resultId,result:{_aionSession:'current-document',arp:'not JSON'}});await assert.rejects(malformed,/Invalid native Arp payload/);assert.equal(current.timers.size,0,'Malformed exact payload releases its slot immediately');
  const malformedDelay=current.api.request({operation:'delay'}),badDelay=current.outgoing.at(-1);current.complete({promiseId:badDelay.resultId,result:{_aionSession:'current-document',delay:'not JSON'}});await assert.rejects(malformedDelay,/Invalid native Arp payload/);assert.equal(current.timers.size,0,'Malformed Delay exact payload releases its slot immediately');
+ const malformedReverb=current.api.request({operation:'reverb'}),badReverb=current.outgoing.at(-1);current.complete({promiseId:badReverb.resultId,result:{_aionSession:'current-document',reverb:'not JSON'}});await assert.rejects(malformedReverb,/Invalid native Arp payload/);assert.equal(current.timers.size,0,'Malformed Reverb exact payload releases its slot immediately');
  // Older WebKit paths keep correlation when randomUUID is unavailable.
  for(const crypto of [{getRandomValues:values=>{values.fill(0x1234abcd);return values;}},{}]){
   const fallback=document('fallback',crypto),first=fallback.api.request({operation:'hello'}),packet=fallback.outgoing[0],token=packet.params[0]._aionSession;assert.equal(typeof token,'string');assert(token.length>0&&token.length<=128);fallback.complete({promiseId:packet.resultId,result:{ok:true,_aionSession:token}});assert.equal((await first).ok,true);

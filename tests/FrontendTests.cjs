@@ -1159,3 +1159,143 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  for(const id of ['delaySync','native-delay-enabled','native-delay-mode','native-delay-count'])assert.equal(scope.window.AionMidiSliderTarget(id),-1);
  console.log('PASS: Delay continuous targets 147..152 append without reassigning IDs; Sync/bypass/repeat selectors stay unmapped');
 }
+
+// B / Reverb panel: actual production controls, native command mapping and row
+// ownership. No MIDI Learn, WebAudio or second audio owner is added.
+{
+ const dom=(()=>{
+  const byId=new Map(),handlers={};
+  const create=tag=>{
+   const el={tagName:String(tag).toUpperCase(),children:[],style:{},dataset:{},listeners:{},id:'',className:'',textContent:'',value:'',checked:false,disabled:false,title:'',type:'',htmlFor:'',min:'',max:'',step:'',
+    append(...nodes){for(const node of nodes){node.parentNode=el;el.children.push(node);}},
+    appendChild(node){el.append(node);return node;},
+    addEventListener(type,fn){(el.listeners[type]??=[]).push(fn);},
+    removeEventListener(type,fn){el.listeners[type]=(el.listeners[type]||[]).filter(f=>f!==fn);},
+    setAttribute(name,value){el[name]=String(value);},
+    getAttribute(name){return el[name]??null;},
+    querySelector(){return null;},
+    scrollIntoView(){},
+    getBoundingClientRect(){return {height:0,width:0};}
+   };
+   return el;
+  };
+  const doc={activeElement:null,createElement:create,createTextNode:text=>({nodeType:3,textContent:String(text)}),getElementById:id=>byId.get(id)||null,querySelector:()=>null};
+  const container=create('div');container.id='fx-controls-container';byId.set('fx-controls-container',container);
+  const win={addEventListener(type,fn){(handlers[type]??=[]).push(fn);}};
+  return {doc,win,container,handlers};
+ })();
+ const scope={window:dom.win,document:dom.doc};vm.createContext(scope);
+ vm.runInContext(fs.readFileSync(path.join(root,'resources/native/midi.js'),'utf8'),scope);
+ vm.runInContext(fs.readFileSync(path.join(root,'resources/native/reverb.js'),'utf8'),scope);
+ const commands=[];let track=0;const selections=[];
+ const settings=(values={},enabled=false,preset='')=>({enabled,room:'studio',preset,values:{volume:1,mix:.15,duration:1.2,decay:1.8,damp:20000,predelay:0,...values}});
+ let snapshot={audioReady:true,generation:1,tracks:[{reverb:settings()}]};
+ const setSnapshot=(values,options={})=>{snapshot={audioReady:options.audioReady!==false,generation:1,tracks:[{reverb:settings(values,!!options.enabled,options.preset||'')}]};};
+ const ui=scope.window.AionReverbUI({current:()=>snapshot,equalizer:{selectedTrack:()=>track,select:id=>{track=id;selections.push(id);}},enqueue:(target,command,key)=>commands.push({target,command,key})});
+ assert.equal(dom.container.children.length,1,'B panel is created once');
+ const panel=dom.container.children[0];assert.equal(panel.id,'native-reverb-panel');
+ const nodes=[];const walk=node=>{if(node.id)nodes.push(node);for(const child of node.children||[])walk(child);};walk(panel);
+ const byId=id=>nodes.find(node=>node.id===id);
+ const fire=(element,type,event={})=>{for(const fn of element.listeners[type]||[])fn({stopPropagation(){},...event});};
+ const preset=byId('sel_reverb'),enabled=byId('native-reverb-enabled'),reset=byId('native-reverb-reset'),title=byId('native-reverb-title');
+ assert(preset&&enabled&&reset&&title);
+ const names=['-- Select --','small','studio','medium','large','hall','plate','bright-plate','spring','cathedral','washed-out','tight-drum','ambient-cloud','dark-cave','dub-space','vocal-room','garage','shimmer-hall'];
+ assert.deepEqual(preset.children.map(option=>option.textContent),names,'Original 17 preset names and catalogue order');
+ for(const [name,id,min,max,step] of [['volume','reverbVolume',.1,3,.01],['mix','reverbMix',0,1,.01],['duration','reverbDuration',.1,5,.1],['decay','reverbDecay',.1,5,.1],['damp','reverbDamp',500,20000,100],['predelay','reverbPredelay',0,.25,.005]]){
+  const input=byId(id);assert(input,'missing original control '+id);assert.equal(Number(input.min),min);assert.equal(Number(input.max),max);assert.equal(Number(input.step),step);assert.equal(input.disabled,true,'created disabled before first snapshot');
+ }
+ const volume=byId('reverbVolume'),mix=byId('reverbMix');
+ ui.update();
+ assert.equal(title.textContent,'Loop 1 — CONV. REVERB (B)');
+ assert.equal(enabled.checked,false);assert.equal(preset.value,'');assert.equal(volume.value,1);assert.equal(byId('reverbVolumeVal').textContent,'1.00');assert.equal(volume.disabled,false);
+ setSnapshot({volume:1.3,mix:.65,duration:3.5,decay:2,damp:8000,predelay:.05}, {enabled:true,preset:'shimmer-hall'});ui.update();
+ assert.equal(enabled.checked,true);assert.equal(preset.value,'shimmer-hall');assert.equal(byId('reverbDamp').value,8000);assert.equal(byId('reverbPredelayVal').textContent,'0.05');
+ setSnapshot({}, {audioReady:false});ui.update();assert.equal(volume.disabled,true);assert.equal(preset.disabled,true);assert.equal(enabled.disabled,true);assert.equal(reset.disabled,true);
+ setSnapshot();ui.update();assert.equal(volume.disabled,false);
+ const lastCommand=()=>{const entry=commands.at(-1);return {target:entry.target,key:entry.key,action:entry.command.action,preset:entry.command.preset,parameter:entry.command.parameter,value:entry.command.value};};
+ preset.value='bright-plate';fire(preset,'change');assert.deepEqual(lastCommand(),{target:0,key:undefined,action:'preset',preset:'bright-plate',parameter:undefined,value:undefined});
+ fire(enabled,'change');assert.deepEqual(lastCommand(),{target:0,key:undefined,action:'toggle',preset:undefined,parameter:undefined,value:undefined});
+ fire(reset,'click');assert.deepEqual(lastCommand(),{target:0,key:undefined,action:'reset',preset:undefined,parameter:undefined,value:undefined});
+ volume.value='0.65';fire(volume,'input');assert.deepEqual(lastCommand(),{target:0,key:'reverb:volume',action:'set',preset:undefined,parameter:'volume',value:.65});
+ fire(mix,'dblclick');assert.deepEqual(lastCommand(),{target:0,key:'reverb:mix',action:'set',preset:undefined,parameter:'mix',value:.15});
+ // A focused slider follows authoritative native/preset values; only an actual
+ // drag or key gesture owns the control until release.
+ setSnapshot({volume:.8});ui.update();dom.doc.activeElement=volume;setSnapshot({volume:.8});ui.update();assert.equal(volume.value,.8,'focused slider follows native value');
+ fire(volume,'pointerdown',{button:0,pointerId:7});setSnapshot({volume:.9});ui.update();assert.equal(volume.value,.8,'active drag keeps the user value');
+ for(const fn of dom.handlers.pointerup||[])fn({pointerId:7});ui.update();assert.equal(volume.value,.9,'release follows the native value');
+ dom.doc.activeElement=null;
+ const toggle=dom.doc.createElement('input');toggle.id='loop-0-reverb';
+ const label=dom.doc.createElement('span');label.textContent='revB';toggle.nextElementSibling=label;
+ const row={querySelector:selector=>selector==='input[id$="-0-reverb"]'?toggle:null};
+ ui.bindRow(row,0);
+ assert.equal(toggle.disabled,false);assert.equal(toggle.dataset.nativeControl,'true');
+ track=5;fire(toggle,'change');assert.equal(track,0);assert.equal(selections.at(-1),0);assert.deepEqual(lastCommand(),{target:0,key:undefined,action:'toggle',preset:undefined,parameter:undefined,value:undefined});
+ track=5;fire(label,'click');assert.equal(track,0);
+ setSnapshot({}, {enabled:true});ui.update();assert.equal(toggle.checked,true,'row toggle reflects the authoritative enabled flag');
+ setSnapshot({}, {audioReady:false});ui.update();assert.equal(toggle.disabled,true);
+ setSnapshot({});ui.update();assert.equal(volume.disabled,false);
+ for(const fn of dom.handlers.pagehide||[])fn({});
+ setSnapshot({}, {audioReady:false});ui.update();assert.equal(volume.disabled,false,'closed editor stops updating controls');
+ console.log('PASS: actual B panel controls/ranges/presets/display, native set-pose-reset commands, focused/drag ownership, row toggle, readiness and editor close');
+}
+
+// Production reverb receipt policy: a newer controller outcome cannot resolve
+// this edit, and pending/readiness/expiry/generation fences stay intact.
+{
+ const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const from=source.indexOf('                if(pending) {');
+ const to=source.indexOf('                refresh();scheduler.pump();',from);
+ assert(from>=0&&to>from,'Locate the production pending-result policy');
+ const policy=source.slice(from,to);let cases=0;
+ const run=({generation=7,id=40,requestId=40,pendingState=true,ready=false,last=40,now=0}={})=>{
+  const calls=[],context={pending:{id,generation:7,deadline:100,reverbTrack:0,resolve:()=>calls.push('success'),reject:error=>calls.push(error.message)},
+   reply:{generation,lastRequestId:last,rejected:false,tracks:[{reverbRequestId:requestId,reverbPending:pendingState,reverbReady:ready}]},Date:{now:()=>now},error:''};
+  vm.runInNewContext(policy,context);++cases;return {calls,context};
+ };
+ let result=run({generation:8});assert.deepEqual(result.calls,['Audio configuration changed']);
+ result=run({requestId:41});assert.match(result.calls[0],/superseded/);assert.equal(result.context.pending,null);
+ result=run({now:100});assert.deepEqual(result.calls,[]);assert(result.context.pending);assert.equal(result.context.error,'');
+ result=run({now:101});assert.deepEqual(result.calls,[]);assert.match(result.context.error,/still preparing/);assert(result.context.pending);
+ result=run({last:99});assert.deepEqual(result.calls,[]);assert(result.context.pending,'Later controller request cannot supersede an outstanding Reverb receipt');
+ result=run({pendingState:false,ready:true});assert.deepEqual(result.calls,['success']);assert.equal(result.context.pending,null);
+ result=run({pendingState:false,ready:false});assert.match(result.calls[0],/failed, was busy or cancelled/);assert.equal(result.context.pending,null);
+ console.log(`PASS: production Reverb receipt policy across ${cases} generation/superseded/pending/expiry/later-controller/ready/failed cases`);
+}
+
+// Production send path: early return/rejection must not leave a receipt waiter.
+(async()=>{
+ const source=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const from=source.indexOf('        async function sendReverb('),to=source.indexOf('        async function sendArp(',from);assert(from>=0&&to>from);
+ for(const outcome of ['disabled','transport','rejected','receipt-error','success']){
+  const request={action:'set',parameter:'mix',value:.2};
+  const context={enabled:()=>outcome!=='disabled',snapshot:{generation:7},error:'',pending:null,rpc:async()=>{if(outcome==='transport')throw Error('transport');return {ok:outcome!=='rejected',error:'rejected',requestId:777};}};
+  const send=vm.runInNewContext(source.slice(from,to)+'\nsendReverb',context);
+  const result=send(3,request).then(()=>null,error=>error);
+  if(outcome==='receipt-error'||outcome==='success'){
+   for(let n=0;n<10&&!context.pending;++n)await Promise.resolve();assert(context.pending,'production Reverb receipt wait established');
+   assert.equal(context.pending.id,777);assert.equal(context.pending.reverbTrack,3);assert.equal(context.pending.generation,7);
+   if(outcome==='success')context.pending.resolve();else context.pending.reject(Error('receipt-error'));
+  }
+  const error=await result;if(['transport','rejected','receipt-error'].includes(outcome))assert.equal(error?.message,outcome);else assert.equal(error,null);
+ }
+ console.log('PASS: production Reverb send carries the exact receipt and never strands it on disabled audio, transport rejection, native rejection, receipt success or error');
+})().catch(error=>{console.error(error);process.exitCode=1;});
+
+// Embedded wiring stays present; the tagged bridge carries exact reverb values.
+{
+ const looper=fs.readFileSync(path.join(root,'resources/native/looper.js'),'utf8');
+ const web=fs.readFileSync(path.join(root,'source/ui/WebEditor.cpp'),'utf8');
+ const cmake=fs.readFileSync(path.join(root,'CMakeLists.txt'),'utf8');
+ const bridge=fs.readFileSync(path.join(root,'resources/native/bridge.js'),'utf8');
+ assert(looper.includes('const reverb=window.AionReverbUI('));
+ assert.equal((looper.match(/reverb\.bindRow\(row,i\)/g)||[]).length,2,'Main and LIVE rows bind the B toggle');
+ assert(looper.includes('reverb.update();'));
+ assert(looper.includes("operation:'reverb'"));
+ assert(looper.includes('reverbTrack:track'));
+ assert(looper.includes('snapshot.tracks[track].reverbBusy?window.AionCommandQueue.wait'));
+ assert(cmake.includes('resources/native/reverb.js'));
+ assert(web.includes('AionUi::reverb_js'));
+ assert(web.includes('"arp","delay","reverb"'));
+ assert(bridge.includes("['arp','delay','reverb']"));
+ console.log('PASS: B adapter is embedded, loaded before the looper, wired to main/LIVE rows and shipped with exact tagged reverb JSON');
+}

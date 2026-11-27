@@ -476,7 +476,7 @@ execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/too
     --source "${CMAKE_CURRENT_SOURCE_DIR}/resources/ui"
     --manifest "${CMAKE_CURRENT_SOURCE_DIR}/resources/reference-manifest.json"
     --output "${ui_archive}" COMMAND_ERROR_IS_FATAL ANY)
-juce_add_binary_data(AionUi NAMESPACE AionUi HEADER_NAME UiData.h SOURCES "${ui_archive}" resources/native/bridge.js resources/native/loop-view.js resources/native/controls.js resources/native/midi-view.js resources/native/midi.js resources/native/equalizer.js resources/native/compressor.js resources/native/drive.js resources/native/arp.js resources/native/delay.js resources/native/signal-chain.js resources/native/looper.js)
+juce_add_binary_data(AionUi NAMESPACE AionUi HEADER_NAME UiData.h SOURCES "${ui_archive}" resources/native/bridge.js resources/native/loop-view.js resources/native/controls.js resources/native/midi-view.js resources/native/midi.js resources/native/equalizer.js resources/native/compressor.js resources/native/drive.js resources/native/arp.js resources/native/delay.js resources/native/reverb.js resources/native/signal-chain.js resources/native/looper.js)
 juce_add_plugin(AionLooper
     COMPANY_NAME "Jorge Salgueiro"
     COMPANY_WEBSITE "https://github.com/jorgesalgueiro/Aion-Looper"

@@ -176,7 +176,7 @@ def main(argv=None):
     reverb.add_argument('--room', help='Original room name, e.g. cathedral')
     reverb.add_argument('--parameter', help='Original control name, e.g. mix or duration')
     reverb.add_argument('--value', type=strict_json, help='Numeric control value')
-    chain = commands.add_parser('chain', help='Per-loop effect order on the running audio engine (Q/C/A/T/O/F/D preview)')
+    chain = commands.add_parser('chain', help='Per-loop effect order on the running audio engine (Q/C/A/T/O/F/D/B preview)')
     chain.add_argument('track', type=track)
     chain.add_argument('action', choices=('get', 'set', 'reset'))
     chain.add_argument('order', nargs='?', help='Original effect codes, e.g. CQ or QCATFODBVKZG')

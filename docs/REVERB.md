@@ -961,3 +961,69 @@ the JUCE state/command paths are not covered by that core-only sanitizer build.
 No full unrelated suite, WebView2 interaction, physical device/listening/DAW or
 release acceptance was run. The preserved B panel adapter is still the next
 product slice, followed by coordinated effects restore and MIDI receipts/learn.
+
+### B web panel adapter and real GUI acceptance — 27 November 2026
+
+The preserved B panel is now a native presentation adapter
+(`resources/native/reverb.js`), embedded with the other adapter scripts and
+loaded before the looper. It adds no WebAudio, DSP, state schema or MIDI target:
+every gesture uses the existing `operation:"reverb"` request through
+`ReverbSettingsOwner` and the existing Engine/LoopBank reverb path.
+
+- Original panel: preset selector with the 17 original names/order; Volume
+  .1–3/.01, Mix 0–1/.01, Duration .1–5/.1, Decay .1–5/.1, Damp 500–20000/100 and
+  Pre-delay 0–.25/.005 with the original labels and two-decimal readouts. Numeric
+  edits show Custom (the native owner clears the preset), reset restores defaults
+  and preserves enable, and a control's double-click restores its original
+  initial value. Rooms stay preset-selected exactly as in the preserved panel;
+  the native `room` command remains available to the CLI without a new control.
+- Main and LIVE rows bind the original `revB` toggle
+  (`#loop-N-reverb`, `#live-loop-N-reverb`): it selects that track in the shared
+  effects panel and sends the same toggle command. Row label clicks reveal the
+  panel without a command. Controls follow `audioReady`; a focused slider follows
+  authoritative native values, while an active pointer drag or key gesture is
+  left to the user until release.
+- Commands wait while `reverbBusy` and settle only on the exact
+  `reverbRequestId` receipt; a later CLI/other-controller request cannot resolve
+  or reject this editor's edit, and pending/ready/expiry/generation/supersession
+  keep the Delay policy shape. Tagged replies now include `reverb` in the
+  17-significant-digit JSON round trip on both C++ and bridge sides, so exact
+  native doubles survive the real IPC bridge.
+
+Executed with the panel-adapter source (this checkpoint):
+
+- `node tests/FrontendTests.cjs` passes. New cases drive the production adapter
+  against a small DOM harness: 17-preset catalogue/order, six original ranges and
+  initial disabled state, authoritative update/readouts, preset/set/toggle/reset
+  command mapping, focused/drag value ownership, main-row toggle/label wiring,
+  readiness and editor-close. The same file runs the production receipt policy
+  (seven Reverb generation/supersession/pending/expiry/later-controller/ready/
+  failed cases), the production `sendReverb` path (disabled, transport failure,
+  native rejection, receipt error, success) and the embedding/wiring checks.
+- `node tests/BridgeTests.cjs` passes with exact reverb precision over the
+  tagged bridge and an immediate slot release for a malformed reverb payload.
+- `tools/TestReverbUi.ps1` (real WebView2 editor, actual CDP pointer/keyboard,
+  synthetic production PCM; hardware-free host) passes at **64 and 128**:
+  B row and panel enable, 18-option preset catalogue, all six controls edited by
+  trusted keyboard input with Custom clearing, original preset + room, Reset,
+  exact bridge precision, panel bypass/re-enable, reload retaining settings and
+  nonzero playback, LIVE toggle, final bypass after reload with unchanged
+  waveform identity, no product `AudioContext` and no runtime exceptions. One
+  128 launch did not initialize the editor inside the original 10 s wait and was
+  rerun with a 20 s wait; that first attempt is recorded as inconclusive, not a
+  pass.
+- The retained `tools/TestDelayUi.ps1` passes at 64/128 with the B adapter
+  loaded, covering panel coexistence. Retained `aion_reverb_command_tests`,
+  `aion_reverb_state_processor_tests`, `aion_delay_state_processor_tests` and
+  `aion_joint_effects_processor_tests` pass at 64/128; callback new/delete stays
+  zero. The Windows Release Standalone and test host link.
+
+Not run or not established: Linux/WebKit build and UI; sanitizer run for these
+JUCE paths; listening, physical devices/controllers and DAW/host workflows;
+packaging. `tools/TestSignalChainUi.ps1 -Blocks 64` fails its fixed 120 ms DOM
+check in this hidden-window session both with and without this change (verified
+against the stashed baseline): the snapshot build itself measured 0.66 ms while
+the WebView2 IPC round trip was ~300 ms, so that suite is inconclusive here and
+the text-only chain tooltip update is not counted as validated by it. B is now
+enabled in the GUI; the unified Machine engine, B MIDI learn/CC targets and the
+coordinated effects restore hook remain pending.

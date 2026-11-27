@@ -36,7 +36,7 @@ juce::WebBrowserComponent::Options AionWebEditor::options(AionProcessor& process
             // travel as round-trip JSON and AionNative restores their objects.
             // Untagged legacy direct calls keep their original representation.
             if(result["_aionSession"].isString()){
-                const auto encode=[](juce::var& object){for(const auto* effect:{"arp","delay"})if(object[effect].isObject())object.getDynamicObject()->setProperty(effect,juce::JSON::toString(object[effect],true,17));};
+                const auto encode=[](juce::var& object){for(const auto* effect:{"arp","delay","reverb"})if(object[effect].isObject())object.getDynamicObject()->setProperty(effect,juce::JSON::toString(object[effect],true,17));};
                 encode(result);if(auto* tracks=result["tracks"].getArray())for(auto& track:*tracks)encode(track);
             }
             done(result);
@@ -52,6 +52,7 @@ juce::WebBrowserComponent::Options AionWebEditor::options(AionProcessor& process
         .withUserScript(juce::String::fromUTF8(AionUi::drive_js, AionUi::drive_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::arp_js, AionUi::arp_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::delay_js, AionUi::delay_jsSize))
+        .withUserScript(juce::String::fromUTF8(AionUi::reverb_js, AionUi::reverb_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::signalchain_js, AionUi::signalchain_jsSize))
         .withUserScript(juce::String::fromUTF8(AionUi::looper_js, AionUi::looper_jsSize));
    #if JUCE_WINDOWS

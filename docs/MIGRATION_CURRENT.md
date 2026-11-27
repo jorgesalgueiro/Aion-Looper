@@ -11,6 +11,38 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### B / web panel adapter and GUI acceptance — 27 November 2026
+
+Connected the preserved B panel through a native presentation adapter
+(`resources/native/reverb.js`): original 17 presets, six labelled controls
+(Volume/Mix/Duration/Decay/Damp/Pre-delay) with the original ranges, steps and
+readouts, Reset and shared enable, plus the original `revB` toggles in main and
+LIVE rows. Numeric edits show Custom; rooms remain preset-selected as in the
+preserved panel. Gestures use only the existing `operation:"reverb"` request,
+wait on `reverbBusy` and settle on the exact `reverbRequestId`; tagged replies
+carry `reverb` in the existing 17-digit round trip. No DSP, state, MIDI or
+schema change, no WebAudio and no second audio owner.
+
+New coverage: `FrontendTests.cjs` drives the production adapter (catalogue,
+ranges/readouts, command mapping, focused/drag ownership, main/LIVE row toggles,
+readiness, editor close), the Reverb receipt policy, the `sendReverb` path and
+the embedding/wiring; `BridgeTests.cjs` covers exact reverb precision and a
+malformed tagged payload; `tools/TestReverbUi.ps1` passes real WebView2 at
+64/128 (panel/row enable, six trusted keyboard-edited ranges, preset/room,
+Reset, exact bridge precision, bypass/re-enable, reload retention and playback,
+LIVE toggle, unchanged waveform identity, no AudioContext/exceptions). Retained
+Delay UI 64/128 and the reverb command/state, Delay state and joint-effects
+processor tests 64/128 pass; Standalone and the test host link. One 128 launch
+missed the original 10 s editor-startup wait and was rerun with 20 s; that
+attempt is recorded as inconclusive. `TestSignalChainUi` at 64 fails its fixed
+120 ms DOM check both with and without this change in this hidden-window
+session (0.66 ms snapshot work versus ~300 ms WebView2 IPC), so it is
+inconclusive here.
+
+NEXT: coordinated Arp/effects restore and B MIDI receipts/learn. B is enabled in
+the GUI; Linux/WebKit, sanitizers for these JUCE paths, listening, physical
+devices/DAW workflows and packaging were not run.
+
 ### Reverb persistence/command audit and CLI acceptance — 27 November 2026
 
 Reviewed the persistence/command changes through `105a443` following the earlier

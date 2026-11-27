@@ -135,6 +135,7 @@
                 if(c.action==='drive')return sendDrive(c.track,c.drive);
                 if(c.action==='arp')return sendArp(c.track,c.arp);
                 if(c.action==='delay')return sendDelay(c.track,c.delay);
+                if(c.action==='reverb')return sendReverb(c.track,c.reverb);
                 if(c.action==='signalChain')return sendChain(c.track,c.order);
                 if(c.action==='exportLoop'){
                     const reply=await rpc({operation:'exportLoop',track:c.track,generation:c.generation,waveformId:c.waveformId,filename:c.filename});
@@ -196,6 +197,8 @@
             enqueue:(track,arp,key)=>scheduler.enqueue(()=>timingRequests||BigInt(snapshot.arpTempoSeen??'0')<arpTempoFence||snapshot.tracks[track].arpBusy?window.AionCommandQueue.wait:({action:'arp',track,arp}),{track,key:key?`${track}:${key}`:undefined})});
         const delay=window.AionDelayUI({current:()=>snapshot,equalizer,
             enqueue:(track,delay,key)=>scheduler.enqueue(()=>snapshot.tracks[track].delayBusy?window.AionCommandQueue.wait:({action:'delay',track,delay}),{track,key:key?`${track}:${key}`:undefined})});
+        const reverb=window.AionReverbUI({current:()=>snapshot,equalizer,
+            enqueue:(track,reverb,key)=>scheduler.enqueue(()=>snapshot.tracks[track].reverbBusy?window.AionCommandQueue.wait:({action:'reverb',track,reverb}),{track,key:key?`${track}:${key}`:undefined})});
         const signalChain=window.AionSignalChainUI({current:()=>snapshot,select:id=>equalizer.select(id),
             enqueue:(track,order)=>scheduler.enqueue(()=>({action:'signalChain',track,order}),{track})});
         async function sendChain(track,order){
@@ -214,6 +217,13 @@
                 if(!reply.ok)throw Error(reply.error||'Delay command rejected');
                 await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,delayTrack:track,resolve,reject,deadline:Date.now()+4000};});
             } finally {delay.commandSettled(settings);}
+        }
+        async function sendReverb(track,settings){
+            if(!enabled())return;
+            error='';const generation=snapshot.generation;
+            const reply=await rpc({operation:'reverb',track,...settings,generation,expiresAt:Date.now()+3000});
+            if(!reply.ok)throw Error(reply.error||'Reverb command rejected');
+            await new Promise((resolve,reject)=>{pending={id:reply.requestId,generation,reverbTrack:track,resolve,reject,deadline:Date.now()+4000};});
         }
         async function sendArp(track,settings){
             if(!enabled())return;
@@ -347,6 +357,7 @@
                 drive.bindRow(row,i);
                 arp.bindRow(row,i);
                 delay.bindRow(row,i);
+                reverb.bindRow(row,i);
                 const bind=(element,callback,event='click') => {element.dataset.nativeControl='true';element.title=element.getAttribute('aria-label')||element.textContent.trim();element.addEventListener(event,callback);return element;};
                 // Original header background/state text is also a short-action target.
                 // Nested controls and the waveform keep their own actions; main clicks
@@ -447,6 +458,7 @@
                 drive.bindRow(row,i);
                 arp.bindRow(row,i);
                 delay.bindRow(row,i);
+                reverb.bindRow(row,i);
                 header.addEventListener('click',()=>{if(enabled())mainAction(i);});
                 row.addEventListener('pointerdown',()=>{selected=i;});
                 const reverse=row.querySelector(`#live-loop-${i}-reverse`);
@@ -461,6 +473,7 @@
             drive.update();
             arp.update();
             delay.update();
+            reverb.update();
             signalChain.update();
             const active=enabled();
             if(document.activeElement!==master)master.value=snapshot.masterGain;
@@ -588,6 +601,12 @@
                         if(t.delayRequestId!==pending.id){pending.reject(Error('Delay outcome was superseded; check state before retrying'));pending=null;}
                         else if(!t.delayPending){t.delayReady?pending.resolve():pending.reject(Error('Delay edit failed, was busy or cancelled'));pending=null;}
                         else if(Date.now()>pending.deadline)error='Delay is still preparing; check state before retrying.';
+                    }
+                    else if(pending.reverbTrack!==undefined){
+                        const t=reply.tracks[pending.reverbTrack];
+                        if(t.reverbRequestId!==pending.id){pending.reject(Error('Reverb outcome was superseded; check state before retrying'));pending=null;}
+                        else if(!t.reverbPending){t.reverbReady?pending.resolve():pending.reject(Error('Reverb edit failed, was busy or cancelled'));pending=null;}
+                        else if(Date.now()>pending.deadline)error='Reverb is still preparing; check state before retrying.';
                     }
                     else if(pending.arpTrack!==undefined){
                         const t=reply.tracks[pending.arpTrack];
