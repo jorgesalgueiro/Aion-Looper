@@ -194,6 +194,8 @@ private:
     void reverbCleared(unsigned track,bool all,std::uint32_t request);
     void saveReverbs(juce::ValueTree&);
     static bool readReverbs(const juce::ValueTree&,aion::ReverbSettingsOwner::Bank&);
+    void reverbSnapshot(juce::DynamicObject&,unsigned);
+    bool reverbRequest(const juce::var&,juce::DynamicObject&);
     void arpSnapshot(juce::DynamicObject&,unsigned);
     bool arpRequest(const juce::var&,juce::DynamicObject&);
     void serviceEqualizer();

@@ -856,6 +856,17 @@ defaults, and zero callback heap operations. The retained
 `aion_delay_state_processor_tests` still passes 64/128 and the Standalone Release
 links.
 
+The shared command layer now exposes B without a web adapter:
+`operation:"reverb"` supports `get/toggle/enable/reset/preset/room/set` through
+the same validated `ReverbSettingsOwner` path, and snapshots include `reverb`,
+`reverbBusy`, `reverbPending`, `reverbRequestId` and `reverbReady`.
+`tools/aion.py reverb <track> <action> [--preset|--room|--parameter|--value]`
+provides the same actions with the existing instance-selection, expiry,
+generation and busy/ownership checks. The state test exercises set/toggle/snapshot
+through the public request path without an editor. The preserved web B panel
+still needs its native adapter before it can be enabled, so B remains
+hidden/disabled in the GUI.
+
 Executed source `5af180b`: Windows Release `aion_reverb_state_processor_tests`
 64/128 passed (32 whole-state rejections each) together with the retained Delay
 state cases (four native state tests, 3.59s); native WSL Linux also passed 64/128

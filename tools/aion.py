@@ -169,6 +169,13 @@ def main(argv=None):
     delay.add_argument('--value', type=strict_json, help='Numeric control value')
     delay.add_argument('--mode', choices=('feedback', 'exact'), help='Repeat mode')
     delay.add_argument('--count', type=int, help='Exact repeat count, 1–10; retained in Feedback mode')
+    reverb = commands.add_parser('reverb', help='Per-loop convolution reverb on the running audio engine')
+    reverb.add_argument('track', type=track)
+    reverb.add_argument('action', choices=('get', 'on', 'off', 'toggle', 'reset', 'preset', 'set', 'room'))
+    reverb.add_argument('--preset', help='Original reverb preset name, e.g. hall')
+    reverb.add_argument('--room', help='Original room name, e.g. cathedral')
+    reverb.add_argument('--parameter', help='Original control name, e.g. mix or duration')
+    reverb.add_argument('--value', type=strict_json, help='Numeric control value')
     chain = commands.add_parser('chain', help='Per-loop effect order on the running audio engine (Q/C/A/T/O/F/D preview)')
     chain.add_argument('track', type=track)
     chain.add_argument('action', choices=('get', 'set', 'reset'))
@@ -228,11 +235,11 @@ def main(argv=None):
             request.update(action=args.action, value=args.value, expiresAt=int(time.time() * 1000) + 4000)
         else:
             request.update(waveformId=status['tracks'][args.track]['waveformId'], filename=args.filename)
-    elif args.command in ('eq', 'comp', 'chain', 'arp', 'delay', 'distortion', 'overdrive', 'fuzz'):
+    elif args.command in ('eq', 'comp', 'chain', 'arp', 'delay', 'reverb', 'distortion', 'overdrive', 'fuzz'):
         status = invoke(endpoint, {'operation': 'snapshot'})
         if not status.get('ok'):
             return status
-        if args.command in ('arp', 'delay') and args.action != 'get':
+        if args.command in ('arp', 'delay', 'reverb') and args.action != 'get':
             generation, epoch = status['generation'], status['tracks'][args.track]['clearEpoch']
             deadline = time.monotonic() + 3
             while status['tracks'][args.track].get(args.command + 'Busy'):
@@ -244,7 +251,7 @@ def main(argv=None):
                     return status
                 if status.get('generation') != generation or status['tracks'][args.track]['clearEpoch'] != epoch:
                     return {'ok': False, 'applied': False, 'error': args.command + ' ownership changed before command admission'}
-        request = {'operation': {'eq': 'equalizer', 'comp': 'compressor', 'chain': 'signalChain', 'arp': 'arp', 'delay': 'delay', 'distortion': 'drive', 'overdrive': 'drive', 'fuzz': 'drive'}[args.command], 'track': args.track, 'generation': status['generation'],
+        request = {'operation': {'eq': 'equalizer', 'comp': 'compressor', 'chain': 'signalChain', 'arp': 'arp', 'delay': 'delay', 'reverb': 'reverb', 'distortion': 'drive', 'overdrive': 'drive', 'fuzz': 'drive'}[args.command], 'track': args.track, 'generation': status['generation'],
                    'action': args.action, 'expiresAt': int(time.time() * 1000) + 4000}
         if args.command in ('distortion', 'overdrive', 'fuzz'):
             request['effect'] = args.command
@@ -260,8 +267,10 @@ def main(argv=None):
             request['preset'] = args.preset
         elif args.action == 'repeats' and args.command == 'delay':
             request.update(repeatMode=args.mode, repeatCount=args.count)
+        elif args.action == 'room' and args.command == 'reverb':
+            request['room'] = args.room
         elif args.action == 'set':
-            if args.command in ('arp', 'delay'):
+            if args.command in ('arp', 'delay', 'reverb'):
                 request.update(parameter=args.parameter, value=args.value)
             else:
                 request['values'] = args.values
@@ -281,7 +290,7 @@ def main(argv=None):
     if not isinstance(request, dict):
         raise ValueError('Native request must be a JSON object')
     reply = invoke(endpoint, request)
-    if args.command in ('arp', 'delay') and reply.get('ok') and reply.get('queued'):
+    if args.command in ('arp', 'delay', 'reverb') and reply.get('ok') and reply.get('queued'):
         deadline = time.monotonic() + 4
         while time.monotonic() < deadline:
             observed = invoke(endpoint, {'operation': 'snapshot'})

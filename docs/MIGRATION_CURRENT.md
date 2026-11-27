@@ -33,8 +33,16 @@ its Standalone Release links. The sanitizer build remains core-only; the state
 paths add no audio-callback work and processor tests track zero callback
 new/delete.
 
-NEXT: the coordinated Arp/effects restore hook and MIDI receipts/learn, then the
-shared GUI/CLI surface with stable IDs. B remains disabled in the product surface.
+The shared command layer (same validation/owner as future GUI) now exposes
+`operation:"reverb"` `get/toggle/enable/reset/preset/room/set` and snapshot
+fields `reverb/reverbBusy/reverbPending/reverbRequestId/reverbReady`, plus
+`tools/aion.py reverb <track> <action>` with preset/room/parameter/value. The
+state test drives set/toggle/snapshot through that public path. The preserved web
+B panel still needs its native adapter, so B remains hidden/disabled in the GUI.
+
+NEXT: the preserved web B panel adapter and real 64/128 WebView2/CLI acceptance,
+then the coordinated Arp/effects restore hook and MIDI receipts/learn. B remains
+hidden/disabled in the GUI until that adapter is verified.
 
 ### Independent audit of recent reverb integration — 27 November 2026
 

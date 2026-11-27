@@ -113,5 +113,20 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const unsigne
  auto legacy=Fixture::xml(first);legacy->removeChildElement(legacy->getChildByName("LoopReverbs"),true);f.load(Fixture::binary(*legacy));f.settle();
  for(unsigned id=0;id<20;++id)check(f.p->inspectAudioThread(id).track.reverb==aion::ReverbSettings{},"pre-B state restores original defaults");
  check(!Access::failed(*f.p),"pre-B defaults do not become a failure");
- std::cout<<"PASS Reverb state "<<block<<": exact versioned roundtrip, "<<rejected<<" whole-state rejections, pre-B defaults and stopped prepare; zero callback heap operations\n";
+ // Shared command layer used by the product GUI/CLI. The same request path is
+ // exercised without an editor; no alternate audio/state owner is created.
+ const auto call=[&](const juce::var& body){return f.p->request({body});};
+ const auto requestObject=[&](const char* action,auto configure){
+  auto* o=new juce::DynamicObject;o->setProperty("operation","reverb");o->setProperty("action",action);o->setProperty("track",0);
+  o->setProperty("generation",static_cast<int>(f.p->inspectCallbackClockAudioThread().generation));
+  o->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis()+3000));configure(*o);return juce::var(o);
+ };
+ check(call(requestObject("set",[](auto& o){o.setProperty("parameter","mix");o.setProperty("value",.33);}))["ok"],"reverb set admitted");
+ f.settle();check(f.p->inspectAudioThread(0).track.reverb.values[1]==.33,"reverb set committed natively");
+ check(call(requestObject("toggle",[](auto& o){(void)o;}))["ok"],"reverb toggle admitted");
+ f.settle();check(f.p->inspectAudioThread(0).track.reverb.enabled,"reverb toggle enabled natively");
+ {auto* o=new juce::DynamicObject;o->setProperty("operation","snapshot");const auto snap=call(juce::var(o));
+  check(snap["tracks"][0]["reverb"]["values"]["mix"].toString().getDoubleValue()==.33,"snapshot exposes reverb values");
+  check(static_cast<bool>(snap["tracks"][0]["reverbReady"]),"snapshot reports reverb ready");}
+ std::cout<<"PASS Reverb state "<<block<<": exact versioned roundtrip, "<<rejected<<" whole-state rejections, pre-B defaults, stopped prepare and shared reverb commands; zero callback heap operations\n";
 }
