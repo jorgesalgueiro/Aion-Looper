@@ -51,8 +51,9 @@ Windows: Reverb MIDI 64/128 (six targets, shape coalescing, failed-restore fence
 v8->v10) and Reverb MIDI PCM 8/48k x 64/128 pass; Delay MIDI, the production MIDI
 suite, reverb state/commands, Delay state and joint effects pass; Reverb UI
 64/128 learns/applies/clears Duration, and Delay UI/FrontendTests/BridgeTests pass.
-Linux execution is recorded after the committed sync. Machine mode, physical
-controllers, Linux WebKit and listening/DAW remain pending.
+Linux: native Reverb/Delay/MIDI + reverb_midi_audio_contract 6/6; reverb
+command/state, Delay state and joint cases 8/8. Machine mode, physical controllers,
+Linux WebKit and listening/DAW remain pending.
 
 ### Conservative B MIDI learn — 27 November 2026
 

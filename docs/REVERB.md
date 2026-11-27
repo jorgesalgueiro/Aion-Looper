@@ -1337,8 +1337,9 @@ right-click learn/clear on live and shape sliders, CC application, prepared
 Duration adoption and unchanged PCM; Delay UI passes at 64/128 and
 FrontendTests/BridgeTests pass.
 
-The clean native WSL checkout builds the shape-MIDI sources; Linux execution is
-recorded after the committed sync.
+Linux (clean native WSL checkout at this commit): the Standalone and all affected
+test binaries link; native Reverb/Delay/MIDI and reverb_midi_audio_contract pass
+6/6, and the reverb command/state, Delay state and joint-effects cases pass 8/8.
 
 Limits: no Machine engine, pitch/expression targets, physical controllers or
 Linux WebKit/listening/DAW acceptance. The host state load suspends B MIDI
