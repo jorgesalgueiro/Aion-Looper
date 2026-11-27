@@ -31,7 +31,9 @@ std::size_t ReverbStorage::reservedBytes() const noexcept {
     return total;
 }
 bool ReverbStorage::request(unsigned id, const ReverbSettings& s, std::uint32_t seed) noexcept {
-    if (id >= trackCount || !rate || bankActive || pending[id] || remaining[id] || serial == std::numeric_limits<std::uint64_t>::max()) return false;
+    if (id >= trackCount || !rate || bankActive || pending[id] || remaining[id]
+        || serial == std::numeric_limits<std::uint64_t>::max()
+        || installations[id] == std::numeric_limits<std::uint64_t>::max()) return false;
     const auto bytes = reservationBytes(rate, s);
     if (!bytes) return false;
     std::size_t used = 0; Slot* available = nullptr;
@@ -126,7 +128,10 @@ ReverbStorage::Completion ReverbStorage::poll() noexcept {
             // values (especially a now-disabled wet path) into the transition.
             slot.graph->reset();
             previous[id] = active[id]; remaining[id] = fadeFrames;
-            active[id] = &slot; failed[id] = false; installations[id] = slot.request;
+            // Installation is a per-track adoption counter, for BOTH individual
+            // requests and banks. Mixing the request serial with bank increments
+            // can repeat a stamp and turn a committed edit into a false cancel.
+            active[id] = &slot; failed[id] = false; ++installations[id];
             slot.phase.store(Phase::active, std::memory_order_release); completion.installed |= 1u << id;
         } else {
             failed[id] = true; completion.failed |= 1u << id;

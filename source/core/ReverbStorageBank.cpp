@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "ReverbStorage.h"
 #include <algorithm>
+#include <limits>
 namespace aion {
 bool ReverbStorage::collectBankSlots(const Bank& settings,std::array<Slot*,trackCount>& slotsToUse) const noexcept {
     if (!rate || bankActive) return false;
     unsigned needed = 0, available = 0; std::size_t required = 0, reserved = 0;
     for (unsigned id = 0; id < trackCount; ++id) {
-        if (pending[id] || remaining[id] || !validReverbSettings(settings[id])) return false;
+        if (pending[id] || remaining[id] || !validReverbSettings(settings[id])
+            || installations[id] == std::numeric_limits<std::uint64_t>::max()) return false;
         if (!settings[id].enabled) continue;
         const auto bytes = reservationBytes(rate, settings[id]);
         if (!bytes || bytes > budget - required) return false;

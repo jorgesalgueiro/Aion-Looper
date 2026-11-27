@@ -11,6 +11,40 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Independent audit of recent reverb integration — 27 November 2026
+
+Reviewed the eight commits after `37206b4` through `d5c69c8`: LoopBank binding,
+ordered Engine edits, coordinated banks and the non-audio settings owner, plus
+their tests and real-time/lifecycle changes. Provider identity is not recorded
+in Git (the commits share the project author); this is the recent work identified
+by the owner as OpenCode/DeepSeek-assisted. Existing heap-owned test fixtures
+retain their assertions and default Windows stack policy; those changes stand.
+
+Two reproduced defects fixed:
+
+1. Bank adoption incremented `installation`, but individual adoption overwrote
+   it with a different request-serial counter. A bank followed by a prepared
+   individual edit could reuse the stamp: audio committed, Engine reported
+   cancellation, and ReverbSettingsOwner detached with stale committed settings.
+   Both paths now use one per-track adoption counter, with overflow admission
+   rejection. No product/request/session ID changed.
+2. MIDI Stop's discarded-command acknowledgement filter excluded individual
+   reverb edits but omitted reverb banks. A future bank could replace the ordinary
+   UI acknowledgement with its private request ID. Banks now retain only their
+   own correlated cancellation receipt, whether the command was pending or queued.
+
+New `reverb_audit_*` cases at 64/128 all failed before fixes (6/6 negatives,
+build/reverb-audit-before.txt), then passed with the existing affected owner,
+bank, Engine and LoopBank/audio/storage set: Windows Release 16/16 (11.68s).
+No old cases/tolerances removed or relaxed; callback new/delete remains tracked.
+Focused existing `aion_core_tests --midi` and Linux/sanitizer verification are
+pending this source snapshot. See REVERB.md for the audit scope and commands.
+
+No new feature/preset/DSP model, UI/CLI/state surface, dependency, logo/reference
+change, package or push. B remains disabled; persistence/adapters and unified
+Machine mode remain pending. This audit is not a claim of exhaustive bug freedom
+or unexecuted driver/GUI/DAW/device acceptance.
+
 ### B / non-audio settings owner — 25 November 2026
 
 `ReverbSettingsOwner` mirrors `DelaySettingsOwner`: explicit known-state bind,

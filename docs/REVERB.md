@@ -751,6 +751,59 @@ focused 33/33 passed (15.44s) plus the full Linux `core_realtime_contract`
 no reported errors or suppressions. These are test wall times, not CPU/latency
 claims.
 
+### Independent integration audit — 27 November 2026
+
+Scope: eight commits after `37206b4` through `d5c69c8`, covering LoopBank/worker
+binding, Engine edit/bank protocols, ReverbStorage banks, settings ownership and
+the added tests. Git records the project author, not the coding provider; this
+is the recent OpenCode/DeepSeek-assisted work identified by the owner. Review
+focused on transaction interleavings, cancellation, lifetime, state consistency,
+shared MIDI acknowledgements and callback safety. The existing fixture heap
+moves preserve assertions and Windows' stack limit; they were retained.
+
+**Fixed: installation stamp collision (high integration impact).** Storage used
+`++installation` for banks but assigned `slot.request` for individual adoption.
+Those independent counters can have the same value. Starting from an enabled
+bank, a Duration edit prepared and installed new DSP, but Engine interpreted the
+unchanged stamp as no installation and returned cancelled; the settings owner
+then detached with old committed settings. `poll` now increments the same
+per-track adoption counter as `commitBank`; bank/single admission reject exhausted
+counters before mutation. Request transactions, seeds, IDs and DSP are unchanged.
+The regression includes enabled-bank -> prepared edit and all-off bank -> enable.
+
+**Fixed: MIDI Stop acknowledgement contamination.** The purge helper excluded
+Delay banks and single Reverb edits, but not Reverb banks. A private bank ID
+could falsely advance ordinary `lastRequestId` and set `rejected`. The helper
+now excludes `LoopAction::reverbBank` too. Tests separately place the future bank
+in the pending-command slot and behind a queued ordinary command, asserting the
+correct ordinary acknowledgement AND the separately correlated bank cancellation.
+
+Before fixes, all six 64/128 audit cases failed; the exact failures remain in
+`build/reverb-audit-before.txt`. After fixes, Windows Release 16/16 affected tests
+passed (11.68s); existing owner/transactions/bank/LoopBank stereo/storage checks
+remain unchanged. All new Engine callbacks track C++ new/delete. The tests
+reproduce protocol/state failures rather than changing mathematical tolerances.
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_reverb_audit_tests aion_reverb_owner_tests aion_reverb_bank_tests aion_reverb_engine_tests aion_reverb_engine_audio_tests aion_reverb_connected_tests aion_reverb_storage_tests --parallel 4
+ctest --test-dir build/windows-core -C Release -R '^(reverb_audit_.*|reverb_settings_owner_contract|reverb_bank_contract|reverb_engine_transactions_contract|reverb_engine_audio_contract|reverb_loopbank_connected_contract|reverb_loopbank_stereo_.*|reverb_storage_contract)$' --output-on-failure --no-tests=error
+cmake --build build/windows-core --config Release --target aion_core_tests --parallel 4
+build/windows-core/Release/aion_core_tests.exe --midi
+```
+
+After committing and the documented clean WSL snapshot sync, use the same target
+list and CTest regex with `build/linux`. For core ASan/UBSan/leak, regenerate the
+existing `build/drive-sanitized` cache, build the same targets, and prefix CTest
+with `ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1`. Keep the current
+Debug/plugin-OFF/address+undefined/frame-pointer flags and original timeouts.
+The focused MIDI invocation does not run the full multi-minute core suite.
+
+No new audio model, parameter/action/preset IDs, bridge/GUI/CLI/persistence or
+Machine-mode feature was added. Preserved UI/logo/reference and third-party
+sources/notices remain unchanged. Reverb stays disabled in the product surface.
+This is a bounded audit with regression fixes, not a certification that the
+application is bug-free or that UI/listening/device/DAW/release checks passed.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

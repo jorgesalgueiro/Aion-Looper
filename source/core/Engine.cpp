@@ -93,7 +93,7 @@ bool Engine::applyMidi(LoopAction action,std::uint32_t track,double value) noexc
     if(action==LoopAction::stopAll){
         const auto discardedUiCommand=[&](const LoopCommand& command) noexcept {
             if(!isMeterCommand(command.action)&&command.action!=LoopAction::delay&&command.action!=LoopAction::delayBank
-                &&command.action!=LoopAction::reverb){lastRequestId=std::max(lastRequestId,command.requestId);rejected=true;}
+                &&command.action!=LoopAction::reverb&&command.action!=LoopAction::reverbBank){lastRequestId=std::max(lastRequestId,command.requestId);rejected=true;}
         };
         if(hasPendingLoop){discardedUiCommand(pendingLoop);hasPendingLoop=false;}
         LoopCommand discarded{};for(unsigned n=0;n<256&&loopCommands->pop(discarded);++n)discardedUiCommand(discarded);

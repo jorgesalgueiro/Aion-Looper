@@ -16,7 +16,7 @@ public:
     static constexpr std::size_t defaultBudget = 256u * 1024u * 1024u;
     struct View {
         bool active = false, pending = false, failed = false, transitioning = false;
-        std::uint64_t installation = 0;
+        std::uint64_t installation = 0; // per-track adoption counter shared by bank/single installs
         std::uint32_t seed = 0;
     };
     using Bank = std::array<ReverbSettings, trackCount>;
