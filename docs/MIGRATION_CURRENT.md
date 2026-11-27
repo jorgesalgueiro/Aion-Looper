@@ -11,6 +11,16 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Coordinated B PCM oracle — 27 November 2026
+
+Added aion_effects_reverb_bank_audio_tests: actual Engine PCM for the joint Arp/B
+bank against an independent ReverbStorage bank committed at the exact receipt
+boundary. First enable, replacement shape, all-twenty receipt revisions and a
+worker-OOM rollback are covered at 8/48 kHz and 64/128; maximum error 7.45e-09
+(limit 2e-6), audible change 0.036–0.053, zero callback heap operations. CTest
+`effects_reverb_coordinated_bank_audio_contract` passes with the B bank set
+6/6. Linux execution is recorded after the committed sync.
+
 ### Processor joint B restore — 27 November 2026
 
 serviceEffectsRestore now submits and adopts B inside the existing Arp/effects
