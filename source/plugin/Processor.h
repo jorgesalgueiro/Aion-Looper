@@ -145,10 +145,12 @@ private:
         aion::ArpBankResult terminal{};
         aion::DelaySettingsOwner::Bank delays{};
         aion::LoopBank::DelayEpochs delayEpochs{},delayRevisions{};
+        aion::ReverbSettingsOwner::Bank reverbs{};
+        aion::LoopBank::ReverbEpochs reverbEpochs{},reverbRevisions{};
         std::uint64_t intent=0;
         std::uint32_t request=0,generation=0;
         bool active=false,completed=false;
-        bool retainDelayOnFailure=false;
+        bool retainDelayOnFailure=false,retainReverbOnFailure=false,includesReverbs=false;
     } effectsRestore{}; // Non-audio, under midiSettingsMutex; sole message result consumer.
     std::uint64_t effectsIntent=0;
     std::uint32_t lastEffectsRequest=0;

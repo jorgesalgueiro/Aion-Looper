@@ -49,6 +49,24 @@ bool ReverbSettingsOwner::restore(const Bank& candidate,std::uint32_t request,st
  for(auto& record:records){record.pending=true;record.requestId=request;}
  return true;
 }
+bool ReverbSettingsOwner::acceptEffectsRestore(const EngineView& view,const Bank& candidate,const ArpBankResult& receipt,
+ const LoopBank::ReverbEpochs& epochs,const LoopBank::ReverbEpochs& revisions) noexcept {
+ if(bank.active||!receipt.requestId||!receipt.includesReverbs||receipt.status!=ArpPreparationStatus::ready
+  ||receipt.generation!=engine.generation()||view.generation!=receipt.generation
+  ||view.callbackClock.generation!=receipt.generation||!receipt.callbackSerial||view.callbackClock.serial<receipt.callbackSerial)return false;
+ for(unsigned id=0;id<records.size();++id){const auto& audio=view.tracks[id];const auto& record=records[id];
+  if(record.pending||!validReverbSettings(candidate[id])||revisions[id]==UINT64_MAX||receipt.clearEpochs[id]!=epochs[id]
+   ||receipt.reverbSettingsRevisions[id]!=revisions[id]+1||audio.clearEpoch<epochs[id])return false;
+  if(audio.clearEpoch==epochs[id]){if(audio.reverbSettingsRevision!=receipt.reverbSettingsRevisions[id]||audio.reverb!=candidate[id])return false;}
+  else if(audio.reverbSettingsRevision==0){if(audio.reverb!=ReverbSettings{})return false;}
+  else if(record.clearEpoch!=audio.clearEpoch||record.revision!=audio.reverbSettingsRevision||record.committed!=audio.reverb)return false;
+ }
+ for(unsigned id=0;id<records.size();++id){auto& record=records[id];const auto& audio=view.tracks[id];
+  if(audio.clearEpoch==epochs[id])record={candidate[id],audio.clearEpoch,audio.reverbSettingsRevision,receipt.requestId,ReverbEditStatus::ready,false};
+  else if(audio.reverbSettingsRevision==0)record={ReverbSettings{},audio.clearEpoch,0,receipt.requestId,ReverbEditStatus::cancelled,false};
+ }
+ generation=receipt.generation;attached=true;return true;
+}
 void ReverbSettingsOwner::cancel(unsigned id) noexcept {engine.cancelReverbEdit(id);}
 void ReverbSettingsOwner::serviceBank() noexcept {
  ReverbBankResult result;if(!engine.popReverbBank(result))return;

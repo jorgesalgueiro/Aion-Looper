@@ -1170,6 +1170,43 @@ learn/CC targets, listening/device/DAW and Linux WebKit UI remain outside this
 slice. Implementation proceeds core bank first, then Processor ordering, then
 GUI/state acceptance, with the affected Windows and Linux tests at each step.
 
+### Processor joint B restore submission — 27 November 2026
+
+The product Processor now submits B through the existing Arp/effects bank:
+
+- serviceEffectsRestore is the sole submitter while a state/prepare B intent
+  exists. It requires a bound B owner and no pending per-track B edit, adds
+  effects.reverbs and reverbRevisions, and adopts B only from the exact terminal
+  receipt through the new ReverbSettingsOwner::acceptEffectsRestore (request,
+  generation, callback serial, clear-epoch and per-track revision proofs, plus
+  the cleared-track outcome rules).
+- serviceReverb no longer submits a competing B-only bank. It binds/mirrors the
+  owner, resolves pending clears and shadow epochs, services individual edit
+  receipts, and clears a matching intent without a bank; the separate B-only
+  ReverbSettingsOwner::restore path is retained only for its owner tests.
+- A clear admitted after the load is ordered before the joint receipt. On a
+  cancelled receipt with a newer clear epoch, the load intent is retained and the
+  next service submits the cleared candidate (the cleared track reset, the other
+  tracks still restored) instead of latching a terminal failure. Failed/busy
+  receipts without a newer clear retain the previous committed B and the
+  reverbRestoreFailed outcome; a matching intent needs no bank.
+
+Acceptance (Windows Release):
+
+- aion_reverb_state_processor_tests 64/128 pass with exact versioned roundtrip,
+  32 whole-state rejections, pre-B defaults, stopped prepare, command
+  cancellation and ordered load/clear recovery, zero callback heap operations.
+  The fixture drives the production timerCallback, so submission, adoption and
+  clear/load ordering use the real owner path.
+- Reverb command, Delay state and joint-effects processor tests pass at 64/128;
+  the Windows Release Standalone and mouse host link.
+- Actual WebView2 Reverb and Delay UI tests pass at 64/128 (panel/commands,
+  reload, nonzero PCM, unchanged clip) with the joint restore active.
+
+Not yet established: the Linux build/tests for this Processor change, a B joint
+PCM audio oracle, a GUI host-state-load fixture, MIDI learn/receipts, Machine
+mode and listening/device/DAW acceptance.
+
 ### Coordinated core Arp/Reverb/effects bank — 27 November 2026
 
 Implements the audio-side half of the design above. The product Processor still

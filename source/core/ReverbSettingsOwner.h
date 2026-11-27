@@ -25,6 +25,7 @@ public:
  bool enable(unsigned track,bool enabled,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool reset(unsigned track,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool restore(const Bank&,std::uint32_t request,std::uint64_t frame=0) noexcept;
+ bool acceptEffectsRestore(const EngineView&,const Bank&,const ArpBankResult&,const LoopBank::ReverbEpochs& epochs,const LoopBank::ReverbEpochs& revisions) noexcept;
  void cancel(unsigned track=LoopBank::trackCount) noexcept;
  bool bound() const noexcept{return attached&&generation==engine.generation();}
  bool restoring() const noexcept{return bank.active;}

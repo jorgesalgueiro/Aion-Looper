@@ -41,28 +41,40 @@ bool AionProcessor::serviceEffectsRestore(){
             if(latest.generation!=result.generation||latest.callbackClock.serial<result.callbackSerial)return false;
             if(result.status==aion::ArpPreparationStatus::ready){
                 if(!delayOwner.acceptEffectsRestore(latest,effectsRestore.delays,result,effectsRestore.delayEpochs,effectsRestore.delayRevisions))return false;
+                if(effectsRestore.includesReverbs&&!reverbOwner.acceptEffectsRestore(latest,effectsRestore.reverbs,result,effectsRestore.reverbEpochs,effectsRestore.reverbRevisions))return false;
             }
             if(effectsRestore.intent==effectsIntent){
+                // A clear admitted after this load is ordered before the joint bank
+                // receipt. Keep the newer intent so the next service submits the
+                // cleared candidate, rather than latching a terminal B failure.
+                bool newerReverbClear=false;
+                if(effectsRestore.includesReverbs)for(unsigned id=0;id<reverbSettings.size();++id)
+                    if(reverbOwner.track(id)->clearEpoch>effectsRestore.reverbEpochs[id]){newerReverbClear=true;break;}
+                const bool clearRace=result.status==aion::ArpPreparationStatus::cancelled&&newerReverbClear;
+                const bool retainReverb=effectsRestore.retainReverbOnFailure&&(result.status==aion::ArpPreparationStatus::failed||result.status==aion::ArpPreparationStatus::busy||clearRace);
                 for(unsigned i=0;i<eqSettings.size();++i){
                     eqSettings[i]=latest.tracks[i].equalizer;compressorSettings[i]=latest.tracks[i].compressor;chainSettings[i]=latest.tracks[i].signalChain;
                     driveSettings[i]=latest.tracks[i].drives;
                     arpSettings[i]=arpOwner.track(i)->committed;
                     const bool retain=effectsRestore.retainDelayOnFailure&&(result.status==aion::ArpPreparationStatus::failed||result.status==aion::ArpPreparationStatus::busy);
                     if(!retain&&!pendingDelayClears[i].request)delaySettings[i]=delayOwner.track(i)->committed;
+                    if(effectsRestore.includesReverbs&&!retainReverb&&!pendingReverbClears[i].request)reverbSettings[i]=reverbOwner.track(i)->committed;
                 }
                 delayRestorePending=false;delayRestoreFailed=result.status!=aion::ArpPreparationStatus::ready;
+                if(effectsRestore.includesReverbs&&!clearRace){reverbRestorePending=false;reverbRestoreFailed=result.status!=aion::ArpPreparationStatus::ready;}
                 eqRestorePending=compressorRestorePending=chainRestorePending=arpRestorePending=driveRestorePending=false;
             }
             effectsRestore={};
         }
     }
-    if(!(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending)){
+    if(!(eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending||reverbRestorePending)){
         delayOwner.suspendMidi(retainedDelayFailure);
         for(unsigned i=0;i<arpSettings.size();++i)if(!arpOwner.track(i)->pending)arpSettings[i]=arpOwner.track(i)->committed;
         return true;
     }
     if(!meterPrepared()||latest.generation!=engine.generation()||nextRequest==UINT32_MAX)return false;
     if(!delayOwner.bound())return false;
+    if(reverbRestorePending&&!reverbOwner.bound())return false;
     // This is an ordering fence, never evidence of successful settings. All
     // these IDs belong to the ordinary FIFO. An earlier bank ID is already
     // covered by its exact terminal receipt and must not strand the next load.
@@ -70,10 +82,18 @@ bool AionProcessor::serviceEffectsRestore(){
     aion::LoopBank::EffectsBank effects{eqSettings,compressorSettings,chainSettings,driveSettings};
     effects.restoreDelays=true;effects.delays=delaySettings;
     for(unsigned id=0;id<delaySettings.size();++id)effects.delayRevisions[id]=delayOwner.track(id)->revision;
+    if(reverbRestorePending){
+        for(unsigned id=0;id<reverbSettings.size();++id)if(reverbOwner.track(id)->pending)return false;
+        effects.restoreReverbs=true;effects.reverbs=reverbSettings;
+        for(unsigned id=0;id<reverbSettings.size();++id)effects.reverbRevisions[id]=reverbOwner.track(id)->revision;
+    }
     if(!arpOwner.restore(arpSettings,nextRequest+1,&effects))return false;
     lastEffectsRequest=++nextRequest;
     effectsRestore={};effectsRestore.active=true;effectsRestore.request=nextRequest;effectsRestore.generation=engine.generation();effectsRestore.intent=effectsIntent;
     effectsRestore.delays=delaySettings;effectsRestore.delayRevisions=effects.delayRevisions;effectsRestore.retainDelayOnFailure=delayRestorePending;
     for(unsigned id=0;id<delaySettings.size();++id)effectsRestore.delayEpochs[id]=delayOwner.track(id)->clearEpoch;
+    effectsRestore.includesReverbs=reverbRestorePending;
+    effectsRestore.reverbs=reverbSettings;effectsRestore.reverbRevisions=effects.reverbRevisions;effectsRestore.retainReverbOnFailure=reverbRestorePending;
+    for(unsigned id=0;id<reverbSettings.size();++id)effectsRestore.reverbEpochs[id]=reverbOwner.track(id)->clearEpoch;
     return false;
 }

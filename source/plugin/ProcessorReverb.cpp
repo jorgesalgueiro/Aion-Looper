@@ -10,8 +10,12 @@ void AionProcessor::reverbCleared(unsigned track,bool all,std::uint32_t request)
 }
 void AionProcessor::serviceReverb(){
  // Sole serialized non-audio B service, shared by state and GUI/CLI commands.
+ // State/prepare restores travel in the joint Arp/effects bank; this service
+ // binds/mirrors intent, services edits and never submits a competing B bank.
  reverbOwner.service(latest);
  if(!reverbOwner.bound()){
+  // Equal values alone cannot prove ownership of a newer joint revision.
+  if(effectsRestore.active&&effectsRestore.generation==engine.generation())return;
   if(latest.generation!=engine.generation())return;
   aion::ReverbSettingsOwner::Bank known{};
   for(unsigned id=0;id<known.size();++id){const auto& confirmed=reverbOwner.track(id)->committed;
@@ -32,23 +36,17 @@ void AionProcessor::serviceReverb(){
   // their acknowledgements; a newer GUI clear already reset that candidate.
   if(epoch>reverbShadowEpochs[id]){if(!reverbRestorePending)reverbSettings[id]={};reverbShadowEpochs[id]=epoch;}
  }
- if(!reverbOwner.restoring()&&lastReverbRequest&&reverbOwner.restoreReceipt().requestId==lastReverbRequest
-  &&reverbOwner.restoreReceipt().status!=aion::ReverbEditStatus::ready){reverbRestoreFailed=true;reverbRestorePending=false;}
- // Individual edit receipts are terminal, including failure/cancellation. Only
- // an explicit state load/prepare owns bank intent; never retry a failed edit.
- if(!reverbRestorePending){
-  if(!reverbRestoreFailed&&!reverbOwner.restoring())for(unsigned id=0;id<reverbSettings.size();++id)
-   if(!reverbOwner.track(id)->pending&&!pendingReverbClears[id].request)reverbSettings[id]=reverbOwner.track(id)->committed;
-  return;
+ // Accepted whole-bank intent is protected until its exact joint receipt.
+ // Never submit a B-only lifecycle bank while that owner is preparing.
+ if(effectsRestore.active||eqRestorePending||compressorRestorePending||chainRestorePending||arpRestorePending||driveRestorePending||delayRestorePending)return;
+ if(reverbRestorePending){
+  bool matches=true;
+  for(unsigned id=0;id<reverbSettings.size();++id)
+   matches&=!reverbOwner.track(id)->pending&&reverbSettings[id]==reverbOwner.track(id)->committed;
+  if(matches){reverbRestorePending=false;reverbRestoreFailed=false;}
+  else return; // The enclosing joint owner prepares the bank after edits settle.
  }
- for(unsigned id=0;id<reverbSettings.size();++id)if(reverbOwner.track(id)->pending)return;
- if(reverbOwner.restoring())return;
- bool differs=false;
- for(unsigned id=0;id<reverbSettings.size();++id){
-  differs|=reverbSettings[id]!=reverbOwner.track(id)->committed;
- }
- if(!differs){reverbRestorePending=false;reverbRestoreFailed=false;return;}
- if(reverbRestoreFailed)return;
- if(!meterPrepared()||latest.generation!=engine.generation()||nextReverbRequest==UINT32_MAX)return;
- if(reverbOwner.restore(reverbSettings,nextReverbRequest+1))lastReverbRequest=++nextReverbRequest;
+ // Individual edit receipts are terminal, including failure/cancellation.
+ if(!reverbRestoreFailed)for(unsigned id=0;id<reverbSettings.size();++id)
+  if(!reverbOwner.track(id)->pending&&!pendingReverbClears[id].request)reverbSettings[id]=reverbOwner.track(id)->committed;
 }
