@@ -846,7 +846,8 @@ its exact bank receipt, and submits the coordinated bank only when the confirmed
 bank differs. A failed/cancelled bank retains the confirmed records and stops
 retrying until a new load/clear. Prepare keeps the accepted intent, save drains
 receipts first, and STOP ALL cancels pending B work while DEL resets only its
-track. No B command, GUI/CLI/MIDI control, preset ID or Machine engine is added.
+track. No MIDI learn, web-panel adapter or Machine engine is added; the shared
+command/CLI layer is described below.
 
 New `aion_reverb_state_processor_tests` (64/128) covers exact versioned
 round-trip through a second processor and a stopped load before first prepare,
@@ -870,8 +871,12 @@ hidden/disabled in the GUI.
 Executed source `5af180b`: Windows Release `aion_reverb_state_processor_tests`
 64/128 passed (32 whole-state rejections each) together with the retained Delay
 state cases (four native state tests, 3.59s); native WSL Linux also passed 64/128
-and its Standalone Release links. The core-only sanitizer build does not include
-the JUCE processor target; the state paths add no audio-callback work and the
+and its Standalone Release links. The shared command/CLI addition was verified at
+source `3a8d8d5`: Windows and native WSL Linux reverb state 64/128 (including
+set/toggle/snapshot through the public request path) and Delay state 64/128 pass,
+both Standalone Release targets link, and `tools/aion.py` compiles and lists
+`reverb` on both platforms. The core-only sanitizer build does not include the
+JUCE processor target; the state paths add no audio-callback work and the
 processor tests still track zero callback new/delete.
 
 ### Earlier preparation verification

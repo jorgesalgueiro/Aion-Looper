@@ -21,8 +21,9 @@ before mutation. The sole Timer-driven `serviceReverb` drains exact receipts,
 binds verified known settings, fences DEL acknowledgements, protects an accepted
 load until its exact bank receipt, and submits the coordinated bank only when
 confirmed settings differ. Prepare keeps intent, save drains first, STOP ALL
-cancels pending B work and DEL resets only its track. No B command, GUI/CLI/MIDI
-control, preset ID or Machine engine is exposed.
+cancels pending B work and DEL resets only its track. No MIDI learn, web-panel
+adapter or Machine engine is exposed; the shared command/CLI layer is described
+below.
 
 New `aion_reverb_state_processor_tests` 64/128 covers exact round-trip across a
 second processor, stopped load before prepare, immediate accepted-intent save, 32
@@ -39,6 +40,10 @@ fields `reverb/reverbBusy/reverbPending/reverbRequestId/reverbReady`, plus
 `tools/aion.py reverb <track> <action>` with preset/room/parameter/value. The
 state test drives set/toggle/snapshot through that public path. The preserved web
 B panel still needs its native adapter, so B remains hidden/disabled in the GUI.
+
+Source `3a8d8d5`: Windows and native WSL Linux reverb state 64/128 (including the
+shared command path) and Delay state 64/128 pass; both Standalone Release targets
+link; `tools/aion.py` compiles and lists `reverb` on both platforms.
 
 NEXT: the preserved web B panel adapter and real 64/128 WebView2/CLI acceptance,
 then the coordinated Arp/effects restore hook and MIDI receipts/learn. B remains
