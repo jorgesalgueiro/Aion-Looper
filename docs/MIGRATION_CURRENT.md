@@ -27,8 +27,10 @@ against the real LocalCommandServer and processor callback. Covers exact receipt
 all six controls/endpoints, 17 presets, eight rooms, enabled live edits, strict
 rejections, immediate persistence, reset/bypass and track-20 isolation. Callback
 new/delete remains zero. No original tests/tolerances or preserved UI changed.
-Windows Release core reverb/reference 20/20 passed; state/command/adjacent restore
-and Linux verification are recorded in REVERB.md after the final source check.
+Source `9ce8a6b`: Windows Release core reverb/reference 20/20 (16.45s), native
+state/command/adjacent restore 8/8 (29.33s); native WSL Linux combined 28/28
+(16.41s). Both Standalone Release targets link. Exact commands and limitations
+are recorded in REVERB.md; no full unrelated suite or sanitizer rerun is claimed.
 
 NEXT remains the preserved B panel adapter and real WebView2/Standalone CLI
 acceptance, then coordinated Arp/effects restore and MIDI receipts/learn. B stays

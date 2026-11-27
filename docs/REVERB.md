@@ -944,6 +944,20 @@ Windows core reverb/reference passed 20/20 (16.45s). An initial invocation used
 `build/windows`, where the core executables were not built: nine were Not Run
 and the reference launcher failed to spawn its probe. Rebuilt the correct
 `build/windows-core` targets and all 20 passed; no product/test tolerance change.
-Final processor and native Linux results follow in the verification checkpoint.
+Final source `9ce8a6b`: Windows processor/state/CLI/adjacent restore 8/8 passed
+(29.33s, `build/reverb-review-native-final.txt`), and Standalone Release links.
+The native Linux mirror was clean, then fast-forwarded with the documented
+SetupWslWorkspace helper. Its affected processor targets and Standalone Release
+built; combined native/core/reference 28/28 passed (16.41s,
+`build/reverb-review-linux-tests.txt`). Commands in the native root:
+
+```sh
+cmake --build build/linux --target aion_reverb_command_tests aion_reverb_state_processor_tests aion_delay_state_processor_tests aion_joint_effects_processor_tests AionLooper_Standalone --parallel 2
+ctest --test-dir build/linux -R '^(native_(reverb_commands|reverb_state_processor|delay_state_processor|joint_effects_processor)_(64|128)|reverb_.*|original_reverb_settings_contract)$' --output-on-failure --no-tests=error
+```
+
 Core DSP is unchanged, so prior sanitizer DSP evidence remains historical;
 the JUCE state/command paths are not covered by that core-only sanitizer build.
+No full unrelated suite, WebView2 interaction, physical device/listening/DAW or
+release acceptance was run. The preserved B panel adapter is still the next
+product slice, followed by coordinated effects restore and MIDI receipts/learn.
