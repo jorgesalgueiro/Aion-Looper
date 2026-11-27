@@ -37,8 +37,13 @@ New `reverb_audit_*` cases at 64/128 all failed before fixes (6/6 negatives,
 build/reverb-audit-before.txt), then passed with the existing affected owner,
 bank, Engine and LoopBank/audio/storage set: Windows Release 16/16 (11.68s).
 No old cases/tolerances removed or relaxed; callback new/delete remains tracked.
-Focused existing `aion_core_tests --midi` and Linux/sanitizer verification are
-pending this source snapshot. See REVERB.md for the audit scope and commands.
+Source `6a7e054`: native WSL Linux Release 16/16 passed (5.16s); core-only Debug
+ASan/UBSan/leak 16/16 passed (102.46s), no reported errors/suppressions. Existing
+Debug/address+undefined/frame-pointer/plugin-OFF flags and timeouts retained.
+The focused Windows `aion_core_tests --midi` also passed: CC lookup/filtering,
+Note/CC/PC, MUTE/UNM sample offsets and exact WAV, holds/sustain/panic/recovery.
+The core test binary was rebuilt, but its full default suite was not rerun.
+No GUI/driver/DAW/device tests were performed. See REVERB.md for exact commands.
 
 No new feature/preset/DSP model, UI/CLI/state surface, dependency, logo/reference
 change, package or push. B remains disabled; persistence/adapters and unified

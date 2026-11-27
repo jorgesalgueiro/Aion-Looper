@@ -440,7 +440,7 @@ zero audio-owner new/delete. Existing standalone wet-processor tests remain.
   results cannot overwrite a newer request. Reset cancels pending work, retires
   the previous owner and resets the retained current DSP. `prepareStopped` and
   `releaseStopped`, including destruction, require both owners quiescent.
-- `View` reports current request installation/IR seed and bounded status only.
+- `View` reports the current per-track adoption stamp/IR seed and bounded status only.
   Installation serials are internal to one prepared lifetime, not new parameter
   or session IDs. The const graph borrow is audio-owner-only and expires on
   lifecycle mutation. No shared pointer/refcount or large snapshot was added.
@@ -791,12 +791,30 @@ cmake --build build/windows-core --config Release --target aion_core_tests --par
 build/windows-core/Release/aion_core_tests.exe --midi
 ```
 
-After committing and the documented clean WSL snapshot sync, use the same target
-list and CTest regex with `build/linux`. For core ASan/UBSan/leak, regenerate the
-existing `build/drive-sanitized` cache, build the same targets, and prefix CTest
-with `ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1`. Keep the current
-Debug/plugin-OFF/address+undefined/frame-pointer flags and original timeouts.
-The focused MIDI invocation does not run the full multi-minute core suite.
+After committing and the documented clean WSL snapshot sync, from native storage:
+
+```sh
+reverb_audit_targets='aion_reverb_audit_tests aion_reverb_owner_tests aion_reverb_bank_tests aion_reverb_engine_tests aion_reverb_engine_audio_tests aion_reverb_connected_tests aion_reverb_storage_tests'
+reverb_audit_tests='^(reverb_audit_.*|reverb_settings_owner_contract|reverb_bank_contract|reverb_engine_transactions_contract|reverb_engine_audio_contract|reverb_loopbank_connected_contract|reverb_loopbank_stereo_.*|reverb_storage_contract)$'
+cmake --build build/linux --target $reverb_audit_targets --parallel 2
+ctest --test-dir build/linux -R "$reverb_audit_tests" --output-on-failure --no-tests=error
+cmake -S . -B build/drive-sanitized # preserve the existing core-only sanitizer cache
+cmake --build build/drive-sanitized --target $reverb_audit_targets --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R "$reverb_audit_tests" --output-on-failure --no-tests=error
+```
+
+Executed source `6a7e054`: Windows Release 16/16 (11.68s), native WSL Linux
+Release 16/16 (5.16s), core-only Debug ASan/UBSan/leak 16/16 (102.46s), no reported
+errors/suppressions. Current Debug/plugin-OFF/address+undefined/frame-pointer
+flags and all original timeouts were retained. Test wall times are not runtime
+performance/latency measurements.
+
+The existing Windows `aion_core_tests --midi` passed after rebuilding that binary;
+it does not run the full default core suite. Actual output includes 6144 CC
+lookup/filter cases, 240 learned MUTE cases, 224 play/stop + 28 mute cancelled-note
+recovery cases, Note/CC/PC routing, sustain/panic/holds, zero callback new/delete
+and exact native WAV/sample-offset checks at 64/128. This is synthetic core MIDI,
+not physical controllers, JUCE device routing, editor interaction or driver tests.
 
 No new audio model, parameter/action/preset IDs, bridge/GUI/CLI/persistence or
 Machine-mode feature was added. Preserved UI/logo/reference and third-party
