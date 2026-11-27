@@ -1370,9 +1370,42 @@ asserted. No old test or tolerance was removed/relaxed. The first learned-audio
 fixture omitted the required learnGeneration and therefore never armed Learn;
 correcting that fixture stamp made its retained PCM assertion pass.
 
-Windows core checks: coordinated bank admission/scenarios/PCM and owner 7/7
-passed; the final MIDI audio test passed (1.89s). FrontendTests and BridgeTests
-pass. Final native/UI/Linux evidence follows in the verification checkpoint.
+Source `84675b2` verification:
+
+- Windows Release: coordinated bank admission/scenarios/PCM and owner seven
+  retained cases passed (`build/reverb-independent-core.txt`); after correcting
+  only the new Learn fixture stamp, MIDI audio passed 1/1 in 1.89s
+  (`build/reverb-midi-pcm-final.txt`). The seven unchanged passing cases were
+  not repeated for that fixture-only fix.
+- Windows production B MIDI 64/128 (including failed restore/fresh-load recovery)
+  passed 2/2 in 3.99s. The adjacent Delay MIDI, reverb state/commands, Delay state
+  and joint-effects cases passed 10/10 in 75.11s. Standalone and mouse host link.
+- Clean native WSL mirror fast-forwarded through SetupWslWorkspace to `84675b2`;
+  all affected targets and Standalone Release built. Combined audio, bank/owner,
+  B/Delay MIDI, state/commands and joint restore passed 20/20 in 41.68s
+  (`build/reverb-independent-linux-tests.txt`).
+- The unchanged original-JS B settings comparison passes on Windows and Linux.
+  FrontendTests and BridgeTests pass. Actual Reverb WebView2 passes at 64/128
+  (`build/reverb-independent-ui.txt`), retaining host-state load/save, MIDI Learn/
+  clear, original panel/ranges, reload/LIVE and unchanged native clip checks.
+- Retained actual Delay WebView2 passes at 64/128 with the same rebuilt host
+  (`build/reverb-independent-delay-ui.txt`), preserving Feedback/exact modes,
+  panel/ranges/Sync, precision, reload/bypass, MIDI and continuing native PCM.
+
+Commands (use the documented pinned CMake/toolchain environment):
+
+```powershell
+ctest --test-dir build/windows-core -C Release -R '^(reverb_midi_audio_contract|reverb_settings_owner_contract|effects_reverb_coordinated_bank.*contract)$' --output-on-failure --no-tests=error
+ctest --test-dir build/windows -C Release -R '^native_(reverb_midi|delay_midi|reverb_state_processor|reverb_commands|delay_state_processor|joint_effects_processor)_(64|128)$' --output-on-failure --no-tests=error
+./tools/TestReverbUi.ps1
+./tools/TestDelayUi.ps1
+```
+
+```sh
+ctest --test-dir build/linux -R '^(native_(reverb_midi|delay_midi|reverb_state_processor|reverb_commands|delay_state_processor|joint_effects_processor)_(64|128)|reverb_midi_audio_contract|reverb_settings_owner_contract|effects_reverb_coordinated_bank.*contract)$' --output-on-failure --no-tests=error
+```
+
 No DSP algorithm, product control, ID, schema, logo, preserved reference or
 third-party source was changed. Physical controller, listening/device/DAW,
-Linux WebKit, shape-control MIDI and Machine acceptance remain separate.
+Linux WebKit, shape-control MIDI and Machine acceptance remain separate. No full
+unrelated suite, sanitizer rerun, package, push or release-ready claim.

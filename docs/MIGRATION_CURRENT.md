@@ -29,6 +29,13 @@ proof, unread-receipt clear and suspend/recovery, with zero callback heap work.
 The retained `1e-6` PCM limit passes. Final platform/UI evidence is in REVERB.md.
 No original cases/tolerances, UI/logo, IDs, presets or state schema changed.
 
+Source `84675b2`: Windows bank/owner 7 retained cases and new PCM oracle pass;
+native B MIDI 2/2 and adjacent state/command/Delay/joint 10/10 pass. Native WSL
+Linux combined 20/20 passes (41.68s); unchanged original-JS B settings pass on
+both platforms. Frontend/bridge checks and actual Reverb plus retained Delay
+WebView2 at 64/128 pass; both Standalone Release targets link. See REVERB.md for
+commands and limits. No full unrelated suite/sanitizer rerun.
+
 Machine/B-V compatibility, shape-control MIDI, Linux WebKit and physical
 controller/listening/device/DAW acceptance remain pending. The conservative
 four-control MIDI surface remains the product scope of this slice.
