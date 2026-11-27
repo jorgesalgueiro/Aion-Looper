@@ -192,6 +192,11 @@ private:
     aion::LoopBank::ReverbEpochs reverbShadowEpochs{};
     struct PendingReverbClear {std::uint32_t request=0,generation=0;std::uint64_t epoch=0;};
     std::array<PendingReverbClear,aion::LoopBank::trackCount> pendingReverbClears{};
+    // Latest shape-control CC per track (duration, decay), applied by the
+    // message owner after off-audio preparation. Fixed storage, no audio work.
+    struct PendingReverbShape {double value=0;bool active=false;};
+    std::array<std::array<PendingReverbShape,2>,aion::LoopBank::trackCount> pendingReverbShapes{};
+    void clearPendingReverbShapes(unsigned track,bool all);
     void serviceReverb();
     void reverbCleared(unsigned track,bool all,std::uint32_t request);
     void saveReverbs(juce::ValueTree&);

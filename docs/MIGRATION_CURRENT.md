@@ -40,6 +40,20 @@ Machine/B-V compatibility, shape-control MIDI, Linux WebKit and physical
 controller/listening/device/DAW acceptance remain pending. The conservative
 four-control MIDI surface remains the product scope of this slice.
 
+### Prepared shape MIDI for Reverb Duration/Decay — 27 November 2026
+
+Duration and Decay now learnable on targets 157/158. The audio callback publishes a
+bounded latest intent per track; the message owner submits the normal prepared
+shape edit and the committed value lands after its worker receipt. A burst
+coalesces to the newest CC. Schema v10 writes 159 bindings (v9 reads 157, v8 153).
+
+Windows: Reverb MIDI 64/128 (six targets, shape coalescing, failed-restore fence,
+v8->v10) and Reverb MIDI PCM 8/48k x 64/128 pass; Delay MIDI, the production MIDI
+suite, reverb state/commands, Delay state and joint effects pass; Reverb UI
+64/128 learns/applies/clears Duration, and Delay UI/FrontendTests/BridgeTests pass.
+Linux execution is recorded after the committed sync. Machine mode, physical
+controllers, Linux WebKit and listening/DAW remain pending.
+
 ### Conservative B MIDI learn — 27 November 2026
 
 Appended continuous targets 153–156 for Reverb Volume/Mix/Damp/Pre-delay (live

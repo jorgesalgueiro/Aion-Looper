@@ -17,7 +17,7 @@ const previousSliderTarget=window.AionMidiSliderTarget;
 window.AionMidiSliderTarget=id=>{const delay=window.AionMidiDelayParameters.findIndex(p=>id==='delay'+p[0].toUpperCase()+p.slice(1));return delay>=0?147+delay:previousSliderTarget(id);};
 // Conservative B surface: only ReverbStorage live controls; duration/decay
 // change the prepared impulse shape and stay unmapped.
-window.AionMidiReverbParameters=['volume','mix','damp','predelay'];
+window.AionMidiReverbParameters=['volume','mix','damp','predelay','duration','decay'];
 const previousSliderTargetTwo=window.AionMidiSliderTarget;
 window.AionMidiSliderTarget=id=>{const reverb=window.AionMidiReverbParameters.findIndex(p=>id==='reverb'+p[0].toUpperCase()+p.slice(1));return reverb>=0?153+reverb:previousSliderTargetTwo(id);};
 window.AionMidiLearnTarget=id=>{const mute=/^live_mm_mute_l_(\d+)$/.exec(id);if(mute)return Number(mute[1])<20?73+Number(mute[1]):-1;const m=/^loop-action-(\d+)$/.exec(id);return m?(Number(m[1])<20?Number(m[1]):-1):window.AionMidiSliderTarget(id);};

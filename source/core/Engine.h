@@ -19,6 +19,9 @@ struct ArpMidiReceipt {
 };
 struct DelayMidiReceipt {unsigned track=0,parameter=0;double value=0;std::uint32_t generation=0;std::uint64_t epoch=0,before=0,revision=0;};
 struct ReverbMidiReceipt {unsigned track=0,parameter=0;double value=0;std::uint32_t generation=0;std::uint64_t epoch=0,before=0,revision=0;};
+// Shape controls (duration/decay) need off-audio IR preparation; the audio
+// callback only publishes the latest intent for the message owner.
+struct ReverbMidiShapeRequest {unsigned track=0,parameter=0;double value=0;std::uint32_t generation=0;std::uint64_t epoch=0,revision=0;};
 struct Meter { std::uint64_t frame; float peak; };
 struct LoopCommand {
     LoopAction action{};
@@ -288,6 +291,7 @@ public:
     bool popDelayMidi(DelayMidiReceipt& result) noexcept {return delayMidiResults->pop(result);}
     void delayMidiOwner(std::uint32_t generation) noexcept {delayMidiGeneration.store(generation,std::memory_order_release);}
     bool popReverbMidi(ReverbMidiReceipt& result) noexcept {return reverbMidiResults->pop(result);}
+    bool popReverbMidiShape(ReverbMidiShapeRequest& result) noexcept {return reverbMidiShapeRequests->pop(result);}
     void reverbMidiOwner(std::uint32_t generation) noexcept {reverbMidiGeneration.store(generation,std::memory_order_release);}
     bool midiLearnCurrent(const MidiLearnResult& result) const noexcept {return midi->learnCurrent(result);}
     void cancelMidi() noexcept {midiCancellation.fetch_add(1,std::memory_order_release);}
@@ -325,6 +329,7 @@ private:
     bool applyReverbMidi(unsigned,unsigned,unsigned) noexcept;
     std::atomic<std::uint32_t> reverbMidiGeneration{0};
     std::unique_ptr<SpscQueue<ReverbMidiReceipt,512>> reverbMidiResults=std::make_unique<SpscQueue<ReverbMidiReceipt,512>>();
+    std::unique_ptr<SpscQueue<ReverbMidiShapeRequest,64>> reverbMidiShapeRequests=std::make_unique<SpscQueue<ReverbMidiShapeRequest,64>>();
     bool applyArpMidi(unsigned,unsigned,unsigned) noexcept;
     std::unique_ptr<SpscQueue<ArpMidiReceipt,512>> arpMidiResults=std::make_unique<SpscQueue<ArpMidiReceipt,512>>();
     LoopBank loops;

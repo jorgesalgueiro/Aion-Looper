@@ -24,7 +24,7 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const int blo
  check(static_cast<int>(s["midi"]["bindings"][147])==aion::midiBinding(2,20),"learn binding accepted");
  // Install six distinct omni CCs via the public versioned state, then exercise
  // every value/channel and nonmonotonic endpoints with the actual MidiBuffer.
- juce::MemoryBlock saved;p->getStateInformation(saved);x=p->getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));auto* mappings=x->getChildByName("MidiSettings");check(mappings->getIntAttribute("version")==9,"schema v9");
+ juce::MemoryBlock saved;p->getStateInformation(saved);x=p->getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));auto* mappings=x->getChildByName("MidiSettings");check(mappings->getIntAttribute("version")==10,"schema v10");
  for(unsigned j=0;j<6;++j)mappings->setAttribute("binding"+juce::String(147+j),static_cast<int>(aion::midiBinding(2,20+j)));
  p->copyXmlToBinary(*x,saved);p->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));settle();
  for(unsigned channel=1;channel<=16;++channel)for(unsigned j=0;j<6;++j)for(unsigned value=0;value<128;++value){cc(static_cast<int>(channel),20+static_cast<int>(j),static_cast<int>(value));pump();
@@ -65,7 +65,7 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const int blo
   auto message=kind==1?juce::MidiMessage::noteOn(channel==1?16:1,99,static_cast<juce::uint8>(100)):juce::MidiMessage::programChange(channel==1?16:1,99);midi.addEvent(message,17);pump();s=snapshot();check(static_cast<int>(s["midi"]["learnTarget"])==target,"wrong-channel Note/PC leaves Learn armed");
   message=kind==1?juce::MidiMessage::noteOn(channel,99,static_cast<juce::uint8>(100)):juce::MidiMessage::programChange(channel,99);midi.addEvent(message,17);pump();s=snapshot();pump();s=snapshot();check(static_cast<int>(s["midi"]["bindings"][target])==aion::midiBinding(static_cast<unsigned>(kind),99,static_cast<unsigned>(channel)),"Note/PC captures requested channel");
  }
- p->getStateInformation(saved);x=p->getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));check(x->getChildByName("MidiSettings")->getIntAttribute("version")==9,"channel Learn retains schema and IDs");p->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));settle();s=snapshot();
+ p->getStateInformation(saved);x=p->getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));check(x->getChildByName("MidiSettings")->getIntAttribute("version")==10,"channel Learn retains schema and IDs");p->setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));settle();s=snapshot();
  check(static_cast<int>(s["midi"]["bindings"][147])==aion::midiBinding(2,99,1)&&static_cast<int>(s["midi"]["bindings"][150])==aion::midiBinding(2,99,16),"channel assignments survive host save/restore");
  cc(1,99,0,17);cc(16,99,127,18);pump();s=snapshot();check(p->inspectAudioThread(19).track.delay.values[0]==aion::delayMidiValue(0,0)&&p->inspectAudioThread(19).track.delay.values[3]==1,"restored concurrent controls remain independent");
  check(p->getActiveEditor()==nullptr,"MIDI and persistence work without editor");std::cout<<"PASS native Delay MIDI "<<block<<": all CC/channel originals, same-block learn, bounded receipt saturation/recovery, joint gate, v7 migration; zero callback heap\n";

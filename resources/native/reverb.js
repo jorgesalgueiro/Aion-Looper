@@ -10,7 +10,7 @@
  // the preserved panel; the command layer keeps the explicit room action.
  const presets=['small','studio','medium','large','hall','plate','bright-plate','spring','cathedral','washed-out','tight-drum','ambient-cloud','dark-cave','dub-space','vocal-room','garage','shimmer-hall'];
  // Conservative MIDI surface: live controls only (targets 153..156).
- const midiTarget={volume:153,mix:154,damp:155,predelay:156};
+ const midiTarget={volume:153,mix:154,damp:155,predelay:156,duration:157,decay:158};
  window.AionReverbUI=({current,equalizer,enqueue})=>{
   let alive=true;const controls=[],toggles=[];
   const module=document.createElement('div');module.id='native-reverb-panel';module.className='retro-module';module.style.borderColor='lightblue';

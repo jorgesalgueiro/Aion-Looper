@@ -67,8 +67,11 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  for(let n=0;n<120;++n){if(await evaluate(`document.querySelector('#reverbMix').value==='1'`))break;await wait(50);}
  assert(await evaluate(`document.querySelector('#reverbMix').value==='1'`),'learned B slider follows the native value');
  await click('#reverbMix','right',8);await until(s=>s.midi.bindings[154]===0,'clear Reverb Mix binding');
- await click('#reverbDuration','right');await wait(300);
- assert.equal((await snapshot()).midi.learnTarget,-1,'duration/decay remain unmapped');
+ await click('#reverbDuration','right');await until(s=>s.midi.learnTarget===157,'Duration learn target');
+ await inject([[179,26,0,3,17],[179,26,0,3,18]]);await until(s=>s.midi.bindings[157]!==0,'Duration learned binding');
+ for(let n=0;n<600;++n){const st=await snapshot();if(!st.tracks[0].reverbBusy&&st.tracks[0].reverb.values.duration===.1)break;await wait(50);}
+ assert.equal((await snapshot()).tracks[0].reverb.values.duration,.1,'prepared Duration CC applies after its receipt');
+ await click('#reverbDuration','right',8);await until(s=>s.midi.bindings[157]===0,'clear Duration binding');
  await wait(200);await click('#loop-0-reverb');const end=await until(s=>!s.tracks[0].reverb.enabled&&s.tracks[0].reverbReady,'bypass after reload');assert.equal(end.tracks[0].waveformId,take.tracks[0].waveformId);assert(!await evaluate(`!!window.state?.audioContext`));assert.deepEqual(errors,[]);
- console.log('PASS actual Reverb UI '+process.argv[2]+': B row/panel enable, preset catalogue, six original ranges, Custom-on-edit, preset/room, Reset, exact precision, panel bypass, reload, LIVE binding, host state save/load restore, B MIDI Learn/clear on live controls and unchanged native nonzero PCM/clip');
+ console.log('PASS actual Reverb UI '+process.argv[2]+': B row/panel enable, preset catalogue, six original ranges, Custom-on-edit, preset/room, Reset, exact precision, panel bypass, reload, LIVE binding, host state save/load restore, B MIDI Learn/clear on live and prepared shape controls and unchanged native nonzero PCM/clip');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>socket?.close());

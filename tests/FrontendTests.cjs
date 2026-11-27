@@ -1158,6 +1158,10 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  delay.forEach((name,i)=>assert.equal(scope.window.AionMidiSliderTarget('delay'+name[0].toUpperCase()+name.slice(1)),147+i));
  for(const id of ['delaySync','native-delay-enabled','native-delay-mode','native-delay-count'])assert.equal(scope.window.AionMidiSliderTarget(id),-1);
  console.log('PASS: Delay continuous targets 147..152 append without reassigning IDs; Sync/bypass/repeat selectors stay unmapped');
+ const reverbNames=['volume','mix','damp','predelay','duration','decay'];
+ reverbNames.forEach((name,i)=>assert.equal(scope.window.AionMidiSliderTarget('reverb'+name[0].toUpperCase()+name.slice(1)),153+i));
+ for(const id of ['reverbDuration','reverbDecay'])assert(scope.window.AionMidiSliderTarget(id)>=157);
+ console.log('PASS: Reverb live and shape controls occupy 153..158 without reassigning Delay IDs');
 }
 
 // B / Reverb panel: actual production controls, native command mapping and row

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "plugin/Processor.h"
+void AionProcessor::clearPendingReverbShapes(unsigned track,bool all){
+ for(unsigned id=0;id<pendingReverbShapes.size();++id)if(all||id==track)pendingReverbShapes[id]={};
+}
 void AionProcessor::reverbCleared(unsigned track,bool all,std::uint32_t request){
  std::lock_guard guard(midiSettingsMutex);
+ clearPendingReverbShapes(track,all);
  reverbOwner.cancel(all?aion::LoopBank::trackCount:track);
  for(unsigned id=0;id<reverbSettings.size();++id)if(all||id==track){
   reverbSettings[id]={};pendingReverbClears[id]={request,engine.generation(),reverbOwner.track(id)->clearEpoch};
@@ -13,6 +17,12 @@ void AionProcessor::serviceReverb(){
  // State/prepare restores travel in the joint Arp/effects bank; this service
  // binds/mirrors intent, services edits and never submits a competing B bank.
  reverbOwner.service(latest);
+ aion::ReverbMidiShapeRequest shape;
+ for(unsigned n=0;n<64&&engine.popReverbMidiShape(shape);++n){
+  if(shape.generation!=engine.generation()||shape.track>=reverbSettings.size())continue;
+  const unsigned slot=shape.parameter==2?0:shape.parameter==3?1:2;
+  if(slot<2)pendingReverbShapes[shape.track][slot]={shape.value,true};
+ }
  if(!reverbOwner.bound()){
   // Equal values alone cannot prove ownership of a newer joint revision.
   if(effectsRestore.active&&effectsRestore.generation==engine.generation())return;
@@ -49,4 +59,15 @@ void AionProcessor::serviceReverb(){
  // Individual edit receipts are terminal, including failure/cancellation.
  if(!reverbRestoreFailed)for(unsigned id=0;id<reverbSettings.size();++id)
   if(!reverbOwner.track(id)->pending&&!pendingReverbClears[id].request)reverbSettings[id]=reverbOwner.track(id)->committed;
+ // Latest shape-control CC per track is prepared by this owner. One queued
+ // edit per track/parameter; newer values replace older intents.
+ unsigned submitted=0;
+ for(unsigned id=0;id<reverbSettings.size()&&submitted<8;++id)for(unsigned slot=0;slot<2&&submitted<8;++slot){
+  auto& pending=pendingReverbShapes[id][slot];
+  if(!pending.active||reverbOwner.track(id)->pending||pendingReverbClears[id].request)continue;
+  if(nextReverbRequest==UINT32_MAX)return;
+  if(reverbOwner.set(id,slot?3:2,pending.value,nextReverbRequest+1)){
+   ++nextReverbRequest;reverbSettings[id]=*reverbOwner.intent(id);pending.active=false;++submitted;
+  }
+ }
 }

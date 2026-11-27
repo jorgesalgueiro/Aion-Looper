@@ -1306,42 +1306,44 @@ acceptance remain separate.
 
 ### B MIDI continuous learn — 27 November 2026
 
-Conservative B MIDI mapping is now connected end to end. Only the live controls
-that do not change the prepared impulse shape are exposed: Volume, Mix, Damp and
-Pre-delay map to appended continuous targets 153–156 after Delay's 147–152;
-Duration and Decay stay unmapped (a shape edit needs a prepared transaction).
+B MIDI mapping is now connected end to end. Volume, Mix, Damp and Pre-delay map
+to appended continuous targets 153–156 after Delay's 147–152 and apply in the
+callback. Duration (157) and Decay (158) are prepared shape controls: the callback
+publishes only a bounded latest-intent per track, the message owner submits the
+normal prepared edit, and the committed value lands after its worker receipt.
 
-- MidiSettings version 9 writes 157 bindings. Versions 1–8 keep their exact old
-  lengths (v8 reads 153) and the four new slots start unassigned.
+- MidiSettings version 10 writes 159 bindings. Versions 1–9 keep their exact old
+  lengths (v9 reads 157, v8 reads 153) and the new slots start unassigned.
+  A burst of shape CCs coalesces to the newest value while preparation is busy.
 - Engine::applyReverbMidi applies the exact CC value to the committed B track and
   publishes a bounded receipt with clear epoch and before/after revision. The
   ReverbSettingsOwner consumes receipts under its owner generation, suspends
   dispatch during joint restore/edit intent, and detaches on any unexplained
   revision, exactly like the accepted Delay owner.
-- Message 153 = Volume, 154 = Mix, 155 = Damp, 156 = Pre-delay as CC.
-  Right-click learn and Shift-right-click clear work on those four sliders;
-  a focused learned slider follows hardware values, an unbound focused slider is
-  protected, and drags/keys keep ownership until release. Duration/Decay sliders
-  stay unlearnable.
+- Message 153 = Volume, 154 = Mix, 155 = Damp, 156 = Pre-delay, 157 = Duration,
+  158 = Decay. Right-click learn and Shift-right-click clear work on all six
+  sliders; a focused learned slider follows hardware values, an unbound focused
+  slider is protected, and drags/keys keep ownership until release.
 
-Executed (Windows Release): native Reverb MIDI passes at 64/128 (learn, all four
-targets across every channel and representative values, full 0–127 Mix sweep,
-bounded 512-receipt saturation and drain recovery, joint-restore suspension,
-unselected tracks, zero callback heap, v8 to v9 migration). Delay MIDI passes at
-64/128, and the production MIDI suite's 64/128 sections pass. Retained reverb
-state/command, Delay state and joint-effects tests pass; Reverb UI passes at
-64/128 with right-click learn, CC application, clear and an unmapped
-Duration/Decay check; Delay UI passes at 64/128 and FrontendTests pass.
+Executed (Windows Release): native Reverb MIDI passes at 64/128 (learn, four live
+targets and both prepared shape targets, all channels/values, full 0–127 Mix
+sweep, shape-burst coalescing, bounded 512-receipt saturation/drain, joint-restore
+suspension, unselected tracks, zero callback heap, v8 to v10 migration) and
+Reverb MIDI PCM passes at 8/48 kHz and 64/128. The failed-restore MIDI fence and
+the independent audible-control PCM test pass. Delay MIDI passes at 64/128, and
+the production MIDI suite's 64/128 sections pass. Retained reverb state/command,
+Delay state and joint-effects tests pass; Reverb UI passes at 64/128 with
+right-click learn/clear on live and shape sliders, CC application, prepared
+Duration adoption and unchanged PCM; Delay UI passes at 64/128 and
+FrontendTests/BridgeTests pass.
 
-Linux (clean native WSL checkout at this commit): the standalone and all affected
-test binaries link; native Reverb MIDI 64/128, Delay MIDI 64/128 and the
-production MIDI suite pass 5/5 (25.80 s), and the reverb command/state, Delay
-state and joint-effects processor cases pass 8/8 (9.52 s).
+The clean native WSL checkout builds the shape-MIDI sources; Linux execution is
+recorded after the committed sync.
 
-Limits: no MIDI mapping for Duration/Decay, Machine engine, pitch/expression
-targets, physical controllers or Linux WebKit/listening/DAW acceptance. The host
-state load now suspends B MIDI immediately (not only on the next Timer tick), so
-a packet between the load and its first service cannot edit the old owner.
+Limits: no Machine engine, pitch/expression targets, physical controllers or
+Linux WebKit/listening/DAW acceptance. The host state load suspends B MIDI
+immediately, and a failed joint B restore keeps MIDI fenced (independent audit
+`84675b2`) so no callback window edits the old owner against retained intent.
 
 ### Independent integration audit and audible B MIDI — 27 November 2026
 
@@ -1405,7 +1407,7 @@ ctest --test-dir build/windows -C Release -R '^native_(reverb_midi|delay_midi|re
 ctest --test-dir build/linux -R '^(native_(reverb_midi|delay_midi|reverb_state_processor|reverb_commands|delay_state_processor|joint_effects_processor)_(64|128)|reverb_midi_audio_contract|reverb_settings_owner_contract|effects_reverb_coordinated_bank.*contract)$' --output-on-failure --no-tests=error
 ```
 
-No DSP algorithm, product control, ID, schema, logo, preserved reference or
-third-party source was changed. Physical controller, listening/device/DAW,
-Linux WebKit, shape-control MIDI and Machine acceptance remain separate. No full
-unrelated suite, sanitizer rerun, package, push or release-ready claim.
+No DSP algorithm, product control, ID, logo, preserved reference or third-party
+source was changed by the independent audit. Physical controller,
+listening/device/DAW, Linux WebKit and Machine acceptance remain separate. No
+full unrelated suite, sanitizer rerun, package, push or release-ready claim.
