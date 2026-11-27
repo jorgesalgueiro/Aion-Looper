@@ -1169,3 +1169,48 @@ and standalone B behavior when the flag is false. Machine engine, B MIDI
 learn/CC targets, listening/device/DAW and Linux WebKit UI remain outside this
 slice. Implementation proceeds core bank first, then Processor ordering, then
 GUI/state acceptance, with the affected Windows and Linux tests at each step.
+
+### Coordinated core Arp/Reverb/effects bank — 27 November 2026
+
+Implements the audio-side half of the design above. The product Processor still
+uses the separate B bank: the new fields default to restoreReverbs=false, so no
+state-load, command, parameter, GUI or saved-state version changes yet.
+
+- LoopBank::EffectsBank adds opt-in B settings/revisions; validEffectsBank checks
+  them only when the flag is set.
+- requestArpBank stages Arp, Delay and B storages; B admission requires no
+  pending B bank/edit and matching revisions, preflights capacity, and rolls back
+  every staged bank if any request or the final publication fails.
+- pollArps validates all coordinated revisions, treats a lost (cancelled) staged
+  bank as failure, requires the selected storages ready, prepares and commits
+  them in one callback, then advances info.reverb/request/revision together with
+  the existing metadata. pollReverbs defers its bank to the joint owner through
+  the new ReverbStorage::poll(deferBank) and keeps servicing per-track work.
+- cancelArpBank cancels the staged B bank. EngineArpBank adds B admission
+  exclusion, stale checks, includesReverbs and B revision arrays to its receipt,
+  and a coordinatedReverbBank admission flag. Engine::cancelReverbBank cancels
+  the joint bank, and B edit/bank admission is rejected while the joint owns the
+  transaction (including unread receipts).
+
+Acceptance (Windows Release, this checkpoint):
+
+- New aion_effects_reverb_bank_tests: admission plus scenarios 0-3 at 64/128,
+  covering Arp+B and three-storage Arp+Delay+B. Admission exercises invalid and
+  stale descriptors, B edit/bank and unread-receipt exclusion, and the audio-side
+  aggregate budget rejection with no worker allocation (armed-failure counter
+  untouched). Scenarios verify atomic commit, exact receipt revision proofs,
+  B-worker OOM rollback with the old owners retained, reverb cancellation
+  invalidating the joint bank, three-storage commit and same-ID recovery.
+  Tracked callback new/delete remains zero.
+- CTest coordinated/bank set 18/18 (97.40 s, including the new admission and four
+  B scenarios at both block sizes). Retained reverb core/reference subset 20/20
+  (15.37 s), the existing Delay coordinated scenarios and Arp bank contract pass.
+  The processor command/state, Delay state and joint-effects tests pass at
+  64/128 and the Windows Release Standalone links.
+
+Limits: the Processor does not submit or adopt this bank yet, so no product
+behavior changes and B joint PCM is covered here by owner identity/commit rather
+than a new audio oracle. Linux, MIDI receipts/learn, Machine mode and
+listening/device/DAW acceptance remain separate. Next: connect
+serviceEffectsRestore/serviceReverb and ReverbSettingsOwner::acceptEffectsRestore,
+then add the B joint PCM audio test and GUI/state acceptance.

@@ -11,6 +11,25 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Coordinated core Arp/Reverb/effects bank — 27 November 2026
+
+Implemented the audio-side joint bank for B: opt-in EffectsBank.reverbs/
+reverbRevisions/restoreReverbs, three-storage admission with full rollback, one
+commit and terminal receipt (includesReverbs plus B revision arrays), a
+coordinatedReverbBank admission flag, B edit/bank exclusion while the joint owns
+the transaction, and ReverbStorage::poll(deferBank) so only the joint owner
+commits. The product Processor still uses the separate B bank; no state,
+command, parameter or saved-state version changed.
+
+New aion_effects_reverb_bank_tests (admission and scenarios 0-3 at 64/128)
+covers invalid/stale descriptors, B edit/bank/unread-receipt exclusion, audio-side
+budget rejection, atomic Arp+B and Arp+Delay+B commit, OOM rollback, cancellation
+and same-ID recovery with zero callback heap operations. Windows coordinated/bank
+18/18 (97.40 s), reverb core/reference 20/20 (15.37 s), retained processor
+command/state/Delay/joint tests at 64/128 and the Standalone link pass. Linux,
+Processor submission/acceptEffectsRestore, B joint PCM, MIDI/Machine and
+listening/DAW acceptance remain pending.
+
 ### B / coordinated Arp/Reverb/effects restore design — 27 November 2026
 
 Wrote the gated-slice design for joining B to the existing Arp/effects bank:

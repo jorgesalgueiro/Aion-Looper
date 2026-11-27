@@ -44,7 +44,7 @@ public:
     void clear(unsigned track) noexcept;
     void clearAll() noexcept;
     void reset(unsigned track) noexcept; // retain current graph, discard all history/pending work
-    Completion poll() noexcept;
+    Completion poll(bool deferBank = false) noexcept;
     // Continuous controls 0/1/4/5 only; shape controls 2/3 need a new request.
     // Per-control revision fences replay only edits accepted AFTER a request.
     bool setControl(unsigned track, unsigned control, double value) noexcept;

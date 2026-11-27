@@ -4,6 +4,7 @@
 namespace aion {
 bool Engine::enqueueReverbBank(ReverbBankRequest request,std::uint64_t& transaction) noexcept {
  if(!request.requestId||!request.generation||request.generation!=generation()||request.transaction
+  ||coordinatedReverbBank.load(std::memory_order_acquire)
   ||outstandingReverbBank||nextReverbTransaction==UINT64_MAX)return false;
  for(unsigned id=0;id<LoopBank::trackCount;++id)
   if(outstandingReverb[id]||!validReverbSettings(request.settings[id])||request.settingsRevisions[id]==UINT64_MAX)return false;
@@ -19,7 +20,7 @@ bool Engine::popReverbBank(ReverbBankResult& result) noexcept {
  if(!reverbBankResults->pop(result))return false;
  outstandingReverbBank=false;return true;
 }
-void Engine::cancelReverbBank() noexcept {reverbBankCancellation.fetch_add(1,std::memory_order_release);}
+void Engine::cancelReverbBank() noexcept {reverbBankCancellation.fetch_add(1,std::memory_order_release);if(coordinatedReverbBank.load(std::memory_order_acquire))cancelArpBank();}
 void Engine::finishReverbBank(ReverbEditStatus status) noexcept {
  auto& p=*pendingReverbBank;
  if(!p.finished){

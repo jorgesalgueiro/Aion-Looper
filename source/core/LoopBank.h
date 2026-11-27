@@ -134,6 +134,9 @@ public:
         DelayStorage::Bank delays{};
         ArpEpochs delayRevisions{};
         bool restoreDelays=false; // Opt-in; historical Arp-only/effects callers retain D.
+        ReverbBank reverbs{};
+        ArpEpochs reverbRevisions{};
+        bool restoreReverbs=false; // Opt-in; historical/Delay callers retain separate B.
         bool operator==(const EffectsBank&) const noexcept=default;
     };
     static bool validEffectsBank(const EffectsBank&) noexcept;

@@ -7,6 +7,7 @@ bool Engine::enqueueReverbEdit(LoopCommand command,std::uint64_t& transaction) n
  if(command.action!=LoopAction::reverb||command.track>=LoopBank::trackCount||!command.requestId
   ||!command.generation||command.generation!=generation()||command.arpTransaction||command.delayTransaction
   ||command.reverbTransaction||!validReverbSettings(command.reverb)||command.reverbSettingsRevision==UINT64_MAX
+  ||coordinatedReverbBank.load(std::memory_order_acquire)
   ||outstandingReverb[command.track]||outstandingReverbBank||nextReverbTransaction==UINT64_MAX)return false;
  if(!reverbRequests->canPush()||!loopCommands->canPush())return false;
  command.reverbTransaction=nextReverbTransaction+1;

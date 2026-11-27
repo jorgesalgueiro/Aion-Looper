@@ -6,6 +6,7 @@ namespace aion {
 bool LoopBank::validEffectsBank(const EffectsBank& bank) noexcept {
  for(unsigned id=0;id<trackCount;++id)if(!validEqSettings(bank.equalizers[id])||!validCompressorSettings(bank.compressors[id])||!validSignalChain(bank.chains[id])||!validDriveBank(bank.drives[id]))return false;
  if(bank.restoreDelays)for(unsigned id=0;id<trackCount;++id)if(!validDelaySettings(bank.delays[id])||bank.delayRevisions[id]==UINT64_MAX)return false;
+ if(bank.restoreReverbs)for(unsigned id=0;id<trackCount;++id)if(!validReverbSettings(bank.reverbs[id])||bank.reverbRevisions[id]==UINT64_MAX)return false;
  return true;
 }
 bool LoopBank::applyArpTempoBank(const ArpBank& settings,const ArpEpochs& epochs,const ArpEpochs& revisions,std::uint32_t request) noexcept {
@@ -29,13 +30,21 @@ bool LoopBank::requestArpBank(const ArpBank& settings,const ArpEpochs& epochs,co
  if(effects&&!validEffectsBank(*effects))return false;
  for(unsigned id=0;id<trackCount;++id)if(pendingArpSettings[id].active||epochs[id]!=tracks[id].clearEpoch||
     revisions[id]!=tracks[id].info.arpSettingsRevision||revisions[id]==UINT64_MAX)return false;
- if(effects&&effects->restoreDelays){
+ const bool delays=effects&&effects->restoreDelays;
+ const bool reverbs=effects&&effects->restoreReverbs;
+ if(delays){
   if(pendingDelayBank->active)return false;
   for(unsigned id=0;id<trackCount;++id)if(pendingDelays[id].active||effects->delayRevisions[id]!=tracks[id].info.delaySettingsRevision)return false;
   if(!delayStorage->canRequestBank(effects->delays,sync.settings.bpm))return false;
  }
+ if(reverbs){
+  if(pendingReverbBank->active)return false;
+  for(unsigned id=0;id<trackCount;++id)if(pendingReverbs[id].active||effects->reverbRevisions[id]!=tracks[id].info.reverbSettingsRevision)return false;
+  if(!reverbStorage->canRequestBank(effects->reverbs))return false;
+ }
  if(!arpStorage->requestBank(settings))return false;
- if(effects&&effects->restoreDelays&&!delayStorage->requestBank(effects->delays,sync.settings.bpm)){arpStorage->cancelBank();return false;}
+ if(delays&&!delayStorage->requestBank(effects->delays,sync.settings.bpm)){arpStorage->cancelBank();return false;}
+ if(reverbs&&!reverbStorage->requestBank(effects->reverbs)){arpStorage->cancelBank();if(delays)delayStorage->cancelBank();return false;}
  pendingArpBank={settings,epochs,revisions,request,true};
  if(effects){pendingArpBank.effects=*effects;pendingArpBank.restoreEffects=true;}
  bankArpResult={request,ArpBankStatus::pending};
@@ -46,6 +55,7 @@ bool LoopBank::requestArpBank(const ArpBank& settings,const ArpEpochs& epochs,co
 void LoopBank::cancelArpBank() noexcept {
  if(!pendingArpBank.active)return;
  if(pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreDelays)delayStorage->cancelBank();
+ if(pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreReverbs)reverbStorage->cancelBank();
  arpStorage->cancelBank();bankArpResult={pendingArpBank.request,ArpBankStatus::cancelled};pendingArpBank={};
 }
 bool LoopBank::requestArpStorage(unsigned id,const ArpModValues& values,std::uint32_t seed,std::uint64_t epoch,
@@ -65,18 +75,26 @@ void LoopBank::pollArps() noexcept {
  for(unsigned id=0;id<trackCount;++id){
   if(pendingArpBank.active&&(pendingArpBank.epochs[id]!=tracks[id].clearEpoch||pendingArpBank.revisions[id]!=tracks[id].info.arpSettingsRevision))cancelArpBank();
   if(pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreDelays&&pendingArpBank.effects.delayRevisions[id]!=tracks[id].info.delaySettingsRevision)cancelArpBank();
+  if(pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreReverbs&&pendingArpBank.effects.reverbRevisions[id]!=tracks[id].info.reverbSettingsRevision)cancelArpBank();
   const auto& p=pendingArpSettings[id];
   if(p.active&&(p.clearEpoch!=tracks[id].clearEpoch||p.revision!=tracks[id].info.arpSettingsRevision))cancelArpStorage(id);
  }
- const bool coordinated=pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreDelays;
+ const bool coordinatedDelay=pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreDelays;
+ const bool coordinatedReverb=pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreReverbs;
+ const bool coordinated=coordinatedDelay||coordinatedReverb;
  auto completion=arpStorage->poll(frame,coordinated);
  if(coordinated){
-  const auto a=arpStorage->bankStatus();const auto d=delayStorage->bankStatus();
-  const bool failed=a==ArpDelayStorage::BankStatus::failed||d==DelayStorage::BankStatus::failed;
-  const bool ready=a==ArpDelayStorage::BankStatus::ready&&d==DelayStorage::BankStatus::ready;
-  if(failed||(ready&&(!arpStorage->prepareBankCommit(frame)||!delayStorage->prepareBankCommit(sync.settings.bpm)))){
-   arpStorage->cancelBank();delayStorage->cancelBank();completion.bankFailed=true;
-  }else if(ready){arpStorage->commitBank();delayStorage->commitBank();completion.bankInstalled=true;}
+  const auto a=arpStorage->bankStatus();
+  const auto d=coordinatedDelay?delayStorage->bankStatus():DelayStorage::BankStatus::ready;
+  const auto v=coordinatedReverb?reverbStorage->bankStatus():ReverbStorage::BankStatus::ready;
+  // A cancelled staged bank reports none while the joint request is admitted.
+  // Treat it as failure so the terminal receipt never waits forever.
+  const bool lost=a==ArpDelayStorage::BankStatus::none||(coordinatedDelay&&d==DelayStorage::BankStatus::none)||(coordinatedReverb&&v==ReverbStorage::BankStatus::none);
+  const bool failed=a==ArpDelayStorage::BankStatus::failed||d==DelayStorage::BankStatus::failed||v==ReverbStorage::BankStatus::failed;
+  const bool ready=a==ArpDelayStorage::BankStatus::ready&&d==DelayStorage::BankStatus::ready&&v==ReverbStorage::BankStatus::ready;
+  if(lost||failed||(ready&&(!arpStorage->prepareBankCommit(frame)||(coordinatedDelay&&!delayStorage->prepareBankCommit(sync.settings.bpm))||(coordinatedReverb&&!reverbStorage->prepareBankCommit())))){
+   arpStorage->cancelBank();if(coordinatedDelay)delayStorage->cancelBank();if(coordinatedReverb)reverbStorage->cancelBank();completion.bankFailed=true;
+  }else if(ready){arpStorage->commitBank();if(coordinatedDelay)delayStorage->commitBank();if(coordinatedReverb)reverbStorage->commitBank();completion.bankInstalled=true;}
  }
  if(pendingArpBank.active&&(completion.bankInstalled||completion.bankFailed)){
   if(completion.bankInstalled)for(unsigned id=0;id<trackCount;++id){
@@ -89,6 +107,9 @@ void LoopBank::pollArps() noexcept {
    pendingArpBank.restoreEffects=false;
    if(pendingArpBank.effects.restoreDelays)for(unsigned id=0;id<trackCount;++id){auto& info=tracks[id].info;
     info.delay=pendingArpBank.effects.delays[id];info.delayRequest=pendingArpBank.request;++info.delaySettingsRevision;
+   }
+   if(pendingArpBank.effects.restoreReverbs)for(unsigned id=0;id<trackCount;++id){auto& info=tracks[id].info;
+    info.reverb=pendingArpBank.effects.reverbs[id];info.reverbRequest=pendingArpBank.request;++info.reverbSettingsRevision;
    }
    for(unsigned id=0;id<trackCount;++id){const auto& fx=pendingArpBank.effects;
     (void)setEqualizer(id,fx.equalizers[id],eqAllParameters,pendingArpBank.request,tracks[id].clearEpoch);

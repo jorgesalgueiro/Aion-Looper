@@ -6,15 +6,18 @@ bool Engine::enqueueArpBank(ArpBankRequest request) noexcept {
  if((request.tempoOnly&&request.restoreEffects)||(request.restoreEffects&&!LoopBank::validEffectsBank(request.effects)))return false;
  const bool delays=request.restoreEffects&&request.effects.restoreDelays;
  if(delays){if(outstandingDelayBank)return false;for(bool pending:outstandingDelay)if(pending)return false;}
+ const bool reverbs=request.restoreEffects&&request.effects.restoreReverbs;
+ if(reverbs){if(outstandingReverbBank)return false;for(bool pending:outstandingReverb)if(pending)return false;}
  for(unsigned id=0;id<LoopBank::trackCount;++id)if(outstandingArp[id]||!validArpRenderSettings(request.settings[id]))return false;
  request.cancellation=arpBankCancellation.load(std::memory_order_acquire);
  coordinatedDelayBank.store(delays,std::memory_order_release);
- if(!arpBankRequests->push(request)){coordinatedDelayBank.store(false,std::memory_order_release);return false;}
+ coordinatedReverbBank.store(reverbs,std::memory_order_release);
+ if(!arpBankRequests->push(request)){coordinatedDelayBank.store(false,std::memory_order_release);coordinatedReverbBank.store(false,std::memory_order_release);return false;}
  outstandingArpBank=true;return true;
 }
 bool Engine::popArpBank(ArpBankResult& result) noexcept {
  if(!arpBankResults->pop(result))return false;
- outstandingArpBank=false;coordinatedDelayBank.store(false,std::memory_order_release);return true;
+ outstandingArpBank=false;coordinatedDelayBank.store(false,std::memory_order_release);coordinatedReverbBank.store(false,std::memory_order_release);return true;
 }
 void Engine::cancelArpBank() noexcept {arpBankCancellation.fetch_add(1,std::memory_order_release);}
 void Engine::finishArpBank(ArpPreparationStatus status) noexcept {
@@ -26,7 +29,8 @@ void Engine::finishArpBank(ArpPreparationStatus status) noexcept {
   auto& completion=pendingArpBank.completion;completion.requestId=r.requestId;completion.generation=r.generation;completion.status=status;
   completion.callbackSerial=activeCallbackSerial;
   completion.includesDelays=r.restoreEffects&&r.effects.restoreDelays;
-  for(unsigned id=0;id<LoopBank::trackCount;++id){const auto view=loops.trackView(id);completion.clearEpochs[id]=view.clearEpoch;completion.settingsRevisions[id]=view.arpSettingsRevision;completion.delaySettingsRevisions[id]=view.delaySettingsRevision;}
+  completion.includesReverbs=r.restoreEffects&&r.effects.restoreReverbs;
+  for(unsigned id=0;id<LoopBank::trackCount;++id){const auto view=loops.trackView(id);completion.clearEpochs[id]=view.clearEpoch;completion.settingsRevisions[id]=view.arpSettingsRevision;completion.delaySettingsRevisions[id]=view.delaySettingsRevision;completion.reverbSettingsRevisions[id]=view.reverbSettingsRevision;}
   pendingArpBank.finished=true;pendingArpBank.status=status;
  }
  if(arpBankResults->push(pendingArpBank.completion))pendingArpBank={};
@@ -38,6 +42,7 @@ void Engine::cancelStaleArpBank() noexcept {
  bool stale=r.generation!=generation()||r.cancellation!=arpBankCancellation.load(std::memory_order_acquire);
  for(unsigned id=0;id<LoopBank::trackCount;++id){const auto info=loops.trackView(id);stale|=r.clearEpochs[id]!=info.clearEpoch||r.settingsRevisions[id]!=info.arpSettingsRevision;}
  if(r.restoreEffects&&r.effects.restoreDelays)for(unsigned id=0;id<LoopBank::trackCount;++id)stale|=r.effects.delayRevisions[id]!=loops.trackView(id).delaySettingsRevision;
+ if(r.restoreEffects&&r.effects.restoreReverbs)for(unsigned id=0;id<LoopBank::trackCount;++id)stale|=r.effects.reverbRevisions[id]!=loops.trackView(id).reverbSettingsRevision;
  if(stale){loops.cancelArpBank();finishArpBank(ArpPreparationStatus::cancelled);}
 }
 void Engine::serviceArpBank() noexcept {
@@ -55,6 +60,7 @@ void Engine::serviceArpBank() noexcept {
  for(unsigned id=0;id<LoopBank::trackCount;++id){const auto info=loops.trackView(id);
   if(r.clearEpochs[id]!=info.clearEpoch||r.settingsRevisions[id]!=info.arpSettingsRevision||r.settingsRevisions[id]==UINT64_MAX){finishArpBank(ArpPreparationStatus::stale);return;}
   if(r.restoreEffects&&r.effects.restoreDelays&&r.effects.delayRevisions[id]!=info.delaySettingsRevision){finishArpBank(ArpPreparationStatus::stale);return;}
+  if(r.restoreEffects&&r.effects.restoreReverbs&&r.effects.reverbRevisions[id]!=info.reverbSettingsRevision){finishArpBank(ArpPreparationStatus::stale);return;}
  }
  if(r.tempoOnly){finishArpBank(loops.applyArpTempoBank(r.settings,r.clearEpochs,r.settingsRevisions,r.requestId)?ArpPreparationStatus::ready:ArpPreparationStatus::stale);return;}
  if(!loops.requestArpBank(r.settings,r.clearEpochs,r.settingsRevisions,r.requestId,r.restoreEffects?&r.effects:nullptr)){finishArpBank(ArpPreparationStatus::busy);return;}

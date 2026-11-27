@@ -31,15 +31,16 @@ bool LoopBank::setReverb(unsigned id,const ReverbSettings& settings,std::uint64_
  cancelReverb(id);auto& info=tracks[id].info;info.reverb=settings;info.reverbRequest=request;++info.reverbSettingsRevision;return true;
 }
 void LoopBank::pollReverbs() noexcept {
- // Any changed clear epoch/revision invalidates the coordinated bank before
- // partial worker results can install.
- if(pendingReverbBank->active)for(unsigned id=0;id<trackCount;++id)
+ // The joint Arp/Delay/Reverb owner validates, prepares and commits its staged
+ // B bank; this function only advances per-track work while it is active.
+ const bool coordinated=pendingArpBank.active&&pendingArpBank.restoreEffects&&pendingArpBank.effects.restoreReverbs;
+ if(!coordinated&&pendingReverbBank->active)for(unsigned id=0;id<trackCount;++id)
   if(pendingReverbBank->epochs[id]!=tracks[id].clearEpoch||pendingReverbBank->revisions[id]!=tracks[id].info.reverbSettingsRevision){cancelReverbBank();break;}
  for(unsigned id=0;id<trackCount;++id){const auto& p=pendingReverbs[id];
   if(p.active&&(p.clearEpoch!=tracks[id].clearEpoch||p.revision!=tracks[id].info.reverbSettingsRevision))cancelReverb(id);
  }
- const auto completion=reverbStorage->poll();
- if(pendingReverbBank->active&&(completion.bankInstalled||completion.bankFailed)){
+ const auto completion=reverbStorage->poll(coordinated);
+ if(!coordinated&&pendingReverbBank->active&&(completion.bankInstalled||completion.bankFailed)){
   const auto& bank=*pendingReverbBank;
   if(completion.bankInstalled)for(unsigned id=0;id<trackCount;++id){
    auto& info=tracks[id].info;info.reverb=bank.settings[id];info.reverbRequest=bank.request;++info.reverbSettingsRevision;

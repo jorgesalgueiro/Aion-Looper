@@ -107,9 +107,9 @@ bool ReverbStorage::set(unsigned id, const ReverbSettings& settings) noexcept {
     }
     intents[id].enabled = settings.enabled; intents[id].revisions[4] = ++serial; return true;
 }
-ReverbStorage::Completion ReverbStorage::poll() noexcept {
+ReverbStorage::Completion ReverbStorage::poll(bool deferBank) noexcept {
     Completion completion;
-    pollBank(completion);
+    if (!deferBank) pollBank(completion);
     for (auto& slot : *slots) {
         const auto phase = slot.phase.load(std::memory_order_acquire);
         if (phase != Phase::ready && phase != Phase::failed) continue;
