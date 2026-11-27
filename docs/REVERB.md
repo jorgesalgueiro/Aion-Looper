@@ -1017,8 +1017,18 @@ Executed with the panel-adapter source (this checkpoint):
   `aion_reverb_state_processor_tests`, `aion_delay_state_processor_tests` and
   `aion_joint_effects_processor_tests` pass at 64/128; callback new/delete stays
   zero. The Windows Release Standalone and test host link.
+- Windows core reverb/reference subset `^(reverb_.*|original_reverb_settings_contract)$`
+  passed 20/20 (15.59 s) at this source, retaining the unchanged settings oracle,
+  bank/edit/MIDI-Stop ownership, streaming/storage/preparation, stereo PCM,
+  LoopBank and Engine audio contracts.
+- The committed snapshot was fast-forwarded to the native WSL checkout with
+  `tools/SetupWslWorkspace.sh` (Linux was clean at `9ce8a6b`). The Linux Release
+  Standalone linked and the affected CTest set passed 10/10 (22.16 s):
+  `native_frontend_commands`, `native_bridge_lifecycle`, and the reverb command,
+  reverb state, Delay state and joint-effects processor cases at 64/128. The
+  same core reverb/reference subset passed 20/20 (6.03 s) on Linux with Node 18.
 
-Not run or not established: Linux/WebKit build and UI; sanitizer run for these
+Not run or not established: Linux WebKit/GUI interaction; sanitizer run for these
 JUCE paths; listening, physical devices/controllers and DAW/host workflows;
 packaging. `tools/TestSignalChainUi.ps1 -Blocks 64` fails its fixed 120 ms DOM
 check in this hidden-window session both with and without this change (verified

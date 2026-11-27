@@ -39,9 +39,16 @@ attempt is recorded as inconclusive. `TestSignalChainUi` at 64 fails its fixed
 session (0.66 ms snapshot work versus ~300 ms WebView2 IPC), so it is
 inconclusive here.
 
+Cross-platform completion: the Windows core reverb/reference subset passed 20/20
+(15.59 s). The committed snapshot was fast-forwarded to the clean native WSL
+checkout with `tools/SetupWslWorkspace.sh`; Linux Release Standalone linked and
+the affected CTest set passed 10/10 (22.16 s: frontend/bridge commands, reverb
+command/state, Delay state and joint-effects processor at 64/128), with the same
+core reverb/reference subset 20/20 (6.03 s) under Node 18.
+
 NEXT: coordinated Arp/effects restore and B MIDI receipts/learn. B is enabled in
-the GUI; Linux/WebKit, sanitizers for these JUCE paths, listening, physical
-devices/DAW workflows and packaging were not run.
+the GUI; Linux WebKit/GUI interaction, sanitizers for these JUCE paths,
+listening, physical devices/DAW workflows and packaging were not run.
 
 ### Reverb persistence/command audit and CLI acceptance — 27 November 2026
 
