@@ -1208,9 +1208,14 @@ Acceptance (Windows Release, this checkpoint):
   The processor command/state, Delay state and joint-effects tests pass at
   64/128 and the Windows Release Standalone links.
 
+Linux (committed snapshot fast-forwarded to the clean native WSL checkout): the
+Release Standalone links, coordinated/bank 18/18 (18.22 s), reverb
+core/reference 20/20 (6.34 s) and the native reverb command/state, Delay state and
+joint-effects processor cases 8/8 at 64/128 (10.59 s).
+
 Limits: the Processor does not submit or adopt this bank yet, so no product
 behavior changes and B joint PCM is covered here by owner identity/commit rather
-than a new audio oracle. Linux, MIDI receipts/learn, Machine mode and
+than a new audio oracle. MIDI receipts/learn, Machine mode and
 listening/device/DAW acceptance remain separate. Next: connect
 serviceEffectsRestore/serviceReverb and ReverbSettingsOwner::acceptEffectsRestore,
 then add the B joint PCM audio test and GUI/state acceptance.

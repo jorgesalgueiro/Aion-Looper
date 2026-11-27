@@ -26,9 +26,11 @@ covers invalid/stale descriptors, B edit/bank/unread-receipt exclusion, audio-si
 budget rejection, atomic Arp+B and Arp+Delay+B commit, OOM rollback, cancellation
 and same-ID recovery with zero callback heap operations. Windows coordinated/bank
 18/18 (97.40 s), reverb core/reference 20/20 (15.37 s), retained processor
-command/state/Delay/joint tests at 64/128 and the Standalone link pass. Linux,
-Processor submission/acceptEffectsRestore, B joint PCM, MIDI/Machine and
-listening/DAW acceptance remain pending.
+command/state/Delay/joint tests at 64/128 and the Standalone link pass. The
+native WSL checkout fast-forwarded cleanly: Linux coordinated/bank 18/18
+(18.22 s), reverb core/reference 20/20 (6.34 s), native processor 8/8 (10.59 s)
+and the Release Standalone link. Processor submission/acceptEffectsRestore, B
+joint PCM, MIDI/Machine and listening/DAW acceptance remain pending.
 
 ### B / coordinated Arp/Reverb/effects restore design — 27 November 2026
 
