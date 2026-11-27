@@ -56,13 +56,17 @@ struct PlateReverb::State {
  }
  void clear() noexcept {
   for(auto& l:lines){std::fill(l.data.begin(),l.data.end(),0.f);l.pos=0;l.damp={};l.low={};}
-  for(auto& ch:diffusion)for(auto& d:ch)std::fill(d.begin(),d.end(),0.f);diffusionPos={};
+  for(auto& ch:diffusion){for(auto& d:ch)std::fill(d.begin(),d.end(),0.f);}
+  diffusionPos={};
   for(auto& d:predelay){std::fill(d.begin(),d.end(),0.f);}predelayPos={};
-  for(auto& p:peaks)p.clear();for(auto& a:analysis)a.clear();env={};unmaskCounter=0;
+  for(auto& p:peaks)p.clear();
+  for(auto& a:analysis)a.clear();
+  env={};unmaskCounter=0;
  }
  float readLine(unsigned i,float modSamples) noexcept {
   auto& l=lines[i];float d=float(l.len)+modSamples;float rp=float(l.pos)-d;
-  while(rp<0)rp+=float(l.data.size());while(rp>=float(l.data.size()))rp-=float(l.data.size());
+  while(rp<0)rp+=float(l.data.size());
+  while(rp>=float(l.data.size()))rp-=float(l.data.size());
   const auto i0=static_cast<unsigned>(rp);const auto i1=(i0+1)%l.data.size();const float f=rp-float(i0);
   return l.data[i0]*(1-f)+l.data[i1]*f;
  }
@@ -94,7 +98,8 @@ struct PlateReverb::State {
   const float mod=std::sin(modPhase)*.0002f*float(sr);
   std::array<float,8> r{};
   for(unsigned i=0;i<8;++i){const float v=readLine(i,i<4?mod:-mod);r[i]=lines[i].low.hp(lines[i].damp.lp(v,dampCoef),lowCoef);}
-  float sum=0;for(float v:r)sum+=v;
+  float sum=0;
+ for(float v:r)sum+=v;
   const float inv=.25f;
   static constexpr std::array<float,8> signL{1,-1,1,-1,1,-1,1,-1};
   for(unsigned i=0;i<8;++i){const float y=r[i]-inv*sum;const float inject=(i%2?pR:pL)*(signL[i]>0?1.f:-1.f);
@@ -122,7 +127,8 @@ bool PlateReverb::prepare(double sampleRate,const PlateSettings& s,const std::at
   state=std::move(next);return true;}catch(const std::bad_alloc&){return false;}
 }
 bool PlateReverb::set(const PlateSettings& s) noexcept {
- if(!state||!validPlateSettings(s))return false;state->settings=s;state->setCoefficients();return true;
+ if(!state||!validPlateSettings(s))return false;
+ state->settings=s;state->setCoefficients();return true;
 }
 bool PlateReverb::process(std::span<const float> left,std::span<const float> right,std::span<float> outLeft,std::span<float> outRight) noexcept {
  if(left.size()!=right.size()||left.size()!=outLeft.size()||left.size()!=outRight.size())return false;
@@ -135,8 +141,11 @@ void PlateReverb::reset() noexcept {if(state)state->clear();}
 const PlateSettings& PlateReverb::settings() const noexcept {static const PlateSettings empty{};return state?state->settings:empty;}
 double PlateReverb::sampleRate() const noexcept {return state?state->sr:0;}
 std::size_t PlateReverb::preparationBytes(double sampleRate,const PlateSettings&) noexcept {
- if(sampleRate<8000)return 0;size_t frames=0;for(float ms:lineMs)frames+=static_cast<size_t>(ms*.001*sampleRate)+4;
- for(float ms:diffuseMs)frames+=static_cast<size_t>(ms*.001*sampleRate)+4;frames+=static_cast<size_t>(.1*sampleRate+4)*2;
+ if(sampleRate<8000)return 0;
+ size_t frames=0;
+ for(float ms:lineMs)frames+=static_cast<size_t>(ms*.001*sampleRate)+4;
+ for(float ms:diffuseMs)frames+=static_cast<size_t>(ms*.001*sampleRate)+4;
+ frames+=static_cast<size_t>(.1*sampleRate+4)*2;
  return frames*sizeof(float)+sizeof(State)+1024;
 }
 }

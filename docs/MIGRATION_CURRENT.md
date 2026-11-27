@@ -48,7 +48,8 @@ cuts driven by the dry signal). Controls are Decay, Damping, Low Cut, Pre-delay,
 Mix and Unmask. `plate_reverb_contract` passes at 8/48 kHz x 64/128 with
 zero callback heap, verified decay/damping/carving and untouched dry.
 
-This is the DSP slice only; the unified panel engine toggle, per-engine state/
+Linux passes the same `plate_reverb_contract` (0.48 s). This is the DSP slice
+only; the unified panel engine toggle, per-engine state/
 presets, prepared crossfade, CLI/MIDI ownership and legacy B/V migration remain
 pending, as do listening and physical/device checks.
 

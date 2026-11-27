@@ -1437,7 +1437,8 @@ Executed: `plate_reverb_contract` passes at 8 and 48 kHz with 64/128 blocks:
 finite stable tails, longer-decay energy, damping removes high end, the carver
 reduces the wet band driven by a 2 kHz dry tone, the dry path is bit-untouched,
 invalid edits preserve settings, cancellation is honoured and callback new/delete
-is zero. This is DSP acceptance, not a listening or product-integration claim.
+is zero. Linux builds the same module and passes `plate_reverb_contract` (0.48 s).
+This is DSP acceptance, not a listening or product-integration claim.
 
 Pending integration: unified Reverb panel engine toggle, per-engine state and
 presets, prepared crossfade/storage, CLI/MIDI engine ownership, and the legacy
