@@ -22,8 +22,10 @@ Shift-right-click clear on the four sliders.
 Windows: native Reverb MIDI 64/128, Delay MIDI 64/128 and the production MIDI
 suite pass; retained reverb state/command, Delay state and joint tests pass;
 Reverb UI 64/128 (learn/CC/clear/unmapped shape controls), Delay UI 64/128 and
-FrontendTests pass. Linux build/execution is recorded after the committed sync.
-Duration/Decay mapping, Machine, physical controllers and listening/DAW remain
+FrontendTests pass. Linux: native Reverb/Delay MIDI and the production MIDI suite
+pass 5/5 (25.80 s); reverb command/state, Delay state and joint processor cases
+pass 8/8 (9.52 s). Host state load suspends B MIDI immediately. Duration/Decay
+mapping, Machine, physical controllers, Linux WebKit and listening/DAW remain
 pending.
 
 ### GUI host-state B restore — 27 November 2026

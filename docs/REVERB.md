@@ -1333,6 +1333,12 @@ state/command, Delay state and joint-effects tests pass; Reverb UI passes at
 64/128 with right-click learn, CC application, clear and an unmapped
 Duration/Decay check; Delay UI passes at 64/128 and FrontendTests pass.
 
+Linux (clean native WSL checkout at this commit): the standalone and all affected
+test binaries link; native Reverb MIDI 64/128, Delay MIDI 64/128 and the
+production MIDI suite pass 5/5 (25.80 s), and the reverb command/state, Delay
+state and joint-effects processor cases pass 8/8 (9.52 s).
+
 Limits: no MIDI mapping for Duration/Decay, Machine engine, pitch/expression
-targets, physical controllers or listening/DAW acceptance. Linux MIDI build and
-execution are recorded after the committed sync.
+targets, physical controllers or Linux WebKit/listening/DAW acceptance. The host
+state load now suspends B MIDI immediately (not only on the next Timer tick), so
+a packet between the load and its first service cannot edit the old owner.
