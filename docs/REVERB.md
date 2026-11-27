@@ -856,6 +856,13 @@ defaults, and zero callback heap operations. The retained
 `aion_delay_state_processor_tests` still passes 64/128 and the Standalone Release
 links.
 
+Executed source `5af180b`: Windows Release `aion_reverb_state_processor_tests`
+64/128 passed (32 whole-state rejections each) together with the retained Delay
+state cases (four native state tests, 3.59s); native WSL Linux also passed 64/128
+and its Standalone Release links. The core-only sanitizer build does not include
+the JUCE processor target; the state paths add no audio-callback work and the
+processor tests still track zero callback new/delete.
+
 ### Earlier preparation verification
 
 Source checkpoint `bb5b6f6`: final Windows Release 2/2 passed (0.39s), native WSL

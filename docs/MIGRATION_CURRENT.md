@@ -28,9 +28,10 @@ New `aion_reverb_state_processor_tests` 64/128 covers exact round-trip across a
 second processor, stopped load before prepare, immediate accepted-intent save, 32
 whole-state rejections, pre-B defaults and zero callback heap operations. The
 retained Delay state tests still pass 64/128 (3.59s for the four native state
-cases) and the Standalone Release links. Native WSL/Linux and sanitizer results
-are recorded after the committed-snapshot sync; the sanitizer build remains
-core-only.
+cases) and the Standalone Release links. Native WSL Linux also passed 64/128 and
+its Standalone Release links. The sanitizer build remains core-only; the state
+paths add no audio-callback work and processor tests track zero callback
+new/delete.
 
 NEXT: the coordinated Arp/effects restore hook and MIDI receipts/learn, then the
 shared GUI/CLI surface with stable IDs. B remains disabled in the product surface.
