@@ -26,6 +26,7 @@ public:
         (void)pcmDirectory.getChildFile("navigation-probe-start").deleteFile();(void)pcmDirectory.getChildFile("navigation-probe-stop").deleteFile();(void)pcmDirectory.getChildFile("navigation-evidence.json").deleteFile();
         (void)pcmDirectory.getChildFile("pcm-reset").deleteFile();(void)pcmDirectory.getChildFile("pcm-stop").deleteFile();writePcmEvidence();
         (void)pcmDirectory.getChildFile("visibility-command.json").deleteFile();(void)pcmDirectory.getChildFile("visibility-ack").deleteFile();
+        for(const auto* name:{"state-save","state-load","state-save-ack","state-load-ack"})(void)pcmDirectory.getChildFile(name).deleteFile();
         AionProcessor::ExportDestination picker=[this,exportDirectory](const juce::String& filename,std::function<void(juce::File)> done){
             choices.push_back({exportDirectory,filename,std::move(done)});
         };
@@ -191,6 +192,29 @@ private:
         }
         const auto acknowledged=midiAcknowledged.load(std::memory_order_acquire);
         if(acknowledged!=reportedMidi){reportedMidi=acknowledged;(void)pcmDirectory.getChildFile("midi-ack").replaceWithText(juce::String(acknowledged));}
+        // Test-host-only state round trip for GUI restore acceptance. It calls the
+        // production get/setStateInformation; no RPC or product surface is added.
+        const auto stateSave=pcmDirectory.getChildFile("state-save");
+        if(stateSave.existsAsFile()){
+            const auto id=stateSave.loadFileAsString().trim().getLargeIntValue();(void)stateSave.deleteFile();
+            if(id>0){juce::MemoryBlock state;processor->getStateInformation(state);
+                const auto file=pcmDirectory.getChildFile("state-saved-"+juce::String(id)+".bin");
+                if(file.replaceWithData(state.getData(),state.getSize()))
+                    (void)pcmDirectory.getChildFile("state-save-ack").replaceWithText(juce::String(id));
+            }
+        }
+        const auto stateLoad=pcmDirectory.getChildFile("state-load");
+        if(stateLoad.existsAsFile()){
+            const auto id=stateLoad.loadFileAsString().trim().getLargeIntValue();(void)stateLoad.deleteFile();
+            const auto file=pcmDirectory.getChildFile("state-saved-"+juce::String(id)+".bin");
+            if(id>0&&file.existsAsFile()){
+                juce::MemoryBlock state;
+                if(file.loadFileAsData(state)){
+                    processor->setStateInformation(state.getData(),static_cast<int>(state.getSize()));
+                    (void)pcmDirectory.getChildFile("state-load-ack").replaceWithText(juce::String(id));
+                }
+            }
+        }
         const auto reset=pcmDirectory.getChildFile("pcm-reset");if(reset.existsAsFile()){(void)reset.deleteFile();pcmRevision.fetch_add(1,std::memory_order_release);pcmActive.store(true,std::memory_order_release);}
         const auto stop=pcmDirectory.getChildFile("pcm-stop");if(stop.existsAsFile()){(void)stop.deleteFile();pcmActive.store(false,std::memory_order_release);}
         bool changed=false;PcmEvidence evidence;while(pcmEvidence.pop(evidence)){latestPcm=evidence;changed=true;}

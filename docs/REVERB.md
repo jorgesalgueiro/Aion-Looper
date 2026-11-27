@@ -1208,8 +1208,9 @@ and the native reverb command/state, Delay state and joint-effects processor
 cases pass 8/8 at 64/128 (10.81 s). The reverb settings-owner contract, the new
 coordinated Arp/B bank set and the reverb/Arp bank contracts pass 8/8 (12.87 s).
 
-Not yet established: a B joint PCM audio oracle, a GUI host-state-load fixture,
-MIDI learn/receipts, Machine mode and listening/device/DAW acceptance.
+Not yet established: MIDI learn/receipts, Machine mode and listening/device/DAW
+acceptance. The joint B PCM oracle and the GUI host-state fixture are recorded
+below.
 
 ### Coordinated B PCM oracle — 27 November 2026
 
@@ -1284,3 +1285,21 @@ than a new audio oracle. MIDI receipts/learn, Machine mode and
 listening/device/DAW acceptance remain separate. Next: connect
 serviceEffectsRestore/serviceReverb and ReverbSettingsOwner::acceptEffectsRestore,
 then add the B joint PCM audio test and GUI/state acceptance.
+
+### GUI host-state B restore acceptance — 27 November 2026
+
+The hardware-free WebView2 host gains a test-only state channel: it watches
+state-save/state-load request files, calls the production
+getStateInformation/setStateInformation and acknowledges by request id. No RPC,
+debug command or product surface is added; the host remains a test target.
+
+TestReverbUi.ps1 now configures B dark-cave through the shared command, saves the
+host state, switches to small, loads the saved state, and verifies the snapshot B
+settings, the panel preset and volume readout, the main-row revB toggle, and
+unchanged loop PCM/waveform identity. This exercises the real path: state load to
+readReverbs, joint restore submission/adoption, snapshot and panel update.
+
+Executed: Reverb UI passes at 64 and 128 with the retained panel/reload/LIVE
+coverage and host-state round trip. The retained Delay UI passes at 64/128 with
+the same host. Linux GUI/WebKit, MIDI learn, Machine mode and listening/device/DAW
+acceptance remain separate.

@@ -11,6 +11,15 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### GUI host-state B restore — 27 November 2026
+
+The WebView2 test host gained a test-only file channel that calls the production
+get/setStateInformation. TestReverbUi now saves B dark-cave, switches to small,
+loads the saved host state, and checks the B snapshot, panel preset/volume, row
+toggle and unchanged loop PCM. Reverb UI passes at 64/128; retained Delay UI
+passes at 64/128 with the same host. No product RPC/surface changed. Linux
+GUI/WebKit, MIDI learn, Machine and listening/DAW remain pending.
+
 ### Coordinated B PCM oracle — 27 November 2026
 
 Added aion_effects_reverb_bank_audio_tests: actual Engine PCM for the joint Arp/B

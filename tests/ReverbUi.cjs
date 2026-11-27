@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Actual editor/CDP gestures for the preserved B panel; no hardware claim.
-const assert=require('node:assert/strict'),wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),wait=ms=>new Promise(r=>setTimeout(r,ms));let socket;
 (async()=>{
  assert(process.env.AION_MOUSE_TEST_RUN,'Use tools/TestReverbUi.ps1');let target;
  for(let n=0;n<100;++n){try{target=(await(await fetch('http://127.0.0.1:9236/json')).json()).find(t=>t.url.includes('juce.backend'));}catch{}if(target)break;await wait(100);}assert(target);
@@ -34,11 +34,30 @@ const assert=require('node:assert/strict'),wait=ms=>new Promise(r=>setTimeout(r,
  await click('#native-reverb-enabled');await until(s=>!s.tracks[0].reverb.enabled&&s.tracks[0].reverbReady,'panel bypass');await click('#native-reverb-enabled');await until(s=>s.tracks[0].reverb.enabled&&s.tracks[0].reverbReady,'panel re-enable');
  const beforeReload=await snapshot();assert.equal(beforeReload.tracks[0].waveformId,take.tracks[0].waveformId);assert.equal(beforeReload.tracks[0].state,'playing');
  await call('Page.reload',{ignoreCache:true});await wait(500);await until(s=>JSON.stringify(s.tracks[0].reverb)===JSON.stringify(beforeReload.tracks[0].reverb)&&s.outputPeak>.001,'reload retains native B settings and playback');
+ for(let n=0;n<120;++n){if(await evaluate(`document.querySelector('#reverbVolumeVal').textContent==='0.12'`))break;await wait(50);}
  assert(await evaluate(`document.querySelector('#reverbVolumeVal').textContent==='0.12'`),'reloaded control shows the authoritative native value');
  assert(await evaluate(`(()=>{const b=[...document.querySelectorAll('.main-tab-btn')].find(e=>e.textContent.trim()==='LIVE PERFORMANCE');b.click();const t=document.querySelector('#live-loop-0-reverb');return t&&!t.disabled;})()`),'LIVE B toggle bound');
  await click('#live-loop-0-reverb');await until(s=>!s.tracks[0].reverb.enabled&&s.tracks[0].reverbReady,'LIVE bypass');
  await click('#live-loop-0-reverb');await until(s=>s.tracks[0].reverb.enabled&&s.tracks[0].reverbReady,'LIVE re-enable');
  await evaluate(`[...document.querySelectorAll('.main-tab-btn')].find(e=>e.textContent.trim()==='LOOP TRACKS').click()`);
+ const pcmDirectory=path.resolve(__dirname,`../build/windows/Release/wav-export-${process.argv[2]}`);
+ const waitAck=async(kind,id)=>{const file=path.join(pcmDirectory,kind);for(let n=0;n<500;++n){try{if(fs.readFileSync(file,'utf8').trim()===String(id))return;}catch{}await wait(20);}assert.fail(kind+' timeout');};
+ const statePreset=async preset=>{const s=await snapshot();const reply=await rpc({operation:'reverb',track:0,action:'preset',preset,generation:s.generation,expiresAt:Date.now()+3000});assert(reply.ok);};
+ await statePreset('dark-cave');await until(s=>s.tracks[0].reverb.preset==='dark-cave'&&s.tracks[0].reverbReady,'dark-cave before host state save');
+ const stateId=Date.now();
+ const saveRequest=path.join(pcmDirectory,'state-save'),saveAck=path.join(pcmDirectory,'state-save-ack');
+ fs.rmSync(saveAck,{force:true});fs.writeFileSync(saveRequest,String(stateId));await waitAck('state-save-ack',stateId);
+ assert(fs.existsSync(path.join(pcmDirectory,`state-saved-${stateId}.bin`)),'host state saved through production getStateInformation');
+ await statePreset('small');await until(s=>s.tracks[0].reverb.preset==='small'&&s.tracks[0].reverbReady,'small before host state load');
+ const beforeLoadWaveform=(await snapshot()).tracks[0].waveformId;
+ const loadRequest=path.join(pcmDirectory,'state-load'),loadAck=path.join(pcmDirectory,'state-load-ack');
+ fs.rmSync(loadAck,{force:true});fs.writeFileSync(loadRequest,String(stateId));await waitAck('state-load-ack',stateId);
+ const restored=await until(s=>s.tracks[0].reverb.preset==='dark-cave'&&s.tracks[0].reverbReady,'host state restores B');
+ assert.equal(restored.tracks[0].waveformId,beforeLoadWaveform,'host state load preserves session PCM');
+ for(let n=0;n<120;++n){if(await evaluate(`document.querySelector('#sel_reverb').value==='dark-cave'`))break;await wait(50);}
+ assert(await evaluate(`document.querySelector('#sel_reverb').value==='dark-cave'`),'B panel follows host state load');
+ assert(await evaluate(`document.querySelector('#reverbVolumeVal').textContent==='1.15'`),'B slider follows host state load');
+ assert(await evaluate(`document.querySelector('#loop-0-reverb').checked`),'B row toggle follows host state load');
  await wait(200);await click('#loop-0-reverb');const end=await until(s=>!s.tracks[0].reverb.enabled&&s.tracks[0].reverbReady,'bypass after reload');assert.equal(end.tracks[0].waveformId,take.tracks[0].waveformId);assert(!await evaluate(`!!window.state?.audioContext`));assert.deepEqual(errors,[]);
- console.log('PASS actual Reverb UI '+process.argv[2]+': B row/panel enable, preset catalogue, six original ranges, Custom-on-edit, preset/room, Reset, exact precision, panel bypass, reload, LIVE binding and unchanged native nonzero PCM/clip');
+ console.log('PASS actual Reverb UI '+process.argv[2]+': B row/panel enable, preset catalogue, six original ranges, Custom-on-edit, preset/room, Reset, exact precision, panel bypass, reload, LIVE binding, host state save/load restore and unchanged native nonzero PCM/clip');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>socket?.close());
