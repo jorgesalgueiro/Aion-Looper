@@ -1463,3 +1463,43 @@ joint/plate/storage/loopbank set 14/14 (14.38 s).
 Limits: no listening, physical-controller, device/DAW or Linux WebKit acceptance.
 The legacy browser-only V bank is not a native state source; version 1 native
 sessions migrate to convolution, not to a guessed machine preset.
+
+### Machine audit repairs — 28 November 2026
+
+The six findings from `1b71dd0..ef76c73` are repaired:
+
+- Bank precommit validates/resets the actual Machine graph rather than accessing
+  an empty convolution optional. Expanded production state tests enable Machine
+  before save and verify its exact enabled graph after a joint restore.
+- Allocating State::prepare can propagate bad_alloc to the existing worker
+  recovery handler, preserving the old graph. PlateSafetyTests injects failure at
+  all 15 allocations for each of 8/48/384 kHz and checks reservation coverage.
+- Carver coefficients are shared but both channels own independent filter delay
+  state. The isolated left-impulse/right-zero regression supplements the retained
+  public plate sound/carving tests; it does not replace their assertions.
+- Prepared shape MIDI retains the original epoch/revision and lock-free
+  cancellation/intent serials through message-owner dispatch. Queued facts and
+  already-drained deferred facts are revalidated before submission; newer clear,
+  panic, host load, device cancellation, replaced mappings and accepted ordinary
+  effect intent cannot silently retarget them. Fresh post-barrier CC and existing
+  same-block Learn/coalescing tests remain live.
+- Plate reset touches fixed metadata/filter state, with sequential valid prefixes
+  masking old delay storage until overwritten. Dirty reset and fresh stereo PCM
+  must be sample-exact through wrap at 8/48/384 kHz and 64/128. Callback allocation
+  checks remain; no elapsed-time performance claim is inferred from them.
+- Preset family can be explicit; the UI sends its displayed engine. The CLI
+  exposes engine selection and `preset --engine`. Both bright-plate families
+  have independent command/CLI checks and real UI coverage.
+
+Mixed-engine fade setters now check the actual old graph type, and Machine
+reservation accounts for both stereo diffusion channels. The enabled-state test
+also reproduced a false-ready switch failure: LoopBank::view omitted B/D
+transition bits although trackView supplied them. Full snapshots now publish the
+same audio-owned bits, and production tests assert readiness against that owner.
+The failure is retained in build/machine-transition-before.txt; critical Machine
+and MIDI cases passed 4/4 after the correction, with no weakened assertion.
+
+Final platform, UI and sanitizer results are recorded below after verification.
+IDs, state versions, reference files, ASCII/logo, notices and dependencies are
+unchanged. Physical listening/controller/driver/DAW and Linux WebKit acceptance
+remain separate; no package or release-ready claim follows from these checks.

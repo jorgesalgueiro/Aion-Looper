@@ -1217,7 +1217,7 @@ assert(/title="Undo Overdub" >UNDO/.test(cards[0])&&/title="Redo Overdub" >REDO/
  setSnapshot({}, {audioReady:false});ui.update();assert.equal(volume.disabled,true);assert.equal(preset.disabled,true);assert.equal(enabled.disabled,true);assert.equal(reset.disabled,true);
  setSnapshot();ui.update();assert.equal(volume.disabled,false);
  const lastCommand=()=>{const entry=commands.at(-1);return {target:entry.target,key:entry.key,action:entry.command.action,preset:entry.command.preset,parameter:entry.command.parameter,value:entry.command.value};};
- preset.value='bright-plate';fire(preset,'change');assert.deepEqual(lastCommand(),{target:0,key:undefined,action:'preset',preset:'bright-plate',parameter:undefined,value:undefined});
+ preset.value='bright-plate';fire(preset,'change');assert.deepEqual(lastCommand(),{target:0,key:undefined,action:'preset',preset:'bright-plate',parameter:undefined,value:undefined});assert.equal(commands.at(-1).command.engine,'convolution','preset includes its displayed family');
  fire(enabled,'change');assert.deepEqual(lastCommand(),{target:0,key:undefined,action:'toggle',preset:undefined,parameter:undefined,value:undefined});
  fire(reset,'click');assert.deepEqual(lastCommand(),{target:0,key:undefined,action:'reset',preset:undefined,parameter:undefined,value:undefined});
  volume.value='0.65';fire(volume,'input');assert.deepEqual(lastCommand(),{target:0,key:'reverb:volume',action:'set',preset:undefined,parameter:'volume',value:.65});

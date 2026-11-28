@@ -27,7 +27,7 @@ public:
  ~PlateReverb();
  PlateReverb(const PlateReverb&)=delete;
  PlateReverb& operator=(const PlateReverb&)=delete;
- // Allocation and coefficient work only here (worker thread). Cancellation
+ // Allocation only here (worker thread). Cancellation
  // preserves the previous prepared processor.
  bool prepare(double sampleRate,const PlateSettings&,const std::atomic<bool>* cancelled=nullptr) noexcept;
  // Live controls; no allocation, no FFT/graph rebuild. Invalid edits reject atomically.
@@ -35,7 +35,7 @@ public:
  // Zero-latency scalar block path. One audio owner, no locks.
  bool process(std::span<const float> left,std::span<const float> right,
               std::span<float> outLeft,std::span<float> outRight) noexcept;
- void reset() noexcept;
+ void reset() noexcept; // Fixed metadata/filter work; delay memory is invalidated lazily.
  const PlateSettings& settings() const noexcept;
  double sampleRate() const noexcept;
  static std::size_t preparationBytes(double,const PlateSettings&) noexcept;

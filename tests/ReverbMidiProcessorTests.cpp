@@ -11,7 +11,28 @@ void operator delete[](void* p)noexcept{::operator delete(p);}void operator dele
 static void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
 struct AionReverbStateTestAccess {
  static bool failed(AionProcessor& p){std::lock_guard guard(p.midiSettingsMutex);return p.reverbRestoreFailed;}
+ static void clear(AionProcessor& p){check(p.engine.enqueueLoop({aion::LoopAction::clear,0,9000,p.engine.generation()}),"audio clear admitted");}
 };
+static void staleShapes(unsigned block){
+ for(bool clear:{false,true}){
+  auto p=std::make_unique<AionProcessor>();p->setPlayConfigDetails(2,2,8000,static_cast<int>(block));p->prepareToPlay(8000,static_cast<int>(block));
+  juce::AudioBuffer<float> audio(2,static_cast<int>(block));juce::MidiBuffer midi;midi.ensureSize(4096);
+  auto pump=[&]{audio.clear();watch=true;p->processBlock(audio,midi);watch=false;midi.clear();check(!operations,"stale shape callback heap");};
+  auto snapshot=[&]{return p->request({juce::JSON::parse(R"({"operation":"snapshot"})")});};pump();(void)snapshot();
+  juce::MemoryBlock state;p->getStateInformation(state);auto xml=p->getXmlFromBinary(state.getData(),static_cast<int>(state.getSize()));
+  auto* mappings=xml->getChildByName("MidiSettings");mappings->setAttribute("enabled",1);mappings->setAttribute("binding157",static_cast<int>(aion::midiBinding(2,20)));
+  p->copyXmlToBinary(*xml,state);p->setStateInformation(state.getData(),static_cast<int>(state.getSize()));
+  for(unsigned n=0;n<2000;++n){pump();const auto s=snapshot();if(!static_cast<bool>(s["tracks"][0]["reverbBusy"]))break;check(n<1999,"shape fixture restore");std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+  // Leave the old shape request unread while audio alone performs a barrier.
+  midi.addEvent(juce::MidiMessage::controllerEvent(1,20,127),17);pump();
+  if(clear)AionReverbStateTestAccess::clear(*p);else midi.addEvent(juce::MidiMessage::midiStop(),17);
+  pump();for(unsigned n=0;n<16;++n){(void)snapshot();pump();}
+  check(p->inspectAudioThread(0).track.reverb.values[2]==1.2,"clear/panic cannot replay an unread old shape");
+  midi.addEvent(juce::MidiMessage::controllerEvent(1,20,127),17);pump();
+  for(unsigned n=0;n<100;++n){(void)snapshot();pump();if(p->inspectAudioThread(0).track.reverb.values[2]==5)break;}
+  check(p->inspectAudioThread(0).track.reverb.values[2]==5,"fresh post-barrier shape recovers");
+ }
+}
 static void failedRestore(unsigned block){
  // A valid but over-budget load fails before graph preparation. Retained host
  // intent must remain exclusive until a fresh load/clear resolves the failure.
@@ -99,5 +120,6 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const int blo
  check(mm->getIntAttribute("binding152",-1)==aion::midiBinding(2,25),"legacy Delay binding survives migration");
  check(p->getActiveEditor()==nullptr,"Reverb MIDI works without an editor");
  failedRestore(static_cast<unsigned>(block));
+ staleShapes(static_cast<unsigned>(block));
  std::cout<<"PASS native Reverb MIDI "<<block<<": four live targets, all CC/channel values, learn, saturation/recovery, joint restore gate and v8 migration; zero callback heap\n";
 }

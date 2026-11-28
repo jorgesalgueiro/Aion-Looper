@@ -104,7 +104,7 @@ bool ReverbStorage::setControl(unsigned id, unsigned control, double value) noex
     auto s = active[id] ? active[id]->graph->settings() : owner->settings;
     if (!setReverbControl(s, control, value)) return false;
     if (active[id]) (void)active[id]->graph->set(s);
-    if (auto* old = previous[id]) {
+    if (auto* old = previous[id]; old && old->graph) {
         auto oldSettings = old->graph->settings(); (void)setReverbControl(oldSettings, control, value);
         (void)old->graph->set(oldSettings);
     }
@@ -113,15 +113,9 @@ bool ReverbStorage::setControl(unsigned id, unsigned control, double value) noex
 }
 bool ReverbStorage::setEnabled(unsigned id, bool enabled) noexcept {
     if (id >= trackCount || (!active[id] && !pending[id]) || serial == std::numeric_limits<std::uint64_t>::max()) return false;
-    if (active[id] && active[id]->settings.engine == ReverbEngine::machine) {
-        for (auto* slot : {active[id], previous[id]}) if (slot) {
-            if (!slot->plate) continue;
-            auto s = slot->settings; s.enabled = enabled; (void)slot->plate->set(plateFrom(s)); slot->settings = s;
-        }
-        intents[id].enabled = enabled; intents[id].revisions[4] = ++serial; return true;
-    }
     for (auto* slot : {active[id], previous[id]}) if (slot) {
-        auto s = slot->graph->settings(); s.enabled = enabled; (void)slot->graph->set(s);
+        if(slot->plate){auto s=slot->settings;s.enabled=enabled;(void)slot->plate->set(plateFrom(s));slot->settings=s;}
+        else if(slot->graph){auto s=slot->graph->settings();s.enabled=enabled;(void)slot->graph->set(s);}
     }
     intents[id].enabled = enabled; intents[id].revisions[4] = ++serial; return true;
 }
@@ -133,7 +127,7 @@ bool ReverbStorage::set(unsigned id, const ReverbSettings& settings) noexcept {
         if (!active[id]->plate || !active[id]->plate->set(plateFrom(settings))) return false;
         active[id]->settings = settings;
         if (auto* old = previous[id]; old && old->plate) {
-            auto oldSettings = old->settings; oldSettings.plate = settings.plate; oldSettings.enabled = settings.enabled;
+            auto oldSettings = old->settings; oldSettings.plate = settings.plate; oldSettings.preset = settings.preset; oldSettings.enabled = settings.enabled;
             (void)old->plate->set(plateFrom(oldSettings)); old->settings = oldSettings;
         }
         for (unsigned i = 0; i < 6; ++i) intents[id].plateValues[i] = settings.plate[i];
@@ -141,7 +135,7 @@ bool ReverbStorage::set(unsigned id, const ReverbSettings& settings) noexcept {
     }
     // Reject a shape edit before mutating either pinned owner or its intents.
     if (!active[id]->graph->set(settings)) return false;
-    if (auto* old = previous[id]) {
+    if (auto* old = previous[id]; old && old->graph) {
         auto oldSettings = old->graph->settings();
         for (const auto control : liveControls) (void)setReverbControl(oldSettings, control, settings.values[control]);
         oldSettings.enabled = settings.enabled;

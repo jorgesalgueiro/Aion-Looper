@@ -20,10 +20,11 @@ struct Biquad {
   b0=alpha/a0;b1=0;b2=-alpha/a0;a1=-2*std::cos(w)/a0;a2=(1-alpha)/a0;}
 };
 struct Peak {
- float b0=1,b1=0,b2=0,a1=0,a2=0,z1=0,z2=0;
+ float b0=1,b1=0,b2=0,a1=0,a2=0;
+ std::array<float,2> z1{},z2{};
  float cosw=0,alpha=0;bool active=false;
- float process(float x) noexcept {const float y=b0*x+z1;z1=b1*x-a1*y+z2;z2=b2*x-a2*y;return y;}
- void clear() noexcept {z1=z2=0;}
+ float process(float x,unsigned channel) noexcept {const float y=b0*x+z1[channel];z1[channel]=b1*x-a1*y+z2[channel];z2[channel]=b2*x-a2*y;return y;}
+ void clear() noexcept {z1={};z2={};}
  void setup(float f,float sr,float q) noexcept {const float w=2*pi*f/sr;cosw=std::cos(w);alpha=std::sin(w)/(2*q);active=f<sr*.45f;}
  void gainDb(float db) noexcept {if(!active){b0=1;b1=b2=a1=a2=0;return;}const float A=std::pow(10.f,db/40.f),a0=1+alpha/A;
   b0=(1+alpha*A)/a0;b1=-2*cosw/a0;b2=(1-alpha*A)/a0;a1=-2*cosw/a0;a2=(1-alpha/A)/a0;}
@@ -32,12 +33,14 @@ struct OnePole {float z=0,prevIn=0,prevOut=0;float lp(float x,float a) noexcept 
 }
 struct PlateReverb::State {
  double sr=48000;PlateSettings settings{};
- struct Line {std::vector<float> data;unsigned pos=0,len=1;float gain=0;OnePole damp,low;};
+ struct Line {std::vector<float> data;unsigned pos=0,len=1,valid=0;float gain=0;OnePole damp,low;};
  std::array<Line,8> lines;
  std::array<std::array<std::vector<float>,2>,2> diffusion; // [channel][stage]
  std::array<std::array<unsigned,2>,2> diffusionPos{};
+ std::array<std::array<unsigned,2>,2> diffusionValid{};
  std::array<std::vector<float>,2> predelay;
  std::array<unsigned,2> predelayPos{};
+ std::array<unsigned,2> predelayValid{};
  std::array<Peak,bandCount> peaks;
  std::array<Biquad,bandCount> analysis;
  std::array<float,bandCount> env{};
@@ -52,30 +55,29 @@ struct PlateReverb::State {
   attCoef=std::exp(-1.f/(.002f*float(sr)));relCoef=std::exp(-1.f/(.15f*float(sr)));
   for(unsigned b=0;b<bandCount;++b){bandActive[b]=bandHz[b]<float(sr)*.45f;peaks[b].setup(bandHz[b],float(sr),1.2f);
    if(bandActive[b])analysis[b].bandpass(bandHz[b],float(sr));else analysis[b]={};}
-  modPhase=0;
  }
  void clear() noexcept {
-  for(auto& l:lines){std::fill(l.data.begin(),l.data.end(),0.f);l.pos=0;l.damp={};l.low={};}
-  for(auto& ch:diffusion){for(auto& d:ch)std::fill(d.begin(),d.end(),0.f);}
-  diffusionPos={};
-  for(auto& d:predelay){std::fill(d.begin(),d.end(),0.f);}predelayPos={};
+  // Sequential writes make [0,valid) the complete readable prefix after a
+  // reset. Old samples remain inaccessible without scanning any delay memory.
+  for(auto& l:lines){l.pos=l.valid=0;l.damp={};l.low={};}
+  diffusionPos={};diffusionValid={};predelayPos={};predelayValid={};
   for(auto& p:peaks)p.clear();
   for(auto& a:analysis)a.clear();
-  env={};unmaskCounter=0;
+  env={};unmaskCounter=0;modPhase=0;
  }
  float readLine(unsigned i,float modSamples) noexcept {
   auto& l=lines[i];float d=float(l.len)+modSamples;float rp=float(l.pos)-d;
   while(rp<0)rp+=float(l.data.size());
   while(rp>=float(l.data.size()))rp-=float(l.data.size());
   const auto i0=static_cast<unsigned>(rp);const auto i1=(i0+1)%l.data.size();const float f=rp-float(i0);
-  return l.data[i0]*(1-f)+l.data[i1]*f;
+  return (i0<l.valid?l.data[i0]:0.f)*(1-f)+(i1<l.valid?l.data[i1]:0.f)*f;
  }
- void writeLine(unsigned i,float x) noexcept {auto& l=lines[i];l.data[l.pos]=std::isfinite(x)?x:0.f;l.pos=(l.pos+1)%l.data.size();}
+ void writeLine(unsigned i,float x) noexcept {auto& l=lines[i];l.data[l.pos]=std::isfinite(x)?x:0.f;l.pos=(l.pos+1)%l.data.size();if(l.valid<l.data.size())++l.valid;}
  float allpass(unsigned channel,unsigned stage,float x) noexcept {
   auto& d=diffusion[channel][stage];auto& p=diffusionPos[channel][stage];const auto len=static_cast<unsigned>(d.size());
-  const float y=-.6f*x+d[p];d[p]=x+.6f*y;p=(p+1)%len;return y;
+  auto& valid=diffusionValid[channel][stage];const float y=-.6f*x+(p<valid?d[p]:0.f);d[p]=x+.6f*y;p=(p+1)%len;if(valid<len)++valid;return y;
  }
- void prepare(double rate) noexcept {
+ void prepare(double rate) {
   sr=rate;
   for(unsigned i=0;i<8;++i){const auto n=std::max(8u,static_cast<unsigned>(lineMs[i]*.001f*float(sr)));lines[i].data.assign(n+2,0.f);lines[i].pos=0;lines[i].len=n;}
   for(unsigned c=0;c<2;++c)for(unsigned s=0;s<2;++s){const auto n=std::max(4u,static_cast<unsigned>(diffuseMs[s]*.001f*float(sr)));diffusion[c][s].assign(n,0.f);}
@@ -89,9 +91,9 @@ struct PlateReverb::State {
   if(settings.unmask>0.f)for(unsigned b=0;b<bandCount;++b)if(bandActive[b]){const float v=std::abs(analysis[b].process(dryM));env[b]=v>env[b]?attCoef*env[b]+(1-attCoef)*v:relCoef*env[b]+(1-relCoef)*v;}
   // Input diffusion then pre-delay.
   float xL=allpass(0,0,inL),xR=allpass(1,0,inR);xL=allpass(0,1,xL);xR=allpass(1,1,xR);
-  auto writePred=[&](unsigned ch,float x){auto& d=predelay[ch];d[predelayPos[ch]]=x;predelayPos[ch]=(predelayPos[ch]+1)%d.size();};
+  auto writePred=[&](unsigned ch,float x){auto& d=predelay[ch];d[predelayPos[ch]]=x;predelayPos[ch]=(predelayPos[ch]+1)%d.size();if(predelayValid[ch]<d.size())++predelayValid[ch];};
   writePred(0,xL);writePred(1,xR);
-  const auto readPred=[&](unsigned ch){auto& d=predelay[ch];const auto p=(predelayPos[ch]+d.size()-1-predelaySamples)%d.size();return d[p];};
+  const auto readPred=[&](unsigned ch){auto& d=predelay[ch];const auto p=(predelayPos[ch]+d.size()-1-predelaySamples)%d.size();return p<predelayValid[ch]?d[p]:0.f;};
   const float pL=readPred(0),pR=readPred(1);
   // Tank.
   modPhase+=2*pi*.7f/float(sr);if(modPhase>2*pi)modPhase-=2*pi;
@@ -109,7 +111,7 @@ struct PlateReverb::State {
   if(settings.unmask>0.f){if(++unmaskCounter>=32){unmaskCounter=0;
     for(unsigned b=0;b<bandCount;++b){const float db=env[b]>1e-9f?20*std::log10(env[b]):-120.f;
      const float n=std::clamp((db+50.f)/35.f,0.f,1.f);peaks[b].gainDb(-12.f*settings.unmask*n);}}
-    for(unsigned b=0;b<bandCount;++b){wetL=peaks[b].process(wetL);wetR=peaks[b].process(wetR);}}
+    for(unsigned b=0;b<bandCount;++b){wetL=peaks[b].process(wetL,0);wetR=peaks[b].process(wetR,1);}}
   const float mix=std::clamp(settings.mix,0.f,1.f);
   outL=dryL*(1-mix)+wetL*mix;outR=dryR*(1-mix)+wetR*mix;
  }
@@ -121,7 +123,7 @@ bool validPlateSettings(const PlateSettings& s) noexcept {
 PlateReverb::PlateReverb() noexcept=default;
 PlateReverb::~PlateReverb()=default;
 bool PlateReverb::prepare(double sampleRate,const PlateSettings& s,const std::atomic<bool>* cancelled) noexcept {
- if(sampleRate<8000||sampleRate>384000||!validPlateSettings(s)||(cancelled&&cancelled->load(std::memory_order_acquire)))return false;
+ if(!std::isfinite(sampleRate)||sampleRate<8000||sampleRate>384000||!validPlateSettings(s)||(cancelled&&cancelled->load(std::memory_order_acquire)))return false;
  try{auto next=std::make_unique<State>();next->settings=s;next->prepare(sampleRate);
   if(cancelled&&cancelled->load(std::memory_order_acquire))return false;
   state=std::move(next);return true;}catch(const std::bad_alloc&){return false;}
@@ -141,10 +143,10 @@ void PlateReverb::reset() noexcept {if(state)state->clear();}
 const PlateSettings& PlateReverb::settings() const noexcept {static const PlateSettings empty{};return state?state->settings:empty;}
 double PlateReverb::sampleRate() const noexcept {return state?state->sr:0;}
 std::size_t PlateReverb::preparationBytes(double sampleRate,const PlateSettings&) noexcept {
- if(sampleRate<8000)return 0;
+ if(!std::isfinite(sampleRate)||sampleRate<8000||sampleRate>384000)return 0;
  size_t frames=0;
  for(float ms:lineMs)frames+=static_cast<size_t>(ms*.001*sampleRate)+4;
- for(float ms:diffuseMs)frames+=static_cast<size_t>(ms*.001*sampleRate)+4;
+ for(float ms:diffuseMs)frames+=2*(static_cast<size_t>(ms*.001*sampleRate)+4);
  frames+=static_cast<size_t>(.1*sampleRate+4)*2;
  return frames*sizeof(float)+sizeof(State)+1024;
 }

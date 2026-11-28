@@ -37,7 +37,7 @@
   content.append(presetRow,rows);module.append(header,content);
   document.getElementById('fx-controls-container').append(module);
   const send=(action,data={},key)=>enqueue(equalizer.selectedTrack(),{action,...data},key);
-  preset.addEventListener('change',()=>{if(preset.value)send('preset',{preset:preset.value});});
+  preset.addEventListener('change',()=>{if(preset.value)send('preset',{preset:preset.value,engine:engineShown});});
   engine.addEventListener('change',()=>send('engine',{engine:engine.value}));
   enabled.addEventListener('change',()=>send('toggle'));
   reset.addEventListener('click',()=>send('reset'));

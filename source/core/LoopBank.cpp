@@ -1224,6 +1224,8 @@ std::array<LoopView,LoopBank::trackCount> LoopBank::view() const noexcept {
     for(std::uint32_t i=0;i<trackCount;++i){views[i]=tracks[i].info;views[i].waveformId=tracks[i].clip?tracks[i].clip->waveformId:0;views[i].solo=soloTrack==static_cast<int>(i);views[i].effectiveRate=static_cast<float>(tracks[i].phaseRate);
         views[i].clearEpoch=tracks[i].clearEpoch;views[i].sourceRevision=tracks[i].sourceRevision;views[i].scheduledFrame=tracks[i].startAt?tracks[i].startAt:tracks[i].endAt;
         const auto& t=tracks[i];auto& v=views[i];v.queuedSourceReady=hasPreparedQueuedSource(t);
+        v.delayTransitioning=delayStorage->view(i).transitioning;
+        v.reverbTransitioning=reverbStorage->view(i).transitioning;
         v.stutterClock=(v.stutterClock||t.historyClock)&&t.clip&&(v.state==LoopState::playing||v.state==LoopState::stopping);
         if(v.stutterClock){
             const double duration=v.length/rate,now=static_cast<double>(frame)/rate;

@@ -76,6 +76,8 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  await setEngine('machine');await until(s=>s.tracks[0].reverb.engine==='machine'&&s.tracks[0].reverbReady,'Machine engine switch');
  assert(await evaluate(`document.querySelector('#native-reverb-title').textContent.includes('MACHINE PLATE')`),'Machine title');
  assert(await evaluate(`document.querySelector('#sel_reverb').options.length===8&&document.querySelector('#sel_reverb').options[1].value==='smooth-plate'`),'Machine preset family');
+ await evaluate(`(()=>{const e=document.querySelector('#sel_reverb');e.value='bright-plate';e.dispatchEvent(new Event('change'));})()`);
+ await until(s=>s.tracks[0].reverb.engine==='machine'&&s.tracks[0].reverb.platePreset==='bright-plate'&&s.tracks[0].reverbReady,'Machine bright-plate keeps its family');
  assert(await evaluate(`document.querySelector('#reverbVolume').previousElementSibling.textContent==='Decay'&&document.querySelector('#reverbVolume').max==='10'`),'Machine control labels/ranges');
  await evaluate(`(()=>{const e=document.querySelector('#reverbVolume');e.value='4';e.dispatchEvent(new Event('input'));})()`);
  await until(s=>s.tracks[0].reverb.plate.decay===4,'Machine decay command');

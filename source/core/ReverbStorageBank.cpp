@@ -34,6 +34,7 @@ bool ReverbStorage::requestBank(const Bank& settings) noexcept {
         auto& slot = *slotsToUse[slotIndex++]; slot.track = id; slot.settings = settings[id]; slot.seed = 0;
         slot.bytes = reservationBytes(rate, settings[id]); slot.bankMember = true; slot.request = 0;
         slot.revisions = intents[id].revisions;
+        slot.plateRevisions = intents[id].plateRevisions;
         slot.cancelled.store(false, std::memory_order_relaxed); bankSlots[id] = &slot;
         slot.phase.store(Phase::queued, std::memory_order_release);
     }
@@ -58,8 +59,15 @@ bool ReverbStorage::prepareBankCommit() noexcept {
     // No old owner has been touched above. A refused shape would abort the whole
     // bank before any audible change.
     for (auto* slot : bankSlots) if (slot) {
-        if (!slot->graph->set(slot->settings)) return false;
-        slot->graph->reset();
+        if (slot->settings.engine == ReverbEngine::machine) {
+            // Worker preparation has already installed these exact settings.
+            // Validate the graph type without touching any old owner.
+            if (!slot->plate || !validReverbSettings(slot->settings)) return false;
+            slot->plate->reset();
+        } else {
+            if (!slot->graph || !slot->graph->set(slot->settings)) return false;
+            slot->graph->reset();
+        }
     }
     bankPrepared = true; return true;
 }

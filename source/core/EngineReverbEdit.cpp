@@ -21,7 +21,8 @@ bool Engine::applyReverbMidi(unsigned track,unsigned slider,unsigned cc) noexcep
  // the impulse transaction and its normal receipt owns adoption.
  if(parameter==2||parameter==3){
   if(!reverbMidiShapeRequests->canPush())return false;
-  return reverbMidiShapeRequests->push({track,parameter,value,generation(),old.clearEpoch,old.reverbSettingsRevision});
+  return reverbMidiShapeRequests->push({track,parameter,value,generation(),old.clearEpoch,old.reverbSettingsRevision,
+   reverbCancellations[track].load(std::memory_order_acquire),midiCancellation.load(std::memory_order_acquire),reverbShapeIntents[track].load(std::memory_order_acquire)});
  }
  auto settings=old.reverb;
  if(!setReverbControl(settings,parameter,value)||!loops.setReverb(track,settings,old.clearEpoch,old.reverbSettingsRevision,old.reverbRequest,true))return false;

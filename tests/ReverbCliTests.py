@@ -38,3 +38,11 @@ assert cli('reverb', '20', 'off')['applied']
 assert cli('reverb', '20', 'toggle')['applied']
 assert cli('reverb', '20', 'off')['applied']
 print('PASS external Reverb CLI: exact receipts, preset/room, precision, strict rollback, reset/bypass and expanded track isolation')
+assert cli('reverb', '20', 'preset', '--engine', 'machine', '--preset', 'bright-plate')['applied']
+machine = cli('reverb', '20', 'get')['reverb']
+assert machine['engine'] == 'machine' and machine['platePreset'] == 'bright-plate'
+assert cli('reverb', '20', 'engine', '--engine', 'convolution')['applied']
+assert cli('reverb', '20', 'preset', '--engine', 'convolution', '--preset', 'bright-plate')['applied']
+convolution = cli('reverb', '20', 'get')['reverb']
+assert convolution['engine'] == 'convolution' and convolution['preset'] == 'bright-plate'
+print('PASS external Reverb CLI: explicit engine switch and both bright-plate families')

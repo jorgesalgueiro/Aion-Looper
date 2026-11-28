@@ -45,9 +45,14 @@ bool AionProcessor::reverbRequest(const juce::var& request,juce::DynamicObject& 
  }else if(action=="reset")accepted=reverbOwner.reset(track,requestId);
  else if(action=="preset"){
   const auto preset=request.getProperty("preset",{});if(!preset.isString())return fail("Expected Reverb preset name");
+  const auto family=request.getProperty("engine",{});
+  if(!family.isVoid()&&(!family.isString()||(family.toString()!="machine"&&family.toString()!="convolution")))return fail("Expected Reverb preset engine");
+  const bool machine=family.isVoid()?reverbSettings[track].engine==aion::ReverbEngine::machine:family.toString()=="machine";
   unsigned p=0;for(;p<aion::reverbPresetNames.size()&&preset.toString()!=name(aion::reverbPresetNames[p]);++p){}
-  if(p<aion::reverbPresetNames.size())accepted=reverbOwner.preset(track,p+1,requestId);
-  else{unsigned q=0;for(;q<aion::platePresetNames.size()&&preset.toString()!=name(aion::platePresetNames[q]);++q){}
+  unsigned q=0;for(;q<aion::platePresetNames.size()&&preset.toString()!=name(aion::platePresetNames[q]);++q){}
+  if(!family.isVoid()&&((machine&&q==aion::platePresetNames.size())||(!machine&&p==aion::reverbPresetNames.size())))return fail("Unknown Reverb preset for engine");
+  if(p<aion::reverbPresetNames.size()&&(!machine||q==aion::platePresetNames.size()))accepted=reverbOwner.preset(track,p+1,requestId);
+  else{
    if(q==aion::platePresetNames.size())return fail("Unknown Reverb preset");
    accepted=reverbOwner.preset(track,static_cast<unsigned>(aion::reverbPresetNames.size())+q+1,requestId);}
  }else if(action=="engine"){
@@ -68,6 +73,7 @@ bool AionProcessor::reverbRequest(const juce::var& request,juce::DynamicObject& 
   if(p==defs.size())return fail("Unknown Reverb parameter");accepted=reverbOwner.set(track,p,number,requestId);
  }else return fail("Unknown Reverb action");
  if(!accepted)return fail("Invalid Reverb settings or command queue unavailable");
+ engine.cancelReverbMidiShapes(track);pendingReverbShapes[track]={};
  reverbSettings[track]=*reverbOwner.intent(track);nextRequest=requestId;
  result.setProperty("queued",true);result.setProperty("requestId",static_cast<juce::int64>(requestId));reverbSnapshot(result,track);return true;
 }

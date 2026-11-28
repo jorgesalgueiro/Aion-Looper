@@ -80,6 +80,10 @@ bool AionProcessor::updateMidi(aion::MidiSettings next){
     std::lock_guard guard(midiSettingsMutex);
     next.revision=midiSettings.revision+1;if(!next.revision)++next.revision;
     if(!engine.configureMidi(next))return false;
+    bool replacedShapeBinding=false;
+    for(unsigned id=aion::MidiSettings::reverbBase;id<aion::MidiSettings::bindingCount;++id)
+        replacedShapeBinding|=midiSettings.bindings[id]&&midiSettings.bindings[id]!=next.bindings[id];
+    if(!next.enabled||replacedShapeBinding||next.eqTrack!=midiSettings.eqTrack)engine.cancelReverbMidiShapes();
     midiSettings=next;midiSettings.modeOverride=-1;startTimer(25);return true;
 }
 void AionProcessor::cancelMidiLearn(){

@@ -8,7 +8,8 @@
 #include <iostream>
 #include <vector>
 static thread_local bool watch=false;static unsigned heapOps=0;
-void* operator new(std::size_t n){if(watch)++heapOps;if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
+static bool failNext=false;
+void* operator new(std::size_t n){if(watch)++heapOps;if(failNext){failNext=false;throw std::bad_alloc();}if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
 void* operator new[](std::size_t n){return ::operator new(n);}void operator delete(void* p)noexcept{if(watch&&p)++heapOps;std::free(p);}
 void operator delete[](void* p)noexcept{::operator delete(p);}void operator delete(void* p,std::size_t)noexcept{::operator delete(p);}void operator delete[](void* p,std::size_t)noexcept{::operator delete(p);}
 static void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
@@ -76,5 +77,19 @@ static void storageEngineSwitch(){
  check(st.request(0,c,2),"convolution request");
  for(unsigned n=0;n<400&&!st.graph(0);++n){st.serviceWorker();(void)st.poll();}
  check(st.graph(0)&&!st.plateGraph(0),"engine switch installs convolution");
+ c.values[1]=.4;watch=true;check(st.set(0,c),"live convolution edit during mixed-engine fade");watch=false;check(!heapOps,"mixed-engine edit has no callback heap");
+ for(unsigned n=0;n<4;++n)st.process(0,l,r,ol,or_);
+ aion::ReverbStorage::Bank bank{};
+ for(unsigned id=0;id<20;++id){bank[id]=id%2?c:m;bank[id].enabled=true;}
+ check(st.requestBank(bank),"mixed all-twenty Machine/convolution bank admitted");
+ for(unsigned n=0;n<40&&st.bankStatus()==aion::ReverbStorage::BankStatus::pending;++n)st.serviceWorker();
+ check(st.bankStatus()==aion::ReverbStorage::BankStatus::ready,"all mixed members prepared");
+ watch=true;check(st.prepareBankCommit(),"Machine bank commit preparation");st.commitBank();watch=false;check(!heapOps,"mixed bank commit has no callback heap");
+ for(unsigned id=0;id<20;++id){check(id%2?st.graph(id)!=nullptr:st.plateGraph(id)!=nullptr,"every mixed member adopts its correct graph type");for(unsigned n=0;n<4;++n)st.process(id,l,r,ol,or_);}
+ st.serviceWorker();
+ auto replacement=bank;replacement[0].plate[0]=8;replacement[0].preset=0;
+ check(st.requestBank(replacement),"Machine OOM bank admitted");failNext=true;st.serviceWorker();check(!failNext,"worker OOM injected into Machine preparation");
+ watch=true;const auto failed=st.poll();watch=false;
+ check(failed.bankFailed&&st.plateGraph(0)&&st.plateGraph(0)->settings().decay==2,"Machine OOM bank preserves previous prepared owners");check(!heapOps,"Machine OOM rollback has no callback heap");
 }
 int main(){run(48000,64);run(48000,128);run(8000,64);run(8000,128);storageEngineSwitch();std::cout<<"PASS native Plate/Machine: stable finite tail, decay/damping behavior, dry-aware carving, untouched dry path and zero callback heap at 8/48 kHz 64/128\n";}

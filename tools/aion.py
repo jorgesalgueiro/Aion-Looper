@@ -171,7 +171,8 @@ def main(argv=None):
     delay.add_argument('--count', type=int, help='Exact repeat count, 1–10; retained in Feedback mode')
     reverb = commands.add_parser('reverb', help='Per-loop convolution reverb on the running audio engine')
     reverb.add_argument('track', type=track)
-    reverb.add_argument('action', choices=('get', 'on', 'off', 'toggle', 'reset', 'preset', 'set', 'room'))
+    reverb.add_argument('action', choices=('get', 'on', 'off', 'toggle', 'reset', 'preset', 'set', 'room', 'engine'))
+    reverb.add_argument('--engine', choices=('convolution', 'machine'), help='Select engine or disambiguate a preset family')
     reverb.add_argument('--preset', help='Original reverb preset name, e.g. hall')
     reverb.add_argument('--room', help='Original room name, e.g. cathedral')
     reverb.add_argument('--parameter', help='Original control name, e.g. mix or duration')
@@ -265,6 +266,10 @@ def main(argv=None):
             request.update(voicing=args.voicing)
         elif args.action == 'preset':
             request['preset'] = args.preset
+            if args.command == 'reverb' and args.engine:
+                request['engine'] = args.engine
+        elif args.action == 'engine' and args.command == 'reverb':
+            request['engine'] = args.engine
         elif args.action == 'repeats' and args.command == 'delay':
             request.update(repeatMode=args.mode, repeatCount=args.count)
         elif args.action == 'room' and args.command == 'reverb':

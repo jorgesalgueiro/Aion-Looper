@@ -19,9 +19,9 @@ void AionProcessor::serviceReverb(){
  reverbOwner.service(latest);
  aion::ReverbMidiShapeRequest shape;
  for(unsigned n=0;n<64&&engine.popReverbMidiShape(shape);++n){
-  if(shape.generation!=engine.generation()||shape.track>=reverbSettings.size())continue;
+  if(!engine.reverbMidiShapeCurrent(shape)||shape.track>=reverbSettings.size())continue;
   const unsigned slot=shape.parameter==2?0:shape.parameter==3?1:2;
-  if(slot<2)pendingReverbShapes[shape.track][slot]={shape.value,true};
+  if(slot<2)pendingReverbShapes[shape.track][slot]={shape,true};
  }
  if(!reverbOwner.bound()){
   // Equal values alone cannot prove ownership of a newer joint revision.
@@ -64,9 +64,13 @@ void AionProcessor::serviceReverb(){
  unsigned submitted=0;
  for(unsigned id=0;id<reverbSettings.size()&&submitted<8;++id)for(unsigned slot=0;slot<2&&submitted<8;++slot){
   auto& pending=pendingReverbShapes[id][slot];
-  if(!pending.active||reverbOwner.track(id)->pending||pendingReverbClears[id].request)continue;
+  if(!pending.active)continue;
+  const auto& request=pending.request;const auto* record=reverbOwner.track(id);
+  if(!engine.reverbMidiShapeCurrent(request)||request.epoch!=record->clearEpoch
+   ||request.revision>record->revision||record->committed.engine!=aion::ReverbEngine::convolution){pending={};continue;}
+  if(record->pending||pendingReverbClears[id].request||reverbRestoreFailed)continue;
   if(nextReverbRequest==UINT32_MAX)return;
-  if(reverbOwner.set(id,slot?3:2,pending.value,nextReverbRequest+1)){
+  if(reverbOwner.set(id,slot?3:2,request.value,nextReverbRequest+1)){
    ++nextReverbRequest;reverbSettings[id]=*reverbOwner.intent(id);pending.active=false;++submitted;
   }
  }

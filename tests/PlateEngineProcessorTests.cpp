@@ -11,7 +11,7 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const int blo
  auto pump=[&]{audio.clear();p->processBlock(audio,midi);midi.clear();};
  auto snapshot=[&]{return p->request({juce::JSON::parse(R"({"operation":"snapshot"})")});};pump();auto s=snapshot();
  auto request=[&](const char* json){auto r=juce::JSON::parse(json);r.getDynamicObject()->setProperty("generation",s["generation"]);r.getDynamicObject()->setProperty("expiresAt",static_cast<double>(juce::Time::currentTimeMillis()+4000));return p->request({r});};
- auto settle=[&]{for(unsigned n=0;n<3000;++n){pump();s=snapshot();if(!static_cast<bool>(s["tracks"][0]["reverbBusy"]))return;std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(false,"engine settle deadline");};
+ auto settle=[&]{for(unsigned n=0;n<3000;++n){pump();s=snapshot();if(!static_cast<bool>(s["tracks"][0]["reverbBusy"])){check(!p->inspectAudioThread(0).track.reverbTransitioning,"public readiness retains actual audio transition");check(s["tracks"][0]["reverbReady"],"exact successful engine edit receipt");return;}std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(false,"engine settle deadline");};
  check(request(R"({"operation":"reverb","track":0,"action":"engine","engine":"machine"})")["queued"],"machine engine accepted");settle();
  s=snapshot();check(s["tracks"][0]["reverb"]["engine"].toString()=="machine","snapshot engine is machine");
  check(static_cast<double>(s["tracks"][0]["reverb"]["plate"]["decay"])==2.5,"plate defaults installed");
@@ -24,6 +24,10 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const int blo
  s=snapshot();check(static_cast<double>(s["tracks"][0]["reverb"]["plate"]["decay"])==4,"plate decay applied");
  check(request(R"({"operation":"reverb","track":0,"action":"preset","preset":"vocal-plate"})")["queued"],"plate preset accepted");settle();
  s=snapshot();check(s["tracks"][0]["reverb"]["platePreset"].toString()=="vocal-plate","plate preset identity"); 
+ check(request(R"({"operation":"reverb","track":0,"action":"preset","engine":"machine","preset":"bright-plate"})")["queued"],"Machine bright-plate accepted");settle();
+ check(s["tracks"][0]["reverb"]["engine"].toString()=="machine"&&s["tracks"][0]["reverb"]["platePreset"].toString()=="bright-plate","ambiguous preset keeps its explicit Machine family");
+ check(request(R"({"operation":"reverb","track":0,"action":"preset","preset":"vocal-plate"})")["queued"],"restore vocal plate identity");settle();
+ check(request(R"({"operation":"reverb","track":0,"action":"enable","enabled":true})")["queued"],"enable actual Machine graph before save");settle();
  juce::MemoryBlock saved;p->getStateInformation(saved);auto xml=p->getXmlFromBinary(saved.getData(),static_cast<int>(saved.getSize()));
  auto* bank=xml?xml->getChildByName("LoopReverbs"):nullptr;check(bank&&bank->getIntAttribute("version")==2,"state v2");
  auto* row=bank?bank->getChildElement(0):nullptr;check(row&&row->getStringAttribute("engine")=="machine","state stores machine engine");
@@ -32,6 +36,8 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const int blo
  juce::AudioBuffer<float> qa(2,block);juce::MidiBuffer qm;auto qs=[&]{return q->request({juce::JSON::parse(R"({"operation":"snapshot"})")});};
  for(unsigned n=0;n<3000;++n){qa.clear();q->processBlock(qa,qm);qm.clear();s=qs();if(!static_cast<bool>(s["tracks"][0]["reverbBusy"]))break;std::this_thread::sleep_for(std::chrono::milliseconds(1));}
  s=qs();check(s["tracks"][0]["reverb"]["engine"].toString()=="machine"&&s["tracks"][0]["reverb"]["platePreset"].toString()=="vocal-plate","restored machine engine and preset");
+ check(!static_cast<bool>(s["tracks"][0]["reverbBusy"])&&q->inspectAudioThread(0).track.reverb.enabled,"enabled Machine joint bank completes after state load");
+ check(q->inspectAudioThread(0).track.reverb==p->inspectAudioThread(0).track.reverb,"enabled Machine restore retains exact settings");
  check(request(R"({"operation":"reverb","track":0,"action":"engine","engine":"convolution"})")["queued"],"convolution switch accepted");settle();
  s=snapshot();check(s["tracks"][0]["reverb"]["engine"].toString()=="convolution","switch back to convolution");
  std::cout<<"PASS Machine engine: command switch, plate set/preset, v2 save/restore and switch back at "<<block<<"\n";

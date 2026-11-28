@@ -194,7 +194,7 @@ private:
     std::array<PendingReverbClear,aion::LoopBank::trackCount> pendingReverbClears{};
     // Latest shape-control CC per track (duration, decay), applied by the
     // message owner after off-audio preparation. Fixed storage, no audio work.
-    struct PendingReverbShape {double value=0;bool active=false;};
+    struct PendingReverbShape {aion::ReverbMidiShapeRequest request{};bool active=false;};
     std::array<std::array<PendingReverbShape,2>,aion::LoopBank::trackCount> pendingReverbShapes{};
     void clearPendingReverbShapes(unsigned track,bool all);
     void serviceReverb();

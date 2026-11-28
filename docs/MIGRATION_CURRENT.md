@@ -11,6 +11,30 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Machine audit fixes — 28 November 2026
+
+Fixed the six defects found in the `1b71dd0..ef76c73` audit: enabled Machine bank
+commit, preparation OOM termination, shared stereo carver history, stale prepared
+shape MIDI after clear/panic, full-delay-buffer reset on audio, and ambiguous
+bright-plate preset dispatch. Plate reset now invalidates sequential buffer
+prefixes with fixed metadata/filter work. Stereo diffusion reservations include
+both channels; mixed-engine fade edits guard graph type. No musical regression
+or threshold was removed.
+
+Shape requests retain generation/epoch/revision and cancellation/intent facts
+through deferred dispatch; clear, panic, host load, replacement bindings, device
+cancellation and newer accepted GUI/CLI effect commands invalidate stale work.
+Same-block Learn and paired Duration/Decay coalescing remain covered. Preset
+requests can specify their engine; the panel supplies it and the running-app CLI
+supports `reverb <track> engine --engine machine|convolution` and a preset-family
+`--engine` option without changing any saved ID.
+
+The enabled-state regression also exposed missing transition flags in the full
+audio snapshot. Those flags now match the audio owner for B and D, preventing
+false ready-for-edit reporting during adoption. Windows critical native cases
+pass 64/128; final Windows/Linux/UI/sanitizer evidence is recorded in REVERB.md.
+Physical listening/controllers, drivers/DAWs and Linux WebKit remain separate.
+
 ### Independent B integration audit / MIDI PCM acceptance — 27 November 2026
 
 Reviewed the B panel, joint Arp/Delay/B restore and conservative MIDI changes

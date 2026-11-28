@@ -21,7 +21,7 @@ struct DelayMidiReceipt {unsigned track=0,parameter=0;double value=0;std::uint32
 struct ReverbMidiReceipt {unsigned track=0,parameter=0;double value=0;std::uint32_t generation=0;std::uint64_t epoch=0,before=0,revision=0;};
 // Shape controls (duration/decay) need off-audio IR preparation; the audio
 // callback only publishes the latest intent for the message owner.
-struct ReverbMidiShapeRequest {unsigned track=0,parameter=0;double value=0;std::uint32_t generation=0;std::uint64_t epoch=0,revision=0;};
+struct ReverbMidiShapeRequest {unsigned track=0,parameter=0;double value=0;std::uint32_t generation=0;std::uint64_t epoch=0,revision=0,cancellation=0,midiCancellation=0,intent=0;};
 struct Meter { std::uint64_t frame; float peak; };
 struct LoopCommand {
     LoopAction action{};
@@ -292,6 +292,16 @@ public:
     void delayMidiOwner(std::uint32_t generation) noexcept {delayMidiGeneration.store(generation,std::memory_order_release);}
     bool popReverbMidi(ReverbMidiReceipt& result) noexcept {return reverbMidiResults->pop(result);}
     bool popReverbMidiShape(ReverbMidiShapeRequest& result) noexcept {return reverbMidiShapeRequests->pop(result);}
+    bool reverbMidiShapeCurrent(const ReverbMidiShapeRequest& r) const noexcept {
+        return r.track<LoopBank::trackCount&&r.generation==generation()
+            &&r.cancellation==reverbCancellations[r.track].load(std::memory_order_acquire)
+            &&r.midiCancellation==midiCancellation.load(std::memory_order_acquire)
+            &&r.intent==reverbShapeIntents[r.track].load(std::memory_order_acquire);
+    }
+    void cancelReverbMidiShapes(unsigned track=LoopBank::trackCount) noexcept {
+        if(track<LoopBank::trackCount)reverbShapeIntents[track].fetch_add(1,std::memory_order_release);
+        else if(track==LoopBank::trackCount)for(auto& serial:reverbShapeIntents)serial.fetch_add(1,std::memory_order_release);
+    }
     void reverbMidiOwner(std::uint32_t generation) noexcept {reverbMidiGeneration.store(generation,std::memory_order_release);}
     bool midiLearnCurrent(const MidiLearnResult& result) const noexcept {return midi->learnCurrent(result);}
     void cancelMidi() noexcept {midiCancellation.fetch_add(1,std::memory_order_release);}
@@ -372,6 +382,7 @@ private:
     std::unique_ptr<std::array<PendingReverbEdit,LoopBank::trackCount>> pendingReverb=std::make_unique<std::array<PendingReverbEdit,LoopBank::trackCount>>();
     std::array<bool,LoopBank::trackCount> outstandingReverb{}; // sole message owner
     std::array<std::atomic<std::uint64_t>,LoopBank::trackCount> reverbCancellations{};
+    std::array<std::atomic<std::uint64_t>,LoopBank::trackCount> reverbShapeIntents{};
     std::uint64_t nextReverbTransaction=0,seenReverbTransaction=0; // message / audio owners, never reset
     std::unique_ptr<SpscQueue<ReverbEditRequest,32>> reverbRequests=std::make_unique<SpscQueue<ReverbEditRequest,32>>();
     std::unique_ptr<SpscQueue<ReverbEditResult,32>> reverbResults=std::make_unique<SpscQueue<ReverbEditResult,32>>();
