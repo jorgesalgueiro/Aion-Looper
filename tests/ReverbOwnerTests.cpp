@@ -36,7 +36,7 @@ struct Fixture {
 static void controls(unsigned block){
  Fixture f(block);const auto defaults=f.bank();
  check(!f.owner.bind(f.latest)&&!f.owner.set(20,0,.5,1)&&!f.owner.set(0,99,.5,1)&&!f.owner.set(0,0,NAN,1)
-  &&!f.owner.preset(0,18,1)&&!f.owner.room(0,static_cast<ReverbRoom>(255),1)&&!f.owner.enable(0,true,0),"invalid edits leave owner untouched");
+  &&!f.owner.preset(0,0,1)&&!f.owner.preset(0,static_cast<unsigned>(reverbPresetNames.size()+platePresetNames.size()+1),1)&&!f.owner.room(0,static_cast<ReverbRoom>(255),1)&&!f.owner.enable(0,true,0),"invalid edits leave owner untouched");
  check(f.owner.set(0,0,.123456789012345,1),"precise candidate admission");
  check(f.owner.track(0)->committed==defaults[0]&&f.owner.intent(0)->values[0]==.123456789012345,"intent is separate from committed audio");
  check(!f.owner.set(0,1,.5,2)&&!f.owner.restore(defaults,2),"pending track excludes another edit and bank");
@@ -102,5 +102,12 @@ static void generations(unsigned block){
  auto mismatched=f.latest;++mismatched.tracks[19].reverbSettingsRevision;f.owner.service(mismatched);
  check(!f.owner.bound()&&!f.owner.enable(0,true,33),"unexplained external revision detaches instead of guessing");
 }
-int main(){for(unsigned block:{64u,128u}){controls(block);banks(block);generations(block);
+static void machinePresets(unsigned block){
+ Fixture f(block);
+ for(unsigned id=1;id<=platePresetNames.size();++id){check(f.owner.preset(0,static_cast<unsigned>(reverbPresetNames.size())+id,100+id),"appended Machine preset admitted through owner");f.done(0);
+  const auto& s=f.owner.track(0)->committed;check(s.engine==ReverbEngine::machine&&s.preset==id&&!s.enabled&&validReverbSettings(s),"every Machine preset retains exact disabled ownership");}
+ check(f.owner.preset(0,7,200),"original bright-plate ID still admitted");f.done(0);
+ check(f.owner.track(0)->committed.engine==ReverbEngine::convolution&&f.owner.track(0)->committed.preset==7,"original convolution ID remains unchanged");
+}
+int main(){for(unsigned block:{64u,128u}){controls(block);machinePresets(block);banks(block);generations(block);
  std::cout<<"PASS Reverb settings owner "<<block<<": exact receipts/precision, intent rollback, bank atomicity, clear, OOM, FIFO and generation recovery\n";}}

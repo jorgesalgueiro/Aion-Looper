@@ -38,10 +38,14 @@ int main(int argc,char** argv){
  ReverbSettings s;check(validReverbSettings(s)&&!s.enabled&&s.room==ReverbRoom::studio,"disabled studio defaults");
  for(unsigned id=1;id<=reverbPresetNames.size();++id){s={};s.enabled=(id&1)!=0;const bool enabled=s.enabled;
   Guard guard;check(applyReverbPreset(s,id)&&s.enabled==enabled&&validReverbSettings(s),"all named presets preserve enable");
-  auto previous=s;check(!applyReverbPreset(s,0)&&!applyReverbPreset(s,18)&&s==previous,"bad preset is atomic");
+  auto previous=s;check(!applyReverbPreset(s,0)&&!applyReverbPreset(s,static_cast<unsigned>(reverbPresetNames.size()+platePresetNames.size()+1))&&s==previous,"out-of-catalogue preset is atomic");
   check(setReverbControl(s,0,s.values[0])&&s.preset==0,"same-value manual gesture selects Custom");
   for(unsigned p=0;p<6;++p){previous=s;check(!setReverbControl(s,p,NAN)&&!setReverbControl(s,p,INFINITY)&&!setReverbControl(s,p,reverbControls[p].minimum-1)&&!setReverbControl(s,p,reverbControls[p].maximum+1)&&s==previous,"invalid numeric controls preserve settings");
    check(setReverbControl(s,p,reverbControls[p].minimum)&&setReverbControl(s,p,reverbControls[p].maximum),"all range endpoints");}
+ }
+ for(unsigned id=1;id<=platePresetNames.size();++id){s={};s.enabled=(id&1)!=0;const bool enabled=s.enabled;Guard guard;
+  check(applyPlatePreset(s,id)&&s.engine==ReverbEngine::machine&&s.preset==id&&s.enabled==enabled&&validReverbSettings(s),"all appended Machine presets preserve enable and exact identity");
+  const auto previous=s;check(!applyPlatePreset(s,0)&&!applyPlatePreset(s,static_cast<unsigned>(platePresetNames.size()+1))&&s==previous,"invalid Machine-family preset is atomic");
  }
  s={};check(setReverbControl(s,3,4.123456789012345)&&s.values[3]==4.123456789012345,"stored precision");
  for(unsigned r=0;r<reverbRooms.size();++r){const auto old=s;Guard guard;check(setReverbRoom(s,static_cast<ReverbRoom>(r)),"room selection");check(s.values[2]==reverbRooms[r].duration&&s.values[3]==reverbRooms[r].decay&&s.values[0]==old.values[0]&&s.values[1]==old.values[1]&&s.values[4]==old.values[4]&&s.values[5]==old.values[5],"room changes only duration/decay");}

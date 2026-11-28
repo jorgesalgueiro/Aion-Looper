@@ -1500,6 +1500,15 @@ The failure is retained in build/machine-transition-before.txt; critical Machine
 and MIDI cases passed 4/4 after the correction, with no weakened assertion.
 
 Final platform, UI and sanitizer results are recorded below after verification.
+The wider core run also exposed two stale pre-Machine fixtures: preparation and
+owner tests still rejected preset 18 even though the accepted integration now
+assigns 18..24 to Machine. Their invalid boundary now uses the actual combined
+catalogue end plus one, retaining zero/atomic-rejection checks. Replacement
+positive cases exercise every Machine preset, family-specific invalid IDs,
+enable/identity preservation and the original convolution bright-plate ID 7.
+All original convolution catalogue/range/IR tests and the unchanged-JS oracle
+remain. The corrected three-case preparation/owner/reference set passes on
+Windows (1.16s); no tolerance or production behavior changed for this fixture fix.
 IDs, state versions, reference files, ASCII/logo, notices and dependencies are
 unchanged. Physical listening/controller/driver/DAW and Linux WebKit acceptance
 remain separate; no package or release-ready claim follows from these checks.
