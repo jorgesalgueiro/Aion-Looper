@@ -12,6 +12,19 @@ constexpr unsigned bandCount=8;
 constexpr std::array<float,bandCount> bandHz{125,250,500,1000,2000,4000,8000,12000};
 constexpr std::array<float,8> lineMs{31.7f,37.1f,41.3f,43.7f,47.9f,53.3f,59.9f,67.1f};
 constexpr std::array<float,2> diffuseMs{4.7f,12.7f};
+constexpr float modulationSeconds=.0002f;
+unsigned tankFrames(unsigned length,double rate) noexcept {
+ // The interpolated tap must retain the oldest positive modulation excursion.
+ // Two interpolation guards alone let that delay wrap into recent history.
+ return length+static_cast<unsigned>(std::ceil(modulationSeconds*float(rate)))+2;
+}
+float fractionalTap(std::span<const float> data,unsigned pos,unsigned valid,float delay) noexcept {
+ // Both pos and the prepared delay are below capacity: at most one wrap.
+ // Double index arithmetic preserves the tap fraction at high sample rates.
+ double rp=double(pos)-double(delay);if(rp<0)rp+=double(data.size());
+ const auto i0=static_cast<unsigned>(rp);const auto i1=(i0+1)%data.size();const float f=static_cast<float>(rp-double(i0));
+ return (i0<valid?data[i0]:0.f)*(1-f)+(i1<valid?data[i1]:0.f)*f;
+}
 struct Biquad {
  float b0=1,b1=0,b2=0,a1=0,a2=0,z1=0,z2=0;
  float process(float x) noexcept {const float y=b0*x+z1;z1=b1*x-a1*y+z2;z2=b2*x-a2*y;return y;}
@@ -66,11 +79,7 @@ struct PlateReverb::State {
   env={};unmaskCounter=0;modPhase=0;
  }
  float readLine(unsigned i,float modSamples) noexcept {
-  auto& l=lines[i];float d=float(l.len)+modSamples;float rp=float(l.pos)-d;
-  while(rp<0)rp+=float(l.data.size());
-  while(rp>=float(l.data.size()))rp-=float(l.data.size());
-  const auto i0=static_cast<unsigned>(rp);const auto i1=(i0+1)%l.data.size();const float f=rp-float(i0);
-  return (i0<l.valid?l.data[i0]:0.f)*(1-f)+(i1<l.valid?l.data[i1]:0.f)*f;
+  const auto& l=lines[i];return fractionalTap(l.data,l.pos,l.valid,float(l.len)+modSamples);
  }
  void writeLine(unsigned i,float x) noexcept {auto& l=lines[i];l.data[l.pos]=std::isfinite(x)?x:0.f;l.pos=(l.pos+1)%l.data.size();if(l.valid<l.data.size())++l.valid;}
  float allpass(unsigned channel,unsigned stage,float x) noexcept {
@@ -79,7 +88,7 @@ struct PlateReverb::State {
  }
  void prepare(double rate) {
   sr=rate;
-  for(unsigned i=0;i<8;++i){const auto n=std::max(8u,static_cast<unsigned>(lineMs[i]*.001f*float(sr)));lines[i].data.assign(n+2,0.f);lines[i].pos=0;lines[i].len=n;}
+  for(unsigned i=0;i<8;++i){const auto n=std::max(8u,static_cast<unsigned>(lineMs[i]*.001f*float(sr)));lines[i].data.assign(tankFrames(n,sr),0.f);lines[i].pos=0;lines[i].len=n;}
   for(unsigned c=0;c<2;++c)for(unsigned s=0;s<2;++s){const auto n=std::max(4u,static_cast<unsigned>(diffuseMs[s]*.001f*float(sr)));diffusion[c][s].assign(n,0.f);}
   const auto pn=static_cast<size_t>(.1*sr)+4;for(auto& p:predelay)p.assign(pn,0.f);
   setCoefficients();clear();
@@ -97,7 +106,7 @@ struct PlateReverb::State {
   const float pL=readPred(0),pR=readPred(1);
   // Tank.
   modPhase+=2*pi*.7f/float(sr);if(modPhase>2*pi)modPhase-=2*pi;
-  const float mod=std::sin(modPhase)*.0002f*float(sr);
+  const float mod=std::sin(modPhase)*modulationSeconds*float(sr);
   std::array<float,8> r{};
   for(unsigned i=0;i<8;++i){const float v=readLine(i,i<4?mod:-mod);r[i]=lines[i].low.hp(lines[i].damp.lp(v,dampCoef),lowCoef);}
   float sum=0;
@@ -145,7 +154,7 @@ double PlateReverb::sampleRate() const noexcept {return state?state->sr:0;}
 std::size_t PlateReverb::preparationBytes(double sampleRate,const PlateSettings&) noexcept {
  if(!std::isfinite(sampleRate)||sampleRate<8000||sampleRate>384000)return 0;
  size_t frames=0;
- for(float ms:lineMs)frames+=static_cast<size_t>(ms*.001*sampleRate)+4;
+ for(float ms:lineMs)frames+=tankFrames(std::max(8u,static_cast<unsigned>(ms*.001f*float(sampleRate))),sampleRate);
  for(float ms:diffuseMs)frames+=2*(static_cast<size_t>(ms*.001*sampleRate)+4);
  frames+=static_cast<size_t>(.1*sampleRate+4)*2;
  return frames*sizeof(float)+sizeof(State)+1024;

@@ -11,7 +11,33 @@ void operator delete[](void* p)noexcept{::operator delete(p);}
 void operator delete(void* p,std::size_t)noexcept{::operator delete(p);}
 void operator delete[](void* p,std::size_t)noexcept{::operator delete(p);}
 static void check(bool ok,const char* why){if(!ok){std::cerr<<why<<'\n';std::exit(1);}}
+static void modulationHistory(double rate,unsigned block){
+ // Independent chronological history is deliberately longer than the ring.
+ // A positive excursion must read the requested old sample, never a newer
+ // sample obtained by reducing an overlong delay modulo undersized storage.
+ for(float ms:aion::lineMs){
+  const auto length=std::max(8u,static_cast<unsigned>(ms*.001f*float(rate)));
+  std::vector<float> ring(aion::tankFrames(length,rate),0.f);
+  const auto frames=3*ring.size()+block;
+  std::vector<float> history(frames);
+  for(size_t i=0;i<frames;++i)history[i]=float(int(i%997)-498)/512.f;
+  unsigned pos=0,valid=0;
+  for(size_t start=0;start<frames;start+=block)for(size_t n=start;n<std::min(frames,start+block);++n){
+   for(float excursion:{-1.f,-.5f,0.f,.5f,1.f}){
+    const float delay=float(length)+excursion*aion::modulationSeconds*float(rate);
+    const double at=double(n)-double(delay);const auto first=static_cast<long long>(std::floor(at));
+    const auto sample=[&](long long i){return i<0?0.:double(history[static_cast<size_t>(i)]);};
+    const double f=at-double(first),expected=sample(first)*(1-f)+sample(first+1)*f;
+    watched=true;const float actual=aion::fractionalTap(ring,pos,valid,delay);watched=false;
+    check(!heap,"modulated delay reads have no heap operations");
+    if(std::abs(double(actual)-expected)>2e-5){std::cerr<<"rate="<<rate<<" block="<<block<<" length="<<length<<" frame="<<n<<" delay="<<delay<<" expected="<<expected<<" actual="<<actual<<'\n';check(false,"modulated tap equals chronological fractional-delay oracle");}
+   }
+   ring[pos]=history[n];pos=(pos+1)%ring.size();if(valid<ring.size())++valid;
+  }
+ }
+}
 int main(){
+ for(double rate:{8000.,48000.,384000.})for(unsigned block:{64u,128u})modulationHistory(rate,block);
  aion::Peak filter;filter.setup(1000,48000,1.2f);filter.gainDb(-12);
  check(filter.process(1,0)!=0,"left impulse filtered");check(filter.process(0,1)==0,"left history cannot enter right channel");check(filter.process(0,0)!=0,"left keeps its history");
  aion::PlateSettings s;s.enabled=true;s.mix=1;s.unmask=1;
@@ -30,5 +56,5 @@ int main(){
    }
   }
  }
- std::cout<<"PASS plate safety: independent stereo, 15 OOM sites/rate, conservative reservations, lazy reset/fresh PCM at 8/48/384k and 64/128\n";
+ std::cout<<"PASS plate safety: chronological modulated taps, independent stereo, 15 OOM sites/rate, conservative reservations, lazy reset/fresh PCM at 8/48/384k and 64/128\n";
 }

@@ -1553,3 +1553,32 @@ ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build
 
 This is focused acceptance, not a full unrelated core suite, sanitized JUCE run,
 device/listening/DAW/Linux-WebKit validation, distribution package or bug-free claim.
+
+### Machine modulation-history audit — 28 November 2026
+
+The continuing audit at `4b2a1d0` reproduced an undersized tank ring. Each line
+had only two extra interpolation samples, but the 0.2 ms positive modulation
+requires up to 9.6 samples at 48 kHz or 76.8 at 384 kHz. Reducing an overlong tap
+modulo that ring selected recent history, including nonzero startup output where
+the requested delay should still read silence. The independent chronological
+oracle failed at 48 kHz/64, frame 2: 1525.8-sample requested delay, expected 0,
+actual -0.194484 (build/plate-modulation-before.txt).
+
+The worker now allocates nominal length + ceil(maximum excursion) + two guards.
+`preparationBytes` uses the same sizing helper, retaining conservative admission.
+Fractional indexing uses double arithmetic and one bounded wrap. The eight line
+lengths, modulation depth/rate, presets, stored state, UI/CLI/MIDI commands and
+parameter/action IDs remain unchanged. Machine PCM changes to correct the wrong
+delay reads; this is a defect repair, not a new reverb model. No third-party code
+or dependency was added. Source credits and untouched reference/UI assets remain.
+
+The new regression exercises every line at five signed modulation positions,
+startup and three ring traversals, at 8/48/384 kHz with 64/128 partitions,
+against an independent chronological interpolation oracle (absolute 2e-5).
+All existing musical, independent stereo, 15-site OOM, reservation and exact
+lazy-reset/fresh-PCM regressions remain, without relaxed tolerances. Windows
+Release plate musical/safety/storage passes 3/3 (2.59s,
+build/plate-modulation-windows.txt). Production and Linux/sanitizer results follow
+after execution. No physical listening/driver, GUI or release validation is
+implied. Live-control transition quality, per-engine preset identity and legacy
+B/V compatibility still need their own acceptance slices.

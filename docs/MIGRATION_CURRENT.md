@@ -11,6 +11,31 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Machine modulation-history repair — 28 November 2026
+
+Continued the independent audit at `4b2a1d0`. The plate tank allocated only the
+nominal delay plus two samples, while its positive modulation adds up to 9.6
+samples at 48 kHz and 76.8 at 384 kHz. Modulo indexing could therefore read recent
+history instead of the requested long delay. The new chronological-history oracle
+failed before the fix at 48 kHz/64 (frame 2, 1525.8-sample tap returned -0.194484
+instead of startup silence; build/plate-modulation-before.txt).
+
+Preparation now reserves the complete modulation excursion plus interpolation
+guards for all eight lines; memory admission uses that same sizing function.
+Double index arithmetic retains fractional precision, with one bounded wrap.
+Controls, presets, IDs, stored settings and GUI/CLI/MIDI routing are unchanged;
+rendered Machine tails change to correct the erroneous tap history. No borrowed
+code or new dependency. Untracked output image assets remain untouched.
+
+Windows core plate musical/safety/storage checks pass 3/3 (2.59s). The expanded
+safety test compares every line against an independent chronological fractional
+delay at both excursion signs and startup/ring wraps, 8/48/384 kHz and 64/128;
+retains all 15 allocation-failure sites, reservation, stereo and lazy-reset checks.
+Cross-platform/production verification is being completed; see REVERB.md.
+Machine is still a preview: listening, physical devices and Linux WebKit remain
+separate. Next audit slice: live-control transition quality and the remaining
+per-engine preset/legacy B/V compatibility contract, before claiming completion.
+
 ### Machine audit fixes — 28 November 2026
 
 Fixed the six defects found in the `1b71dd0..ef76c73` audit: enabled Machine bank
