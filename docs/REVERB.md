@@ -1578,7 +1578,44 @@ against an independent chronological interpolation oracle (absolute 2e-5).
 All existing musical, independent stereo, 15-site OOM, reservation and exact
 lazy-reset/fresh-PCM regressions remain, without relaxed tolerances. Windows
 Release plate musical/safety/storage passes 3/3 (2.59s,
-build/plate-modulation-windows.txt). Production and Linux/sanitizer results follow
-after execution. No physical listening/driver, GUI or release validation is
-implied. Live-control transition quality, per-engine preset identity and legacy
-B/V compatibility still need their own acceptance slices.
+build/plate-modulation-windows.txt). Production and Linux/sanitizer results are
+below. No physical listening/driver, GUI or release validation is implied.
+Live-control transition quality, per-engine preset identity and legacy B/V
+compatibility still need their own acceptance slices.
+
+Verification of `85cd483`:
+
+- Windows production `native_plate_engine_64/128` passes 2/2 (0.55s,
+  build/plate-modulation-native-windows.txt): command/preset, same-block learned
+  Machine MIDI, enabled joint state restore and engine switching. Windows
+  Standalone Release links. No interaction/bridge code changed, so the prior
+  actual WebView2 results are retained rather than claimed rerun.
+- Core-only Debug ASan/UBSan/leak plate musical/safety/storage passes 3/3
+  (22.09s, build/plate-modulation-sanitized.txt), with no reported sanitizer
+  errors or added suppressions. Existing Debug/plugin-OFF/address+undefined/
+  frame-pointer/linker flags were verified and retained.
+- Native WSL Linux passes all five affected core/production cases 5/5 (2.38s,
+  build/plate-modulation-linux.txt). Linux Standalone Release links. The snapshot
+  helper preserved the unrelated Windows output images; they were not synced.
+  The test-only translation unit still reports the existing anonymous-namespace
+  subobject-linkage warnings from including PlateReverb.cpp; no new dependency,
+  suppression or unrelated refactor was introduced. Timings are test wall times,
+  not callback-deadline/latency measurements. No push or package.
+
+Reproducible commands (use the existing configured caches):
+
+```powershell
+cmake --build build/windows-core --config Release --target aion_plate_safety_tests aion_plate_reverb_tests aion_reverb_storage_tests --parallel 4
+ctest --test-dir build/windows-core -C Release -R '^(plate_.*contract|reverb_storage_contract)$' --output-on-failure --no-tests=error
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_plate_engine_processor_tests --parallel 4
+ctest --test-dir build/windows -C Release -R '^native_plate_engine_(64|128)$' --output-on-failure --no-tests=error
+```
+
+After local commit and SetupWslWorkspace snapshot sync, in the native Linux root:
+
+```sh
+cmake --build build/linux --target AionLooper_Standalone aion_plate_engine_processor_tests aion_plate_reverb_tests aion_plate_safety_tests aion_reverb_storage_tests --parallel 2
+ctest --test-dir build/linux -R '^(plate_.*contract|reverb_storage_contract|native_plate_engine_(64|128))$' --output-on-failure --no-tests=error
+cmake --build build/drive-sanitized --target aion_plate_reverb_tests aion_plate_safety_tests aion_reverb_storage_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(plate_.*contract|reverb_storage_contract)$' --output-on-failure --no-tests=error
+```

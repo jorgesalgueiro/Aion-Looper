@@ -31,7 +31,12 @@ Windows core plate musical/safety/storage checks pass 3/3 (2.59s). The expanded
 safety test compares every line against an independent chronological fractional
 delay at both excursion signs and startup/ring wraps, 8/48/384 kHz and 64/128;
 retains all 15 allocation-failure sites, reservation, stereo and lazy-reset checks.
-Cross-platform/production verification is being completed; see REVERB.md.
+Source `85cd483`: production Machine command/MIDI/state passes 2/2 on Windows
+(0.55s). Native WSL Linux passes the same five core/production cases 5/5 (2.38s);
+both Standalone Release targets link. Core-only Debug ASan/UBSan/leak passes
+plate musical/safety/storage 3/3 (22.09s), without reported errors/suppressions.
+See REVERB.md for exact commands. No GUI code changed; prior WebView2 evidence
+is retained, not claimed rerun. No push/package or full unrelated suite.
 Machine is still a preview: listening, physical devices and Linux WebKit remain
 separate. Next audit slice: live-control transition quality and the remaining
 per-engine preset/legacy B/V compatibility contract, before claiming completion.
