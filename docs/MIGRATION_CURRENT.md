@@ -37,8 +37,11 @@ and 64/128 with unchanged 1e-6 PCM tolerance. Independent worker adoption gives
 Machine graphs different legitimate modulation ages: the added fixture uses a
 shared production chain remove/reinsert reset before comparison, not a sound
 change or tolerance adjustment (initial mismatch retained in build log).
-Linux/sanitizer verification is in progress; see REVERB.md. Remaining live
-Decay/Damping/Low Cut/Pre-delay/Unmask transition quality and per-engine preset/
+Source `6099d7a`: native WSL Linux passes all 12 affected core/production cases
+(4.43s); core-only Debug ASan/UBSan/leak passes all 10 core cases (64.52s), with
+no reported errors/suppressions. Both Standalone Release targets link. See
+REVERB.md for exact commands. Prior actual UI evidence is retained, not rerun.
+Remaining live Decay/Damping/Low Cut/Pre-delay/Unmask transition quality and per-engine preset/
 legacy B/V compatibility still need their own slices. Listening, devices,
 Linux WebKit and release acceptance remain separate. No push/package.
 

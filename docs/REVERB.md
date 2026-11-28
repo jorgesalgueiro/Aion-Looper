@@ -1660,9 +1660,38 @@ build/plate-transition-windows.txt); final expanded transition edge cases 6/6
 (0.95s, build/plate-transition-final-windows.txt); Engine MIDI PCM 1/1 (2.54s,
 build/plate-transition-midi-windows.txt); production Machine command/MIDI/
 enabled joint state restore 2/2 (0.91s, build/plate-transition-native-windows.txt).
-Standalone links. Linux/sanitizer verification follows after execution. No GUI
+Standalone links. Source `6099d7a`: native WSL Linux passes all 12 affected
+core/production cases (4.43s, build/plate-transition-linux.txt), and Linux
+Standalone links. Core-only Debug ASan/UBSan/leak passes all 10 core cases
+(64.52s, build/plate-transition-sanitized.txt) with no reported errors or added
+suppressions. Existing instrumented cache flags were verified and retained.
+These are test wall times, not callback deadline/latency measurements. No GUI
 code changed; prior real WebView2 results are retained, not claimed rerun.
 
 Remaining: Decay/Damping/Low Cut/Pre-delay/Unmask transition quality, per-engine
 preset identity and legacy B/V compatibility, physical listening/controllers,
 drivers/DAWs and Linux WebKit. No full-suite/release-ready or zero-bug claim.
+
+Reproducible affected-target commands (configure only for the added CMake tests):
+
+```powershell
+cmake -S . -B build/windows-core
+cmake --build build/windows-core --config Release --target aion_plate_transition_tests aion_plate_reverb_tests aion_plate_safety_tests aion_reverb_storage_tests aion_reverb_midi_audio_tests --parallel 4
+ctest --test-dir build/windows-core -C Release -R '^(plate_.*|reverb_storage_contract|reverb_midi_audio_contract)$' --output-on-failure --no-tests=error
+cmake --build build/windows --config Release --target AionLooper_Standalone aion_plate_engine_processor_tests --parallel 4
+ctest --test-dir build/windows -C Release -R '^native_plate_engine_(64|128)$' --output-on-failure --no-tests=error
+```
+
+After the documented committed WSL snapshot sync, from the native Linux root:
+
+```sh
+cmake -S . -B build/linux
+cmake --build build/linux --target AionLooper_Standalone aion_plate_engine_processor_tests aion_plate_transition_tests aion_plate_reverb_tests aion_plate_safety_tests aion_reverb_storage_tests aion_reverb_midi_audio_tests --parallel 2
+ctest --test-dir build/linux -R '^(plate_.*|reverb_storage_contract|reverb_midi_audio_contract|native_plate_engine_(64|128))$' --output-on-failure --no-tests=error
+cmake -S . -B build/drive-sanitized
+cmake --build build/drive-sanitized --target aion_plate_transition_tests aion_plate_reverb_tests aion_plate_safety_tests aion_reverb_storage_tests aion_reverb_midi_audio_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(plate_.*|reverb_storage_contract|reverb_midi_audio_contract)$' --output-on-failure --no-tests=error
+```
+
+The sanitizer commands retain the existing core-only Debug configuration with
+`-fsanitize=address,undefined -fno-omit-frame-pointer` and matching linker flags.
