@@ -1456,8 +1456,9 @@ plate set/preset, live MIDI, v2 save/restore and switch back);
 `plate_reverb_contract`, `reverb_storage_contract`, Reverb state/commands, joint
 effects and Reverb MIDI pass; Reverb UI 64/128 passes the engine switch, machine
 labels/ranges/presets, Decay/Unmask controls and machine MIDI learn. Delay UI
-64/128 and FrontendTests/BridgeTests pass. Linux builds the same sources; its
-target results are recorded after the committed sync.
+64/128 and FrontendTests/BridgeTests pass. Linux (clean native WSL checkout at
+this commit) builds the same sources and passes the machine/state/command/MIDI/
+joint/plate/storage/loopbank set 14/14 (14.38 s).
 
 Limits: no listening, physical-controller, device/DAW or Linux WebKit acceptance.
 The legacy browser-only V bank is not a native state source; version 1 native

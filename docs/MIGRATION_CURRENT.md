@@ -54,8 +54,9 @@ engine selector and machine labels/ranges/preset family, and live machine MIDI o
 targets 153–158. `native_plate_engine` 64/128 passes (command, MIDI, v2 save/
 restore, switch back); Reverb state/commands, joint effects, Reverb MIDI,
 plate/storage contracts and Reverb UI 64/128 (engine switch, controls, machine MIDI)
-pass. Linux builds the same sources; results are recorded after the sync. Listening,
-physical controller, device/DAW and Linux WebKit remain pending.
+pass. Linux builds the same sources and passes the machine/state/command/MIDI/
+joint/plate/storage/loopbank set 14/14 (14.38 s). Listening, physical controller,
+device/DAW and Linux WebKit remain pending.
 
 ### Prepared shape MIDI for Reverb Duration/Decay — 27 November 2026
 
