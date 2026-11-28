@@ -1512,3 +1512,44 @@ Windows (1.16s); no tolerance or production behavior changed for this fixture fi
 IDs, state versions, reference files, ASCII/logo, notices and dependencies are
 unchanged. Physical listening/controller/driver/DAW and Linux WebKit acceptance
 remain separate; no package or release-ready claim follows from these checks.
+
+Verification checkpoint (`2fbdb3e`, fixture-only follow-up `a379161`):
+
+- Windows Release native Machine/Reverb/Delay MIDI, reverb state/commands,
+  Delay state and joint effects 14/14 pass (63.47s,
+  build/machine-fixes-native-final.txt). Standalone and mouse host link.
+- Windows affected core run: 17/19 pass, with only the two obsolete preset-18
+  bounds failing. After the documented fixture correction, preparation/owner/
+  unchanged-JS reference 3/3 pass (1.16s, build/machine-fixes-catalogue.txt).
+  The other 17 unchanged passing cases were not repeated for this test-only fix.
+- Native Linux mirror was clean and synced with SetupWslWorkspace. All affected
+  core/processor/Standalone targets build; combined affected set 33/33 passes
+  (53.05s, build/machine-fixes-linux-final.txt), including the corrected catalogue
+  cases, original-JS settings, enabled Machine bank and stale MIDI barriers.
+- Core-only Debug ASan/UBSan/leak: plate musical, plate safety and MIDI audio
+  3/3 pass (27.67s, build/machine-fixes-sanitizer-tests.txt), no reported errors
+  or added suppressions. Existing plugin-OFF/Debug, address+undefined, frame
+  pointer and linker instrumentation flags were verified and retained.
+- FrontendTests and BridgeTests pass. Actual Reverb/Machine WebView2 passes at
+  64/128 (build/machine-fixes-reverb-ui.txt), including ambiguous preset family,
+  host-state restore, shape/live Learn, reload and retained nonzero PCM/identity.
+- Retained Delay WebView2 passes at 64/128 (build/machine-fixes-delay-ui.txt),
+  preserving Feedback/exact modes, ranges/Sync, precision, reset, reload/bypass
+  and continuing native PCM/clip identity after the shared telemetry correction.
+
+Relevant commands (native Linux root for Linux/sanitizer commands):
+
+```powershell
+ctest --test-dir build/windows -C Release -R '^native_(plate_engine|reverb_midi|delay_midi|reverb_state_processor|reverb_commands|delay_state_processor|joint_effects_processor)_(64|128)$' --output-on-failure --no-tests=error
+ctest --test-dir build/windows-core -C Release -R '^(plate_.*contract|reverb_midi_audio_contract|reverb_bank_contract|effects_reverb_coordinated_bank.*contract|reverb_settings_owner_contract|reverb_storage_contract|reverb_loopbank_.*|reverb_preparation_contract|original_reverb_settings_contract)$' --output-on-failure --no-tests=error
+./tools/TestReverbUi.ps1
+./tools/TestDelayUi.ps1
+```
+
+```sh
+ctest --test-dir build/linux -R '^(native_(plate_engine|reverb_midi|delay_midi|reverb_state_processor|reverb_commands|delay_state_processor|joint_effects_processor)_(64|128)|plate_.*contract|reverb_midi_audio_contract|reverb_bank_contract|effects_reverb_coordinated_bank.*contract|reverb_settings_owner_contract|reverb_storage_contract|reverb_loopbank_.*|reverb_preparation_contract|original_reverb_settings_contract)$' --output-on-failure --no-tests=error
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(plate_reverb_contract|plate_safety_contract|reverb_midi_audio_contract)$' --output-on-failure --no-tests=error
+```
+
+This is focused acceptance, not a full unrelated core suite, sanitized JUCE run,
+device/listening/DAW/Linux-WebKit validation, distribution package or bug-free claim.

@@ -32,7 +32,13 @@ supports `reverb <track> engine --engine machine|convolution` and a preset-famil
 The enabled-state regression also exposed missing transition flags in the full
 audio snapshot. Those flags now match the audio owner for B and D, preventing
 false ready-for-edit reporting during adoption. Windows critical native cases
-pass 64/128; final Windows/Linux/UI/sanitizer evidence is recorded in REVERB.md.
+pass 64/128. Source `2fbdb3e` plus fixture follow-up `a379161`: all 14 Windows
+processor/state/CLI cases pass; the affected core cases pass after correcting
+the two stale catalogue bounds with expanded replacement coverage. Native Linux
+passes the complete affected set 33/33 (53.05s); core-only Debug ASan/UBSan/leak
+passes 3/3 (27.67s). Actual Reverb/Machine WebView2 passes at 64/128, including
+bright-plate family ownership; retained Delay WebView2 also passes at 64/128.
+Both Standalone Release targets link. Exact commands and limits are in REVERB.md.
 Physical listening/controllers, drivers/DAWs and Linux WebKit remain separate.
 
 ### Independent B integration audit / MIDI PCM acceptance — 27 November 2026
