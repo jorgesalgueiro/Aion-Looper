@@ -31,6 +31,8 @@ public:
  // preserves the previous prepared processor.
  bool prepare(double sampleRate,const PlateSettings&,const std::atomic<bool>* cancelled=nullptr) noexcept;
  // Live controls; no allocation, no FFT/graph rebuild. Invalid edits reject atomically.
+ // Mix and enable ramp for 20 ms; settings() immediately reports the target.
+ // Settled bypass discards the tank history; a rapid reversal retains it.
  bool set(const PlateSettings&) noexcept;
  // Zero-latency scalar block path. One audio owner, no locks.
  bool process(std::span<const float> left,std::span<const float> right,

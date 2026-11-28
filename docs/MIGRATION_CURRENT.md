@@ -11,6 +11,37 @@ below is historical, not a requirement to rebuild wrappers on each engine fix.
 
 ## Active work — core loop-track buttons, 9 November 2026
 
+### Machine Mix/bypass transition repair — 28 November 2026
+
+Reproduced abrupt Mix and enable/disable changes with six failing public stereo
+PCM regressions at 64/128 (build/plate-transition-before.txt). Both controls now
+use sample-counted 20 ms ramps, beginning at the current audio value; repeated
+targets do not restart a ramp. Requested settings/receipts remain immediate.
+Rapid bypass reversal retains the tank, while settled bypass resets fixed
+metadata/filter state and sleeps at exact dry. Re-enable starts a clean tank
+with a ramp; destructive reset latches targets and cancels ramps. This matches
+the existing convolution bypass lifecycle instead of freezing stale Machine
+audio for later revival. Presets, state schema, command/action/MIDI IDs and
+GUI/CLI routes remain unchanged. No new dependencies or borrowed code.
+
+Windows: plate musical/safety/storage plus initial transitions 9/9 (3.39s);
+final expanded transitions 6/6 (0.95s); expanded Engine MIDI PCM 1/1 (2.54s);
+production Machine command/MIDI/enabled-state restore 2/2 (0.91s); Standalone
+Release links. The transition oracle covers stereo, 8/48/384 kHz, rapid/repeated
+edits, irregular/empty spans, rejected NaN edits, settled dry, wake and mid-ramp
+reset with zero tracked callback heap work and a 2e-6 PCM limit.
+
+The MIDI oracle retains all four original convolution cases and adds all six
+Machine controls, scheduled owner vs preassigned/same-block Learn at 8/48 kHz
+and 64/128 with unchanged 1e-6 PCM tolerance. Independent worker adoption gives
+Machine graphs different legitimate modulation ages: the added fixture uses a
+shared production chain remove/reinsert reset before comparison, not a sound
+change or tolerance adjustment (initial mismatch retained in build log).
+Linux/sanitizer verification is in progress; see REVERB.md. Remaining live
+Decay/Damping/Low Cut/Pre-delay/Unmask transition quality and per-engine preset/
+legacy B/V compatibility still need their own slices. Listening, devices,
+Linux WebKit and release acceptance remain separate. No push/package.
+
 ### Machine modulation-history repair — 28 November 2026
 
 Continued the independent audit at `4b2a1d0`. The plate tank allocated only the

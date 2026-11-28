@@ -1619,3 +1619,50 @@ ctest --test-dir build/linux -R '^(plate_.*contract|reverb_storage_contract|nati
 cmake --build build/drive-sanitized --target aion_plate_reverb_tests aion_plate_safety_tests aion_reverb_storage_tests --parallel 2
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/drive-sanitized -R '^(plate_.*contract|reverb_storage_contract)$' --output-on-failure --no-tests=error
 ```
+
+### Machine Mix/bypass transitions — 28 November 2026
+
+Continued at `05c40c7`. Mix and bypass previously changed immediately, and bypass
+froze the old tank so it returned on re-enable. Six new public stereo PCM tests
+failed before repair (build/plate-transition-before.txt). Mix and enable now
+use finite 20 ms sample-counted ramps from their current level. Repeated targets
+do not extend the ramp; reversals retarget without a step. Settings/receipts
+still report the requested values immediately. A prepared graph/reset latches
+current targets; ordinary edits never allocate or rebuild. Once fully bypassed,
+fixed metadata/filter reset invalidates delay history and the processor sleeps
+at bit-exact dry. Waking clears/latches targets and ramps enable from zero.
+Rapid reversal before full bypass retains the existing tank. This adopts the
+verified convolution bypass lifecycle; no original preset, control range, ID,
+state version, GUI/CLI/MIDI route or unmodified UI/reference asset changes.
+
+`plate_transition_{mix,enable,recovery}_{64,128}` compares actual output with a
+static wet engine plus an independent absolute-sample envelope (2e-6 absolute
+PCM), at 8/48/384 kHz. Covers distinct stereo input, nonzero effect PCM, exact
+settled dry, repeated/nonmonotonic targets, mid-ramp reversal, clean re-enable,
+irregular/one-sample/empty spans, invalid NaN edits and reset during an active
+ramp against fresh PCM. No tracked callback allocation/free; reset remains
+fixed metadata/filter work. Existing musical, modulation-history, stereo/OOM/
+reservation/lazy-reset assertions remain unchanged.
+
+Expanded `reverb_midi_audio_contract` keeps all original convolution cases and
+adds all six Machine controls: actual paired Engine PCM, scheduled shared-owner
+vs preassigned and same-block learned MIDI, offsets 0/17/last, nonmonotonic CC,
+exact settings/owner proof, clear/suspend/recovery, 8/48 kHz and 64/128. Its
+existing 1e-6 tolerance remains. Initial Machine comparison exposed a fixture
+alignment issue: separate workers adopt on different callbacks, leaving different
+legitimate persistent modulation ages (build/plate-transition-midi-before-alignment.txt).
+Only the added Machine fixture uses the existing production chain remove/reinsert
+reset to establish common history/phase before playback. No existing case was
+removed or relaxed; DSP timing was not changed to align independent fixtures.
+
+Windows Release: initial plate musical/safety/storage/transition 9/9 (3.39s,
+build/plate-transition-windows.txt); final expanded transition edge cases 6/6
+(0.95s, build/plate-transition-final-windows.txt); Engine MIDI PCM 1/1 (2.54s,
+build/plate-transition-midi-windows.txt); production Machine command/MIDI/
+enabled joint state restore 2/2 (0.91s, build/plate-transition-native-windows.txt).
+Standalone links. Linux/sanitizer verification follows after execution. No GUI
+code changed; prior real WebView2 results are retained, not claimed rerun.
+
+Remaining: Decay/Damping/Low Cut/Pre-delay/Unmask transition quality, per-engine
+preset identity and legacy B/V compatibility, physical listening/controllers,
+drivers/DAWs and Linux WebKit. No full-suite/release-ready or zero-bug claim.

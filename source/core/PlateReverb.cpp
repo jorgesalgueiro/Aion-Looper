@@ -43,6 +43,19 @@ struct Peak {
   b0=(1+alpha*A)/a0;b1=-2*cosw/a0;b2=(1-alpha*A)/a0;a1=-2*cosw/a0;a2=(1-alpha/A)/a0;}
 };
 struct OnePole {float z=0,prevIn=0,prevOut=0;float lp(float x,float a) noexcept {z=a*z+(1-a)*x;return z;}float hp(float x,float a) noexcept {const float y=a*(prevOut+x-prevIn);prevIn=x;prevOut=y;return y;}};
+struct LinearRamp {
+ double value=0,target=0,step=0;unsigned remaining=0;
+ void reset(double x) noexcept {value=target=x;step=0;remaining=0;}
+ void set(double x,unsigned frames) noexcept {
+  if(x==target)return; // Repeated MIDI values must not postpone completion.
+  target=x;remaining=frames;step=(target-value)/double(frames);
+ }
+ double next() noexcept {
+  const double result=value;
+  if(remaining){if(!--remaining)value=target;else value+=step;}
+  return result;
+ }
+};
 }
 struct PlateReverb::State {
  double sr=48000;PlateSettings settings{};
@@ -59,6 +72,7 @@ struct PlateReverb::State {
  std::array<float,bandCount> env{};
  std::array<bool,bandCount> bandActive{};
  float dampCoef=.5f,lowCoef=.1f,attCoef=.9f,relCoef=.999f;
+ LinearRamp mix,enable;unsigned rampFrames=1;bool asleep=true;
  unsigned predelaySamples=0,unmaskCounter=0;float modPhase=0;
  void setCoefficients() noexcept {
   for(auto& l:lines){const float sec=float(l.len)/float(sr);l.gain=std::min(.9995f,std::pow(10.f,-3.f*sec/std::max(.1f,settings.decay)));}
@@ -77,6 +91,7 @@ struct PlateReverb::State {
   for(auto& p:peaks)p.clear();
   for(auto& a:analysis)a.clear();
   env={};unmaskCounter=0;modPhase=0;
+  mix.reset(settings.mix);enable.reset(settings.enabled?1.:0.);asleep=!settings.enabled;
  }
  float readLine(unsigned i,float modSamples) noexcept {
   const auto& l=lines[i];return fractionalTap(l.data,l.pos,l.valid,float(l.len)+modSamples);
@@ -87,13 +102,14 @@ struct PlateReverb::State {
   auto& valid=diffusionValid[channel][stage];const float y=-.6f*x+(p<valid?d[p]:0.f);d[p]=x+.6f*y;p=(p+1)%len;if(valid<len)++valid;return y;
  }
  void prepare(double rate) {
-  sr=rate;
+  sr=rate;rampFrames=static_cast<unsigned>(std::ceil(.02*sr));
   for(unsigned i=0;i<8;++i){const auto n=std::max(8u,static_cast<unsigned>(lineMs[i]*.001f*float(sr)));lines[i].data.assign(tankFrames(n,sr),0.f);lines[i].pos=0;lines[i].len=n;}
   for(unsigned c=0;c<2;++c)for(unsigned s=0;s<2;++s){const auto n=std::max(4u,static_cast<unsigned>(diffuseMs[s]*.001f*float(sr)));diffusion[c][s].assign(n,0.f);}
   const auto pn=static_cast<size_t>(.1*sr)+4;for(auto& p:predelay)p.assign(pn,0.f);
   setCoefficients();clear();
  }
  void process(float inL,float inR,float& outL,float& outR) noexcept {
+  if(asleep){outL=inL;outR=inR;return;}
   const float dryL=inL,dryR=inR;
   // Dry analysis for the carver (mono sum, pre-reverb).
   const float dryM=(inL+inR)*.5f;
@@ -121,8 +137,14 @@ struct PlateReverb::State {
     for(unsigned b=0;b<bandCount;++b){const float db=env[b]>1e-9f?20*std::log10(env[b]):-120.f;
      const float n=std::clamp((db+50.f)/35.f,0.f,1.f);peaks[b].gainDb(-12.f*settings.unmask*n);}}
     for(unsigned b=0;b<bandCount;++b){wetL=peaks[b].process(wetL,0);wetR=peaks[b].process(wetR,1);}}
-  const float mix=std::clamp(settings.mix,0.f,1.f);
-  outL=dryL*(1-mix)+wetL*mix;outR=dryR*(1-mix)+wetR*mix;
+  const double blend=mix.next(),amount=enable.next();
+  const double effectL=double(dryL)+(double(wetL)-double(dryL))*blend;
+  const double effectR=double(dryR)+(double(wetR)-double(dryR))*blend;
+  outL=static_cast<float>(double(dryL)+(effectL-double(dryL))*amount);
+  outR=static_cast<float>(double(dryR)+(effectR-double(dryR))*amount);
+  // Retire history only after the bypass ramp. A quick reversal keeps the
+  // current tail/envelope; waking from settled bypass starts a clean tank.
+  if(!settings.enabled&&!enable.remaining)clear();
  }
 };
 bool validPlateSettings(const PlateSettings& s) noexcept {
@@ -139,12 +161,13 @@ bool PlateReverb::prepare(double sampleRate,const PlateSettings& s,const std::at
 }
 bool PlateReverb::set(const PlateSettings& s) noexcept {
  if(!state||!validPlateSettings(s))return false;
- state->settings=s;state->setCoefficients();return true;
+ state->settings=s;state->setCoefficients();
+ if(state->asleep&&s.enabled){state->clear();state->enable.reset(0);state->asleep=false;}
+ state->mix.set(s.mix,state->rampFrames);state->enable.set(s.enabled?1.:0.,state->rampFrames);return true;
 }
 bool PlateReverb::process(std::span<const float> left,std::span<const float> right,std::span<float> outLeft,std::span<float> outRight) noexcept {
  if(left.size()!=right.size()||left.size()!=outLeft.size()||left.size()!=outRight.size())return false;
  if(!state){for(size_t i=0;i<left.size();++i){outLeft[i]=left[i];outRight[i]=right[i];}return true;}
- if(!state->settings.enabled){for(size_t i=0;i<left.size();++i){outLeft[i]=left[i];outRight[i]=right[i];}return true;}
  for(size_t i=0;i<left.size();++i){float l=0,r=0;state->process(left[i],right[i],l,r);outLeft[i]=l;outRight[i]=r;}
  return true;
 }
