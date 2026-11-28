@@ -72,6 +72,24 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  for(let n=0;n<600;++n){const st=await snapshot();if(!st.tracks[0].reverbBusy&&st.tracks[0].reverb.values.duration===.1)break;await wait(50);}
  assert.equal((await snapshot()).tracks[0].reverb.values.duration,.1,'prepared Duration CC applies after its receipt');
  await click('#reverbDuration','right',8);await until(s=>s.midi.bindings[157]===0,'clear Duration binding');
+ const setEngine=async value=>{await evaluate(`(()=>{const e=document.querySelector('#sel_reverb_engine');e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change'));})()`);};
+ await setEngine('machine');await until(s=>s.tracks[0].reverb.engine==='machine'&&s.tracks[0].reverbReady,'Machine engine switch');
+ assert(await evaluate(`document.querySelector('#native-reverb-title').textContent.includes('MACHINE PLATE')`),'Machine title');
+ assert(await evaluate(`document.querySelector('#sel_reverb').options.length===8&&document.querySelector('#sel_reverb').options[1].value==='smooth-plate'`),'Machine preset family');
+ assert(await evaluate(`document.querySelector('#reverbVolume').previousElementSibling.textContent==='Decay'&&document.querySelector('#reverbVolume').max==='10'`),'Machine control labels/ranges');
+ await evaluate(`(()=>{const e=document.querySelector('#reverbVolume');e.value='4';e.dispatchEvent(new Event('input'));})()`);
+ await until(s=>s.tracks[0].reverb.plate.decay===4,'Machine decay command');
+ await evaluate(`(()=>{const e=document.querySelector('#reverbPredelay');e.value='.8';e.dispatchEvent(new Event('input'));})()`);
+ await until(s=>s.tracks[0].reverb.plate.unmask===.8,'Machine unmask command');
+ const machineSnapshot=await snapshot();assert(machineSnapshot.tracks[0].waveformId&&machineSnapshot.tracks[0].state!=='empty','Machine keeps the loop');
+ await click('#reverbPredelay','right');await until(s=>s.midi.learnTarget===158,'Machine Unmask learn target');
+ await inject([[179,28,0,3,17],[179,28,64,3,18]]);
+ const expectedUnmask=64/127; // plate Unmask range is 0..1
+ for(let n=0;n<200;++n){const st=await snapshot();if(!st.tracks[0].reverbBusy&&st.tracks[0].reverb.plate.unmask===expectedUnmask)break;await wait(50);}
+ assert.equal((await snapshot()).tracks[0].reverb.plate.unmask,expectedUnmask,'Machine Unmask CC applies live');
+ await click('#reverbPredelay','right',8);await until(s=>s.midi.bindings[158]===0,'clear Machine Unmask binding');
+ await setEngine('convolution');await until(s=>s.tracks[0].reverb.engine==='convolution'&&s.tracks[0].reverbReady,'Convolution switch back');
+ assert(await evaluate(`document.querySelector('#reverbVolume').previousElementSibling.textContent==='Vol'`),'Convolution labels restored');
  await wait(200);await click('#loop-0-reverb');const end=await until(s=>!s.tracks[0].reverb.enabled&&s.tracks[0].reverbReady,'bypass after reload');assert.equal(end.tracks[0].waveformId,take.tracks[0].waveformId);assert(!await evaluate(`!!window.state?.audioContext`));assert.deepEqual(errors,[]);
- console.log('PASS actual Reverb UI '+process.argv[2]+': B row/panel enable, preset catalogue, six original ranges, Custom-on-edit, preset/room, Reset, exact precision, panel bypass, reload, LIVE binding, host state save/load restore, B MIDI Learn/clear on live and prepared shape controls and unchanged native nonzero PCM/clip');
+ console.log('PASS actual Reverb UI '+process.argv[2]+': B row/panel enable, preset catalogue, six original ranges, Custom-on-edit, preset/room, Reset, exact precision, panel bypass, reload, LIVE binding, host state save/load restore, B MIDI Learn/clear on live and prepared shape controls, Machine plate engine switch/labels/presets/decay/unmask, machine MIDI learn and unchanged native nonzero PCM/clip');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>socket?.close());

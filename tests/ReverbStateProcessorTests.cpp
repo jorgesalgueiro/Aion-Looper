@@ -56,7 +56,7 @@ struct Fixture {
  static juce::MemoryBlock binary(const juce::XmlElement& x){juce::MemoryBlock b;AionProcessor::copyXmlToBinary(x,b);return b;}
  void load(const juce::MemoryBlock& b){p->setStateInformation(b.getData(),static_cast<int>(b.getSize()));}
  void verify(const Bank& expected){check(Access::bound(*p),"reverb owner bound");
-  auto saved=xml(save());auto* bank=saved->getChildByName("LoopReverbs");check(bank&&bank->getIntAttribute("version")==1&&bank->getNumChildElements()==20,"versioned complete B bank");
+  auto saved=xml(save());auto* bank=saved->getChildByName("LoopReverbs");check(bank&&bank->getIntAttribute("version")==2&&bank->getNumChildElements()==20,"versioned complete B bank");
   for(unsigned id=0;id<20;++id){const auto native=p->inspectAudioThread(id).track;const auto* row=bank->getChildElement(static_cast<int>(id));const auto& s=expected[id];
    check(native.reverb==s,"native B matches serialized candidate exactly");
    check(row->getIntAttribute("track")==static_cast<int>(id)&&row->getBoolAttribute("enabled")==s.enabled&&row->getIntAttribute("preset")==s.preset,"B identity/enabled/preset persisted");
@@ -92,7 +92,7 @@ int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;const unsigne
   const auto before=f.save();const bool wasPending=Access::pending(*f.p);const auto bad=Fixture::binary(*x);f.load(bad);
   check(Access::pending(*f.p)==wasPending,"malformed state preserves pending ownership");check(before==f.save(),"malformed B rejects entire state unchanged");++rejected;
  };
- invalid([](auto& x){x.getChildByName("LoopReverbs")->setAttribute("version",2);});
+ invalid([](auto& x){x.getChildByName("LoopReverbs")->setAttribute("version",3);});
  invalid([](auto& x){x.getChildByName("LoopReverbs")->removeAttribute("version");});
  invalid([](auto& x){x.addChildElement(new juce::XmlElement(*x.getChildByName("LoopReverbs")));});
  invalid([](auto& x){x.getChildByName("LoopReverbs")->removeChildElement(x.getChildByName("LoopReverbs")->getChildElement(19),true);});

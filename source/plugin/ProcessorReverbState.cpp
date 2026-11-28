@@ -18,12 +18,14 @@ juce::String exact(double value){
 void AionProcessor::saveReverbs(juce::ValueTree& state){
  std::lock_guard guard(midiSettingsMutex);
  serviceReverb(); // Drain exact edit/bank receipts; protect accepted loads/clear intent.
- juce::ValueTree bank("LoopReverbs");bank.setProperty("version",1,nullptr);
+ juce::ValueTree bank("LoopReverbs");bank.setProperty("version",2,nullptr);
  for(unsigned id=0;id<reverbSettings.size();++id){const auto& settings=reverbSettings[id];juce::ValueTree row("Reverb");
   row.setProperty("track",static_cast<int>(id),nullptr);row.setProperty("enabled",settings.enabled,nullptr);
   row.setProperty("room",key(aion::reverbRooms[static_cast<unsigned>(settings.room)].name),nullptr);
+  row.setProperty("engine",settings.engine==aion::ReverbEngine::machine?"machine":"convolution",nullptr);
   row.setProperty("preset",static_cast<int>(settings.preset),nullptr);
   for(unsigned p=0;p<aion::reverbControls.size();++p)row.setProperty(key(aion::reverbControls[p].name),exact(settings.values[p]),nullptr);
+  for(unsigned p=0;p<aion::plateControls.size();++p)row.setProperty("plate"+juce::String(p),exact(settings.plate[p]),nullptr);
   bank.appendChild(row,nullptr);
  }
  state.removeChild(state.getChildWithName("LoopReverbs"),nullptr);state.appendChild(bank,nullptr);
@@ -32,7 +34,8 @@ bool AionProcessor::readReverbs(const juce::ValueTree& state,aion::ReverbSetting
  aion::ReverbSettingsOwner::Bank candidate{};const auto bank=state.getChildWithName("LoopReverbs");
  if(!bank.isValid()){output=candidate;return true;} // Pre-B native sessions: original defaults, disabled.
  unsigned count=0;for(const auto& child:state)if(child.hasType("LoopReverbs"))++count;
- if(count!=1||bank.getProperty("version").toString()!="1"||bank.getNumChildren()!=static_cast<int>(candidate.size()))return false;
+ const auto version=bank.getProperty("version").toString();
+ if(count!=1||(version!="1"&&version!="2")||bank.getNumChildren()!=static_cast<int>(candidate.size()))return false;
  std::array<bool,aion::LoopBank::trackCount> seen{};
  for(const auto& row:bank){unsigned id=0,preset=0;
   if(!row.hasType("Reverb")||row.getNumChildren()!=0||!number(row.getProperty("track"),id)||id>=candidate.size()||seen[id])return false;
@@ -40,9 +43,18 @@ bool AionProcessor::readReverbs(const juce::ValueTree& state,aion::ReverbSetting
   if(enabled!="0"&&enabled!="1")return false;settings.enabled=enabled=="1";
   const auto room=row.getProperty("room").toString();bool roomFound=false;
   for(unsigned r=0;r<aion::reverbRooms.size();++r)if(room==key(aion::reverbRooms[r].name)){settings.room=static_cast<aion::ReverbRoom>(r);roomFound=true;break;}
-  if(!roomFound||!number(row.getProperty("preset"),preset)||preset>aion::reverbPresetNames.size())return false;
+  if(!roomFound)return false;
+  settings.engine=aion::ReverbEngine::convolution;settings.plate=aion::plateDefaults();
+  if(version=="2"){
+   const auto engine=row.getProperty("engine").toString();
+   if(engine!="convolution"&&engine!="machine")return false;
+   if(engine=="machine")settings.engine=aion::ReverbEngine::machine;
+  }
+  const auto maxPreset=settings.engine==aion::ReverbEngine::machine?aion::platePresetNames.size():aion::reverbPresetNames.size();
+  if(!number(row.getProperty("preset"),preset)||preset>maxPreset)return false;
   settings.preset=static_cast<std::uint8_t>(preset);
   for(unsigned p=0;p<aion::reverbControls.size();++p)if(!number(row.getProperty(key(aion::reverbControls[p].name)),settings.values[p]))return false;
+  if(version=="2")for(unsigned p=0;p<aion::plateControls.size();++p)if(!number(row.getProperty("plate"+juce::String(p)),settings.plate[p]))return false;
   if(!aion::validReverbSettings(settings))return false;
  }
  output=candidate;return true; // No state/owner/APVTS mutation until the bank validates.

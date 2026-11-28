@@ -8,7 +8,15 @@ bool Engine::applyReverbMidi(unsigned track,unsigned slider,unsigned cc) noexcep
   ||reverbMidiGeneration.load(std::memory_order_acquire)!=generation()
   ||coordinatedReverbBank.load(std::memory_order_acquire)||pendingArpBank.active||pendingReverbBank->active
   ||(*pendingReverb)[track].active||!reverbMidiResults->canPush())return false;
- const auto old=loops.trackView(track);const auto parameter=reverbMidiControls[slider];const double value=reverbMidiValue(slider,cc);
+ const auto old=loops.trackView(track);
+ // Machine exposes all six plate controls live; targets 153..158 map by position.
+ if(old.reverb.engine==ReverbEngine::machine){
+  if(slider>=plateControls.size())return false;
+  auto settings=old.reverb;const double value=plateMidiValue(slider,cc);
+  if(!setPlateControl(settings,slider,value)||!loops.setReverb(track,settings,old.clearEpoch,old.reverbSettingsRevision,old.reverbRequest,true))return false;
+  (void)reverbMidiResults->push({track,slider,value,generation(),old.clearEpoch,old.reverbSettingsRevision,old.reverbSettingsRevision+1});return true;
+ }
+ const auto parameter=reverbMidiControls[slider];const double value=reverbMidiValue(slider,cc);
  // Shape controls publish only a bounded intent; the message owner prepares
  // the impulse transaction and its normal receipt owns adoption.
  if(parameter==2||parameter==3){

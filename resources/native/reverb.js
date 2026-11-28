@@ -9,10 +9,14 @@
  // Native catalogue order/identity. Rooms are selected by these presets, as in
  // the preserved panel; the command layer keeps the explicit room action.
  const presets=['small','studio','medium','large','hall','plate','bright-plate','spring','cathedral','washed-out','tight-drum','ambient-cloud','dark-cave','dub-space','vocal-room','garage','shimmer-hall'];
+ const machinePresets=['smooth-plate','bright-plate','big-plate','vocal-plate','drum-plate','dark-plate','shimmer-plate'];
+ // Machine mode remaps the six sliders to plate order (decay/damping/low cut/
+ // pre-delay/mix/unmask) while keeping stable DOM ids for the panel.
+ const machineFields=[['decay','Decay',.1,10,.1,2.5],['damping','Damping',500,20000,100,12000],['lowCut','Low Cut',20,500,5,80],['predelay','PreDly',0,.1,.005,.02],['mix','Mix',0,1,.01,.35],['unmask','Unmask',0,1,.01,.5]];
  // Conservative MIDI surface: live controls only (targets 153..156).
  const midiTarget={volume:153,mix:154,damp:155,predelay:156,duration:157,decay:158};
  window.AionReverbUI=({current,equalizer,enqueue})=>{
-  let alive=true;const controls=[],toggles=[];
+  let alive=true,engineShown='';const controls=[],toggles=[];
   const module=document.createElement('div');module.id='native-reverb-panel';module.className='retro-module';module.style.borderColor='lightblue';
   const header=document.createElement('div');header.className='module-header';header.style.color='lightblue';
   const title=document.createElement('span');title.id='native-reverb-title';title.textContent='CONV. REVERB (B)';
@@ -25,13 +29,16 @@
   const preset=document.createElement('select');preset.className='effect-preset-select';preset.id='sel_reverb';preset.setAttribute('aria-label','Reverb Preset');
   const blank=document.createElement('option');blank.value='';blank.textContent='-- Select --';preset.append(blank);
   for(const name of presets){const option=document.createElement('option');option.value=name;option.textContent=name;preset.append(option);}
+  const engine=document.createElement('select');engine.className='effect-preset-select';engine.id='sel_reverb_engine';engine.setAttribute('aria-label','Reverb Engine');
+  for(const [value,label] of [['convolution','Convolution'],['machine','Machine Plate']]){const option=document.createElement('option');option.value=value;option.textContent=label;engine.append(option);}
   const reset=document.createElement('button');reset.type='button';reset.id='native-reverb-reset';reset.textContent='Reset';
-  presetRow.append(presetLabel,preset,reset);
+  presetRow.append(presetLabel,engine,preset,reset);
   const rows=document.createElement('div');rows.id='native-reverb-controls';
   content.append(presetRow,rows);module.append(header,content);
   document.getElementById('fx-controls-container').append(module);
   const send=(action,data={},key)=>enqueue(equalizer.selectedTrack(),{action,...data},key);
   preset.addEventListener('change',()=>{if(preset.value)send('preset',{preset:preset.value});});
+  engine.addEventListener('change',()=>send('engine',{engine:engine.value}));
   enabled.addEventListener('change',()=>send('toggle'));
   reset.addEventListener('click',()=>send('reset'));
   preset.disabled=enabled.disabled=reset.disabled=true;
@@ -43,9 +50,10 @@
    value.id=input.id+'Val';value.style.cssText='font-size:10px;width:60px;text-align:right';
    input.disabled=true;
    const edit=new window.AionMidiSliderEdit(input);
-   input.addEventListener('input',()=>{value.textContent=Number(input.value).toFixed(2);send('set',{parameter:name,value:Number(input.value)},'reverb:'+name);});
-   input.addEventListener('dblclick',()=>{input.value=initial;value.textContent=initial.toFixed(2);send('set',{parameter:name,value:initial},'reverb:'+name);});
-   controls.push({name,input,value,edit});row.append(text,input,value);rows.append(row);
+   const control={name,initial,text,input,value,edit};
+   input.addEventListener('input',()=>{value.textContent=Number(input.value).toFixed(2);send('set',{parameter:control.name,value:Number(input.value)},'reverb:'+control.name);});
+   input.addEventListener('dblclick',()=>{input.value=control.initial;value.textContent=control.initial.toFixed(2);send('set',{parameter:control.name,value:control.initial},'reverb:'+control.name);});
+   controls.push(control);row.append(text,input,value);rows.append(row);
   }
   module.addEventListener('keydown',e=>e.stopPropagation());window.addEventListener('pagehide',()=>{alive=false;});
   const reveal=()=>{module.style.scrollMarginTop=`${Math.ceil(document.querySelector('.sticky-top')?.getBoundingClientRect().height||0)+16}px`;module.scrollIntoView({block:'start',behavior:'instant'});};
@@ -57,10 +65,23 @@
     toggles.push({input,track:id});
    },
    update(){const s=current(),track=equalizer.selectedTrack(),settings=s?.tracks?.[track]?.reverb;if(!alive||!s||!settings)return;
-    const ready=!!s.audioReady;
-    title.textContent=`Loop ${track+1} — CONV. REVERB (B)`;
-    enabled.checked=!!settings.enabled;preset.value=settings.preset??'';preset.disabled=enabled.disabled=reset.disabled=!ready;
-    for(const c of controls){const number=Number(settings.values[c.name]);c.edit.update(number,midiTarget[c.name]?!!s.midi?.bindings[midiTarget[c.name]]:true);c.value.textContent=number.toFixed(2);c.input.disabled=!ready;}
+    const ready=!!s.audioReady,machine=settings.engine==='machine';window.AionReverbMachineEngine=machine;
+    if(engineShown!==(machine?'machine':'convolution')){
+     engineShown=machine?'machine':'convolution';
+     const names=machine?machinePresets:presets,defs=machine?machineFields:fields;
+     while(preset.firstChild)preset.removeChild(preset.firstChild);
+     const blank=document.createElement('option');blank.value='';blank.textContent='-- Select --';preset.append(blank);
+     for(const n of names){const o=document.createElement('option');o.value=n;o.textContent=n;preset.append(o);}
+     for(let i=0;i<controls.length;++i){const c=controls[i],d=defs[i];c.name=d[0];c.initial=d[5];c.text.textContent=d[1];
+      c.input.min=d[2];c.input.max=d[3];c.input.step=d[4];c.input.setAttribute('aria-label',d[1]);}
+    }
+    title.textContent=`Loop ${track+1} — ${machine?'MACHINE PLATE (V)':'CONV. REVERB (B)'}`;
+    engine.value=machine?'machine':'convolution';engine.disabled=!ready;
+    enabled.checked=!!settings.enabled;preset.value=machine?(settings.platePreset??''):(settings.preset??'');
+    preset.disabled=enabled.disabled=reset.disabled=!ready;
+    const values=machine?settings.plate:settings.values;
+    for(const c of controls){const number=Number(values[c.name]);const target=machine?153+controls.indexOf(c):midiTarget[c.name];
+     c.edit.update(number,target!==undefined?!!s.midi?.bindings[target]:true);c.value.textContent=number.toFixed(2);c.input.disabled=!ready;}
     for(const t of toggles){const other=s.tracks?.[t.track]?.reverb;t.input.checked=!!other?.enabled;t.input.disabled=!ready;}
    }
   };

@@ -40,7 +40,7 @@ Machine/B-V compatibility, shape-control MIDI, Linux WebKit and physical
 controller/listening/device/DAW acceptance remain pending. The conservative
 four-control MIDI surface remains the product scope of this slice.
 
-### Native Machine plate engine kernel — 27 November 2026
+### Native Machine plate engine, integrated — 28 November 2026
 
 Added the native plate reverb + dry-aware carver DSP (8-line FDN, diffusers,
 RT60/damping/low cut, gentle modulation, pre-delay; 8-band dynamic wet peaking
@@ -48,12 +48,14 @@ cuts driven by the dry signal). Controls are Decay, Damping, Low Cut, Pre-delay,
 Mix and Unmask. `plate_reverb_contract` passes at 8/48 kHz x 64/128 with
 zero callback heap, verified decay/damping/carving and untouched dry.
 
-Linux passes the same `plate_reverb_contract` (0.48 s). Core engine selection is
-now in ReverbSettings/ReverbStorage: the plate graph is prepared by the worker,
-exposed via plateGraph, driven by plate live controls and crossfaded on an engine
-switch; the storage test switches machine to convolution and back. Still pending:
-the unified panel engine toggle, per-engine state/persistence and presets, CLI/MIDI
-ownership, legacy B/V migration, listening and physical/device checks.
+Integrated into the unified panel: `reverb` engine command, plate set/preset,
+snapshot engine/plate/platePreset, `LoopReverbs` v2 persistence with v1 migration,
+engine selector and machine labels/ranges/preset family, and live machine MIDI on
+targets 153–158. `native_plate_engine` 64/128 passes (command, MIDI, v2 save/
+restore, switch back); Reverb state/commands, joint effects, Reverb MIDI,
+plate/storage contracts and Reverb UI 64/128 (engine switch, controls, machine MIDI)
+pass. Linux builds the same sources; results are recorded after the sync. Listening,
+physical controller, device/DAW and Linux WebKit remain pending.
 
 ### Prepared shape MIDI for Reverb Duration/Decay — 27 November 2026
 

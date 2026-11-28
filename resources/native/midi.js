@@ -20,6 +20,13 @@ window.AionMidiSliderTarget=id=>{const delay=window.AionMidiDelayParameters.find
 window.AionMidiReverbParameters=['volume','mix','damp','predelay','duration','decay'];
 const previousSliderTargetTwo=window.AionMidiSliderTarget;
 window.AionMidiSliderTarget=id=>{const reverb=window.AionMidiReverbParameters.findIndex(p=>id==='reverb'+p[0].toUpperCase()+p.slice(1));return reverb>=0?153+reverb:previousSliderTargetTwo(id);};
+// Machine mode maps the six panel positions to 153..158 in plate order; the
+// convolution names above remain the stable IDs when the engine is convolution.
+const previousSliderTargetThree=window.AionMidiSliderTarget;
+window.AionMidiSliderTarget=id=>{
+ if(window.AionReverbMachineEngine){const pos=['volume','mix','duration','decay','damp','predelay'].indexOf(id.startsWith('reverb')?id[6].toLowerCase()+id.slice(7):'');if(pos>=0)return 153+pos;}
+ return previousSliderTargetThree(id);
+};
 window.AionMidiLearnTarget=id=>{const mute=/^live_mm_mute_l_(\d+)$/.exec(id);if(mute)return Number(mute[1])<20?73+Number(mute[1]):-1;const m=/^loop-action-(\d+)$/.exec(id);return m?(Number(m[1])<20?Number(m[1]):-1):window.AionMidiSliderTarget(id);};
 // Original main MUTE has no ID; recognise its bound button in its owning card.
 window.AionMidiMuteButton=row=>[...(row?.querySelectorAll?.('button')||[])].find(e=>e.dataset?.nativeControl==='true'&&['MUTE','UNM'].includes(e.textContent?.trim()))||null;

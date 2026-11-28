@@ -28,6 +28,9 @@ inline constexpr std::array<std::string_view,7> platePresetNames{
 // Continuous MIDI targets expose only the live controls; duration/decay change
 // the prepared impulse shape and are not mapped by the conservative slice.
 inline constexpr std::array<unsigned,6> reverbMidiControls{0,1,4,5,2,3}; // live controls, then prepared shape controls
+constexpr double plateMidiValue(unsigned slider,unsigned cc) noexcept {
+ const auto& p=plateControls[slider];return p.minimum+(cc/127.0)*(p.maximum-p.minimum);
+}
 constexpr double reverbMidiValue(unsigned slider,unsigned cc) noexcept {
  const auto& p=reverbControls[reverbMidiControls[slider]];return p.minimum+(cc/127.0)*(p.maximum-p.minimum);
 }

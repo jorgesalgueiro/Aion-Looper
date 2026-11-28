@@ -17,12 +17,17 @@ bool LoopBank::setReverb(unsigned id,const ReverbSettings& settings,std::uint64_
  if(id>=trackCount||(!request&&!midi)||!validReverbSettings(settings)||epoch!=tracks[id].clearEpoch
   ||revision!=tracks[id].info.reverbSettingsRevision||revision==UINT64_MAX)return false;
  auto* graph=reverbStorage->graph(id);
+ auto* plate=reverbStorage->plateGraph(id);
  if(graph){
   // Disabled metadata may select a new shape without allocating a new graph.
   // Fade the existing runtime to bypass; an eventual enable with that new shape
   // requires a prepared request. A same-shape edit applies every live control.
   auto runtime=settings;
   if(!settings.enabled){runtime=graph->settings();runtime.enabled=false;}
+  if(!reverbStorage->set(id,runtime))return false;
+ }
+ else if(plate){
+  auto runtime=settings;if(!settings.enabled)runtime.enabled=false;
   if(!reverbStorage->set(id,runtime))return false;
  }
  else if(settings.enabled)return false;

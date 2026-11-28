@@ -22,6 +22,7 @@ public:
  bool bind(const EngineView&,const Bank& known=Bank{}) noexcept;
  void service(const EngineView&) noexcept;
  bool set(unsigned track,unsigned parameter,double value,std::uint32_t request,std::uint64_t frame=0) noexcept;
+ bool assign(unsigned track,const ReverbSettings& settings,std::uint32_t request,std::uint64_t frame=0) noexcept {return submit(track,settings,request,frame);}
  bool room(unsigned track,ReverbRoom,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool preset(unsigned track,unsigned preset,std::uint32_t request,std::uint64_t frame=0) noexcept;
  bool enable(unsigned track,bool enabled,std::uint32_t request,std::uint64_t frame=0) noexcept;

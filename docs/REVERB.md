@@ -1415,9 +1415,9 @@ full unrelated suite, sanitizer rerun, package, push or release-ready claim.
 
 ### Native Machine plate engine — 27 November 2026
 
-The Machine backend is now a native plate design (not a convolution preset).
-The kernel is additive: no product panel/state/CLI/MIDI surface is connected
-until the unified engine-selection slice is complete.
+The Machine backend is now a native plate design (not a convolution preset),
+connected to the unified Reverb panel: engine selector, six plate controls and
+presets, v2 persistence and live MIDI.
 
 - Topology: two input diffusers per channel, an eight-line feedback network with
   Householder mixing, per-line RT60 gain, one-pole damping and low cut, gentle
@@ -1439,16 +1439,26 @@ reduces the wet band driven by a 2 kHz dry tone, the dry path is bit-untouched,
 invalid edits preserve settings, cancellation is honoured and callback new/delete
 is zero. Linux builds the same module and passes `plate_reverb_contract` (0.48 s).
 
-Engine selection now exists in the core: `ReverbSettings.engine` and the six plate
-values/presets are validated; `ReverbStorage` prepares a plate graph for machine
-requests, exposes it via `plateGraph`, applies plate live controls/edits, and
-crossfades an engine change through the existing prepared-slot path. The storage
-test switches machine to convolution and back. Linux passes
-`plate_reverb_contract` and `reverb_storage_contract` 2/2 (0.96 s). This is core
-acceptance; no product panel/state/CLI/MIDI surface selects machine yet, so there
-is no listening or user-visible claim.
+Product integration: `ReverbSettings.engine` plus six validated plate values and
+seven presets; `ReverbStorage` prepares a plate graph, exposes it via
+`plateGraph`, applies plate live controls/edits, and crossfades an engine change
+through the existing prepared-slot path. The Processor accepts
+`{"operation":"reverb","action":"engine","engine":"machine"|"convolution"}`,
+plate control names on `set`, the plate preset names, and publishes
+`engine`/`plate`/`platePreset` in the snapshot. `LoopReverbs` version 2 persists
+the engine and plate values; version 1 sessions load as convolution with plate
+defaults. The panel adds the engine selector, swaps the six slider labels/ranges/
+values to Decay/Damping/Low Cut/Pre-delay/Mix/Unmask, and swaps the preset family.
+Machine MIDI maps targets 153–158 to the six plate controls in order, all live.
 
-Pending integration: unified Reverb panel engine toggle, per-engine state and
-presets, prepared crossfade/storage, CLI/MIDI engine ownership, and the legacy
-B/V migration. Listening, physical controller and device/DAW checks remain
-explicitly pending.
+Executed (Windows Release): `native_plate_engine` 64/128 passes (engine command,
+plate set/preset, live MIDI, v2 save/restore and switch back);
+`plate_reverb_contract`, `reverb_storage_contract`, Reverb state/commands, joint
+effects and Reverb MIDI pass; Reverb UI 64/128 passes the engine switch, machine
+labels/ranges/presets, Decay/Unmask controls and machine MIDI learn. Delay UI
+64/128 and FrontendTests/BridgeTests pass. Linux builds the same sources; its
+target results are recorded after the committed sync.
+
+Limits: no listening, physical-controller, device/DAW or Linux WebKit acceptance.
+The legacy browser-only V bank is not a native state source; version 1 native
+sessions migrate to convolution, not to a guessed machine preset.

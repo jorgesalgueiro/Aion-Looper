@@ -6,9 +6,14 @@ juce::String name(std::string_view s){return juce::String::fromUTF8(s.data(),sta
 juce::var value(const aion::ReverbSettings& s){
  auto* object=new juce::DynamicObject;object->setProperty("enabled",s.enabled);
  object->setProperty("room",name(aion::reverbRooms[static_cast<unsigned>(s.room)].name));
- object->setProperty("preset",s.preset?name(aion::reverbPresetNames[s.preset-1]):juce::String());
+ const bool machine=s.engine==aion::ReverbEngine::machine;
+ object->setProperty("engine",machine?"machine":"convolution");
+ object->setProperty("preset",!machine&&s.preset?name(aion::reverbPresetNames[s.preset-1]):juce::String());
+ object->setProperty("platePreset",machine&&s.preset?name(aion::platePresetNames[s.preset-1]):juce::String());
  auto* values=new juce::DynamicObject;for(unsigned p=0;p<aion::reverbControls.size();++p)values->setProperty(name(aion::reverbControls[p].name),s.values[p]);
- object->setProperty("values",juce::var(values));return juce::var(object);
+ object->setProperty("values",juce::var(values));
+ auto* plate=new juce::DynamicObject;for(unsigned p=0;p<aion::plateControls.size();++p)plate->setProperty(name(aion::plateControls[p].name),s.plate[p]);
+ object->setProperty("plate",juce::var(plate));return juce::var(object);
 }
 bool numeric(const juce::var& v,double& out){if(!(v.isInt()||v.isInt64()||v.isDouble()))return false;out=static_cast<double>(v);return std::isfinite(out);}
 }
@@ -39,9 +44,17 @@ bool AionProcessor::reverbRequest(const juce::var& request,juce::DynamicObject& 
   accepted=reverbOwner.enable(track,action=="toggle"?!reverbSettings[track].enabled:static_cast<bool>(enabled),requestId);
  }else if(action=="reset")accepted=reverbOwner.reset(track,requestId);
  else if(action=="preset"){
-  const auto preset=request.getProperty("preset",{});unsigned p=0;if(!preset.isString())return fail("Expected Reverb preset name");
-  for(;p<aion::reverbPresetNames.size()&&preset.toString()!=name(aion::reverbPresetNames[p]);++p){}
-  if(p==aion::reverbPresetNames.size())return fail("Unknown Reverb preset");accepted=reverbOwner.preset(track,p+1,requestId);
+  const auto preset=request.getProperty("preset",{});if(!preset.isString())return fail("Expected Reverb preset name");
+  unsigned p=0;for(;p<aion::reverbPresetNames.size()&&preset.toString()!=name(aion::reverbPresetNames[p]);++p){}
+  if(p<aion::reverbPresetNames.size())accepted=reverbOwner.preset(track,p+1,requestId);
+  else{unsigned q=0;for(;q<aion::platePresetNames.size()&&preset.toString()!=name(aion::platePresetNames[q]);++q){}
+   if(q==aion::platePresetNames.size())return fail("Unknown Reverb preset");
+   accepted=reverbOwner.preset(track,static_cast<unsigned>(aion::reverbPresetNames.size())+q+1,requestId);}
+ }else if(action=="engine"){
+  const auto engineName=request.getProperty("engine",{}).toString();
+  if(engineName!="machine"&&engineName!="convolution")return fail("Expected Reverb engine");
+  auto candidate=reverbSettings[track];candidate.engine=engineName=="machine"?aion::ReverbEngine::machine:aion::ReverbEngine::convolution;candidate.preset=0;
+  accepted=reverbOwner.assign(track,candidate,requestId);
  }else if(action=="room"){
   const auto room=request.getProperty("room",{});unsigned r=0;if(!room.isString())return fail("Expected Reverb room name");
   for(;r<aion::reverbRooms.size()&&room.toString()!=name(aion::reverbRooms[r].name);++r){}
@@ -49,8 +62,10 @@ bool AionProcessor::reverbRequest(const juce::var& request,juce::DynamicObject& 
  }else if(action=="set"){
   const auto parameter=request.getProperty("parameter",{});unsigned p=0;double number=0;
   if(!parameter.isString()||!numeric(request.getProperty("value",{}),number))return fail("Expected Reverb parameter/value");
-  for(;p<aion::reverbControls.size()&&parameter.toString()!=name(aion::reverbControls[p].name);++p){}
-  if(p==aion::reverbControls.size())return fail("Unknown Reverb parameter");accepted=reverbOwner.set(track,p,number,requestId);
+  const bool machine=reverbSettings[track].engine==aion::ReverbEngine::machine;
+  const auto& defs=machine?aion::plateControls:aion::reverbControls;
+  for(;p<defs.size()&&parameter.toString()!=name(defs[p].name);++p){}
+  if(p==defs.size())return fail("Unknown Reverb parameter");accepted=reverbOwner.set(track,p,number,requestId);
  }else return fail("Unknown Reverb action");
  if(!accepted)return fail("Invalid Reverb settings or command queue unavailable");
  reverbSettings[track]=*reverbOwner.intent(track);nextRequest=requestId;
